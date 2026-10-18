@@ -92,7 +92,7 @@ Projekt: **Energetikai méretező** (`ahzhcmpkxtsbsakgjuhc`, eu-central-1).
 ### Cloudflare Worker (statikus eszközök)
 
 - `wrangler.jsonc` a repó gyökerében; a `name` egyezzen a Cloudflare-ben létrehozott Worker nevével.
-- Workers Builds: **Build command** `cd apps/web && npm ci && npm run build`, **Deploy command** `npx wrangler deploy`.
+- Workers Builds: **Deploy command** `npx wrangler deploy` (a build a `wrangler.jsonc` `build.command` mezőjéből fut).
 - A `.env.production` tartalmazza a publishable kulcsot (nyilvános, a hozzáférést az RLS védi).
 
 ### Supabase Auth beállítás (egyszer)

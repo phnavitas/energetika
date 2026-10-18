@@ -1,9 +1,13 @@
 // Cloudflare Worker statikus eszközökkel: a webes felület (apps/web) build-kimenetét szolgálja ki.
-// Workers Builds beállítás: Build command: cd apps/web && npm ci && npm run build · Deploy command: npx wrangler deploy
+// A `wrangler deploy` maga futtatja a buildet (build.command), így a Cloudflare felületen csak a
+// Deploy command kell: npx wrangler deploy
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "energetika",
   "compatibility_date": "2026-10-01",
+  "build": {
+    "command": "cd apps/web && npm ci && npm run build"
+  },
   "assets": {
     "directory": "./apps/web/dist",
     "not_found_handling": "single-page-application"
