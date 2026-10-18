@@ -64,7 +64,7 @@ fejlesztői kapcsolatfelvétel a Lechner Tudásközponttal az XSD-ért és a tes
 
 ## Adatbázis (Supabase)
 
-Projekt: **Energetikai méretező** (`ahzhcmpkxtsbsakgjuhc`, eu-central-1).
+Projekt: **Energetikai méretező** (`ahzhcmpkxtsbsakgjuhc`, eu-central-1). Élő felület: https://energetika.balazs-ambrus.workers.dev
 
 - **Iroda**: `szervezet`, `szervezet_tag` (tulajdonos / admin / tag), `szervezet_meghivo` (e-mail alapján;
   a meghívó csak megerősített e-mail címmel fogadható el). RPC: `szervezet_letrehoz`, `meghivok_elfogadasa`, `tag_eltavolit`.
@@ -97,6 +97,6 @@ Projekt: **Energetikai méretező** (`ahzhcmpkxtsbsakgjuhc`, eu-central-1).
 
 ### Supabase Auth beállítás (egyszer)
 
-- Authentication → URL Configuration → **Site URL**: a Worker címe (pl. `https://energetika.<fiók>.workers.dev`);
+- Authentication → URL Configuration → **Site URL**: a Worker címe (`https://energetika.balazs-ambrus.workers.dev`);
   **Redirect URLs**: ugyanez, és fejlesztéshez `http://localhost:5173`.
 - Authentication → Providers → Email: „Confirm email” maradjon bekapcsolva (a meghívók elfogadásának feltétele).
