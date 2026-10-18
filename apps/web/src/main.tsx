@@ -299,7 +299,7 @@ function App() {
             <button class={`projekt-gomb${nezet === 'projektek' ? ' aktiv' : ''}`} onClick={() => setNezet('projektek')}>
               <span class="halkabb">Megnyitott projekt</span>
               <strong>{p.meta.nev || 'Névtelen projekt'}</strong>
-              <span class={`jel ${mentesOsztaly}`} role="status">{mentesSzoveg}</span>
+              <span class={`jel ${mentesOsztaly}`}>{mentesSzoveg}</span>
             </button>
           )}
           <ol class="lepesek">
@@ -370,6 +370,7 @@ function App() {
               <h1>{fej.nev}</h1>
               <p class="halk">{fej.leiras}</p>
             </div>
+            {tavoli && <span class={`mentes-pirula ${mentesOsztaly}`} role="status" aria-live="polite">{mentesSzoveg}</span>}
             {lepesIdx >= 0 && (
               <div class="gombsor">
                 {lepesIdx > 0 && <button class="gomb" onClick={() => setNezet(LEPESEK[lepesIdx - 1]!.kod)}>Vissza</button>}

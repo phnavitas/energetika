@@ -237,3 +237,13 @@ input:disabled { color: var(--tus-3); }
 .fiok-sor .halkabb { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .sav { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
 .gombsor select { width: auto; }
+
+.mentes-pirula { margin-left: auto; align-self: center; white-space: nowrap; font-size: 13px; font-weight: 550; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--vonal); background: var(--lap); color: var(--tus-2); transition: color .2s, border-color .2s; }
+.mentes-pirula::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: currentColor; margin-right: 6px; vertical-align: 1px; }
+.mentes-pirula.jo { color: var(--megfelel); border-color: color-mix(in srgb, var(--megfelel) 45%, var(--vonal)); }
+.mentes-pirula.folyik { color: var(--figyel); border-color: color-mix(in srgb, var(--figyel) 45%, var(--vonal)); }
+.mentes-pirula.folyik::before { animation: pulzal 1s ease-in-out infinite; }
+.mentes-pirula.rossz { color: var(--hiba); border-color: var(--hiba); }
+.mentes-pirula.figy { color: var(--figyel); }
+@keyframes pulzal { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .mentes-pirula.folyik::before { animation: none; } }
