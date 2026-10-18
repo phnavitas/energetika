@@ -1,7 +1,7 @@
 import { render } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { epuletSzamitas, type EpuletEredmeny } from '@mag/index';
-import { atalakit, anyagPillanatkep, type Projekt } from './modell';
+import { atalakit, anyagPillanatkep, projektMigral, type Projekt } from './modell';
 import { mintaProjekt, uresProjekt } from './minta';
 import { irodaiAnyagokBeallit, projektAnyagokBeallit } from './katalogus';
 import { sz } from './ui';
@@ -26,7 +26,7 @@ const ir = (k: string, v: string | null) => { try { if (v === null) localStorage
 
 function betolt(): Projekt {
   const s = olvas(KULCS);
-  if (s) { try { return JSON.parse(s) as Projekt; } catch { /* sérült */ } }
+  if (s) { try { return projektMigral(JSON.parse(s)); } catch { /* sérült */ } }
   return mintaProjekt();
 }
 
@@ -67,7 +67,7 @@ function App() {
   const [felh, setFelh] = useState<t.Felhasznalo | null | undefined>(t.tavoliElerheto ? undefined : null);
   const [irodak, setIrodak] = useState<t.Iroda[] | null>(null);
   const [irodaId, setIrodaId] = useState<string | null>(() => olvas(IRODA_KULCS));
-  const [konyvtar, setKonyvtar] = useState<Konyvtar>({ anyagok: [], retegrendek: [], nyilaszarok: [] });
+  const [konyvtar, setKonyvtar] = useState<Konyvtar>({ anyagok: [], retegrendek: [], nyilaszarok: [], szettek: [] });
   const [fiokHiba, setFiokHiba] = useState<string | null>(null);
   const [projektLista, setProjektLista] = useState(0);
   const tavoli = t.tavoliElerheto && !helyiMod;
@@ -104,7 +104,7 @@ function App() {
   }
   useEffect(() => {
     irodaiAnyagokBeallit([]);
-    setKonyvtar({ anyagok: [], retegrendek: [], nyilaszarok: [] });
+    setKonyvtar({ anyagok: [], retegrendek: [], nyilaszarok: [], szettek: [] });
     if (iroda && tavoli) konyvtarFrissit();
   }, [iroda?.id, tavoli]);
 
@@ -181,7 +181,7 @@ function App() {
     t.projektBetolt(aktivKapcsolat.id).then((b) => {
       const k = kapcsolatRef.current!;
       if (b.verzio === k.verzio) return;
-      if (!k.piszkos) { setP(b.dokumentum); setKapcsolat({ ...k, verzio: b.verzio, modositva: b.modositva }); }
+      if (!k.piszkos) { setP(projektMigral(b.dokumentum)); setKapcsolat({ ...k, verzio: b.verzio, modositva: b.modositva }); }
       else setMentes({ a: 'utkozes' });
     }, () => setMentes({ a: 'torolve' }));
   }, [aktivKapcsolat?.id]);
@@ -189,7 +189,7 @@ function App() {
   async function projektMegnyit(id: string) {
     if (kapcsolatRef.current?.piszkos) await ment();
     const b = await t.projektBetolt(id);
-    setP(b.dokumentum);
+    setP(projektMigral(b.dokumentum));
     setKapcsolat({ id: b.id, irodaId: b.irodaId, verzio: b.verzio, modositva: b.modositva, piszkos: false });
     setMentes({ a: 'mentve' });
     setNezet('epulet');
@@ -209,7 +209,7 @@ function App() {
   async function utkozesBetolt() {
     const k = kapcsolatRef.current!;
     const b = await t.projektBetolt(k.id);
-    setP(b.dokumentum);
+    setP(projektMigral(b.dokumentum));
     setKapcsolat({ ...k, verzio: b.verzio, modositva: b.modositva, piszkos: false });
     setMentes({ a: 'mentve' });
   }
@@ -267,8 +267,9 @@ function App() {
     if (!f) return;
     f.text().then((s) => {
       try {
-        const uj = JSON.parse(s) as Projekt;
-        if (!uj.meta || !Array.isArray(uj.helyisegek)) throw new Error();
+        const nyers = JSON.parse(s) as Projekt;
+        if (!nyers.meta || !Array.isArray(nyers.helyisegek)) throw new Error();
+        const uj = projektMigral(nyers);
         setP(uj); setKapcsolat(null); setUzenet(tavoli ? 'Projekt megnyitva fájlból. Az irodába a Projektek oldalon mentheted el.' : null);
       } catch { setUzenet('A fájl nem projektfájl. A „Projekt mentése fájlba” gombbal mentett .json fájlt nyiss meg.'); }
     });

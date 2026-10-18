@@ -56,6 +56,21 @@ olyan tesztépület kell, amelynek minden nyílászárójáról ismert a tájol�
 6. **Nyári hővédelem** – a rendelet képlete csak képként érhető el; a 0,3-as határértéket a WinWatt-jegyzőkönyvből vettük.
    Mutató: 0,047 (WinWatt: 0,044). Ellenőrizendő a rendelet eredeti szövegéből.
 
+## Gépészet
+
+- Fűtés: egy vagy több alrendszer (bivalens, lefedési arányokkal); hőtermelő táblázati értékkel, ErP adatlappal (ηs),
+  SCOP-pal vagy kézzel; εF,szab a 8.10.–8.12. táblázat választásaiból vagy közvetlenül (8.13./8.14.);
+  elosztás, puffertároló, keringtető szivattyú.
+- HMV: vízmelegítő (táblázati / ErP ηwh), tároló, elosztás, cirkuláció; napkollektor a 9.2.1.1 egyszerűsített
+  módszerrel (9.1./9.2. táblázat kétirányú interpolációval × k a 9.7 képletből).
+- Gépi szellőzés hővisszanyeréssel: Hszell,F a 6.12–6.16 szerint (hűtési módban hővisszanyerés nélkül),
+  ventilátor-energia ErP SPI-vel (10.17) vagy nyomáseséssel (10.20). Léghevítés (10.1.2) még nincs.
+- Napelem: 13.1. táblázat (≤ 20 kWp), egyszerűsített módszerrel teljes egészében exportáltként, súlyozás 14.7:
+  Wexp · (fexp − fterm).
+- A szettek kiindulópontok; az iroda saját szetteket menthet (`gepeszeti_szett`, futes = { alrendszerek, szellozes }).
+- Régi (1. verziójú) projektfájlok betöltéskor automatikusan átalakulnak (`projektMigral`).
+- XML: szellőzés és napelem esetén `XmlKodHianyzik` – a kódok az XSD-ből veendők át.
+
 ## e-tanúsítás XML
 
 A Lechner XSD-je nincs meg. A generátor szerkezete egy elfogadott WinWatt-export elemsorrendjét követi (tesztelve).

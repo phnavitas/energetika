@@ -2,7 +2,8 @@
  * Teljes épület számítása, követelmények és besorolás – 1. függ. 3. fejezet lépései szerint.
  */
 import { zonaHaviMerleg, type ZonaBemenet, type ZonaEredmeny, type NyilaszaroElem } from './energiamerleg.js';
-import { futesiRendszer, hmvRendszer, szabalyozasiTenyezo, type FutesiAlrendszer, type HmvRendszer, type RendszerEredmeny } from './rendszerek.js';
+import { futesiRendszer, hmvRendszer, szellozesRendszer, szabalyozasiTenyezo, type FutesiAlrendszer, type HmvRendszer, type SzellozesRendszer, type RendszerEredmeny } from './rendszerek.js';
+import { napelemTermeles } from './tablak/gepeszet.js';
 import { indikatorok, type Indikatorok } from './indikatorok.js';
 import {
   U_KOVETELMENYEK, qmMaxKozelNulla, qmMaxFelujitas, KOZEL_NULLA_LAKO, REFERENCIA_LAKO, EnrenMaxFelujitasLako,
@@ -26,6 +27,10 @@ export interface EpuletBemenet {
   zonak: ZonaBemenet[];
   futes: (FutesiAlrendszer & { zona: string })[];
   hmv: HmvRendszer[];
+  /** Gépi szellőzés ventilátor-energiája (10. fejezet); a hővisszanyerés hatása a zóna gepiSzellozes mezőjében. */
+  szellozes?: SzellozesRendszer[];
+  /** Napelemek (13.2.1, ≤ 20 kWp) – egyszerűsített módszerrel exportáltként elszámolva (13.1). */
+  napelem?: { nev: string; kWp: number; tajolas: 'K_Ny' | 'DK_DNy' | 'D'; hajlasszog: number }[];
   /** Referencia rendszer felülbírálásai (alapértelmezés: 5. melléklet szerint a tárgyi épületből levezetve). */
   referencia?: Partial<ReferenciaBeallitas>;
 }
@@ -50,6 +55,8 @@ export interface SzerkezetErtekeles {
 export interface EpuletEredmeny {
   zonak: ZonaEredmeny[];
   rendszerek: RendszerEredmeny[];
+  /** Napelemek éves termelése [kWh/év]. */
+  napelem: { nev: string; W: number }[];
   indikatorok: Indikatorok;
   aV: number;
   qm: number;
@@ -147,10 +154,14 @@ export function epuletSzamitas(b: EpuletBemenet, opciok?: SzamitasiOpciok): Epul
     rendszerek.push(futesiRendszer(f, Q, b.AN));
   }
   for (const h of b.hmv) rendszerek.push(hmvRendszer(h));
+  for (const s of b.szellozes ?? []) rendszerek.push(szellozesRendszer(s));
   rendszerek.forEach((r) => fw.push(...r.figyelmeztetesek));
 
+  const napelem = (b.napelem ?? []).map((n) => ({ nev: n.nev, W: napelemTermeles(n.kWp, n.tajolas, n.hajlasszog) }));
+  const pvOssz = (b.napelem ?? []).reduce((s, n) => s + n.kWp, 0);
+  if (pvOssz > 20) fw.push({ kod: 'PV_20KWP', uzenet: `A napelemek összteljesítménye ${pvOssz.toFixed(1)} kWp; a 13.1. táblázat 20 kWp-ig alkalmazható, fölötte részletes módszer (MSZ EN 15316-4-3) kell.`, forras: '1. függ. 13.2.1' });
   const passziv = zonak.reduce((s, z) => s + z.QsdHasznositott, 0);
-  const ind = indikatorok(rendszerek, b.AN, passziv);
+  const ind = indikatorok(rendszerek, b.AN, passziv, napelem.reduce((s, n) => s + n.W, 0));
 
   const aV = b.Alehulo / b.V;
   // Fajlagos hőveszteség-tényező: zónák V-vel súlyozva
@@ -196,7 +207,7 @@ export function epuletSzamitas(b: EpuletBemenet, opciok?: SzamitasiOpciok): Epul
   const hE = ind.celonkent.hmv.nren, hR = refInd.celonkent.hmv.nren;
 
   return {
-    zonak, rendszerek, indikatorok: ind, aV, qm, qFnet,
+    zonak, rendszerek, napelem, indikatorok: ind, aV, qm, qFnet,
     kovetelmeny: {
       qmMax: kov.qmMax, qmMegfelel: qm <= kov.qmMax,
       EnrenMax: kov.EnrenMax, EnrenMegfelel: E <= kov.EnrenMax,

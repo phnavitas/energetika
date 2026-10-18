@@ -4,9 +4,9 @@
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Anyag, Sraffozas } from './katalogus';
-import { hibaSzoveg, MAG_VERZIO, type Felhasznalo, type Iroda, type Szerep, type Tag, type Meghivo, type Osszesito, type ProjektSor, type BetoltottProjekt, type MentesEredmeny, type ForrasTipus, type IrodaiAnyag, type KonyvtarRetegrend, type KonyvtarNyilaszaro } from './tarolo-tipusok';
+import { hibaSzoveg, MAG_VERZIO, type Felhasznalo, type Iroda, type Szerep, type Tag, type Meghivo, type Osszesito, type ProjektSor, type BetoltottProjekt, type MentesEredmeny, type ForrasTipus, type IrodaiAnyag, type KonyvtarRetegrend, type KonyvtarNyilaszaro, type IrodaiSzett } from './tarolo-tipusok';
 export * from './tarolo-tipusok';
-import type { NyilaszaroTipus, Projekt, Retegrend } from './modell';
+import type { Gepeszet, NyilaszaroTipus, Projekt, Retegrend } from './modell';
 
 const URL_ = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const KULCS = import.meta.env.VITE_SUPABASE_KEY as string | undefined;
@@ -211,5 +211,26 @@ export async function nyilaszaroKonyvtarba(irodaId: string, n: NyilaszaroTipus, 
 }
 export async function konyvtarNyilaszaroTorol(id: string) {
   const { error } = await kell().from('nyilaszaro_tipus').delete().eq('id', id);
+  if (error) dob(error);
+}
+
+// Gépészeti szettek: a gepeszeti_szett.futes mezőben { alrendszerek, szellozes }, a hmv mezőben a HMV rendszer.
+export async function irodaiSzettek(irodaId: string): Promise<IrodaiSzett[]> {
+  const { data, error } = await kell().from('gepeszeti_szett').select('id, nev, leiras, futes, hmv').eq('szervezet_id', irodaId).order('nev');
+  if (error) dob(error);
+  return (data ?? []).map((r) => {
+    const f = (r.futes ?? {}) as { alrendszerek?: IrodaiSzett['futes']; szellozes?: IrodaiSzett['szellozes'] };
+    return { id: r.id, nev: r.nev, leiras: r.leiras ?? '', futes: f.alrendszerek ?? [], hmv: r.hmv as IrodaiSzett['hmv'], szellozes: f.szellozes ?? null };
+  }).filter((x) => x.futes.length && x.hmv);
+}
+export async function szettMent(irodaId: string, nev: string, leiras: string, g: Gepeszet) {
+  const { error } = await kell().from('gepeszeti_szett').insert({
+    szervezet_id: irodaId, kod: crypto.randomUUID(), nev: nev.trim(), leiras: leiras.trim() || null,
+    futes: { alrendszerek: g.futes, szellozes: g.szellozes }, hmv: g.hmv, forras: 'felhasznaloi', forras_hivatkozas: '',
+  });
+  if (error) dob(error);
+}
+export async function szettTorol(id: string) {
+  const { error } = await kell().from('gepeszeti_szett').delete().eq('id', id);
   if (error) dob(error);
 }

@@ -5,8 +5,9 @@
  */
 import {
   retegrendU, talajonFekvoPadlo, teglalapAblak, nyilaszaroU, nyilaszaroArnyekoloval,
-  epuletfizika, kovetelmeny, GEPESZETI_SZETTEK, szettbolFutes, szettbolHmv,
+  epuletfizika, kovetelmeny, GEPESZETI_SZETTEK, szabalyozasiTenyezo,
   type EpuletBemenet, type HataroloElem, type Reteg, type Hatar, type FutesiHotermelo, type HmvHotermelo,
+  type FutesSablon, type HmvSablon, type SzellozesRendszer,
 } from '@mag/index';
 import type { BTenyezoKod, HoaramIrany, Legzaras, NyilasElhelyezes } from '@mag/tablak/epuletfizika';
 import type { Tajolas, Hajlasszog } from '@mag/tablak/klima';
@@ -59,8 +60,25 @@ export interface Felulet {
   };
 }
 
+// ---------------------------------------------------------------------------------------------
+// Gépészet: a szett csak kiindulópont, minden elem külön szerkeszthető.
+
+/** Fűtési alrendszer; bivalens rendszernél több is lehet, a lefedések összege 1. */
+export interface FutesAlrendszerUI extends FutesSablon { id: string; nev: string; szettKod?: string; }
+export interface HmvUI extends HmvSablon { szettKod?: string; }
+export interface SzellozesUI {
+  /** Hővisszanyerő hatásfoka (0..1). */
+  etaR: number;
+  /** Üzemidő-arány (0..1). */
+  uzemArany: number;
+  ventilator: SzellozesRendszer['ventilator'];
+  segedKWh?: number;
+}
+export interface NapelemUI { id: string; nev: string; kWp: number; tajolas: 'K_Ny' | 'DK_DNy' | 'D'; hajlasszog: number; }
+export interface Gepeszet { futes: FutesAlrendszerUI[]; hmv: HmvUI; szellozes: SzellozesUI | null; napelem: NapelemUI[]; }
+
 export interface Projekt {
-  verzio: 1;
+  verzio: 2;
   meta: {
     nev: string; megrendelo: string; irsz: string; telepules: string; kozterulet: string; kozteruletJelleg: string; hazszam: string;
     hrsz: string; epitesiEv: number; kategoria: 'csaladi_haz' | 'egyeb_lakoepulet';
@@ -71,7 +89,7 @@ export interface Projekt {
   retegrendek: Retegrend[];
   nyilaszarok: NyilaszaroTipus[];
   feluletek: Felulet[];
-  gepeszet: { futesSzett: string; hmvSzett: string; futesErpEta?: number | null; hmvErpEta?: number | null };
+  gepeszet: Gepeszet;
   tanusito: { nev: string; jogosultsag: string; email: string; telefon: string };
   /** A projektben használt nem beépített (irodai) anyagok pillanatképe: a projekt így önmagában is számolható. */
   anyagok?: Anyag[];
@@ -223,15 +241,20 @@ export function atalakit(p: Projekt): Atalakitas {
     }
   }
 
-  const fSzett = GEPESZETI_SZETTEK.find((s) => s.kod === p.gepeszet.futesSzett);
-  const hSzett = GEPESZETI_SZETTEK.find((s) => s.kod === p.gepeszet.hmvSzett);
-  if (!fSzett || !hSzett) hibak.push('Válassz fűtési és HMV rendszert.');
-  if (hibak.length || !fSzett || !hSzett) return { bemenet: null, hibak, geometria: g };
+  const gp = p.gepeszet;
+  if (!gp.futes.length) hibak.push('Vegyél fel legalább egy fűtési rendszert.');
+  const lefedesOssz = gp.futes.reduce((x, f) => x + (f.lefedes ?? 1), 0);
+  if (gp.futes.length && Math.abs(lefedesOssz - 1) > 0.005) hibak.push(`A fűtési rendszerek lefedési arányainak összege ${(lefedesOssz * 100).toFixed(0)}%; 100% kell.`);
+  if (hibak.length) return { bemenet: null, hibak, geometria: g };
 
-  const futes = { ...szettbolFutes(fSzett, { Arszr: g.AN }), zona: 'F1' };
-  if (p.gepeszet.futesErpEta) futes.hotermelo = erpFutes(futes.hotermelo, p.gepeszet.futesErpEta);
-  const hmv = szettbolHmv(hSzett, { Arszr: g.AN, AN: g.AN, qHMV: epuletfizika.HMV_LAKO[p.meta.kategoria] });
-  if (p.gepeszet.hmvErpEta) hmv.hotermelo = erpHmv(hmv.hotermelo, p.gepeszet.hmvErpEta);
+  const futes = gp.futes.map(({ id: _id, szettKod: _sz, szabalyozas, ...a }) => ({
+    ...structuredClone(a), Arszr: g.AN, zona: 'F1', lefedes: gp.futes.length > 1 ? a.lefedes ?? 1 : 1,
+    epszilonSzab: szabalyozasErtek(szabalyozas),
+  }));
+  const { szettKod: _h, ...hmvAlap } = gp.hmv;
+  const hmv = { ...structuredClone(hmvAlap), nev: 'HMV', Arszr: g.AN, AN: g.AN, qHMV: epuletfizika.HMV_LAKO[p.meta.kategoria] };
+  const VLT = epuletfizika.PROFIL_LAKO.nSzuks * g.V;
+  const szellozes = gp.szellozes ? [{ nev: 'Gépi szellőzés', V: VLT, uzemora: 8760 * gp.szellozes.uzemArany, ventilator: gp.szellozes.ventilator, segedKWh: gp.szellozes.segedKWh }] : [];
 
   const nf = epuletfizika.nfilt({ legzaras: p.zona.legzaras, elhelyezes: p.zona.elhelyezes, szelnekKitett: p.zona.szelnekKitett, szintek: p.meta.szintek <= 2 ? '1-2' : p.meta.szintek <= 6 ? '3-6' : '7-' });
   const bemenet: EpuletBemenet = {
@@ -241,29 +264,53 @@ export function atalakit(p: Projekt): Atalakitas {
       nev: 'F1', AN: g.AN, V: g.V, thetaF: 20, thetaH: 26, nSzuks: epuletfizika.PROFIL_LAKO.nSzuks, nfilt: nf, qb: epuletfizika.PROFIL_LAKO.qb,
       CmEffFajl: p.zona.cmEffFajl ?? epuletfizika.HOTAROLO_KEPESSEG[p.zona.hotarolo].ertek,
       futesProgramozhato: p.zona.futesProgramozhato, elemek,
+      gepiSzellozes: gp.szellozes ? { etaR: gp.szellozes.etaR, uzemArany: gp.szellozes.uzemArany } : undefined,
     }],
-    futes: [futes],
-    hmv: [hmv],
+    futes, hmv: [hmv], szellozes,
+    napelem: gp.napelem.map(({ nev, kWp, tajolas, hajlasszog }) => ({ nev, kWp, tajolas, hajlasszog })),
   };
   return { bemenet, hibak, geometria: g };
 }
 
-export function vanErpHotermelo(kod: string, cel: 'futes' | 'hmv') {
-  const s = GEPESZETI_SZETTEK.find((x) => x.kod === kod);
-  if (!s) return false;
-  const t = cel === 'futes' ? s.futes.hotermelo.tipus : s.hmv.hotermelo.tipus;
-  return ['kazan_tabla', 'hoszivattyu_tabla', 'elektromos_tabla'].includes(t);
+export function szabalyozasErtek(s: FutesSablon['szabalyozas']): number {
+  return 'valasztas' in s ? szabalyozasiTenyezo(s.valasztas).epszilon : s.kozvetlen;
 }
 
-function erpFutes(h: FutesiHotermelo, eta: number): FutesiHotermelo {
+export function futesSzettbol(kod: string): FutesAlrendszerUI {
+  const sz = GEPESZETI_SZETTEK.find((x) => x.kod === kod)!;
+  return { ...structuredClone(sz.futes), id: ujId(), nev: sz.nev.split(' + ')[0] ?? sz.nev, szettKod: kod };
+}
+export function hmvSzettbol(kod: string): HmvUI {
+  const sz = GEPESZETI_SZETTEK.find((x) => x.kod === kod)!;
+  return { ...structuredClone(sz.hmv), szettKod: kod };
+}
+
+export function erpFutes(h: FutesiHotermelo, eta: number): FutesiHotermelo {
   if (h.tipus === 'kazan_tabla') return { tipus: 'kazan_erp', energiahordozo: h.energiahordozo, etaS: eta };
   if (h.tipus === 'hoszivattyu_tabla') return { tipus: 'hoszivattyu_erp', etaS: eta };
   return h;
 }
-function erpHmv(h: HmvHotermelo, eta: number): HmvHotermelo {
+export function erpHmv(h: HmvHotermelo, eta: number): HmvHotermelo {
   if (h.tipus === 'kazan_tabla') return { tipus: 'erp', energiahordozo: h.energiahordozo, etaWH: eta };
   if (h.tipus === 'elektromos_tabla') return { tipus: 'erp_elektromos', etaWH: eta, hoszivattyu: h.kod.startsWith('hsz') };
   return h;
+}
+
+/** Régebbi projektfájlok átalakítása az aktuális modellre (1. verzió: egy fűtési és egy HMV szett + ErP hatásfok). */
+export function projektMigral(nyers: unknown): Projekt {
+  const p = structuredClone(nyers) as Projekt & { gepeszet: Gepeszet & { futesSzett?: string; hmvSzett?: string; futesErpEta?: number | null; hmvErpEta?: number | null } };
+  if ((p.verzio as number) === 1 || p.gepeszet?.futesSzett) {
+    const r = p.gepeszet;
+    const f = futesSzettbol(r.futesSzett && GEPESZETI_SZETTEK.some((x) => x.kod === r.futesSzett) ? r.futesSzett : GEPESZETI_SZETTEK[0]!.kod);
+    if (r.futesErpEta) f.hotermelo = erpFutes(f.hotermelo, r.futesErpEta);
+    const h = hmvSzettbol(r.hmvSzett && GEPESZETI_SZETTEK.some((x) => x.kod === r.hmvSzett) ? r.hmvSzett : GEPESZETI_SZETTEK[0]!.kod);
+    if (r.hmvErpEta) h.hotermelo = erpHmv(h.hotermelo, r.hmvErpEta);
+    p.gepeszet = { futes: [f], hmv: h, szellozes: null, napelem: [] };
+    p.verzio = 2;
+  }
+  p.gepeszet.napelem ??= [];
+  p.gepeszet.szellozes ??= null;
+  return p;
 }
 
 export const SZEREP_ALAP: Record<Szerep, Pick<Retegrend, 'kovetelmenyKod' | 'hoaramIrany' | 'kulsoOldal'>> = {

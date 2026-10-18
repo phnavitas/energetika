@@ -86,6 +86,15 @@ export interface ZonaBemenet {
   nEjjel?: number;
   /** Lakóépület: a természetes szellőzés a használati idő teljes hányadában (Δtterm/Δt = 1). */
   termSzellozesIdoarany?: number;
+  /** Gépi szellőzés hővisszanyeréssel, állandó térfogatárammal, külső levegő beszívásával (6.12, 6.13–6.16).
+   * A friss levegő térfogatárama lakóépületnél kötelezően nszüks·V (2. függ. 2.1.). Hűtési módban a hővisszanyerés
+   * nem vehető figyelembe (6.15, egyszerűsített módszer). */
+  gepiSzellozes?: {
+    /** Hővisszanyerő hatásfoka ηr (0..1). */
+    etaR: number;
+    /** A gépi szellőzés üzemidejének aránya a fűtési időszakban (tLT/t); a többi időben természetes szellőzés (6.14). */
+    uzemArany?: number;
+  };
   elemek: HataroloElem[];
 }
 
@@ -155,7 +164,15 @@ export function zonaHaviMerleg(z: ZonaBemenet, opciok?: { QsdFelulbiralas?: read
   for (const e of z.elemek) {
     if (e.tipus === 'talaj') HtrT += e.A * e.UT + e.P * e.psiPF + (e.pinceFal ? e.pinceFal.z * e.P * e.pinceFal.UTpf : 0);
   }
-  const HszellF = 0.35 * (z.nSzuks * termArany + z.nfilt) * z.V;
+  const HszellTerm = 0.35 * (z.nSzuks * termArany + z.nfilt) * z.V; // 6.10
+  let HszellF = HszellTerm;
+  if (z.gepiSzellozes) {
+    const g = z.gepiSzellozes;
+    if (!(g.etaR >= 0 && g.etaR < 1)) throw new Error('A hővisszanyerő hatásfoka 0 és 1 közé essen.');
+    const ar = Math.min(Math.max(g.uzemArany ?? 1, 0), 1);
+    // 6.13–6.16 és 6.19: gépi üzemben (1 − ηr), üzemszünetben természetes szellőzés
+    HszellF = 0.35 * (z.nSzuks * z.V * (ar * (1 - g.etaR) + (1 - ar) * termArany) + z.nfilt * z.V);
+  }
 
   const havi: HaviEredmeny[] = [];
   for (let m = 0; m < 12; m++) {
@@ -207,7 +224,7 @@ export function zonaHaviMerleg(z: ZonaBemenet, opciok?: { QsdFelulbiralas?: read
 
     // Hűtés (nyári b, nyári éjszakai szellőztetés máj–szept, társított napvédő)
     const nyar = m >= 4 && m <= 8;
-    const HszellH = HszellF + (nyar && z.nEjjel ? 0.35 * B_EJJEL * (7 / 24) * z.nEjjel * z.V : 0); // 6.11
+    const HszellH = HszellTerm + (nyar && z.nEjjel ? 0.35 * B_EJJEL * (7 / 24) * z.nEjjel * z.V : 0); // 6.11
     const Qlead = (((HtrD_H + HtrX_H) * (z.thetaH - thetaE) + HtrT * (z.thetaH - KULSO_HOMERSEKLET_EVES)) + HszellH * (z.thetaH - thetaE)) * dt / 1000;
     const Qterh = QsdH + Qb;
     const gammaH = Qterh / Qlead;

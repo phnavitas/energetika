@@ -11,14 +11,14 @@ import * as t from './tarolo';
 // ---------------------------------------------------------------------------------------------
 // Közös állapot a lépések számára
 
-export interface Konyvtar { anyagok: t.IrodaiAnyag[]; retegrendek: t.KonyvtarRetegrend[]; nyilaszarok: t.KonyvtarNyilaszaro[]; }
+export interface Konyvtar { anyagok: t.IrodaiAnyag[]; retegrendek: t.KonyvtarRetegrend[]; nyilaszarok: t.KonyvtarNyilaszaro[]; szettek: t.IrodaiSzett[]; }
 export interface TavoliAllapot { iroda: t.Iroda; konyvtar: Konyvtar; frissit: () => Promise<void>; }
 export const TavoliKontextus = createContext<TavoliAllapot | null>(null);
 export const useTavoli = () => useContext(TavoliKontextus);
 
 export async function konyvtarBetolt(irodaId: string): Promise<Konyvtar> {
-  const [anyagok, retegrendek, nyilaszarok] = await Promise.all([t.irodaiAnyagok(irodaId), t.konyvtarRetegrendek(irodaId), t.konyvtarNyilaszarok(irodaId)]);
-  return { anyagok, retegrendek, nyilaszarok };
+  const [anyagok, retegrendek, nyilaszarok, szettek] = await Promise.all([t.irodaiAnyagok(irodaId), t.konyvtarRetegrendek(irodaId), t.konyvtarNyilaszarok(irodaId), t.irodaiSzettek(irodaId)]);
+  return { anyagok, retegrendek, nyilaszarok, szettek };
 }
 
 const datum = (s: string) => new Date(s).toLocaleString('hu-HU', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -284,11 +284,11 @@ export function IrodaNezet({ iroda, felhasznalo, irodak, valt, ujIroda, frissitI
 // ---------------------------------------------------------------------------------------------
 // Irodai könyvtár
 
-type Ful = 'anyagok' | 'retegrendek' | 'nyilaszarok';
+type Ful = 'anyagok' | 'retegrendek' | 'nyilaszarok' | 'szettek';
 
 const URES_ANYAG = (): Omit<t.IrodaiAnyag, 'id'> => ({ nev: '', kategoria: 'Hőszigetelés', sraffozas: 'hoszigeteles_hab', lambda: undefined, forras: '', forrasTipus: 'termekadat', ellenorzott: false });
 
-export function KonyvtarNezet({ p, modosit, ugrik }: { p: Projekt; modosit: (fn: (q: Projekt) => void) => void; ugrik: (lepes: 'retegrendek' | 'nyilaszarok') => void }) {
+export function KonyvtarNezet({ p, modosit, ugrik }: { p: Projekt; modosit: (fn: (q: Projekt) => void) => void; ugrik: (lepes: 'retegrendek' | 'nyilaszarok' | 'gepeszet') => void }) {
   const tv = useTavoli()!;
   const [ful, setFul] = useState<Ful>('anyagok');
   const [uj, setUj] = useState<(Omit<t.IrodaiAnyag, 'id'> & { id?: string; rMod?: boolean }) | null>(null);
@@ -317,7 +317,7 @@ export function KonyvtarNezet({ p, modosit, ugrik }: { p: Projekt; modosit: (fn:
   return (
     <div style="display:flex;flex-direction:column;gap:16px">
       <div class="fulek" role="tablist">
-        {([['anyagok', `Anyagok (${k.anyagok.length})`], ['retegrendek', `Rétegrendek (${k.retegrendek.length})`], ['nyilaszarok', `Nyílászárók (${k.nyilaszarok.length})`]] as const).map(([f, n]) => (
+        {([['anyagok', `Anyagok (${k.anyagok.length})`], ['retegrendek', `Rétegrendek (${k.retegrendek.length})`], ['nyilaszarok', `Nyílászárók (${k.nyilaszarok.length})`], ['szettek', `Gépészeti szettek (${k.szettek.length})`]] as const).map(([f, n]) => (
           <button role="tab" aria-selected={ful === f} onClick={() => { setFul(f); setJelzes(null); setTorlendo(null); }}>{n}</button>
         ))}
       </div>
@@ -420,6 +420,32 @@ export function KonyvtarNezet({ p, modosit, ugrik }: { p: Projekt; modosit: (fn:
                         <button class="gomb halk-gomb" onClick={() => setTorlendo(r.id)}>Törlés</button>
                       </>
                     )}
+                  </td>
+                </tr>
+              ))}</tbody>
+            </table>
+          )}
+        </>
+      )}
+
+      {ful === 'szettek' && (
+        <>
+          <p class="halk" style="max-width:70ch">Az iroda bevált gépészeti beállításai: fűtési rendszer(ek), HMV és szellőzés. A Gépészet lépésben a „Mentés irodai szettként” gombbal kerülnek ide, és ott a „Szett választása” alatt jelennek meg.</p>
+          {!k.szettek.length ? <div class="kartya halk">Még nincs irodai szett. <button class="link-gomb" onClick={() => ugrik('gepeszet')}>Ugrás a Gépészet lépésre</button></div> : (
+            <table class="tabla">
+              <thead><tr><th>Szett</th><th>Fűtés</th><th>Szellőzés</th><th></th></tr></thead>
+              <tbody>{k.szettek.map((s) => (
+                <tr>
+                  <td>{s.nev}{s.leiras && <small class="halkabb" style="display:block">{s.leiras}</small>}</td>
+                  <td class="halk">{s.futes.map((f) => f.nev).join(' + ')}</td>
+                  <td class="halk">{s.szellozes ? `hővisszanyerő ${Math.round(s.szellozes.etaR * 100)}%` : '–'}</td>
+                  <td style="white-space:nowrap;text-align:right">
+                    {torlendo === s.id ? (
+                      <span class="gombsor" style="justify-content:flex-end">
+                        <button class="gomb veszely" disabled={fut} onClick={() => futtat(async () => { await t.szettTorol(s.id); setTorlendo(null); await tv.frissit(); })}>Törlés</button>
+                        <button class="gomb halk-gomb semleges" onClick={() => setTorlendo(null)}>Mégse</button>
+                      </span>
+                    ) : <button class="gomb halk-gomb" onClick={() => setTorlendo(s.id)}>Törlés</button>}
                   </td>
                 </tr>
               ))}</tbody>

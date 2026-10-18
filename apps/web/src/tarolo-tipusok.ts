@@ -1,7 +1,7 @@
 /** Az adatréteg közös típusai (a valódi és a teszt-adatréteg is ezt használja). */
 import type { User } from '@supabase/supabase-js';
 import type { Anyag } from './katalogus';
-import type { NyilaszaroTipus, Projekt, Retegrend } from './modell';
+import type { FutesAlrendszerUI, HmvUI, NyilaszaroTipus, Projekt, Retegrend, SzellozesUI } from './modell';
 
 export const MAG_VERZIO = '0.3.0';
 
@@ -41,3 +41,5 @@ export interface IrodaiAnyag extends Anyag { forrasTipus: ForrasTipus; }
 export interface KonyvtarRetegrend { id: string; nev: string; szerep: Retegrend['szerep']; U: number | null; adat: Retegrend; anyagok: Anyag[]; forras: string; }
 export interface BetoltottProjekt { id: string; irodaId: string; verzio: number; dokumentum: Projekt; modositva: string; }
 export interface KonyvtarNyilaszaro { id: string; nev: string; kovetelmenyKod: string; Uw: number | null; adat: NyilaszaroTipus; forras: string; }
+/** Irodai gépészeti szett: a fűtési alrendszerek, a HMV és a szellőzés (a napelem projektfüggő, nem része). */
+export interface IrodaiSzett { id: string; nev: string; leiras: string; futes: FutesAlrendszerUI[]; hmv: HmvUI; szellozes: SzellozesUI | null; }

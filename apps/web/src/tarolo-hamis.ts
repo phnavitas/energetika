@@ -2,7 +2,7 @@
  * Memóriabeli adatréteg a felület teszteléséhez (HAMIS=1 build). Ugyanazt az API-t adja, mint a tarolo.ts,
  * és a böngészőben window.__hamis alatt kívülről is állítható (pl. ütközés szimulálása).
  */
-import type { Projekt, Retegrend, NyilaszaroTipus } from './modell';
+import type { Projekt, Retegrend, NyilaszaroTipus, Gepeszet } from './modell';
 import type { Anyag } from './katalogus';
 export * from './tarolo-tipusok';
 import type * as T from './tarolo-tipusok';
@@ -21,6 +21,7 @@ const db = {
   retegrendek: [] as (T.KonyvtarRetegrend & { irodaId: string })[],
   nyilaszarok: [] as (T.KonyvtarNyilaszaro & { irodaId: string })[],
   szamitasok: [] as unknown[],
+  szettek: [] as (T.IrodaiSzett & { irodaId: string })[],
   hivasok: [] as string[],
 };
 (window as unknown as { __hamis: typeof db }).__hamis = db;
@@ -98,3 +99,8 @@ export async function nyilaszaroKonyvtarba(irodaId: string, n: NyilaszaroTipus, 
   db.nyilaszarok.push({ id: uid(), irodaId, nev: n.nev, kovetelmenyKod: n.kovetelmenyKod, Uw, adat: structuredClone(n), forras: '' }); await kesleltet(0);
 }
 export async function konyvtarNyilaszaroTorol(id: string) { db.nyilaszarok = db.nyilaszarok.filter((r) => r.id !== id); await kesleltet(0); }
+export async function irodaiSzettek(irodaId: string) { return kesleltet(db.szettek.filter((x) => x.irodaId === irodaId)); }
+export async function szettMent(irodaId: string, nev: string, leiras: string, g: Gepeszet) {
+  db.szettek.push({ id: uid(), irodaId, nev, leiras, futes: structuredClone(g.futes), hmv: structuredClone(g.hmv), szellozes: structuredClone(g.szellozes) }); await kesleltet(0);
+}
+export async function szettTorol(id: string) { db.szettek = db.szettek.filter((x) => x.id !== id); await kesleltet(0); }

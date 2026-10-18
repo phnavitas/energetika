@@ -24,6 +24,8 @@ export interface Indikatorok {
     tavolbanTermelt: number;
     kozelbenTermelt: number;
     passzivMegujulo: number;
+    /** Helyben termelt, exportáltnak elszámolt megújuló villamos energia (Eren,exp) [kWh/m²év]. */
+    exportaltMegujulo: number;
   };
 }
 
@@ -39,7 +41,11 @@ function hozzaad(a: CelIndikator, b: CelIndikator) {
   a.nren += b.nren; a.ren += b.ren; a.tot += b.tot; a.CO2 += b.CO2;
 }
 
-export function indikatorok(rendszerek: RendszerEredmeny[], AN: number, passzivSzolarisKWh = 0): Indikatorok {
+/**
+ * @param exportPV helyben termelt napelemes villamos energia [kWh/év]; egyszerűsített módszerrel teljes egészében
+ *   exportáltként számolandó (13.1), súlyozása 14.7: Wexp · (fsúly,exp − fsúly,term).
+ */
+export function indikatorok(rendszerek: RendszerEredmeny[], AN: number, passzivSzolarisKWh = 0, exportPV = 0): Indikatorok {
   const celonkent = { futes: ures(), hmv: ures(), szellozes: ures(), hutes: ures(), vilagitas: ures(), export: ures() };
   const vegenergia: Partial<Record<Energiahordozo, number>> = {};
   let halozati = 0, korny = 0, helyben = 0;
@@ -56,7 +62,11 @@ export function indikatorok(rendszerek: RendszerEredmeny[], AN: number, passzivS
   }
   const osszes = ures();
   for (const k of ['futes', 'hmv', 'szellozes', 'hutes', 'vilagitas'] as const) hozzaad(osszes, celonkent[k]);
-  // 14.1: exportált energia levonása (Eexp) – később a PV-modullal.
+  if (exportPV > 0) {
+    const fe = SULYOZO.export_halozat, ft = SULYOZO.nap_pv;
+    hozzaad(celonkent.export, { nren: exportPV * (fe.fnren - ft.fnren), ren: exportPV * (fe.fren - ft.fren), tot: exportPV * (fe.ftot - ft.ftot), CO2: (exportPV * (fe.fCO2 - ft.fCO2)) / 1000 });
+  }
+  // 14.1: exportált energia levonása (Eexp)
   osszes.nren -= celonkent.export.nren; osszes.ren -= celonkent.export.ren; osszes.tot -= celonkent.export.tot; osszes.CO2 -= celonkent.export.CO2;
 
   const tavolban = halozati * SULYOZO.villamos.fren;
@@ -71,6 +81,7 @@ export function indikatorok(rendszerek: RendszerEredmeny[], AN: number, passzivS
       tavolbanTermelt: tavolban / AN,
       kozelbenTermelt: 0,
       passzivMegujulo: passzivSzolarisKWh / AN,
+      exportaltMegujulo: exportPV / AN,
     },
   };
 }

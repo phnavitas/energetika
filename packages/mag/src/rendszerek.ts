@@ -18,7 +18,7 @@ export interface VegenergiaTetel {
 
 export interface RendszerEredmeny {
   nev: string;
-  cel: 'futes' | 'hmv';
+  cel: 'futes' | 'hmv' | 'szellozes';
   tetelek: VegenergiaTetel[];
   reszletek: Record<string, number>;
   figyelmeztetesek: Figyelmeztetes[];
@@ -229,6 +229,8 @@ export interface HmvRendszer {
   /** Napkollektor egyszerűsített módszerrel (9.2.1.1) – a 9.1/9.2 táblázatból számolt Qkoll,max·k [kWh/év]. */
   napkollektorKWh?: number;
   napkollektorFelulet?: number;
+  /** Napkollektor a 9.2.1.1 egyszerűsített módszerrel (a kollektorKWh/Felulet helyett): hajlásszög αm [°], tájolás γm [°] (K = −90, D = 0, Ny = +90). */
+  napkollektor?: { tipus: 'sik' | 'vakuum'; felulet: number; hajlasszog: number; tajolasFok: number };
 }
 
 export function hmvRendszer(r: HmvRendszer): RendszerEredmeny {
@@ -274,15 +276,21 @@ export function hmvRendszer(r: HmvRendszer): RendszerEredmeny {
   const QSzall = QHMVnet * szallArany;
   const QTar = QHMVnet * tarArany;
 
+  let kollKWh = r.napkollektorKWh, kollA = r.napkollektorFelulet;
+  if (r.napkollektor) {
+    const k = T.kollektorTermeles(r.napkollektor.tipus, r.napkollektor.felulet, r.Arszr, r.napkollektor.hajlasszog, r.napkollektor.tajolasFok);
+    kollKWh = k.Qkoll; kollA = r.napkollektor.felulet;
+    if (k.tablanKivul) fw.push({ kod: 'KOLLEKTOR_TABLAN_KIVUL', uzenet: 'A kollektorfelület vagy a rendszer-alapterület kívül esik a 9.1./9.2. táblázat tartományán; a szélső értékkel számoltunk.', forras: '1. függ. 9.2.1.1' });
+  }
   const Wcirk = r.cirkSzivattyu ? interpolal(oszlop(T.HMV_CIRK_SZIVATTYU, r.cirkSzivattyu), r.Arszr, fw) * r.Arszr * lef : 0;
-  const Wszol = r.napkollektorFelulet ? T.szolarSzivattyu(r.napkollektorFelulet) : 0;
+  const Wszol = kollA ? T.szolarSzivattyu(kollA) : 0;
 
   // 9.1 / 9.4–9.6 (napkollektor: a kiegészítő hőtermelő végenergiájából levonva)
   const Qleadott = QHMVnet + QSzall + QTar;
   let QHMVveg = Qleadott * eps;
   const tetelek: VegenergiaTetel[] = [];
-  if (r.napkollektorKWh) {
-    const Qkoll = Math.min(r.napkollektorKWh, Qleadott);
+  if (kollKWh) {
+    const Qkoll = Math.min(kollKWh, Qleadott);
     QHMVveg = (Qleadott - Qkoll) * eps; // 9.6: Qvég,2 = Qvég,koll_nélkül − Qvég,koll·εHMV,2
     tetelek.push({ energiahordozo: 'nap_termikus', Q: Qkoll, jelleg: 'ho', megnevezes: 'HMV – napkollektor' });
   }
@@ -296,4 +304,41 @@ export function hmvRendszer(r: HmvRendszer): RendszerEredmeny {
   if (W > 0) tetelek.push({ energiahordozo: 'villamos', Q: W, jelleg: 'seged', megnevezes: 'HMV – villamos segédenergia' });
 
   return { nev: r.nev, cel: 'hmv', tetelek, figyelmeztetesek: fw, reszletek: { QHMVnet, szallArany, tarArany, QSzall, QTar, epszilonHMV: eps, Qleadott, QHMVveg, Wcirk, Wterm, Wszol } };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Szellőzés (10. fejezet) – ventilátor villamos energia; léghevítés nélküli (csak hővisszanyerős) rendszer.
+
+export interface SzellozesRendszer {
+  nev: string;
+  /** Szállított (friss) térfogatáram [m³/h]. */
+  V: number;
+  /** Éves üzemidő [h] (lakóépület: 8760 · üzemarány). */
+  uzemora: number;
+  ventilator:
+    /** 10.17 – ErP adatlap: SPI [kW/(m³/h)]. */
+    | { mod: 'erp'; SPI: number; misc: keyof typeof T.SZELL_MISC; ctrl: keyof typeof T.SZELL_CTRL; x: keyof typeof T.SZELL_X }
+    /** 10.20 – nyomásesés és ventilátor-összhatásfok (null: 10.8. táblázat). */
+    | { mod: 'nyomas'; dp: number; etaVent: number | null };
+  /** További villamos segédenergia (10.23) [kWh/év]. */
+  segedKWh?: number;
+}
+
+export function szellozesRendszer(s: SzellozesRendszer): RendszerEredmeny {
+  const fw: Figyelmeztetes[] = [];
+  let Wvent: number;
+  const v = s.ventilator;
+  if (v.mod === 'erp') {
+    Wvent = (s.V * T.SZELL_MISC[v.misc] * v.SPI * s.uzemora) / T.SZELL_CTRL[v.ctrl] ** T.SZELL_X[v.x]; // 10.17
+  } else {
+    const eta = v.etaVent ?? T.ventilatorHatasfok(s.V);
+    if (v.etaVent === null) fw.push({ kod: 'VENT_ETA_TABLA', uzenet: `Ventilátor-összhatásfok a 10.8. táblázatból: ${eta}.`, forras: T.SZELL_FORRAS });
+    Wvent = ((s.V * v.dp) / (3600 * eta)) * s.uzemora / 1000; // 10.20 (befúvó és elszívó együtt: a Δp a teljes rendszeré)
+  }
+  const W = Wvent + (s.segedKWh ?? 0);
+  return {
+    nev: s.nev, cel: 'szellozes', figyelmeztetesek: fw,
+    tetelek: W > 0 ? [{ energiahordozo: 'villamos', Q: W, jelleg: 'seged', megnevezes: 'Szellőzés – ventilátor villamos energia' }] : [],
+    reszletek: { V: s.V, uzemora: s.uzemora, Wvent, W },
+  };
 }

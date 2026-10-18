@@ -297,6 +297,23 @@ export const KOLLEKTOR_VAKUUM: readonly (readonly number[])[] = [
   [1320, 1639, 1949, 2248, 2541, 2813, 3063, 3270, 3467, 3655, 3835, 4007, 4866, 5525, 6048],
 ];
 
+/** 9.5 képlet: Qkoll,max (9.1./9.2. táblázat, kétirányú lineáris interpoláció a táblázat határain belül) · k (9.7). */
+export function kollektorTermeles(tipus: 'sik' | 'vakuum', Akoll: number, Arszr: number, alfa: number, gamma: number): { Qkoll: number; Qmax: number; k: number; tablanKivul: boolean } {
+  const tab = tipus === 'sik' ? KOLLEKTOR_SIK : KOLLEKTOR_VAKUUM;
+  const hely = (x: number, sor: readonly number[]) => {
+    const v = Math.min(Math.max(x, sor[0]!), sor[sor.length - 1]!);
+    let i = 0;
+    while (i < sor.length - 2 && v > sor[i + 1]!) i++;
+    return { i, t: (v - sor[i]!) / (sor[i + 1]! - sor[i]!) };
+  };
+  const tablanKivul = Akoll < KOLLEKTOR_FELULET[0] || Akoll > KOLLEKTOR_FELULET[KOLLEKTOR_FELULET.length - 1]! || Arszr < KOLLEKTOR_A_RENDSZER[0] || Arszr > KOLLEKTOR_A_RENDSZER[KOLLEKTOR_A_RENDSZER.length - 1]!;
+  const r = hely(Akoll, KOLLEKTOR_FELULET), c = hely(Arszr, KOLLEKTOR_A_RENDSZER);
+  const q = (i: number, j: number) => tab[i]![j]!;
+  const Qmax = (1 - r.t) * ((1 - c.t) * q(r.i, c.i) + c.t * q(r.i, c.i + 1)) + r.t * ((1 - c.t) * q(r.i + 1, c.i) + c.t * q(r.i + 1, c.i + 1));
+  const k = kollektorK(alfa, gamma);
+  return { Qkoll: Qmax * k, Qmax, k, tablanKivul };
+}
+
 // --- 11. Hűtés, 13. napelem --------------------------------------------------------------------
 
 /** 11.1. táblázat – teljes/érezhető hűtőteljesítmény aránya cH. */
@@ -325,3 +342,24 @@ export const PV_TERMELES = {
   DK_DNy: [942, 988, 1020, 1030, 1020, 988, 940, 873, 787, 686],
   D: [942, 1010, 1050, 1080, 1080, 1050, 1010, 935, 842, 727],
 } as const;
+
+// --- 10. Szellőzés ------------------------------------------------------------------------------
+
+/** 10.2. táblázat – MISC: szellőztetés hatékonysága, légcsatorna-szivárgás, járulékos infiltráció. */
+export const SZELL_MISC = { legcsatornas: 1.1, legcsatorna_nelkuli: 1.21 } as const;
+/** 10.3. táblázat – CTRL: térfogatáram szabályozása. */
+export const SZELL_CTRL = { kezi: 1.0, idozitos: 1.2, kozponti_igeny: 1.5, helyi_igeny: 2.0 } as const;
+/** 10.4. táblázat – x: nemlinearitási kitevő a motor és vezérlés szerint. */
+export const SZELL_X = { egyfokozatu: 1.0, ketfokozatu: 1.2, haromfokozatu: 1.5, fokozatmentes: 2.0 } as const;
+/** 10.8. táblázat – ventilátor összhatásfoka (2010 előtti érték, pontosabb adat hiányában). */
+export function ventilatorHatasfok(V: number): number { return V >= 10000 ? 0.7 : V >= 1000 ? 0.55 : 0.4; }
+export const SZELL_FORRAS = '9/2023 ÉKM számítási módszer, 1. függelék 10.1.4–10.1.5, 10.2.–10.4. és 10.8. táblázat';
+
+/** 13.1 képlet és 13.1. táblázat – napelem éves termelése [kWh/év]; tájolás: K/Ny, DK/DNy, D (É felé nem ad értéket a táblázat). */
+export function napelemTermeles(kWp: number, tajolas: 'K_Ny' | 'DK_DNy' | 'D', hajlasszog: number): number {
+  const y = PV_TERMELES[tajolas];
+  const h = Math.min(Math.max(hajlasszog, 0), 90);
+  const i = Math.min(Math.floor(h / 10), 8);
+  const t = (h - PV_HAJLASSZOG[i]!) / 10;
+  return kWp * (y[i]! + (y[i + 1]! - y[i]!) * t);
+}

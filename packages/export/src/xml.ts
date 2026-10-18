@@ -88,6 +88,8 @@ export function feltoltesiXml(e: EpuletEredmeny, a: TanusitasAdatok, geometria: 
   for (const cel of ['szellozes', 'hutes', 'vilagitas'] as const) {
     if (ind.celonkent[cel].tot > 0) throw new XmlKodHianyzik('UsageTarget', cel);
   }
+  // Exportált (napelemes) energia: a mintában nem szerepel, a kódját az XSD-ből kell átvenni.
+  if (ind.celonkent.export.tot !== 0) throw new XmlKodHianyzik('ExportedEnergy', 'napelem');
 
   // Határoló szerkezetek: követelmény-típusonként, azon belül minősítésenként felülettel súlyozott U és összes felület.
   const csoportok = new Map<string, Map<Minosites, { AU: number; A: number }>>();

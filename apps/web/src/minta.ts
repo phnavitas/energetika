@@ -3,12 +3,12 @@
  * A helyiséglista szemléltető (a jegyzőkönyv csak az összesített 100,5 m²-t és 267,3 m³-t közli);
  * négy ablak tájolása a jegyzőkönyvből nem ismert, ezért itt feltételezett (D).
  */
-import type { Projekt } from './modell';
+import { futesSzettbol, hmvSzettbol, type Projekt } from './modell';
 
 export function mintaProjekt(): Projekt {
   const h = 2.66;
   return {
-    verzio: 1,
+    verzio: 2,
     meta: {
       nev: 'Kétlakásos lakóépület – 1. lakás (minta)', megrendelo: 'Minta Kft.', irsz: '', telepules: 'Tarján', kozterulet: '', kozteruletJelleg: 'utca', hazszam: '',
       hrsz: '', epitesiEv: 2026, kategoria: 'csaladi_haz', kovetelmenySzint: 'kozel_nulla', szintek: 1,
@@ -81,7 +81,22 @@ export function mintaProjekt(): Projekt {
       { id: 'f_padlas', nev: 'Padlásfödém', fajta: 'opak', retegrendId: 'r_padlas', hatar: 'padlas', A: 100.5, chi: 0.1, chiKod: 6 },
       { id: 'f_padlo', nev: 'Talajon fekvő padló', fajta: 'padlo', retegrendId: 'r_padlo', hatar: 'kulso', A: 100.5, padlo: { P: 37.7, dfCm: 47.3, z: 0, perem: { irany: 'fuggoleges', D: 0.5, dCm: 20, R: 5.56 }, psiPF: 0.1 } },
     ],
-    gepeszet: { futesSzett: 'hsz_levego_viz_padlo', hmvSzett: 'hsz_levego_viz_padlo', futesErpEta: 1.6, hmvErpEta: 1.6 },
+    gepeszet: {
+      // A tarjáni WinWatt-tanúsítvány beállításai: ErP hőszivattyú ηs = 160%, padlófűtés, épületfelügyeleti rendszerbe integrált helyiségszabályozás.
+      futes: [{
+        id: 'f1', nev: 'Levegő-víz hőszivattyú, padlófűtés', szettKod: 'hsz_levego_viz_padlo',
+        hotermelo: { tipus: 'hoszivattyu_erp', etaS: 1.6 },
+        szabalyozas: { valasztas: { alap: 'ref_helyiseg_pi', holeado: { tipus: 'beagyazott', rendszer: 'padlo_nedves', hatarolo: 'min_szig' }, helyiseg: 'halozatba_integralt', beszabalyozas: { csovek: 'ketcsoves', mod: 'statikus_csoportos_dinamikus', holeadokTobbMint10: false } } },
+        elosztas: { hely: 'belul', elore: 35, vissza: 28 }, tarolo: null, szivattyu: 'fordulatszam_beagyazott_7K',
+      }],
+      hmv: {
+        szettKod: 'hsz_levego_viz_padlo',
+        hotermelo: { tipus: 'erp_elektromos', etaWH: 1.6, hoszivattyu: true },
+        tarolo: { tipus: 'indirekt', hely: 'belul' }, elosztas: { cirkulacio: false, hely: 'belul' }, cirkSzivattyu: null,
+      },
+      szellozes: null,
+      napelem: [],
+    },
     tanusito: { nev: '', jogosultsag: '', email: '', telefon: '' },
   };
 }
@@ -92,6 +107,6 @@ export function uresProjekt(): Projekt {
     meta: { nev: 'Új projekt', megrendelo: '', irsz: '', telepules: '', kozterulet: '', kozteruletJelleg: 'utca', hazszam: '', hrsz: '', epitesiEv: new Date().getFullYear(), kategoria: 'csaladi_haz', kovetelmenySzint: 'kozel_nulla', szintek: 1 },
     zona: { legzaras: 'jo', elhelyezes: 'tobb_homlokzat', szelnekKitett: false, hotarolo: 'kozepes', futesProgramozhato: false },
     helyisegek: [], retegrendek: [], feluletek: [], nyilaszarok: [],
-    gepeszet: { futesSzett: 'gaz_kondenz_radiator', hmvSzett: 'gaz_kondenz_radiator', futesErpEta: null, hmvErpEta: null },
+    gepeszet: { futes: [futesSzettbol('gaz_kondenz_radiator')], hmv: hmvSzettbol('gaz_kondenz_radiator'), szellozes: null, napelem: [] },
   };
 }
