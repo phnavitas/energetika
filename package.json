@@ -1,0 +1,18 @@
+{
+  "name": "ekm-energetika",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "osszevetes": "tsx tools/osszevetes.ts",
+    "seed": "tsx tools/seed-generalas.ts",
+    "db:teszt": "bash tools/db-teszt.sh"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

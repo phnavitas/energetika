@@ -1,0 +1,128 @@
+import { klima } from '@mag/index';
+import { Mezo, Szam, Szoveg, Valaszto, sz, kov } from '../ui';
+import { ujId, feluletNettoA, geometria, CHI_VALASZTEK, HATAR_NEV, SZEREP_NEV, type Projekt, type HatarKod, type Felulet } from '../modell';
+
+type Modosit = (fn: (p: Projekt) => void) => void;
+
+const HATAROK = (Object.keys(HATAR_NEV) as HatarKod[]).map((k) => ({ ertek: k, nev: HATAR_NEV[k] }));
+const TAJOLASOK = klima.TAJOLASOK.map((t) => ({ ertek: t, nev: t }));
+const HAJLAS = [{ ertek: '90', nev: 'Függőleges' }, { ertek: '60', nev: '60°' }, { ertek: '45', nev: '45°' }, { ertek: '30', nev: '30°' }, { ertek: '0', nev: 'Vízszintes' }];
+
+export function HatarolasLepes({ p, modosit }: { p: Projekt; modosit: Modosit }) {
+  const g = geometria(p);
+  const helyisegOpciok = p.helyisegek.map((h) => ({ ertek: h.id, nev: h.nev || 'névtelen' }));
+  const fv = (id: string, fn: (f: Felulet) => void) => modosit((q) => { const f = q.feluletek.find((x) => x.id === id); if (f) fn(f); });
+  const torol = (id: string) => modosit((q) => { q.feluletek = q.feluletek.filter((x) => x.id !== id && x.szuloId !== id).map((x) => x); });
+  const opak = p.feluletek.filter((f) => f.fajta === 'opak');
+  const ny = p.feluletek.filter((f) => f.fajta === 'nyilaszaro');
+  const padlok = p.feluletek.filter((f) => f.fajta === 'padlo');
+  const retegrendOpciok = (padlo: boolean) => p.retegrendek.filter((r) => (r.szerep === 'padlo') === padlo).map((r) => ({ ertek: r.id, nev: r.nev }));
+
+  return (
+    <>
+      <section class="szakasz">
+        <h2>Falak, födémek, tetők</h2>
+        <p class="halk">Bruttó felületet adj meg; a hozzá rendelt nyílászárókat a program levonja. A csatlakozási hőhidakat a 6.1. táblázat χ tényezője veszi figyelembe.</p>
+        <div class="tabla-gorgeto">
+          <table class="tabla">
+            <thead><tr><th>Megnevezés</th><th>Rétegrend</th><th>Határoló tér</th><th class="szam">Bruttó</th><th class="szam">Nettó</th><th>Hőhidasság</th><th></th></tr></thead>
+            <tbody>
+              {opak.map((f) => {
+                const r = p.retegrendek.find((x) => x.id === f.retegrendId);
+                const chiOpciok = CHI_VALASZTEK.filter((c) => !r || c.szerep === r.szerep || (r.szerep === 'teto' && c.szerep === 'teto'));
+                return (
+                  <tr>
+                    <td style="min-width:160px"><Szoveg ertek={f.nev} valt={(v) => fv(f.id, (x) => { x.nev = v; })} /></td>
+                    <td style="min-width:200px"><Valaszto cimke="Rétegrend" ertek={f.retegrendId} ures="Válassz…" valt={(v) => fv(f.id, (x) => { x.retegrendId = v; })} opciok={retegrendOpciok(false)} /></td>
+                    <td style="min-width:170px"><Valaszto cimke="Határoló tér" ertek={f.hatar} valt={(v) => fv(f.id, (x) => { x.hatar = v; })} opciok={HATAROK} /></td>
+                    <td style="min-width:120px"><Szam cimke="Bruttó felület" ertek={f.A} egyseg="m²" valt={(v) => fv(f.id, (x) => { x.A = v; })} /></td>
+                    <td class="szam">{sz(feluletNettoA(p, f), 2)} m²</td>
+                    <td style="min-width:240px">
+                      <select aria-label="Hőhidasság" onChange={(e) => { const i = Number((e.target as HTMLSelectElement).value); fv(f.id, (x) => { x.chiKod = i; x.chi = CHI_VALASZTEK[i]!.ertek; }); }}>
+                        <option value="" selected={f.chiKod === undefined && f.chi === undefined}>Válassz…</option>
+                        {CHI_VALASZTEK.map((c, i) => ({ c, i })).filter(({ c }) => chiOpciok.includes(c)).map(({ c, i }) => (
+                          <option value={String(i)} selected={f.chiKod !== undefined ? f.chiKod === i : f.chi === c.ertek && chiOpciok.findIndex((x) => x.ertek === c.ertek) === chiOpciok.indexOf(c)}>{c.nev} (χ = {kov(c.ertek)})</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td><button class="gomb halk-gomb" onClick={() => torol(f.id)}>Törlés</button></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <button class="gomb" style="margin-top:12px" onClick={() => modosit((q) => { q.feluletek.push({ id: ujId(), nev: 'Homlokzati fal', fajta: 'opak', retegrendId: q.retegrendek.find((r) => r.szerep === 'fal')?.id, hatar: 'kulso', A: 0, chi: 0.2 }); })}>Felület hozzáadása</button>
+      </section>
+
+      <section class="szakasz">
+        <h2>Nyílászárók</h2>
+        <p class="halk">A tájolás és a dőlés a havi sugárzási nyereséghez kell (2. függ. 1.6. táblázat). Ha a nyílászárót egy falhoz rendeled, a fal felületéből levonódik.</p>
+        <div class="tabla-gorgeto">
+          <table class="tabla">
+            <thead><tr><th>Megnevezés</th><th>Típus</th><th class="szam">Db</th><th>Tájolás</th><th>Dőlés</th><th>Falban</th><th>Helyiség</th><th class="szam">Felület</th><th></th></tr></thead>
+            <tbody>
+              {ny.map((f) => (
+                <tr>
+                  <td style="min-width:150px"><Szoveg ertek={f.nev} valt={(v) => fv(f.id, (x) => { x.nev = v; })} /></td>
+                  <td style="min-width:180px"><Valaszto cimke="Típus" ertek={f.nyilaszaroId} ures="Válassz…" valt={(v) => fv(f.id, (x) => { x.nyilaszaroId = v; })} opciok={p.nyilaszarok.map((n) => ({ ertek: n.id, nev: n.nev }))} /></td>
+                  <td style="min-width:70px"><Szam cimke="Darab" ertek={f.darab ?? 1} lepes={1} min={1} valt={(v) => fv(f.id, (x) => { x.darab = Math.max(1, Math.round(v)); })} /></td>
+                  <td style="min-width:84px"><Valaszto cimke="Tájolás" ertek={f.tajolas ?? undefined} valt={(v) => fv(f.id, (x) => { x.tajolas = v; })} opciok={TAJOLASOK} /></td>
+                  <td style="min-width:124px"><Valaszto cimke="Dőlés" ertek={String(f.hajlasszog ?? 90)} valt={(v) => fv(f.id, (x) => { x.hajlasszog = Number(v) as Felulet['hajlasszog']; })} opciok={HAJLAS} /></td>
+                  <td style="min-width:150px"><Valaszto cimke="Szülő fal" ertek={f.szuloId} ures="Nincs levonás" valt={(v) => fv(f.id, (x) => { x.szuloId = v || undefined; })} opciok={opak.map((o) => ({ ertek: o.id, nev: o.nev }))} /></td>
+                  <td style="min-width:140px"><Valaszto cimke="Helyiség" ertek={f.helyisegId} ures="–" valt={(v) => fv(f.id, (x) => { x.helyisegId = v || undefined; })} opciok={helyisegOpciok} /></td>
+                  <td class="szam">{sz(feluletNettoA(p, f), 2)} m²</td>
+                  <td><button class="gomb halk-gomb" onClick={() => torol(f.id)}>Törlés</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <button class="gomb" style="margin-top:12px" disabled={!p.nyilaszarok.length} onClick={() => modosit((q) => { q.feluletek.push({ id: ujId(), nev: 'Ablak', fajta: 'nyilaszaro', nyilaszaroId: q.nyilaszarok[0]?.id, hatar: 'kulso', darab: 1, tajolas: 'D', hajlasszog: 90 }); })}>Nyílászáró hozzáadása</button>
+        {!p.nyilaszarok.length && <span class="halkabb" style="margin-left:8px">Előbb vegyél fel nyílászáró-típust.</span>}
+      </section>
+
+      <section class="szakasz">
+        <h2>Talajjal érintkező padló</h2>
+        <p class="halk">Egyenértékű U-érték az MSZ EN ISO 13370 egyszerűsítésével (4.20–4.33 képlet): kitett kerület, csatlakozó fal vastagsága, perem-hőszigetelés. A padló-fal csatlakozás Ψ értékét a 6.4. táblázat adja.</p>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          {padlok.map((f) => (
+            <div class="kartya">
+              <div class="racs">
+                <Mezo cim="Megnevezés"><Szoveg ertek={f.nev} valt={(v) => fv(f.id, (x) => { x.nev = v; })} /></Mezo>
+                <Mezo cim="Rétegrend"><Valaszto ertek={f.retegrendId} ures="Válassz…" valt={(v) => fv(f.id, (x) => { x.retegrendId = v; })} opciok={retegrendOpciok(true)} /></Mezo>
+                <Mezo cim="Alapterület"><Szam ertek={f.A} egyseg="m²" valt={(v) => fv(f.id, (x) => { x.A = v; })} /></Mezo>
+                <Mezo cim="Kitett kerület" sugo="Külső tér és fűtetlen tér felé"><Szam ertek={f.padlo?.P} egyseg="m" valt={(v) => fv(f.id, (x) => { x.padlo!.P = v; })} /></Mezo>
+                <Mezo cim="Csatlakozó fal vastagsága"><Szam ertek={f.padlo?.dfCm} egyseg="cm" valt={(v) => fv(f.id, (x) => { x.padlo!.dfCm = v; })} /></Mezo>
+                <Mezo cim="Padló mélysége a terep alatt" sugo="±0,5 m-en belül: 0"><Szam ertek={f.padlo?.z} egyseg="m" valt={(v) => fv(f.id, (x) => { x.padlo!.z = v; })} /></Mezo>
+                <Mezo cim="Perem-hőszigetelés">
+                  <Valaszto ertek={f.padlo?.perem?.irany ?? 'nincs'} valt={(v) => fv(f.id, (x) => { x.padlo!.perem = v === 'nincs' ? undefined : { irany: v as 'vizszintes', D: x.padlo!.perem?.D ?? 0.5, dCm: x.padlo!.perem?.dCm ?? 10, R: x.padlo!.perem?.R ?? 2.5 }; })} opciok={[{ ertek: 'nincs', nev: 'Nincs' }, { ertek: 'fuggoleges', nev: 'Függőleges sáv a lábazaton' }, { ertek: 'vizszintes', nev: 'Vízszintes sáv a fal mentén' }]} />
+                </Mezo>
+                {f.padlo?.perem && <>
+                  <Mezo cim={f.padlo.perem.irany === 'fuggoleges' ? 'Sáv mélysége a terep alatt' : 'Sáv szélessége'}><Szam ertek={f.padlo.perem.D} egyseg="m" valt={(v) => fv(f.id, (x) => { x.padlo!.perem!.D = v; })} /></Mezo>
+                  <Mezo cim="Perem-hőszigetelés vastagsága"><Szam ertek={f.padlo.perem.dCm} egyseg="cm" valt={(v) => fv(f.id, (x) => { x.padlo!.perem!.dCm = v; })} /></Mezo>
+                  <Mezo cim="Hővezetési ellenállása"><Szam ertek={f.padlo.perem.R} egyseg="m²K/W" valt={(v) => fv(f.id, (x) => { x.padlo!.perem!.R = v; })} /></Mezo>
+                </>}
+                <Mezo cim="Ψ padló–fal csatlakozás" sugo="6.4. táblázat a falazat λ, a lábazat és a padló szigetelése szerint"><Szam ertek={f.padlo?.psiPF} egyseg="W/mK" valt={(v) => fv(f.id, (x) => { x.padlo!.psiPF = v; })} /></Mezo>
+              </div>
+              <div class="gombsor" style="margin-top:12px;justify-content:flex-end"><button class="gomb halk-gomb" onClick={() => torol(f.id)}>Padló törlése</button></div>
+            </div>
+          ))}
+        </div>
+        <button class="gomb" style="margin-top:12px" onClick={() => modosit((q) => {
+          const fal = q.retegrendek.find((r) => r.szerep === 'fal');
+          q.feluletek.push({ id: ujId(), nev: 'Talajon fekvő padló', fajta: 'padlo', retegrendId: q.retegrendek.find((r) => r.szerep === 'padlo')?.id, hatar: 'kulso', A: geometria(q).AN, padlo: { P: 0, dfCm: fal ? fal.retegek.reduce((s, x) => s + x.dCm, 0) : 40, z: 0, psiPF: 0.15 } });
+        })}>Padló hozzáadása</button>
+        {!p.retegrendek.some((r) => r.szerep === 'padlo') && <span class="halkabb" style="margin-left:8px">Ehhez „{SZEREP_NEV.padlo}” rétegrend kell.</span>}
+      </section>
+
+      <section class="szakasz">
+        <div class="kartya" style="display:flex;gap:32px;flex-wrap:wrap">
+          <div><p class="halkabb">Lehűlő felület</p><h2>{sz(g.Alehulo, 1)} m²</h2></div>
+          <div><p class="halkabb">Fűtött térfogat</p><h2>{sz(g.V, 1)} m³</h2></div>
+          <div><p class="halkabb">Felület/térfogat arány</p><h2>{g.V > 0 ? sz(g.Alehulo / g.V, 3) : '–'} m²/m³</h2></div>
+        </div>
+      </section>
+    </>
+  );
+}

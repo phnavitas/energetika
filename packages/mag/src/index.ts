@@ -1,0 +1,13 @@
+export * from './interpolacio.js';
+export * from './szerkezet.js';
+export * from './energiamerleg.js';
+export * from './rendszerek.js';
+export * from './indikatorok.js';
+export * from './epulet.js';
+export * as klima from './tablak/klima.js';
+export * as epuletfizika from './tablak/epuletfizika.js';
+export * as gepeszet from './tablak/gepeszet.js';
+export * as kovetelmeny from './tablak/kovetelmeny.js';
+export * as sulyozo from './tablak/sulyozo.js';
+export * as panel from './tablak/panel.js';
+export * from './szettek.js';
