@@ -184,6 +184,30 @@ export function teglalapAblak(p: { szelesseg: number; magassag: number; keretSze
   return { A, Aü, Uü: p.Uü, Ak: A - Aü, Uk: p.Uk, lkü: 2 * (bu + hu), psiKü: p.psiKü };
 }
 
+/**
+ * Osztott (több szárnyú, tokosztós) téglalap ablak geometriája a 4.16 képlethez: oszlop × sor üvegmező, körben
+ * keretSzelesseg, a mezők között osztoSzelesseg széles tokosztó/szárnytalálkozás; opcionális üvegosztó léc az üvegben
+ * (4.4. táblázat ψM,Ü), oszlop- és sorirányú darabszámmal, mezőnként.
+ */
+export function osztottAblak(p: {
+  szelesseg: number; magassag: number; keretSzelesseg: number; osztoSzelesseg: number;
+  oszlop: number; sor: number; Uü: number; Uk: number; psiKü: number;
+  lec?: { fuggoleges: number; vizszintes: number; psi: number };
+}): NyilaszaroBemenet & { A: number; mezoSzel: number; mezoMag: number } {
+  const nx = Math.max(1, Math.round(p.oszlop)), ny = Math.max(1, Math.round(p.sor));
+  const A = p.szelesseg * p.magassag;
+  const bw = Math.max((p.szelesseg - 2 * p.keretSzelesseg - (nx - 1) * p.osztoSzelesseg) / nx, 0);
+  const bh = Math.max((p.magassag - 2 * p.keretSzelesseg - (ny - 1) * p.osztoSzelesseg) / ny, 0);
+  const Aü = nx * ny * bw * bh;
+  const lec = p.lec && (p.lec.fuggoleges > 0 || p.lec.vizszintes > 0) ? { lmü: nx * ny * (p.lec.fuggoleges * bh + p.lec.vizszintes * bw) * 2, psiMü: p.lec.psi } : {};
+  return { A, Aü, Uü: p.Uü, Ak: A - Aü, Uk: p.Uk, lkü: nx * ny * 2 * (bw + bh), psiKü: p.psiKü, mezoSzel: bw, mezoMag: bh, ...lec };
+}
+
+/** Kapcsolt szárnyak közötti zárt légréteg hővezetési ellenállása (4.2. táblázat, vízszintes hőáram). */
+export function kapcsoltLegretegR(dMm: number): number {
+  return linearis(ZART_LEGRETEG.vastagsagMm, ZART_LEGRETEG.vizszintes, dMm);
+}
+
 /** 4.17 képlet – kéthéjú (kapcsolt) nyílászáró. */
 export function kethejuNyilaszaroU(U1: number, U2: number, Rl: number, Rsi = 0.13, Rse = 0.04): number {
   return 1 / (1 / U1 - Rsi + Rl - Rse + 1 / U2);

@@ -4,7 +4,7 @@
  * ebből áll elő a zóna (AN, V) és a határoló elemek listája.
  */
 import {
-  retegrendU, talajonFekvoPadlo, teglalapAblak, nyilaszaroU, nyilaszaroArnyekoloval,
+  retegrendU, talajonFekvoPadlo, osztottAblak, kapcsoltLegretegR, kethejuNyilaszaroU, nyilaszaroU, nyilaszaroArnyekoloval, nyilaszaroSablon,
   epuletfizika, kovetelmeny, klima, hoszukseglet, GEPESZETI_SZETTEK, szabalyozasiTenyezo,
   type EpuletBemenet, type HataroloElem, type Reteg, type Hatar, type FutesiHotermelo, type HmvHotermelo,
   type FutesSablon, type HmvSablon, type SzellozesRendszer,
@@ -41,13 +41,30 @@ export interface Retegrend {
 export interface NyilaszaroTipus {
   id: string; nev: string; kovetelmenyKod: 'ablak_fa_pvc' | 'ablak_fem' | 'tetosik_ablak' | 'ajto' | 'kapu';
   szelesseg: number; magassag: number;
-  /** Komponensekből (4.16) vagy kézi Uw. */
-  komponens?: { keretMm: number; Ug: number; Uk: number; psi: number };
+  /** Komponensekből (4.16; kapcsolt szárnyaknál 4.17) vagy kézi Uw. */
+  komponens?: NyilaszaroKomponens;
+  /** A kiinduló kortipikus sablon kódja (tájékoztató). */
+  sablonKod?: string;
   uwKezi?: number;
   gn: number;
   keretarany?: number;
   /** Társított árnyékoló (fűtési U-hoz ΔR, hűtéshez gárny). */
   arnyekolo?: { kod: string; dR: number; garnyH: number };
+}
+
+export interface NyilaszaroKomponens {
+  keretMm: number; Ug: number; Uk: number; psi: number;
+  /** A 4.1./4.2. táblázat sorai (ha onnan választott). */
+  uvegKod?: string; keretKod?: string;
+  tavtarto?: 'fem' | 'fejlett' | 'nincs';
+  /** Ψ kézzel megadva (különben a 4.3. táblázatból a keret, az üveg és a távtartó szerint). */
+  psiKezi?: boolean;
+  /** Tokosztó / szárnytalálkozás szélessége [mm]; osztás oszlop × sor üvegmezőre. */
+  osztoMm?: number; oszlop?: number; sor?: number;
+  /** Üvegosztó léc mezőnként (4.4. táblázat). */
+  lec?: { fuggoleges: number; vizszintes: number; psi: number };
+  /** Kapcsolt szárnyú (kéthéjú) ablak: légrés [mm] (4.17). */
+  kapcsoltResMm?: number;
 }
 
 export type HatarKod = 'kulso' | BTenyezoKod;
@@ -94,7 +111,9 @@ export interface Projekt {
   verzio: 2;
   meta: {
     nev: string; megrendelo: string; irsz: string; telepules: string; kozterulet: string; kozteruletJelleg: string; hazszam: string;
-    hrsz: string; epitesiEv: number; kategoria: 'csaladi_haz' | 'egyeb_lakoepulet';
+    hrsz: string; epitesiEv: number;
+    /** A nyílászárók cseréjének éve (a kortipikus ablakajánláshoz); üres: az építés éve. */
+    nyilaszaroCsereEv?: number; kategoria: 'csaladi_haz' | 'egyeb_lakoepulet';
     kovetelmenySzint: 'kozel_nulla' | 'jelentos_felujitas' | 'meglevo'; epulettipus?: string; szintek: number;
   };
   zona: { legzaras: Legzaras; elhelyezes: NyilasElhelyezes; szelnekKitett: boolean; hotarolo: keyof typeof epuletfizika.HOTAROLO_KEPESSEG; cmEffFajl?: number; futesProgramozhato: boolean };
@@ -171,12 +190,33 @@ export function retegrendVastagsag(r: Retegrend) {
 // ---------------------------------------------------------------------------------------------
 // Nyílászáró → mag
 
+/** 4.3. táblázat: Ψ keret–üveg a keret anyaga, az üvegezés bevonata és a távtartó szerint. */
+export function psiTablabol(k: Pick<NyilaszaroKomponens, 'uvegKod' | 'keretKod' | 'tavtarto'>): number | null {
+  if (k.tavtarto === 'nincs') return 0;
+  const uveg = epuletfizika.UVEGEZES_TAJEKOZTATO.find((x) => x.kod === k.uvegKod);
+  const keret = epuletfizika.KERET_TAJEKOZTATO.find((x) => x.kod === k.keretKod);
+  if (!uveg || !keret || !k.tavtarto) return null;
+  if (uveg.kod === 'egyreteg') return 0;
+  const sor = keret.anyag === 'fem' ? (keret.kod === 'fem_0' ? epuletfizika.PSI_KERET_UVEG.fem_nelkul : epuletfizika.PSI_KERET_UVEG.fem_termikus) : epuletfizika.PSI_KERET_UVEG.fa_pvc;
+  return sor[uveg.lowe ? 'lowe' : 'bevonat_nelkul'][k.tavtarto];
+}
+
+export function nyilaszaroGeometria(n: NyilaszaroTipus) {
+  const k = n.komponens!;
+  return osztottAblak({
+    szelesseg: n.szelesseg, magassag: n.magassag, keretSzelesseg: k.keretMm / 1000, osztoSzelesseg: (k.osztoMm ?? 2 * k.keretMm) / 1000,
+    oszlop: k.oszlop ?? 1, sor: k.sor ?? 1, Uü: k.Ug, Uk: k.Uk, psiKü: k.psi, lec: k.lec,
+  });
+}
+
 export function nyilaszaroAdatok(n: NyilaszaroTipus) {
   const A = n.szelesseg * n.magassag;
-  let U: number, Au: number;
+  let U: number, Au: number, Uegy: number | null = null, Rl: number | null = null;
   if (n.komponens) {
-    const g = teglalapAblak({ szelesseg: n.szelesseg, magassag: n.magassag, keretSzelesseg: n.komponens.keretMm / 1000, Uü: n.komponens.Ug, Uk: n.komponens.Uk, psiKü: n.komponens.psi });
-    U = nyilaszaroU(g);
+    const g = nyilaszaroGeometria(n);
+    Uegy = nyilaszaroU(g);
+    U = Uegy;
+    if (n.komponens.kapcsoltResMm) { Rl = kapcsoltLegretegR(n.komponens.kapcsoltResMm); U = kethejuNyilaszaroU(Uegy, Uegy, Rl); }
     Au = g.Aü;
   } else {
     U = n.uwKezi ?? 1.4;
@@ -184,7 +224,24 @@ export function nyilaszaroAdatok(n: NyilaszaroTipus) {
   }
   if (n.kovetelmenyKod === 'ajto' || n.kovetelmenyKod === 'kapu') Au = n.gn > 0 ? Au : 0;
   const UFutes = n.arnyekolo ? nyilaszaroArnyekoloval(U, n.arnyekolo.dR) : U;
-  return { A, U, Au, UFutes };
+  return { A, U, Au, UFutes, Uegy, Rl };
+}
+
+/** Nyílászáró-típus kortipikus sablonból (a méret megmarad). */
+export function sablonbolNyilaszaro(s: nyilaszaroSablon.NyilaszaroSablon, alap: Pick<NyilaszaroTipus, 'id' | 'szelesseg' | 'magassag' | 'kovetelmenyKod' | 'arnyekolo'>): NyilaszaroTipus {
+  const uveg = epuletfizika.UVEGEZES_TAJEKOZTATO.find((x) => x.kod === s.uveg)!;
+  const keret = epuletfizika.KERET_TAJEKOZTATO.find((x) => x.kod === s.keret)!;
+  const komp: NyilaszaroKomponens = {
+    keretMm: s.keretMm, osztoMm: s.osztoMm, oszlop: s.oszlop, sor: s.sor, Ug: uveg.Ug, Uk: keret.Uk, uvegKod: uveg.kod, keretKod: keret.kod, tavtarto: s.tavtarto, psi: 0,
+    ...(s.kapcsoltResMm ? { kapcsoltResMm: s.kapcsoltResMm } : {}),
+  };
+  komp.psi = psiTablabol(komp) ?? 0;
+  // kapcsolt egyrétegű szárnyak: két üvegréteg – g a 4.1. táblázat bevonat nélküli kétrétegű sora szerint
+  const gn = s.kapcsoltResMm ? epuletfizika.UVEGEZES_TAJEKOZTATO.find((x) => x.kod === 'ketreteg_bevonat_nelkul')!.gn : uveg.gn;
+  return {
+    id: alap.id, nev: s.nev, kovetelmenyKod: alap.kovetelmenyKod === 'ajto' || alap.kovetelmenyKod === 'kapu' ? 'ablak_fa_pvc' : (s.anyag === 'fem' ? 'ablak_fem' : alap.kovetelmenyKod === 'tetosik_ablak' ? 'tetosik_ablak' : 'ablak_fa_pvc'),
+    szelesseg: alap.szelesseg, magassag: alap.magassag, komponens: komp, gn, arnyekolo: alap.arnyekolo, sablonKod: s.kod,
+  };
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -12,3 +12,4 @@ export * as sulyozo from './tablak/sulyozo.js';
 export * as panel from './tablak/panel.js';
 export * from './szettek.js';
 export * as hoszukseglet from './hoszukseglet.js';
+export * as nyilaszaroSablon from './tablak/nyilaszaro_sablon.js';
