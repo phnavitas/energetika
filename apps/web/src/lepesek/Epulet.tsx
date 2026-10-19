@@ -1,7 +1,9 @@
 import { useState } from 'preact/hooks';
 import { panel, epuletfizika, tipologia as TP } from '@mag/index';
 import { Mezo, Szoveg, Szam, Valaszto, sz } from '../ui';
-import { ujId, retegrendSzamitas, SZEREP_ALAP, type Projekt, type Retegrend, type Szerep } from '../modell';
+import { ujId, type Projekt } from '../modell';
+import { tipologiaRetegrend, SZIG_VALASZTEK, type SzigBeallitas } from '../tipologiaRetegek';
+import { anyag } from '../katalogus';
 import { FotokSzakasz } from './Fotok';
 import { TanusitoSzakasz } from './Tanusito';
 
@@ -116,16 +118,17 @@ export function EpuletLepes({ p, modosit }: { p: Projekt; modosit: Modosit }) {
 // ---------------------------------------------------------------------------------------------
 // TABULA tipológia
 
-const SZEREP_MAP: Record<Exclude<TP.TipologiaSzerep, 'ablak' | 'ajto'>, { szerep: Szerep }> = {
-  fal: { szerep: 'fal' }, padlasfodem: { szerep: 'padlas' }, 'magastető': { szerep: 'teto' }, 'lapostető': { szerep: 'teto' },
-  padlo_talajon: { szerep: 'padlo' }, pince_feletti_fodem: { szerep: 'pincefodem' },
-};
 const SZEREP_FELIRAT: Record<TP.TipologiaSzerep, string> = { fal: 'Homlokzati fal', padlasfodem: 'Padlásfödém', 'magastető': 'Magastető, tetőtér', 'lapostető': 'Lapostető', padlo_talajon: 'Talajon fekvő padló', pince_feletti_fodem: 'Pince feletti födém', ablak: 'Ablak', ajto: 'Bejárati ajtó' };
 
-/** Tipológiai szerkezet felvétele: opak szerkezet a forrás U-jával egyenértékű ellenállású rétegként, nyílászáró kézi Uw-vel. */
-function tipologiaFelvetel(q: Projekt, t: TP.TipologiaTipus, valtozat: string, sz0: TP.TipologiaSzerkezet) {
+/** A szerkezet új hőszigetelő rétegének forrás szerinti vastagsága (ha van). */
+function szigForras(sz0: TP.TipologiaSzerkezet): number | null {
+  const r = sz0.retegek.find((x) => /kőzetgyapot|ásványgyapot|polisztirol|hőszigetelés|pir/i.test(x.nev) && x.dCm);
+  return r?.dCm ?? null;
+}
+
+/** Tipológiai szerkezet felvétele: opak szerkezet valódi rétegekkel, nyílászáró kézi Uw-vel. */
+function tipologiaFelvetel(q: Projekt, t: TP.TipologiaTipus, valtozat: string, sz0: TP.TipologiaSzerkezet, szig?: SzigBeallitas) {
   const cimke = `${t.kod.replace('HU.N.', '')}, ${TP.VALTOZAT_NEV[valtozat as keyof typeof TP.VALTOZAT_NEV]}`;
-  const forras = `TABULA HU (BME 2014) – ${sz0.forras}`;
   if (sz0.szerep === 'ablak' || sz0.szerep === 'ajto') {
     const ablak = sz0.szerep === 'ablak';
     q.nyilaszarok.push({
@@ -135,19 +138,7 @@ function tipologiaFelvetel(q: Projekt, t: TP.TipologiaTipus, valtozat: string, s
     } as Projekt['nyilaszarok'][number]);
     return;
   }
-  const mp = SZEREP_MAP[sz0.szerep];
-  const alap = SZEREP_ALAP[mp.szerep];
-  const r: Retegrend = {
-    id: ujId(), nev: `${SZEREP_FELIRAT[sz0.szerep]} – ${sz0.leiras} (${cimke})`, szerep: mp.szerep, ...alap,
-    retegek: [{ id: ujId(), nev: 'x', dCm: 1, R: 0 }],
-  };
-  const RsiRse = 1 / retegrendSzamitas(r).U; // csak a felületi ellenállások
-  const vastag = sz0.retegek.reduce((s, x) => s + (x.dCm ?? 0), 0);
-  r.retegek = [{
-    id: ujId(), nev: `${sz0.retegek.length ? sz0.retegek.map((x) => `${x.nev}${x.dCm ? ` ${String(x.dCm).replace('.', ',')} cm` : ''}`).join(' + ') : sz0.leiras} – egyenértékű ellenállás, U = ${String(sz0.U).replace('.', ',')} W/m²K (${forras})${sz0.szerep === 'padlo_talajon' ? '; a talaj hatását a program a Határolásnál külön számolja – ellenőrizd, hogy a forrás U-ja nem tartalmazza-e már' : ''}`,
-    dCm: vastag || 1, R: Math.max(1 / sz0.U - RsiRse, 0.001),
-  }];
-  q.retegrendek.push(r);
+  q.retegrendek.push(tipologiaRetegrend(t, sz0, cimke, szig).r);
 }
 
 function TipologiaValaszto({ csoport, ev, modosit }: { csoport: TP.TipologiaCsoport; ev: number; modosit: Modosit }) {
@@ -155,13 +146,15 @@ function TipologiaValaszto({ csoport, ev, modosit }: { csoport: TP.TipologiaCsop
   const [kod, setKod] = useState<string>('');
   const [valtozat, setValtozat] = useState<string>('eredeti');
   const [felveve, setFelveve] = useState<string[]>([]);
+  const [szigek, setSzigek] = useState<Record<string, SzigBeallitas>>({});
   const t = (tipusok.find((x) => x.tipus.kod === kod) ?? tipusok[0])?.tipus;
   if (!t) return <p class="halk" style="margin-top:12px">Ehhez a csoporthoz nincs forrásadat.</p>;
   const valtozatok = ['eredeti', ...t.valtozatok.map((v) => v.szint)];
   const v = valtozatok.includes(valtozat) ? valtozat : 'eredeti';
   const szerkezetek = v === 'eredeti' ? t.szerkezetek : t.valtozatok.find((x) => x.szint === v)!.szerkezetek;
   const kulcs = (x: TP.TipologiaSzerkezet) => `${t.kod}|${v}|${x.szerep}|${x.leiras}`;
-  const felvesz = (lista: TP.TipologiaSzerkezet[]) => { modosit((q) => { for (const x of lista) tipologiaFelvetel(q, t, v, x); }); setFelveve((f) => [...f, ...lista.map(kulcs)]); };
+  const felvesz = (lista: TP.TipologiaSzerkezet[]) => { modosit((q) => { for (const x of lista) tipologiaFelvetel(q, t, v, x, szigek[kulcs(x)]); }); setFelveve((f) => [...f, ...lista.map(kulcs)]); };
+  const cimke = `${t.kod.replace('HU.N.', '')}, ${TP.VALTOZAT_NEV[v as keyof typeof TP.VALTOZAT_NEV]}`;
   const illik = tipusok.find((x) => x.tipus.kod === t.kod)?.illik;
   return (
     <div style="margin-top:12px;display:flex;flex-direction:column;gap:12px">
@@ -178,13 +171,31 @@ function TipologiaValaszto({ csoport, ev, modosit }: { csoport: TP.TipologiaCsop
       <p class="halkabb">{t.leiras}</p>
       <div class="tabla-gorgeto">
         <table class="tabla">
-          <thead><tr><th>Szerkezet</th><th>Leírás, rétegek</th><th class="szam">U [W/m²K]</th><th>Forrás</th><th></th></tr></thead>
+          <thead><tr><th>Szerkezet</th><th>Leírás, rétegek</th><th>Hőszigetelés</th><th class="szam">U forrás / rétegekből</th><th>Forrás</th><th></th></tr></thead>
           <tbody>
             {szerkezetek.map((x) => (
               <tr>
                 <td>{SZEREP_FELIRAT[x.szerep]}</td>
                 <td style="min-width:220px">{x.leiras}{x.retegek.length > 0 && <div class="halkabb">{x.retegek.map((r) => `${r.nev}${r.dCm ? ` ${String(r.dCm).replace('.', ',')} cm` : ''}`).join(' · ')}</div>}{x.megjegyzes && <div class="halkabb" style="color:var(--figyel)">{x.megjegyzes}</div>}</td>
-                <td class="szam">{sz(x.U, 2)}{x.g !== undefined && <div class="halkabb">g {sz(x.g, 2)}</div>}</td>
+                <td style="min-width:200px">{(() => {
+                  const d0 = szigForras(x);
+                  if (d0 === null || x.szerep === 'ablak' || x.szerep === 'ajto') return <span class="halkabb">–</span>;
+                  const b = szigek[kulcs(x)] ?? {};
+                  const sz1 = (u: SzigBeallitas) => setSzigek((o) => ({ ...o, [kulcs(x)]: { ...b, ...u } }));
+                  const alap = tipologiaRetegrend(t, x, cimke).r.retegek.find((r) => SZIG_VALASZTEK.includes(r.anyagId ?? ''))?.anyagId;
+                  return (
+                    <div style="display:flex;flex-direction:column;gap:4px">
+                      <select aria-label="Hőszigetelés anyaga" value={b.anyagId ?? alap ?? ''} disabled={felveve.includes(kulcs(x))} onChange={(e) => sz1({ anyagId: (e.target as HTMLSelectElement).value })}>
+                        {SZIG_VALASZTEK.map((id) => <option value={id}>{anyag(id)?.nev ?? id}</option>)}
+                      </select>
+                      <Szam cimke="Hőszigetelés vastagsága" ertek={b.dCm ?? d0} egyseg="cm" valt={(n) => sz1({ dCm: n > 0 ? n : undefined })} />
+                    </div>
+                  );
+                })()}</td>
+                <td class="szam">{sz(x.U, 2)}{(() => {
+                  if (x.szerep === 'ablak' || x.szerep === 'ajto') return x.g !== undefined && <div class="halkabb">g {sz(x.g, 2)}</div>;
+                  try { const e = tipologiaRetegrend(t, x, cimke, szigek[kulcs(x)]); const elter = Math.abs(e.Uszamolt - x.U) / x.U > 0.2; return <div class="halkabb" style={elter ? 'color:var(--figyel)' : ''} title={elter ? 'Jelentős eltérés a forrástól: a forrás rétegrendje hiányos (pl. fagerendák) vagy más λ-val számolt; ellenőrizd a rétegeket' : e.visszaszamolt ? 'Egy réteg λ-ja a forrás eredeti U-értékéből visszaszámolt' : 'A katalógus λ-értékeiből'}>{sz(e.Uszamolt, 2)}{e.visszaszamolt ? '*' : ''}{elter ? ' !' : ''}</div>; } catch { return null; }
+                })()}</td>
                 <td class="halkabb" style="min-width:120px">{x.forras.replace('tabula_hu_2014', 'TABULA HU brosúra').replace('tabula_calc_db', 'TABULA adatbázis')}</td>
                 <td><button class="gomb" disabled={felveve.includes(kulcs(x))} onClick={() => felvesz([x])}>{felveve.includes(kulcs(x)) ? 'Felvéve' : 'Felvétel'}</button></td>
               </tr>
@@ -194,7 +205,7 @@ function TipologiaValaszto({ csoport, ev, modosit }: { csoport: TP.TipologiaCsop
       </div>
       <div class="gombsor">
         <button class="gomb fo" onClick={() => felvesz(szerkezetek.filter((x) => !felveve.includes(kulcs(x))))}>Összes felvétele</button>
-        <span class="halkabb">Az opak szerkezetek a forrás U-értékével egyenértékű ellenállású rétegként kerülnek a rétegrendek közé (a brosúra hővezetési tényezőt nem közöl); a nyílászárók gyártói (kézi) Uw-vel. A felületeket a Határolásnál kell hozzájuk rendelni.</span>
+        <span class="halkabb">Az opak szerkezetek valódi rétegekkel kerülnek a rétegrendek közé: anyag, vastagság és λ a beépített katalógusból, a hőszigetelés anyaga és vastagsága itt is állítható. A forrás és a rétegekből számolt U közti eltérést a katalógus λ-értékei okozzák. *: egy réteg anyagára (pl. B30 blokk, régi hőszigetelő blokk) nincs ellenőrizhető λ, ezért a forrás eredeti U-értékéből visszaszámolt egyenértékű λ-t kap. A nyílászárók gyártói (kézi) Uw-vel kerülnek be; a felületeket a Határolásnál kell hozzájuk rendelni.</span>
       </div>
     </div>
   );

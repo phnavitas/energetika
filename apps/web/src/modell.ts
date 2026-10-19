@@ -41,6 +41,8 @@ export interface Retegrend {
   hoaramIrany: HoaramIrany; kulsoOldal: 'kulso' | 'futetlen' | 'belso';
   retegek: RetegUI[];
   kezidU?: number; rseFelulbiralas?: number;
+  /** A nevet a felhasználó írta: a program nem nevezi át a rétegek alapján. */
+  nevKezi?: boolean;
 }
 
 export interface NyilaszaroTipus {
@@ -194,6 +196,26 @@ export function anyagPillanatkep(p: Projekt) {
 
 // ---------------------------------------------------------------------------------------------
 // Rétegrend → mag
+
+/** Szerkezet automatikus neve a rétegek anyagából: teherhordó réteg + hőszigetelés, pl. „Homlokzati fal – vázkerámia 38 cm + 15 cm EPS”. */
+export function retegrendAutoNev(r: Retegrend): string {
+  const sor = r.retegek.map((x) => ({ x, a: anyag(x.anyagId) }));
+  const nevOf = (e: (typeof sor)[number]) => (e.a?.nev ?? e.x.nev ?? 'réteg')
+    .split(' – ')[0]!.split(',')[0]!.replace(/\s*\(.*?\)\s*/g, ' ')
+    .replace(/(^|\s)(falazat|homlokzati|hőszigetelő|hőszigetelés|lemez|lap|tekercs|lépésálló\/terhelhető)(?=\s|$)/gi, ' ')
+    .replace(/\s+/g, ' ').trim();
+  const szig = sor.filter((e) => e.a?.sraffozas.startsWith('hoszigeteles'));
+  const fo = sor.filter((e) => ['falazat', 'beton', 'fa'].includes(e.a?.sraffozas ?? '') || (!e.a && e.x.R === undefined && !e.x.legreteg && e.x.dCm >= 10))
+    .sort((a, b) => b.x.dCm - a.x.dCm)[0];
+  const reszek: string[] = [];
+  if (fo) reszek.push(`${nevOf(fo).replace(/\s*\d+([,.]\d+)?\s*cm/, '')} ${String(Math.round(fo.x.dCm * 10) / 10).replace('.', ',')} cm`);
+  if (szig.length) {
+    const d = szig.reduce((s, e) => s + e.x.dCm, 0);
+    const vastag = [...szig].sort((a, b) => b.x.dCm - a.x.dCm)[0]!;
+    reszek.push(`${String(Math.round(d * 10) / 10).replace('.', ',')} cm ${nevOf(vastag)}`);
+  }
+  return `${SZEREP_NEV[r.szerep]}${reszek.length ? ` – ${reszek.join(' + ')}` : ''}`;
+}
 
 export function magRetegek(r: Retegrend): Reteg[] {
   return r.retegek.map((x): Reteg => {
@@ -592,6 +614,8 @@ export function projektMigral(nyers: unknown): Projekt {
   p.gepeszet.napelem ??= [];
   p.gepeszet.szellozes ??= null;
   p.gepeszet.hutes ??= [];
+  // Korábbi rétegrendek neve kézi névnek számít (nem nevezzük át).
+  for (const r of p.retegrendek ?? []) r.nevKezi ??= true;
   return p;
 }
 

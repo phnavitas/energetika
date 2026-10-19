@@ -16,3 +16,4 @@ export * as nyilaszaroSablon from './tablak/nyilaszaro_sablon.js';
 export * as pvgis from './pvgis.js';
 export * as hutes from './tablak/hutes.js';
 export * as tipologia from './tablak/tipologia.js';
+export * as szerkezetSablon from './tablak/szerkezet_sablonok.js';

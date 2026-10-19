@@ -1,12 +1,12 @@
 import { useState } from 'preact/hooks';
-import { kovetelmeny } from '@mag/index';
+import { kovetelmeny, szerkezetSablon as SS } from '@mag/index';
 import { Metszet } from '../abrak/Metszet';
 import { useTavoli, KonyvtarbaGomb } from '../fiok';
 import { retegrendKonyvtarba } from '../tarolo';
 import { anyagLista, anyag, beepitett } from '../katalogus';
 import { Mezo, Szam, Szoveg, Valaszto, sz, kov } from '../ui';
 import { Fogantyu, huzasProps } from '../huzas';
-import { ujId, retegrendSzamitas, retegrendVastagsag, SZEREP_ALAP, SZEREP_NEV, kovetelmenyNev, type Projekt, type Retegrend, type Szerep } from '../modell';
+import { ujId, retegrendSzamitas, retegrendVastagsag, retegrendAutoNev, SZEREP_ALAP, SZEREP_NEV, kovetelmenyNev, type Projekt, type Retegrend, type Szerep } from '../modell';
 
 type Modosit = (fn: (p: Projekt) => void) => void;
 
@@ -31,10 +31,23 @@ export function RetegrendekLepes({ p, modosit }: { p: Projekt; modosit: Modosit 
 
   function uj(szerep: Szerep) {
     const id = ujId();
-    modosit((q) => { q.retegrendek.push({ id, nev: `Új ${SZEREP_NEV[szerep].toLowerCase()}`, szerep, ...SZEREP_ALAP[szerep], retegek: [] }); });
+    modosit((q) => { q.retegrendek.push({ id, nev: SZEREP_NEV[szerep], nevKezi: false, szerep, ...SZEREP_ALAP[szerep], retegek: [] }); });
     setAktivId(id);
   }
-  const m = (fn: (r: Retegrend) => void) => modosit((q) => fn(q.retegrendek[idx]!));
+  /** Módosítás után a kézzel nem átírt név a rétegekből frissül. */
+  /** Szerkezet típus szerint: a sablon kiegészítő rétegeivel együtt jön létre, automatikus névvel. */
+  function sablonbol(kod: string) {
+    const t = SS.SZERKEZET_SABLONOK.find((x) => x.kod === kod);
+    if (!t) return;
+    const id = ujId();
+    modosit((q) => {
+      const r: Retegrend = { id, nev: '', nevKezi: false, szerep: t.szerep, ...SZEREP_ALAP[t.szerep], retegek: t.retegek.map((x) => ({ id: ujId(), anyagId: x.anyagId, dCm: x.dCm })) };
+      r.nev = retegrendAutoNev(r);
+      q.retegrendek.push(r);
+    });
+    setAktivId(id);
+  }
+  const m = (fn: (r: Retegrend) => void) => modosit((q) => { const x = q.retegrendek[idx]!; fn(x); if (x.nevKezi === false) x.nev = retegrendAutoNev(x); });
   const tv = useTavoli();
 
   function konyvtarbol(kid: string) {
@@ -64,12 +77,15 @@ export function RetegrendekLepes({ p, modosit }: { p: Projekt; modosit: Modosit 
           })}
           {!p.retegrendek.length && <p class="halk" style="padding:12px">Még nincs rétegrend.</p>}
         </div>
-        <Mezo cim="Új rétegrend">
-          <select value="" onChange={(e) => { const v = (e.target as HTMLSelectElement).value; if (v.startsWith('k:')) konyvtarbol(v.slice(2)); else if (v) uj(v as Szerep); }}>
-            <option value="">Szerkezet kiválasztása…</option>
-            <optgroup label="Üres rétegrend">
-              {(Object.keys(SZEREP_NEV) as Szerep[]).map((s) => <option value={s}>{SZEREP_NEV[s]}</option>)}
-            </optgroup>
+        <Mezo cim="Új szerkezet" sugo="A típus a kiegészítő rétegeivel (vakolat, ragasztó, hőszigetelés) jön létre; utána szabadon módosítható">
+          <select value="" onChange={(e) => { const v = (e.target as HTMLSelectElement).value; if (v.startsWith('k:')) konyvtarbol(v.slice(2)); else if (v.startsWith('s:')) sablonbol(v.slice(2)); else if (v) uj(v as Szerep); }}>
+            <option value="">Szerkezet típusa…</option>
+            {(Object.keys(SZEREP_NEV) as Szerep[]).map((sz0) => (
+              <optgroup label={SZEREP_NEV[sz0]}>
+                {SS.SZERKEZET_SABLONOK.filter((t) => t.szerep === sz0).map((t) => <option value={`s:${t.kod}`}>{t.csoport}: {t.nev}</option>)}
+                <option value={sz0}>Üres {SZEREP_NEV[sz0].toLowerCase()} (rétegek nélkül)</option>
+              </optgroup>
+            ))}
             {tv && tv.konyvtar.retegrendek.length > 0 && (
               <optgroup label="Irodai könyvtárból">
                 {tv.konyvtar.retegrendek.map((k) => <option value={`k:${k.id}`}>{k.nev} (U {sz(k.U, 3)})</option>)}
@@ -102,7 +118,12 @@ function Szerkeszto({ r, m, kijelolt, jelol, torol }: { r: Retegrend; m: (fn: (r
   return (
     <div style="display:flex;flex-direction:column;gap:16px">
       <div class="racs">
-        <Mezo cim="Megnevezés" szeles><Szoveg ertek={r.nev} valt={(v) => m((x) => { x.nev = v; })} /></Mezo>
+        <Mezo cim="Megnevezés" szeles sugo={r.nevKezi !== false ? undefined : 'Automatikus a rétegek alapján; átírható'}>
+          <div class="egyseg">
+            <Szoveg ertek={r.nev} valt={(v) => m((x) => { x.nev = v; x.nevKezi = true; })} />
+            {r.nevKezi !== false && <button class="gomb halk-gomb" title="Név a rétegekből" onClick={() => m((x) => { x.nevKezi = false; })}>automatikus</button>}
+          </div>
+        </Mezo>
         <Mezo cim="Szerkezet">
           <Valaszto ertek={r.szerep} valt={(v) => m((x) => { Object.assign(x, { szerep: v, ...SZEREP_ALAP[v] }); })} opciok={(Object.keys(SZEREP_NEV) as Szerep[]).map((s) => ({ ertek: s, nev: SZEREP_NEV[s] }))} />
         </Mezo>

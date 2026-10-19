@@ -70,3 +70,15 @@ describe('PVGIS fájl', () => {
     expect(pvgis.pvgisBemenetFajlbol(f)).toEqual({ lat: 47.58, lon: 18.39, kWp: 30, veszteseg: 14, hajlasszog: 35, azimut: -20, elhelyezes: 'building' });
   });
 });
+
+import { szerkezetSablon } from '../src/index.js';
+import { ALAP_ANYAGOK } from '../src/alapkatalogus.js';
+describe('szerkezetsablonok', () => {
+  it('minden réteg létező, λ-val vagy R-rel bíró anyagra hivatkozik', () => {
+    for (const s of szerkezetSablon.SZERKEZET_SABLONOK) for (const r of s.retegek) {
+      const a = ALAP_ANYAGOK.find((x) => x.id === r.anyagId);
+      expect(a, `${s.kod}: ${r.anyagId}`).toBeTruthy();
+      expect(a!.lambda ?? a!.R, `${s.kod}: ${r.anyagId}`).toBeTruthy();
+    }
+  });
+});
