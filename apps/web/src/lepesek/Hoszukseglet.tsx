@@ -32,8 +32,22 @@ export function HoszuksegletLepes({ p, modosit }: { p: Projekt; modosit: Modosit
           <Mezo cim="Légtömörség n50" sugo="Légtömörség-mérésből; új épületnél 1,5–3, passzívháznál ≤ 0,6"><Szam ertek={be.n50} egyseg="1/h" valt={(v) => mb((b) => { b.n50 = v; })} /></Mezo>
           <Mezo cim="Szél elleni védettség"><Valaszto ertek={be.vedettseg} valt={(v) => mb((b) => { b.vedettseg = v; })} opciok={(Object.keys(VEDETTSEG_NEV) as H.Vedettseg[]).map((k) => ({ ertek: k, nev: VEDETTSEG_NEV[k] }))} /></Mezo>
           <Mezo cim="Talajvíz" ><Valaszto ertek={be.Gw > 1 ? 'kozel' : 'tavol'} valt={(v) => mb((b) => { b.Gw = v === 'kozel' ? 1.15 : 1; })} opciok={[{ ertek: 'tavol', nev: 'Mélyebben, mint 1 m (Gw = 1,0)' }, { ertek: 'kozel', nev: '1 m-en belül (Gw = 1,15)' }]} /></Mezo>
-          <Mezo cim="Felfűtési többlet" sugo="Szakaszos fűtésnél; folyamatos üzemnél 0"><Szam ertek={be.fRH} egyseg="W/m²" valt={(v) => mb((b) => { b.fRH = v; })} /></Mezo>
+          <Mezo cim="Felfűtési többlet (ΦRH)" sugo="Csak szakaszos (pl. éjszakai csökkentéses) fűtésnél kell">
+            <Valaszto ertek={(be.rhMod ?? (be.fRH ? 'fajlagos' : 'nincs'))} valt={(v) => mb((b) => { b.rhMod = v; if (v === 'arany') b.rhArany ??= 0.1; })} opciok={[
+              { ertek: 'nincs', nev: 'Folyamatos fűtés – nincs többlet (alapérték)' },
+              { ertek: 'fajlagos', nev: 'Fajlagos érték, fRH [W/m²]' },
+              { ertek: 'arany', nev: 'Pótlék a hőveszteség %-ában' },
+            ]} />
+          </Mezo>
+          {(be.rhMod ?? (be.fRH ? 'fajlagos' : 'nincs')) === 'fajlagos' && <Mezo cim="fRH" sugo="ΦRH = fRH · A (MSZ EN 12831 7.3)"><Szam ertek={be.fRH} egyseg="W/m²" valt={(v) => mb((b) => { b.fRH = Math.max(0, v); })} /></Mezo>}
+          {(be.rhMod ?? (be.fRH ? 'fajlagos' : 'nincs')) === 'arany' && <Mezo cim="Pótlék" sugo="ΦRH = pótlék · (ΦT + ΦV); tervezői döntés"><Szam ertek={Math.round((be.rhArany ?? 0.1) * 1000) / 10} egyseg="%" valt={(v) => mb((b) => { b.rhArany = Math.min(Math.max(v, 0), 100) / 100; })} /></Mezo>}
         </div>
+        {(be.rhMod ?? (be.fRH ? 'fajlagos' : 'nincs')) !== 'nincs' && (
+          <details class="halkabb" style="margin-top:8px">
+            <summary style="cursor:pointer">Segítség a felfűtési többlethez</summary>
+            <p style="margin-top:6px">A szabvány (MSZ EN 12831 7.3) szerint a felfűtési többlet ΦRH = A · fRH, ahol fRH a felfűtési időtől, a csökkentés alatti hőmérséklet-eséstől és az épület hőtároló tömegétől függ; a szabvány D melléklete (D.10a/b táblázat) és a nemzeti melléklet ad értékeket. Lakóépületre az egyszerűsítés csak legfeljebb 8 órás éjszakai csökkentésnél és nem könnyűszerkezetes épületnél alkalmazható. A táblázatot nem tudtam forrásból ellenőrizni, ezért a program nem kínál belőle értéket: a tervezési gyakorlat szerinti fajlagos értéket vagy %-os pótlékot add meg. Folyamatos üzemű (pl. hőszivattyús, padlófűtéses) rendszernél a többlet általában 0.</p>
+          </details>
+        )}
         {p.gepeszet.szellozes && <p class="halkabb" style="margin-top:8px">Gépi szellőzés hővisszanyeréssel (ηr = {sz(p.gepeszet.szellozes.etaR * 100, 0)}%): a minimális légcserét a befúvás fedezi, (1 − ηr) arányban terhelve.</p>}
       </section>
 

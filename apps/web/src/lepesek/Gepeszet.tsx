@@ -76,6 +76,7 @@ export function GepeszetLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: M
   const futesEredm = eredmeny?.rendszerek.filter((r) => r.cel === 'futes') ?? [];
   const hmvEredm = eredmeny?.rendszerek.find((r) => r.cel === 'hmv');
   const szellEredm = eredmeny?.rendszerek.find((r) => r.cel === 'szellozes');
+  const ANossz = p.helyisegek.filter((h) => h.kategoria !== 'gyengen_kapcsolt').reduce((s, h) => s + h.A, 0);
   const Vfutott = p.helyisegek.filter((h) => h.kategoria !== 'gyengen_kapcsolt').reduce((s, h) => s + h.A * h.h, 0);
 
   /** Szett alkalmazása; ha a mostani rendszerben ErP adatlapos érték van, és az új szettbe átvihető, rákérdez. */
@@ -169,7 +170,7 @@ export function GepeszetLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: M
         <p class="halk">A veszteségeket és a segédenergiát a program a 8. fejezet táblázataiból számolja a rendszer-alapterületre. Ha a hőtermelőnek van ErP adatlapja, válaszd az adatlapos változatot: az pontosabb a táblázati értéknél. Bivalens rendszernél (pl. hőszivattyú és kazán) vegyél fel több hőtermelőt, és add meg, mekkora részt fedeznek a fűtési igényből.</p>
         <div style="display:flex;flex-direction:column;gap:16px">
           {gp.futes.map((f, i) => (
-            <FutesKartya key={f.id} f={f} tobb={gp.futes.length > 1} r={futesEredm[i]} szett={(kod) => futesSzett(i, kod)}
+            <FutesKartya key={f.id} f={f} AN={ANossz} tobb={gp.futes.length > 1} r={futesEredm[i]} szett={(kod) => futesSzett(i, kod)}
               m={(fn) => mg((g) => fn(g.futes[i]!))}
               torol={() => mg((g) => { g.futes.splice(i, 1); if (g.futes.length === 1) delete g.futes[0]!.lefedes; })} />
           ))}
@@ -182,7 +183,15 @@ export function GepeszetLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: M
             uj.lefedes = Math.max(0, 1 - g.futes.reduce((s, x) => s + (x.lefedes ?? 1), 0)) || 0.2;
             g.futes.push(uj);
           })}>Kiegészítő hőtermelő (bivalens)</button>
-          {gp.futes.length > 1 && <span class="halkabb">Lefedések összege: {sz(gp.futes.reduce((s, x) => s + (x.lefedes ?? 1), 0) * 100, 0)}%</span>}
+          <button class="gomb" onClick={() => mg((g) => {
+            const uj = futesSzettbol('gaz_kondenz_radiator');
+            uj.nev = 'Rendszer másik épületrészre';
+            const fel = Math.round((ANossz / 2) * 10) / 10;
+            if (g.futes.length === 1) { g.futes[0]!.terulet = Math.round((ANossz - fel) * 10) / 10; g.futes[0]!.lefedes = ANossz ? g.futes[0]!.terulet / ANossz : 1; }
+            uj.terulet = fel; uj.lefedes = ANossz ? fel / ANossz : 0.5;
+            g.futes.push(uj);
+          })}>Rendszer másik épületrészre (alapterület szerint)</button>
+          {gp.futes.length > 1 && <span class="halkabb">Lefedések összege: {sz(gp.futes.reduce((s, x) => s + (x.terulet && ANossz ? x.terulet / ANossz : x.lefedes ?? 1), 0) * 100, 0)}%{gp.futes.some((x) => x.terulet) ? ` · kiszolgált területek: ${sz(gp.futes.reduce((s, x) => s + (x.terulet ?? 0), 0), 1)} / ${sz(ANossz, 1)} m²` : ''}</span>}
         </div>
       </section>
 
@@ -235,7 +244,7 @@ export function GepeszetLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: M
 // =============================================================================================
 // Fűtési alrendszer
 
-function FutesKartya({ f, tobb, r, m, torol, szett }: { f: FutesAlrendszerUI; tobb: boolean; r: RendszerEredmeny | undefined; m: (fn: (f: FutesAlrendszerUI) => void) => void; torol: () => void; szett: (kod: string) => void }) {
+function FutesKartya({ f, tobb, r, m, torol, szett, AN }: { f: FutesAlrendszerUI; tobb: boolean; AN: number; r: RendszerEredmeny | undefined; m: (fn: (f: FutesAlrendszerUI) => void) => void; torol: () => void; szett: (kod: string) => void }) {
   const h = f.hotermelo;
   const vizes = 'valasztas' in f.szabalyozas;
   let szabHiba: string | null = null, eSzab: number | null = null;
@@ -249,8 +258,13 @@ function FutesKartya({ f, tobb, r, m, torol, szett }: { f: FutesAlrendszerUI; to
       <div class="gep-fej">
         <div style="flex:1;min-width:200px"><Szoveg ertek={f.nev} valt={(v) => m((x) => { x.nev = v; })} /></div>
         {tobb && (
-          <div style="width:160px" title="A zóna nettó fűtési igényéből fedezett hányad">
-            <Mezo cim="Lefedés"><Szazalek cimke="Lefedés" ertek={f.lefedes ?? 1} valt={(v) => m((x) => { x.lefedes = Math.min(Math.max(v, 0), 1); })} /></Mezo>
+          <div style="width:150px" title="A zóna nettó fűtési igényéből fedezett hányad">
+            <Mezo cim="Lefedés"><Szazalek cimke="Lefedés" ertek={f.terulet && AN ? f.terulet / AN : f.lefedes ?? 1} valt={(v) => m((x) => { x.lefedes = Math.min(Math.max(v, 0), 1); delete x.terulet; })} /></Mezo>
+          </div>
+        )}
+        {tobb && (
+          <div style="width:160px" title="Ha a rendszer egy épületrészt lát el: a kiszolgált alapterület">
+            <Mezo cim="vagy kiszolgált terület"><Szam cimke="Kiszolgált alapterület" ertek={f.terulet} egyseg="m²" valt={(v) => m((x) => { if (v > 0) { x.terulet = v; x.lefedes = AN ? Math.min(v / AN, 1) : x.lefedes; } else delete x.terulet; })} /></Mezo>
           </div>
         )}
         {tobb && <button class="gomb halk-gomb" onClick={torol}>Eltávolítás</button>}

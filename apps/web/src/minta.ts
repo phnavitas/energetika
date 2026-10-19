@@ -21,10 +21,10 @@ export function mintaProjekt(): Projekt {
       { id: 'h3', nev: 'Szoba', kategoria: 'kondicionalt', A: 11.8, h, hsz: { kulsoFalak: [{ id: 'kfh3', retegrendId: 'r_fal', hossz: 5.0 }], padlas: true, padlo: true, szomszedok: [] } },
       { id: 'h4', nev: 'Gyerekszoba', kategoria: 'kondicionalt', A: 11.2, h, hsz: { kulsoFalak: [{ id: 'kfh4', retegrendId: 'r_fal', hossz: 4.9 }], padlas: true, padlo: true, szomszedok: [] } },
       { id: 'h5', nev: 'Fürdőszoba', kategoria: 'kondicionalt', A: 6.4, h, hsz: { kulsoFalak: [{ id: 'kfh5', retegrendId: 'r_fal', hossz: 2.6 }], padlas: true, padlo: true, szomszedok: [] } },
-      { id: 'h6', nev: 'WC', kategoria: 'erosen_kapcsolt', A: 1.9, h, hsz: { kulsoFalak: [{ id: 'kfh6', retegrendId: 'r_fal', hossz: 1.3 }], padlas: true, padlo: true, szomszedok: [] } },
-      { id: 'h7', nev: 'Közlekedő', kategoria: 'erosen_kapcsolt', A: 9.8, h, hsz: { kulsoFalak: [], padlas: true, padlo: true, szomszedok: [] } },
+      { id: 'h6', nev: 'WC', kategoria: 'kondicionalt', A: 1.9, h, hsz: { kulsoFalak: [{ id: 'kfh6', retegrendId: 'r_fal', hossz: 1.3 }], padlas: true, padlo: true, szomszedok: [] } },
+      { id: 'h7', nev: 'Közlekedő', kategoria: 'kondicionalt', A: 9.8, h, hsz: { kulsoFalak: [], padlas: true, padlo: true, szomszedok: [] } },
       { id: 'h8', nev: 'Kamra', kategoria: 'erosen_kapcsolt', A: 2.1, h, hsz: { kulsoFalak: [{ id: 'kfh8', retegrendId: 'r_fal', hossz: 1.8 }], padlas: true, padlo: true, szomszedok: [] } },
-      { id: 'h9', nev: 'Előtér', kategoria: 'erosen_kapcsolt', A: 4.5, h, hsz: { kulsoFalak: [{ id: 'kfh9', retegrendId: 'r_fal', hossz: 2.8 }], padlas: true, padlo: true, szomszedok: [] } },
+      { id: 'h9', nev: 'Előtér', kategoria: 'kondicionalt', A: 4.5, h, hsz: { kulsoFalak: [{ id: 'kfh9', retegrendId: 'r_fal', hossz: 2.8 }], padlas: true, padlo: true, szomszedok: [] } },
     ],
     retegrendek: [
       {
@@ -98,8 +98,14 @@ export function mintaProjekt(): Projekt {
       szellozes: null,
       napelem: [],
     },
-    tanusito: { nev: '', jogosultsag: '', email: '', telefon: '' },
+    tanusito: alapTanusito(),
   };
+}
+
+/** A böngészőben megjegyzett tanúsító (új projektek kitöltéséhez). */
+export function alapTanusito(): Projekt['tanusito'] {
+  try { const t = JSON.parse(localStorage.getItem('ekm-tanusito') ?? 'null'); if (t && typeof t.nev === 'string') return { ...t, ellenorzes: t.ellenorzes }; } catch { /* nincs tároló */ }
+  return { nev: '', jogosultsag: '', email: '', telefon: '' };
 }
 
 export function uresProjekt(): Projekt {

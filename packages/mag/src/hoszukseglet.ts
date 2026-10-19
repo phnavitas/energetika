@@ -72,6 +72,8 @@ export interface HszBemenet {
   Gw: number;
   /** Hővisszanyerős gépi szellőzés: a minimális légcserét a befúvás fedezi, (1 − ηr) arányban terhelve. */
   hovisszanyeres?: { etaR: number } | null;
+  /** Felfűtési többlet a ΦT + ΦV arányában (tervezői pótlék, pl. 0,1); a helyiségenkénti fRH-val összeadódik. */
+  rhArany?: number;
   helyisegek: HelyisegHszBemenet[];
 }
 
@@ -116,7 +118,7 @@ export function helyisegHoszukseglet(b: HszBemenet): HszEredmeny {
     const Vmin = h.nmin * h.V;
     const Vszamitott = b.hovisszanyeres ? Vinf + Vmin * (1 - b.hovisszanyeres.etaR) : Math.max(Vinf, Vmin);
     const PhiV = 0.34 * Vszamitott * dT;
-    const PhiRH = (h.fRH ?? 0) * h.A;
+    const PhiRH = (h.fRH ?? 0) * h.A + (b.rhArany ?? 0) * (PhiT + PhiV);
     const PhiHL = PhiT + PhiV + PhiRH;
     return { id: h.id, nev: h.nev, A: h.A, thetaInt: h.thetaInt, HTie, HTiue, HTig, HTij, PhiT, Vinf, Vmin, Vszamitott, PhiV, PhiRH, PhiHL, fajlagos: h.A > 0 ? PhiHL / h.A : 0 };
   });

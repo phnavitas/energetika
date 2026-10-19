@@ -26,7 +26,12 @@ export interface HelyisegHsz {
   padlo: boolean;
   szomszedok: { id: string; helyisegId: string; A: number; U: number }[];
 }
-export interface HoszuksegletBeallitas { thetaE: number; n50: number; vedettseg: hoszukseglet.Vedettseg; Gw: number; fRH: number; }
+export interface HoszuksegletBeallitas {
+  thetaE: number; n50: number; vedettseg: hoszukseglet.Vedettseg; Gw: number;
+  /** Felfűtési többlet: 'nincs' (folyamatos fűtés), 'fajlagos' (fRH W/m²), 'arany' (ΦT+ΦV %-ában). */
+  rhMod?: 'nincs' | 'fajlagos' | 'arany';
+  fRH: number; rhArany?: number;
+}
 export const HSZ_ALAP: HoszuksegletBeallitas = { thetaE: -15, n50: 3, vedettseg: 'mersekelt', Gw: 1, fRH: 0 };
 
 export type Szerep = 'fal' | 'padlas' | 'teto' | 'pincefodem' | 'padlo' | 'belso';
@@ -78,6 +83,8 @@ export interface Felulet {
   darab?: number;
   tajolas?: Tajolas | null;
   hajlasszog?: 0 | Hajlasszog;
+  /** Opak felület méretből: határoló hossz × magasság (a bruttó felület A ebből adódik). */
+  meret?: { hossz: number; magassag: number };
   /** A nyílászáró ebből a falból vonódik le. */
   szuloId?: string;
   chi?: number;
@@ -94,7 +101,11 @@ export interface Felulet {
 // Gépészet: a szett csak kiindulópont, minden elem külön szerkeszthető.
 
 /** Fűtési alrendszer; bivalens rendszernél több is lehet, a lefedések összege 1. */
-export interface FutesAlrendszerUI extends FutesSablon { id: string; nev: string; szettKod?: string; }
+export interface FutesAlrendszerUI extends FutesSablon {
+  id: string; nev: string; szettKod?: string;
+  /** Kiszolgált alapterület [m²]: ha megadott, a lefedés = terület / AN, és a táblázatok ezzel a rendszer-alapterülettel számolnak. */
+  terulet?: number;
+}
 export interface HmvUI extends HmvSablon { szettKod?: string; }
 export interface SzellozesUI {
   /** Hővisszanyerő hatásfoka (0..1). */
@@ -137,7 +148,7 @@ export interface Projekt {
   nyilaszarok: NyilaszaroTipus[];
   feluletek: Felulet[];
   gepeszet: Gepeszet;
-  tanusito: { nev: string; jogosultsag: string; email: string; telefon: string };
+  tanusito: Tanusito;
   /** Helyiségenkénti hőszükséglet beállításai. */
   hoszukseglet?: HoszuksegletBeallitas;
   /** Csatolt fotók (tömörített JPEG dataURL); az e-tanúsítás XML Photos blokkjába és a jegyzőkönyvbe kerülnek. */
@@ -155,6 +166,18 @@ export const FOTO_KATEGORIAK: { ertek: FotoKategoria; nev: string }[] = [
   { ertek: 'CharacteristicHeatExchanger', nev: 'Jellemző hőleadó' },
 ];
 export interface Foto { id: string; kategoria: FotoKategoria; megjegyzes?: string; dataUrl: string; szel: number; mag: number }
+
+/** A tanúsító adatai (XML CertifierDetails) és a névjegyzéki ellenőrzés nyoma. */
+export interface Tanusito {
+  nev: string;
+  /** Névjegyzéki szám a jogosultság kódjával, pl. „TÉ 11-0296”. */
+  jogosultsag: string;
+  email: string; telefon: string;
+  kamara?: 'MEK' | 'MMK';
+  cim?: { iranyitoszam: string; telepules: string; kozterulet: string; kozteruletJelleg: string; hazszam: string };
+  /** Kézi ellenőrzés a kamarai névjegyzékben: dátum, talált állapot, jogosultság lejárata, forrás. */
+  ellenorzes?: { datum: string; aktiv: boolean; lejarat?: string; forras: string };
+}
 
 export const ujId = () => Math.random().toString(36).slice(2, 10);
 
@@ -289,6 +312,18 @@ export function geometria(p: Projekt): Geometria {
   return { AN, V, Alehulo };
 }
 
+/** Átlagos belmagasság a fűtött helyiségekből (alapterülettel súlyozva). */
+export function atlagBelmagassag(p: Projekt): number {
+  const f = p.helyisegek.filter((h) => h.kategoria !== 'gyengen_kapcsolt' && h.A > 0);
+  const A = f.reduce((s, h) => s + h.A, 0);
+  return A > 0 ? Math.round((f.reduce((s, h) => s + h.A * h.h, 0) / A) * 100) / 100 : 2.7;
+}
+
+/** Egy rétegrendhez a helyiségeknél (hőszükséglet) megadott külső falhosszak összege. */
+export function falhosszHelyisegekbol(p: Projekt, retegrendId: string | undefined): number {
+  return Math.round(p.helyisegek.reduce((s, h) => s + (h.hsz?.kulsoFalak ?? []).filter((k) => !retegrendId || k.retegrendId === retegrendId).reduce((a, k) => a + k.hossz, 0), 0) * 100) / 100;
+}
+
 export function feluletNettoA(p: Projekt, f: Felulet): number {
   if (f.fajta === 'nyilaszaro') {
     const n = p.nyilaszarok.find((x) => x.id === f.nyilaszaroId);
@@ -337,7 +372,7 @@ export function atalakit(p: Projekt): Atalakitas {
 
   const gp = p.gepeszet;
   if (!gp.futes.length) hibak.push('Vegyél fel legalább egy fűtési rendszert.');
-  const lefedesOssz = gp.futes.reduce((x, f) => x + (f.lefedes ?? 1), 0);
+  const lefedesOssz = gp.futes.reduce((x, f) => x + (gp.futes.length > 1 && f.terulet && g.AN > 0 ? f.terulet / g.AN : f.lefedes ?? 1), 0);
   if (gp.futes.length && Math.abs(lefedesOssz - 1) > 0.005) hibak.push(`A fűtési rendszerek lefedési arányainak összege ${(lefedesOssz * 100).toFixed(0)}%; 100% kell.`);
   for (const n of gp.napelem) {
     if (n.modszer !== 'pvgis') continue;
@@ -347,8 +382,8 @@ export function atalakit(p: Projekt): Atalakitas {
   }
   if (hibak.length) return { bemenet: null, hibak, geometria: g };
 
-  const futes = gp.futes.map(({ id: _id, szettKod: _sz, szabalyozas, ...a }) => ({
-    ...structuredClone(a), Arszr: g.AN, zona: 'F1', lefedes: gp.futes.length > 1 ? a.lefedes ?? 1 : 1,
+  const futes = gp.futes.map(({ id: _id, szettKod: _sz, terulet, szabalyozas, ...a }) => ({
+    ...structuredClone(a), Arszr: terulet && terulet > 0 ? terulet : g.AN, zona: 'F1', lefedes: gp.futes.length > 1 ? (terulet && g.AN > 0 ? terulet / g.AN : a.lefedes ?? 1) : 1,
     epszilonSzab: szabalyozasErtek(szabalyozas),
   }));
   const { szettKod: _h, ...hmvAlap } = gp.hmv;
@@ -481,14 +516,14 @@ export function hoszuksegletBemenet(p: Projekt): { bemenet: hoszukseglet.HszBeme
     return {
       id: h.id, nev: h.nev, A: h.A, V: h.A * h.h, thetaInt: theta, nmin: hz.nmin ?? alap.nmin,
       nyilasok: hz.nyilasok ?? (nyilasDb >= 2 ? 'tobb' : nyilasDb === 1 ? 'egy' : 'nincs'),
-      elemek, fRH: be.fRH,
+      elemek, fRH: be.rhMod === 'fajlagos' || (!be.rhMod && be.fRH) ? be.fRH : 0,
     };
   });
   const gsz = p.gepeszet.szellozes;
   return {
     bemenet: {
       thetaE: be.thetaE, thetaME: klima.KULSO_HOMERSEKLET_EVES, n50: be.n50, vedettseg: be.vedettseg, Gw: be.Gw,
-      hovisszanyeres: gsz ? { etaR: gsz.etaR } : null, helyisegek,
+      hovisszanyeres: gsz ? { etaR: gsz.etaR } : null, rhArany: be.rhMod === 'arany' ? (be.rhArany ?? 0.1) : 0, helyisegek,
     },
     hibak, osszevetes, ablakA,
   };

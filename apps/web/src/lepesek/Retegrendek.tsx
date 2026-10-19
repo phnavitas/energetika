@@ -5,6 +5,7 @@ import { useTavoli, KonyvtarbaGomb } from '../fiok';
 import { retegrendKonyvtarba } from '../tarolo';
 import { anyagLista, anyag, beepitett } from '../katalogus';
 import { Mezo, Szam, Szoveg, Valaszto, sz, kov } from '../ui';
+import { Fogantyu, huzasProps } from '../huzas';
 import { ujId, retegrendSzamitas, retegrendVastagsag, SZEREP_ALAP, SZEREP_NEV, kovetelmenyNev, type Projekt, type Retegrend, type Szerep } from '../modell';
 
 type Modosit = (fn: (p: Projekt) => void) => void;
@@ -91,6 +92,12 @@ function Szerkeszto({ r, m, kijelolt, jelol, torol }: { r: Retegrend; m: (fn: (r
   const ANYAGOK = anyagLista();
   const kategoriak = [...new Set(ANYAGOK.filter((a) => !a.irodai).map((a) => a.kategoria))];
   const irodaiak = ANYAGOK.filter((a) => a.irodai);
+  const retegAthelyez = (id: string, celId: string) => m((q) => {
+    const i = q.retegek.findIndex((x) => x.id === id), j = q.retegek.findIndex((x) => x.id === celId);
+    if (i < 0 || j < 0 || i === j) return;
+    const [t] = q.retegek.splice(i, 1);
+    q.retegek.splice(j, 0, t!);
+  });
 
   return (
     <div style="display:flex;flex-direction:column;gap:16px">
@@ -127,15 +134,15 @@ function Szerkeszto({ r, m, kijelolt, jelol, torol }: { r: Retegrend; m: (fn: (r
 
       <div class="tabla-gorgeto">
         <table class="tabla retegek-tabla">
-          <thead><tr><th></th><th>Réteg (belülről kifelé)</th><th class="szam">Vastagság</th><th class="szam">λ</th><th class="szam">R</th><th></th></tr></thead>
+          <thead><tr><th aria-label="Sorrend"></th><th>Réteg (belülről kifelé)</th><th class="szam">Vastagság</th><th class="szam">λ</th><th class="szam">R</th><th></th></tr></thead>
           <tbody>
             {r.retegek.map((x, i) => {
               const a = anyag(x.anyagId);
               const R = o.e?.retegR[i];
               const sajat = !x.anyagId;
               return (
-                <tr style={kijelolt === x.id ? 'background:var(--kijelolt)' : ''} onFocusIn={() => jelol(x.id)}>
-                  <td>{i + 1}</td>
+                <tr style={kijelolt === x.id ? 'background:var(--kijelolt)' : ''} onFocusIn={() => jelol(x.id)} {...huzasProps(`reteg-${r.id}`, x.id, retegAthelyez)}>
+                  <td style="white-space:nowrap"><Fogantyu cimke={`${i + 1}. réteg`} fel={() => i > 0 && retegAthelyez(x.id, r.retegek[i - 1]!.id)} le={() => i < r.retegek.length - 1 && retegAthelyez(x.id, r.retegek[i + 1]!.id)} /> {i + 1}</td>
                   <td style="min-width:240px">
                     <select aria-label={`${i + 1}. réteg anyaga`} value={x.anyagId ?? (x.R !== undefined ? '_r' : x.legreteg ? '_leg' : '_sajat')} onChange={(e) => {
                       const v = (e.target as HTMLSelectElement).value;
@@ -168,8 +175,6 @@ function Szerkeszto({ r, m, kijelolt, jelol, torol }: { r: Retegrend; m: (fn: (r
                   </td>
                   <td class="szam">{R !== undefined ? sz(R, 3) : '–'}</td>
                   <td style="white-space:nowrap">
-                    <button class="gomb halk-gomb" aria-label="Feljebb" disabled={i === 0} onClick={() => m((q) => { const [t] = q.retegek.splice(i, 1); q.retegek.splice(i - 1, 0, t!); })}>↑</button>
-                    <button class="gomb halk-gomb" aria-label="Lejjebb" disabled={i === r.retegek.length - 1} onClick={() => m((q) => { const [t] = q.retegek.splice(i, 1); q.retegek.splice(i + 1, 0, t!); })}>↓</button>
                     <button class="gomb halk-gomb" onClick={() => m((q) => { q.retegek.splice(i, 1); })}>Törlés</button>
                   </td>
                 </tr>

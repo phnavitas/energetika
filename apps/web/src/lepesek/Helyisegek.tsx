@@ -5,10 +5,19 @@ import { ujId, type Projekt, type HelyisegKategoria } from '../modell';
 type Modosit = (fn: (p: Projekt) => void) => void;
 
 const KATEGORIAK: { ertek: HelyisegKategoria; nev: string }[] = [
-  { ertek: 'kondicionalt', nev: 'Fűtött' },
-  { ertek: 'erosen_kapcsolt', nev: 'Lakótérhez tartozó, fűtetlen (WC, kamra, közlekedő)' },
-  { ertek: 'gyengen_kapcsolt', nev: 'Fűtetlen tér (padlás, pince, garázs)' },
+  { ertek: 'kondicionalt', nev: 'Fűtött (lakószoba, fürdő, WC, közlekedő, előtér)' },
+  { ertek: 'erosen_kapcsolt', nev: 'Lakótéren belüli fűtetlen (kamra, tároló, gardrób)' },
+  { ertek: 'gyengen_kapcsolt', nev: 'Fűtetlen tér (garázs, padlás, pince, külső tároló)' },
 ];
+
+/** Besorolás javaslata a helyiség nevéből (5.1. táblázat); a felhasználó felülírhatja. */
+export function kategoriaJavaslat(nev: string): HelyisegKategoria | null {
+  const n = nev.toLowerCase();
+  if (/garázs|garazs|padlás|padlas|pince|kazánház|kazanhaz|műhely|muhely|szín\b|fáskamra|faskamra/.test(n)) return 'gyengen_kapcsolt';
+  if (/kamra|tároló|tarolo|gardrób|gardrob|spájz|spajz|éléskamra/.test(n)) return 'erosen_kapcsolt';
+  if (/wc|közlekedő|kozlekedo|előtér|eloter|folyosó|folyoso|lépcső|lepcso|szoba|nappali|konyha|étkező|etkezo|fürdő|furdo|háló|halo|dolgozó|mosókonyha|háztartási/.test(n)) return 'kondicionalt';
+  return null;
+}
 
 export function HelyisegekLepes({ p, modosit }: { p: Projekt; modosit: Modosit }) {
   const futott = p.helyisegek.filter((h) => h.kategoria !== 'gyengen_kapcsolt');
@@ -20,14 +29,14 @@ export function HelyisegekLepes({ p, modosit }: { p: Projekt; modosit: Modosit }
     <>
       <section class="szakasz">
         <h2>Helyiségek</h2>
-        <p class="halk">A hasznos alapterület és a fűtött térfogat a helyiségekből adódik. Az 5.1. táblázat szerint a lakótéren belüli fűtetlen helyiségek beleszámítanak, a fűtetlen terek nem.</p>
+        <p class="halk">A hasznos alapterület és a fűtött térfogat a helyiségekből adódik. Az 5.1. táblázat szerint a lakótéren belüli fűtetlen helyiségek (kamra, tároló) beleszámítanak, a fűtetlen terek (garázs, padlás, pince) nem: ezek a határolásnál fűtetlen térként (b tényezővel) jelennek meg. A besorolást a program a névből javasolja.</p>
         <div class="tabla-gorgeto">
           <table class="tabla">
             <thead><tr><th>Helyiség</th><th>Besorolás</th><th class="szam">Alapterület</th><th class="szam">Belmagasság</th><th class="szam">Térfogat</th><th></th></tr></thead>
             <tbody>
               {p.helyisegek.map((h, i) => (
                 <tr>
-                  <td style="min-width:200px"><Szoveg ertek={h.nev} hely="pl. Nappali" valt={(v) => modosit((q) => { q.helyisegek[i]!.nev = v; })} /></td>
+                  <td style="min-width:200px"><Szoveg ertek={h.nev} hely="pl. Nappali" valt={(v) => modosit((q) => { const x = q.helyisegek[i]!; const regi = kategoriaJavaslat(x.nev); x.nev = v; const uj = kategoriaJavaslat(v); if (uj && (!x.nev || regi === x.kategoria || !regi)) x.kategoria = uj; })} /></td>
                   <td style="min-width:200px"><Valaszto cimke="Besorolás" ertek={h.kategoria} valt={(v) => modosit((q) => { q.helyisegek[i]!.kategoria = v; })} opciok={KATEGORIAK} /></td>
                   <td style="width:130px"><Szam cimke="Alapterület" ertek={h.A} egyseg="m²" valt={(v) => modosit((q) => { q.helyisegek[i]!.A = v; })} /></td>
                   <td style="width:120px"><Szam cimke="Belmagasság" ertek={h.h} egyseg="m" valt={(v) => modosit((q) => { q.helyisegek[i]!.h = v; })} /></td>

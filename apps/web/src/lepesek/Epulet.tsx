@@ -3,6 +3,7 @@ import { panel, epuletfizika, tipologia as TP } from '@mag/index';
 import { Mezo, Szoveg, Szam, Valaszto, sz } from '../ui';
 import { ujId, retegrendSzamitas, SZEREP_ALAP, type Projekt, type Retegrend, type Szerep } from '../modell';
 import { FotokSzakasz } from './Fotok';
+import { TanusitoSzakasz } from './Tanusito';
 
 type Modosit = (fn: (p: Projekt) => void) => void;
 
@@ -73,6 +74,8 @@ export function EpuletLepes({ p, modosit }: { p: Projekt; modosit: Modosit }) {
           <Mezo cim="Szintek száma"><Szam ertek={m.szintek} valt={(v) => modosit((q) => { q.meta.szintek = Math.max(1, Math.round(v)); })} lepes={1} min={1} /></Mezo>
         </div>
       </section>
+
+      <TanusitoSzakasz p={p} modosit={modosit} />
 
       <section class="szakasz">
         <h2>Meglévő épület: tipikus szerkezetek</h2>

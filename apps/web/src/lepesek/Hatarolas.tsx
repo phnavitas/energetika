@@ -1,6 +1,7 @@
 import { klima } from '@mag/index';
 import { Mezo, Szam, Szoveg, Valaszto, sz, kov } from '../ui';
-import { ujId, feluletNettoA, geometria, CHI_VALASZTEK, HATAR_NEV, SZEREP_NEV, type Projekt, type HatarKod, type Felulet } from '../modell';
+import { ujId, feluletNettoA, geometria, atlagBelmagassag, falhosszHelyisegekbol, CHI_VALASZTEK, HATAR_NEV, SZEREP_NEV, type Projekt, type HatarKod, type Felulet } from '../modell';
+import { Fogantyu, huzasProps } from '../huzas';
 
 type Modosit = (fn: (p: Projekt) => void) => void;
 
@@ -16,26 +17,58 @@ export function HatarolasLepes({ p, modosit }: { p: Projekt; modosit: Modosit })
   const opak = p.feluletek.filter((f) => f.fajta === 'opak');
   const ny = p.feluletek.filter((f) => f.fajta === 'nyilaszaro');
   const padlok = p.feluletek.filter((f) => f.fajta === 'padlo');
+  /** Felület áthelyezése a lista egy másik eleme elé (húzás) vagy egy hellyel (gombbal) – a saját fajtáján belül. */
+  const athelyez = (id: string, celId: string) => modosit((q) => {
+    const i = q.feluletek.findIndex((x) => x.id === id), j = q.feluletek.findIndex((x) => x.id === celId);
+    if (i < 0 || j < 0 || i === j) return;
+    const [t] = q.feluletek.splice(i, 1);
+    q.feluletek.splice(q.feluletek.findIndex((x) => x.id === celId) + (i < j ? 1 : 0), 0, t!);
+  });
+  const lep = (id: string, irany: -1 | 1) => {
+    const f = p.feluletek.find((x) => x.id === id)!;
+    const lista = p.feluletek.filter((x) => x.fajta === f.fajta);
+    const cel = lista[lista.indexOf(f) + irany];
+    if (cel) athelyez(id, cel.id);
+  };
   const retegrendOpciok = (padlo: boolean) => p.retegrendek.filter((r) => (r.szerep === 'padlo') === padlo).map((r) => ({ ertek: r.id, nev: r.nev }));
 
   return (
     <>
       <section class="szakasz">
         <h2>Falak, födémek, tetők</h2>
-        <p class="halk">Bruttó felületet adj meg; a hozzá rendelt nyílászárókat a program levonja. A csatlakozási hőhidakat a 6.1. táblázat χ tényezője veszi figyelembe.</p>
+        <p class="halk">Bruttó felületet adj meg közvetlenül, vagy határoló hossz × magasság alapján (alapérték az átlagos belmagasság; a hossz a helyiségeknél megadott külső falhosszakból is átvehető). A hozzá rendelt nyílászárókat a program levonja. A sorok a fogantyúval áthúzhatók. A csatlakozási hőhidakat a 6.1. táblázat χ tényezője veszi figyelembe.</p>
         <div class="tabla-gorgeto">
           <table class="tabla">
-            <thead><tr><th>Megnevezés</th><th>Rétegrend</th><th>Határoló tér</th><th class="szam">Bruttó</th><th class="szam">Nettó</th><th>Hőhidasság</th><th></th></tr></thead>
+            <thead><tr><th aria-label="Sorrend"></th><th>Megnevezés</th><th>Rétegrend</th><th>Határoló tér</th><th>Bruttó felület</th><th class="szam">Nettó</th><th>Hőhidasság</th><th></th></tr></thead>
             <tbody>
               {opak.map((f) => {
                 const r = p.retegrendek.find((x) => x.id === f.retegrendId);
                 const chiOpciok = CHI_VALASZTEK.filter((c) => !r || c.szerep === r.szerep || (r.szerep === 'teto' && c.szerep === 'teto'));
                 return (
-                  <tr>
+                  <tr {...huzasProps('opak', f.id, athelyez)}>
+                    <td><Fogantyu cimke={f.nev} fel={() => lep(f.id, -1)} le={() => lep(f.id, 1)} /></td>
                     <td style="min-width:160px"><Szoveg ertek={f.nev} valt={(v) => fv(f.id, (x) => { x.nev = v; })} /></td>
                     <td style="min-width:200px"><Valaszto cimke="Rétegrend" ertek={f.retegrendId} ures="Válassz…" valt={(v) => fv(f.id, (x) => { x.retegrendId = v; })} opciok={retegrendOpciok(false)} /></td>
                     <td style="min-width:170px"><Valaszto cimke="Határoló tér" ertek={f.hatar} valt={(v) => fv(f.id, (x) => { x.hatar = v; })} opciok={HATAROK} /></td>
-                    <td style="min-width:120px"><Szam cimke="Bruttó felület" ertek={f.A} egyseg="m²" valt={(v) => fv(f.id, (x) => { x.A = v; })} /></td>
+                    <td style="min-width:230px">
+                      <div class="meret-mod">
+                        <select aria-label="Felület megadása" value={f.meret ? 'meret' : 'A'} onChange={(e) => fv(f.id, (x) => {
+                          if ((e.target as HTMLSelectElement).value === 'meret') { const h = falhosszHelyisegekbol(p, x.retegrendId) || Math.round(((x.A ?? 0) / atlagBelmagassag(p)) * 100) / 100; x.meret = { hossz: h, magassag: atlagBelmagassag(p) }; x.A = Math.round(h * x.meret.magassag * 100) / 100; }
+                          else delete x.meret;
+                        })}>
+                          <option value="A">Felület</option>
+                          <option value="meret">Hossz × magasság</option>
+                        </select>
+                        {f.meret ? <>
+                          <Szam cimke="Határoló hossz" ertek={f.meret.hossz} egyseg="m" valt={(v) => fv(f.id, (x) => { x.meret!.hossz = v; x.A = Math.round(v * x.meret!.magassag * 100) / 100; })} />
+                          <Szam cimke="Magasság (belmagasság)" ertek={f.meret.magassag} egyseg="m" valt={(v) => fv(f.id, (x) => { x.meret!.magassag = v; x.A = Math.round(x.meret!.hossz * v * 100) / 100; })} />
+                          <span class="halkabb">= {sz(f.A, 2)} m²</span>
+                          {falhosszHelyisegekbol(p, f.retegrendId) > 0 && Math.abs(falhosszHelyisegekbol(p, f.retegrendId) - f.meret.hossz) > 0.01 && (
+                            <button class="link-gomb" onClick={() => fv(f.id, (x) => { x.meret!.hossz = falhosszHelyisegekbol(p, x.retegrendId); x.A = Math.round(x.meret!.hossz * x.meret!.magassag * 100) / 100; })}>hossz a helyiségekből: {sz(falhosszHelyisegekbol(p, f.retegrendId), 2)} m</button>
+                          )}
+                        </> : <Szam cimke="Bruttó felület" ertek={f.A} egyseg="m²" valt={(v) => fv(f.id, (x) => { x.A = v; })} />}
+                      </div>
+                    </td>
                     <td class="szam">{sz(feluletNettoA(p, f), 2)} m²</td>
                     <td style="min-width:240px">
                       <select aria-label="Hőhidasság" onChange={(e) => { const i = Number((e.target as HTMLSelectElement).value); fv(f.id, (x) => { x.chiKod = i; x.chi = CHI_VALASZTEK[i]!.ertek; }); }}>
@@ -52,7 +85,11 @@ export function HatarolasLepes({ p, modosit }: { p: Projekt; modosit: Modosit })
             </tbody>
           </table>
         </div>
-        <button class="gomb" style="margin-top:12px" onClick={() => modosit((q) => { q.feluletek.push({ id: ujId(), nev: 'Homlokzati fal', fajta: 'opak', retegrendId: q.retegrendek.find((r) => r.szerep === 'fal')?.id, hatar: 'kulso', A: 0, chi: 0.2 }); })}>Felület hozzáadása</button>
+        <button class="gomb" style="margin-top:12px" onClick={() => modosit((q) => {
+          const rid = q.retegrendek.find((r) => r.szerep === 'fal')?.id;
+          const h = falhosszHelyisegekbol(q, rid), m = atlagBelmagassag(q);
+          q.feluletek.push({ id: ujId(), nev: 'Homlokzati fal', fajta: 'opak', retegrendId: rid, hatar: 'kulso', meret: { hossz: h, magassag: m }, A: Math.round(h * m * 100) / 100, chi: 0.2 });
+        })}>Felület hozzáadása</button>
       </section>
 
       <section class="szakasz">
@@ -60,10 +97,11 @@ export function HatarolasLepes({ p, modosit }: { p: Projekt; modosit: Modosit })
         <p class="halk">A tájolás és a dőlés a havi sugárzási nyereséghez kell (2. függ. 1.6. táblázat). Ha a nyílászárót egy falhoz rendeled, a fal felületéből levonódik.</p>
         <div class="tabla-gorgeto">
           <table class="tabla">
-            <thead><tr><th>Megnevezés</th><th>Típus</th><th class="szam">Db</th><th>Tájolás</th><th>Dőlés</th><th>Falban</th><th>Helyiség</th><th class="szam">Felület</th><th></th></tr></thead>
+            <thead><tr><th aria-label="Sorrend"></th><th>Megnevezés</th><th>Típus</th><th class="szam">Db</th><th>Tájolás</th><th>Dőlés</th><th>Falban</th><th>Helyiség</th><th class="szam">Felület</th><th></th></tr></thead>
             <tbody>
               {ny.map((f) => (
-                <tr>
+                <tr {...huzasProps('nyilas', f.id, athelyez)}>
+                  <td><Fogantyu cimke={f.nev} fel={() => lep(f.id, -1)} le={() => lep(f.id, 1)} /></td>
                   <td style="min-width:150px"><Szoveg ertek={f.nev} valt={(v) => fv(f.id, (x) => { x.nev = v; })} /></td>
                   <td style="min-width:180px"><Valaszto cimke="Típus" ertek={f.nyilaszaroId} ures="Válassz…" valt={(v) => fv(f.id, (x) => { x.nyilaszaroId = v; })} opciok={p.nyilaszarok.map((n) => ({ ertek: n.id, nev: n.nev }))} /></td>
                   <td style="min-width:70px"><Szam cimke="Darab" ertek={f.darab ?? 1} lepes={1} min={1} valt={(v) => fv(f.id, (x) => { x.darab = Math.max(1, Math.round(v)); })} /></td>

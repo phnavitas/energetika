@@ -5,6 +5,7 @@ import { Osztalyskala, HaviMerleg } from '../abrak/Eredmenyabrak';
 import { Mezo, Szoveg, sz, kov } from '../ui';
 import type { Atalakitas, Geometria, Projekt } from '../modell';
 import { jegyzokonyvPdf, base64 } from '../jegyzokonyv';
+import { sulyozo } from '@mag/index';
 
 type Modosit = (fn: (p: Projekt) => void) => void;
 const MIN: Record<string, string> = { kivalo: 'kiváló', jo: 'jó', kozepes: 'közepes', gyenge: 'gyenge', rossz: 'rossz' };
@@ -63,7 +64,7 @@ export function EredmenyLepes({ p, e, g, atal, hibak, modosit, rogzit }: { p: Pr
         epuletCim: { iranyitoszam: p.meta.irsz, telepules: p.meta.telepules, kozterulet: p.meta.kozterulet, kozteruletJelleg: p.meta.kozteruletJelleg, epulet: '-', lepcsohaz: '-', emelet: '-', ajto: p.meta.hazszam || '-' },
         hrsz: p.meta.hrsz, tanusitasOka: 'Other', rendeltetes: 'ResidentialBuilding', epuletKategoria: 'SingleFamilyDetachedHome',
         epitesiEv: p.meta.epitesiEv, vedett: false, szintekSzama: p.meta.szintek, kozforgalmu: false, kozTulajdon: false, onalloRendeltetesiEgyseg: false,
-        tanusito: { nev: p.tanusito.nev, cim: { iranyitoszam: '', telepules: '', kozterulet: '', kozteruletJelleg: '', hazszam: '' }, telefon: p.tanusito.telefon, email: p.tanusito.email, jogosultsag: p.tanusito.jogosultsag },
+        tanusito: { nev: p.tanusito.nev, cim: p.tanusito.cim ?? { iranyitoszam: '', telepules: '', kozterulet: '', kozteruletJelleg: '', hazszam: '' }, telefon: p.tanusito.telefon, email: p.tanusito.email, jogosultsag: p.tanusito.jogosultsag },
         szoftver: 'ÉKM energetikai számító 0.3 (fejlesztői előnézet)', helysziniSzemle: new Date().toISOString().slice(0, 10),
         fotok: (p.fotok ?? []).map((f) => ({ kategoria: f.kategoria, jpegBase64: f.dataUrl.slice(f.dataUrl.indexOf(',') + 1) })), jegyzokonyvPdfBase64: pdf, alternativEnergiak: e!.rendszerek.some((r) => r.tetelek.some((t) => t.energiahordozo === 'kornyezeti_ho')) ? ['HeatPump'] : [],
       }, { AN: g.AN, V: g.V });
@@ -114,11 +115,16 @@ export function EredmenyLepes({ p, e, g, atal, hibak, modosit, rogzit }: { p: Pr
             <tbody>
               <tr><td>Fűtés</td><td class="szam">{sz(ind.celonkent.futes.nren / ind.AN)}</td><td class="szam">{sz(ind.celonkent.futes.ren / ind.AN)}</td><td class="szam">{sz(ind.celonkent.futes.CO2 / ind.AN)}</td><td>{e.rendszerErtekeles.futes ? `${MIN[e.rendszerErtekeles.futes.minosites]} (${sz(e.rendszerErtekeles.futes.szazalek, 1)}%)` : '–'}</td></tr>
               <tr><td>Használati melegvíz</td><td class="szam">{sz(ind.celonkent.hmv.nren / ind.AN)}</td><td class="szam">{sz(ind.celonkent.hmv.ren / ind.AN)}</td><td class="szam">{sz(ind.celonkent.hmv.CO2 / ind.AN)}</td><td>{e.rendszerErtekeles.hmv ? `${MIN[e.rendszerErtekeles.hmv.minosites]} (${sz(e.rendszerErtekeles.hmv.szazalek, 1)}%)` : '–'}</td></tr>
+              {ind.celonkent.szellozes.tot !== 0 && <tr><td>Gépi szellőzés</td><td class="szam">{sz(ind.celonkent.szellozes.nren / ind.AN)}</td><td class="szam">{sz(ind.celonkent.szellozes.ren / ind.AN)}</td><td class="szam">{sz(ind.celonkent.szellozes.CO2 / ind.AN)}</td><td>–</td></tr>}
+              {ind.celonkent.hutes.tot !== 0 && <tr><td>Hűtés</td><td class="szam">{sz(ind.celonkent.hutes.nren / ind.AN)}</td><td class="szam">{sz(ind.celonkent.hutes.ren / ind.AN)}</td><td class="szam">{sz(ind.celonkent.hutes.CO2 / ind.AN)}</td><td>–</td></tr>}
+              {ind.celonkent.export.tot !== 0 && <tr><td>Napelem – exportált energia (levonás)</td><td class="szam">−{sz(ind.celonkent.export.nren / ind.AN)}</td><td class="szam">−{sz(ind.celonkent.export.ren / ind.AN)}</td><td class="szam">−{sz(ind.celonkent.export.CO2 / ind.AN)}</td><td>–</td></tr>}
             </tbody>
             <tfoot><tr><td>Összesen [kWh/m²a, kg/m²a]</td><td class="szam">{sz(ind.fajlagos.EnrenFajl)}</td><td class="szam">{sz(ind.fajlagos.ErenFajl)}</td><td class="szam">{sz(ind.fajlagos.ECO2Fajl)}</td><td /></tr></tfoot>
           </table>
         </div>
       </section>
+
+      {e.napelem.length > 0 && <NapelemEredmeny p={p} e={e} />}
 
       <section class="szakasz">
         <h2>Szerkezetek</h2>
@@ -146,12 +152,7 @@ export function EredmenyLepes({ p, e, g, atal, hibak, modosit, rogzit }: { p: Pr
       <section class="szakasz">
         <h2>Tanúsítvány</h2>
         <p class="halk">A feltöltési fájlhoz a tanúsító adatai, a fotók és a számítási jegyzőkönyv kell; a jegyzőkönyvet a program elkészíti és az XML-be is beágyazza. Az XML jelenleg előnézet: a szerkezete egy elfogadott WinWatt-exportot követ, a Lechner XSD-vel még nem ellenőrzött.</p>
-        <div class="racs" style="margin-bottom:12px">
-          <Mezo cim="Tanúsító neve"><Szoveg ertek={p.tanusito.nev} valt={(v) => modosit((q) => { q.tanusito.nev = v; })} /></Mezo>
-          <Mezo cim="Jogosultság száma"><Szoveg ertek={p.tanusito.jogosultsag} hely="TÉ 00-0000" valt={(v) => modosit((q) => { q.tanusito.jogosultsag = v; })} /></Mezo>
-          <Mezo cim="E-mail"><Szoveg ertek={p.tanusito.email} valt={(v) => modosit((q) => { q.tanusito.email = v; })} /></Mezo>
-          <Mezo cim="Telefon"><Szoveg ertek={p.tanusito.telefon} valt={(v) => modosit((q) => { q.tanusito.telefon = v; })} /></Mezo>
-        </div>
+        <p style="margin-bottom:12px">{p.tanusito.nev ? <>Tanúsító: <strong>{p.tanusito.nev}</strong>, {p.tanusito.jogosultsag || 'névjegyzéki szám hiányzik'}{p.tanusito.ellenorzes ? <span class={`jel ${p.tanusito.ellenorzes.aktiv ? 'jo' : 'rossz'}`} style="margin-left:8px">{p.tanusito.ellenorzes.aktiv ? 'névjegyzékben aktív' : 'nem aktív'} ({new Date(p.tanusito.ellenorzes.datum).toLocaleDateString('hu-HU')})</span> : <span class="halkabb"> – névjegyzékben nem ellenőrzött</span>}</> : <span class="jel rossz">A tanúsító adatai hiányoznak – az Épület lépésben adhatók meg.</span>}</p>
         <div class="gombsor">
           <button class="gomb fo" disabled={pdfFut} onClick={xml}>XML előnézet letöltése</button>
           <button class="gomb" disabled={pdfFut} onClick={async () => {
@@ -166,5 +167,56 @@ export function EredmenyLepes({ p, e, g, atal, hibak, modosit, rogzit }: { p: Pr
         {rogzitve && <div class="siker-doboz" style="margin-top:12px">{rogzitve}</div>}
       </section>
     </>
+  );
+}
+
+const HO = ['jan', 'feb', 'márc', 'ápr', 'máj', 'jún', 'júl', 'aug', 'szept', 'okt', 'nov', 'dec'];
+
+/** Napelemek összefoglalója: termelés, módszer, fajlagos hozam, levonás hatása, a saját villamos fogyasztás fedezettsége. */
+function NapelemEredmeny({ p, e }: { p: Projekt; e: EpuletEredmeny }) {
+  const ind = e.indikatorok;
+  const W = e.napelem.reduce((s, n) => s + n.W, 0);
+  const kWp = p.gepeszet.napelem.reduce((s, n) => s + n.kWp, 0);
+  const villamos = ind.vegenergia.villamos ?? 0;
+  const fe = sulyozo.SULYOZO.export_halozat, ft = sulyozo.SULYOZO.nap_pv;
+  const EnrenNelkul = ind.fajlagos.EnrenFajl + ind.celonkent.export.nren / ind.AN;
+  const havi = Array.from({ length: 12 }, (_, i) => p.gepeszet.napelem.reduce((s, n) => s + (n.modszer === 'pvgis' && n.pvgis ? n.pvgis.havi[i]!.E_m : 0), 0));
+  const vanHavi = havi.some((x) => x > 0);
+  const maxH = Math.max(...havi, 1);
+  return (
+    <section class="szakasz">
+      <h2>Napelem</h2>
+      <div class="kartya" style="display:flex;gap:28px;flex-wrap:wrap;margin-bottom:12px">
+        <div><p class="halkabb">Beépített teljesítmény</p><h2>{sz(kWp, 2)} kWp</h2></div>
+        <div><p class="halkabb">Éves termelés</p><h2>{sz(W, 0)} kWh/a</h2><p class="halkabb">{sz(W / Math.max(kWp, 1e-9), 0)} kWh/kWp · {sz(W / ind.AN, 1)} kWh/m²a</p></div>
+        <div><p class="halkabb">Az épület villamos végenergiája</p><h2>{sz(villamos, 0)} kWh/a</h2><p class="halkabb">a termelés ennek {villamos > 0 ? sz((W / villamos) * 100, 0) : '–'}%-a</p></div>
+        <div><p class="halkabb">Összesített energetikai jellemző</p><h2>{sz(EnrenNelkul, 1)} → {sz(ind.fajlagos.EnrenFajl, 1)}</h2><p class="halkabb">napelem nélkül → napelemmel, kWh/m²a</p></div>
+        <div><p class="halkabb">CO₂-csökkenés</p><h2>{sz(ind.celonkent.export.CO2, 0)} kg/a</h2><p class="halkabb">{sz(ind.celonkent.export.CO2 / ind.AN, 1)} kg/m²a</p></div>
+      </div>
+      <div class="tabla-gorgeto">
+        <table class="tabla">
+          <thead><tr><th>Mező</th><th class="szam">kWp</th><th>Tájolás, dőlés</th><th>Módszer</th><th class="szam">Termelés</th><th class="szam">Fajlagos</th></tr></thead>
+          <tbody>
+            {p.gepeszet.napelem.map((n, i) => (
+              <tr>
+                <td>{n.nev}</td><td class="szam">{sz(n.kWp, 2)}</td>
+                <td>{n.modszer === 'pvgis' ? `azimut ${n.azimut ?? 0}°` : n.tajolas.replace('_', '/')}, {n.hajlasszog}°</td>
+                <td>{n.modszer === 'pvgis' ? `PVGIS 5.3${n.pvgis?.meteo.sugarzasDb ? ` (${n.pvgis.meteo.sugarzasDb})` : ''}, 13.2.2` : '13.1. táblázat (egyszerűsített)'}</td>
+                <td class="szam">{sz(e.napelem[i]?.W, 0)} kWh/a</td>
+                <td class="szam">{sz((e.napelem[i]?.W ?? 0) / Math.max(n.kWp, 1e-9), 0)} kWh/kWp</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {vanHavi && (
+        <div class="kartya pv-havi" style="margin-top:12px" role="img" aria-label="Havi napelemes termelés a PVGIS szerint">
+          {havi.map((x, i) => (
+            <div class="pv-oszlop"><span class="pv-ertek">{sz(x, 0)}</span><span class="pv-sav" style={`height:${(x / maxH) * 100}%`} /><span class="halkabb">{HO[i]}</span></div>
+          ))}
+        </div>
+      )}
+      <p class="halkabb" style="margin-top:8px">Elszámolás: a teljes termelés exportáltként számít (1. függ. 13.1, 14.7): levonás = W · (f<sub>exp</sub> − f<sub>PV</sub>), nem megújuló primerenergiára {sz(fe.fnren - ft.fnren, 1)}, CO₂-re {sz((fe.fCO2 - ft.fCO2) / 1000, 3)} kg/kWh súlyozással (7. melléklet). {vanHavi ? 'A havi bontás csak a PVGIS-szel számolt mezőket tartalmazza.' : ''}</p>
+    </section>
   );
 }
