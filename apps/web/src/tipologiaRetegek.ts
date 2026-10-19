@@ -29,7 +29,10 @@ export function retegLekepez(szerep: TP.TipologiaSzerep, nev: string, regi: bool
   if (/vakolat/.test(n)) return { anyagId: regi ? 'mesz_vakolat' : 'meszcement_vakolat' };
   if (/tömör tégla|téglaboltozat/.test(n)) return { anyagId: 'tomor_tegla_falazat' };
   if (/vályog/.test(n)) return { anyagId: 'valyog_1600' };
-  if (/b30|falazóblokk|habüveg/.test(n)) return { szamolt: true };
+  if (/b30|b 30/.test(n) || n === 'falazóblokk') return { anyagId: 'tt_b_30_falazat' };
+  if (/hőszigetelő (kerámia )?falazóblokk/.test(n)) return { anyagId: 'tt_porotherm_30_n_f' };
+  if (/habüveg/.test(n)) return { anyagId: 'tt_habuveg_400_kg_m3' };
+  if (/linóleum/.test(n)) return { anyagId: 'tt_linoleum' };
   if (/pir/.test(n)) return { anyagId: 'pir_alu' };
   if (/kőzetgyapot|ásványgyapot|polisztirol|hőszigetelés/.test(n)) return { szig: true };
   if (/gipszkarton/.test(n)) return { anyagId: 'gipszkarton_rb' };
@@ -40,7 +43,7 @@ export function retegLekepez(szerep: TP.TipologiaSzerep, nev: string, regi: bool
   if (/salak/.test(n)) return { anyagId: 'salak_feltoltes' };
   if (/agyag|döngölt/.test(n)) return { anyagId: 'foldfeltoltes' };
   if (/nád/.test(n)) return { anyagId: 'nad' };
-  if (/parketta|linóleum/.test(n)) return { anyagId: 'parketta' };
+  if (/parketta/.test(n)) return { anyagId: 'parketta' };
   if (/deszk|hajópadló/.test(n)) return { anyagId: 'puhafa' };
   if (/kerámia burkolat/.test(n)) return { anyagId: 'keramia' };
   return { szamolt: true };

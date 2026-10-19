@@ -94,6 +94,8 @@ export interface Felulet {
   chiKod?: number;
   padlo?: {
     P: number; dfCm: number; z: number;
+    /** Ha megadott: a kerület ezeknek a (földszinti) külső falfelületeknek a hosszából adódik. */
+    falIds?: string[];
     perem?: { irany: 'vizszintes' | 'fuggoleges'; D: number; dCm: number; R: number };
     psiPF: number;
   };
@@ -346,6 +348,13 @@ export function falhosszHelyisegekbol(p: Projekt, retegrendId: string | undefine
   return Math.round(p.helyisegek.reduce((s, h) => s + (h.hsz?.kulsoFalak ?? []).filter((k) => !retegrendId || k.retegrendId === retegrendId).reduce((a, k) => a + k.hossz, 0), 0) * 100) / 100;
 }
 
+/** Talajon fekvő padló kitett kerülete: a kijelölt külső falak hosszának összege, vagy a megadott érték. */
+export function padloKerulet(p: Projekt, f: Felulet): number {
+  const ids = f.padlo?.falIds;
+  if (!ids?.length) return f.padlo?.P ?? 0;
+  return Math.round(p.feluletek.filter((x) => ids.includes(x.id)).reduce((s, x) => s + (x.meret?.hossz ?? 0), 0) * 100) / 100;
+}
+
 export function feluletNettoA(p: Projekt, f: Felulet): number {
   if (f.fajta === 'nyilaszaro') {
     const n = p.nyilaszarok.find((x) => x.id === f.nyilaszaroId);
@@ -379,8 +388,8 @@ export function atalakit(p: Projekt): Atalakitas {
       } else if (f.fajta === 'padlo') {
         const r = p.retegrendek.find((x) => x.id === f.retegrendId);
         if (!r || !f.padlo) { hibak.push(`„${f.nev}”: hiányzó padló rétegrend vagy kerület.`); continue; }
-        const UTp = padloUT(r, f);
-        elemek.push({ tipus: 'talaj', nev: f.nev, A: f.A ?? 0, UT: UTp, P: f.padlo.P, psiPF: f.padlo.psiPF, kovetelmenyKod: r.kovetelmenyKod });
+        const UTp = padloUT(r, f, p);
+        elemek.push({ tipus: 'talaj', nev: f.nev, A: f.A ?? 0, UT: UTp, P: padloKerulet(p, f), psiPF: f.padlo.psiPF, kovetelmenyKod: r.kovetelmenyKod });
       } else {
         const r = p.retegrendek.find((x) => x.id === f.retegrendId);
         if (!r) { hibak.push(`„${f.nev}”: nincs rétegrend kiválasztva.`); continue; }
@@ -436,11 +445,11 @@ export function atalakit(p: Projekt): Atalakitas {
 }
 
 /** Talajon fekvő padló egyenértékű hőátbocsátási tényezője (MSZ EN ISO 13370, 4.20–4.33). */
-export function padloUT(r: Retegrend, f: Felulet): number {
+export function padloUT(r: Retegrend, f: Felulet, p?: Projekt): number {
   const e = retegrendSzamitas(r);
   const Rp = e.retegR.reduce((s, x) => s + x, 0);
   return talajonFekvoPadlo({
-    A: f.A ?? 0, P: f.padlo!.P, df: f.padlo!.dfCm / 100, Rp, z: f.padlo!.z,
+    A: f.A ?? 0, P: p ? padloKerulet(p, f) : f.padlo!.P, df: f.padlo!.dfCm / 100, Rp, z: f.padlo!.z,
     peremSzigetelesek: f.padlo!.perem ? [{ irany: f.padlo!.perem.irany, D: f.padlo!.perem.D, dpsz: f.padlo!.perem.dCm / 100, Rpsz: f.padlo!.perem.R }] : [],
   }).UTp;
 }
@@ -474,7 +483,7 @@ export function hoszuksegletBemenet(p: Projekt): { bemenet: hoszukseglet.HszBeme
   const padlasF = opak('padlas') ?? opak('teto');
   const padloF = p.feluletek.find((f) => f.fajta === 'padlo');
   let padloU: number | null = null;
-  if (padloF) { const r = p.retegrendek.find((x) => x.id === padloF.retegrendId); if (r && padloF.padlo) { try { padloU = padloUT(r, padloF); } catch { /* hiányos */ } } }
+  if (padloF) { const r = p.retegrendek.find((x) => x.id === padloF.retegrendId); if (r && padloF.padlo) { try { padloU = padloUT(r, padloF, p); } catch { /* hiányos */ } } }
 
   const osszevetes: HszOsszevetes = {
     falHelyisegek: 0, padlasHelyisegek: 0, padloHelyisegek: 0,

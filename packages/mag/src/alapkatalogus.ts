@@ -770,4 +770,1243 @@ export const BOVITETT_ANYAGOK: Anyag[] = [
  }
 ];
 
-ALAP_ANYAGOK.push(...BOVITETT_ANYAGOK);
+/** A tanúsító által megadott tájékoztató λ-táblázat (régi és hazai falazó-, födém- és burkolóanyagok). */
+export const TAJEKOZTATO_ANYAGOK: Anyag[] = [
+ {
+  "id": "tt_valyogfalazat",
+  "nev": "Vályogfalazat",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.7,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_falburkolo_tegla",
+  "nev": "Falburkoló tégla",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.93,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_poroton_falazat",
+  "nev": "Poroton falazat",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.31,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_gazszilikat_falazat_630_kg_m3",
+  "nev": "Gázszilikát falazat (ρ = 630 kg/m3)",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.27,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_gazszilikat_falazat_615_kg_m3",
+  "nev": "Gázszilikát falazat (ρ = 615 kg/m3)",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.34,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_alfa_falazat",
+  "nev": "Alfa falazat",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.42,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_raba_falazat_v_25_cm",
+  "nev": "Rába falazat (v = 25 cm)",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.4,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_raba_falazat_v_38_cm",
+  "nev": "Rába falazat (v = 38 cm)",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.35,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_kismeretu_tomor_tegla",
+  "nev": "Kisméretű tömör tégla",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.78,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_soklyuku_tegla_falazat_c1",
+  "nev": "Soklyukú tégla falazat (C1)",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.5,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_keveslyuku_tegla_falazat_a_a1_a2",
+  "nev": "Kevéslyukú tégla falazat (A, A1, A2)",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.7,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_b_25_falazat",
+  "nev": "B 25 falazat",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.49,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_b_29_falazat",
+  "nev": "B 29 falazat",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.6,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_b_30_falazat",
+  "nev": "B 30 falazat",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.64,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_b_30_0_falazat",
+  "nev": "B 30/0 falazat",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.45,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_tufabeton_falazat_tb_50",
+  "nev": "Tufabeton falazat (TB 50)",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.64,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_tufabeton_falazat_tb_55",
+  "nev": "Tufabeton falazat (TB 55)",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.5,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_gazszilikat_hoszigetelo_lap_falazat",
+  "nev": "Gázszilikát hőszigetelő lap falazat",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.24,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_termoton_falazat",
+  "nev": "Termoton falazat",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.3,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_uniform_30_falazat",
+  "nev": "Uniform 30 falazat",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.55,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_uniform_45_falazat",
+  "nev": "Uniform 45 falazat",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.42,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_koszivacslap_falazat",
+  "nev": "Kőszivacslap falazat",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.23,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_gipszperlit_falazat_700_kg_m3",
+  "nev": "Gipszperlit falazat (ρ = 700 kg/m3)",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.2,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_gipszperlit_falazat_900_kg_m3",
+  "nev": "Gipszperlit falazat (ρ = 900 kg/m3)",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.23,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_egetett_agyag_falazat",
+  "nev": "Égetett agyag falazat",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.65,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_porotherm_38_s",
+  "nev": "Porotherm 38 S",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.207,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_porotherm_38",
+  "nev": "Porotherm 38",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.226,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_porotherm_25",
+  "nev": "Porotherm 25",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.39,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_porotherm_38_n_f",
+  "nev": "Porotherm 38 N+F",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.167,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_porotherm_30_n_f",
+  "nev": "Porotherm 30 N+F",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.155,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_porotherm_38_pincetegla",
+  "nev": "Porotherm 38 pincetégla",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.264,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_porotherm_44_hs_tm_hoszigetelo_habarccsa",
+  "nev": "Porotherm 44 HS (TM hőszigetelő habarccsal)",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.141,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_porotherm_44_hs_m30_vagy_m100_habarccsal",
+  "nev": "Porotherm 44 HS (M30 vagy M100 habarccsal)",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.166,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_porotherm_38_hs_tm_hoszigetelo_habarccsa",
+  "nev": "Porotherm 38 HS (TM hőszigetelő habarccsal)",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.143,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_porotherm_38_hs_m30_vagy_m100_habarccsal",
+  "nev": "Porotherm 38 HS (M30 vagy M100 habarccsal)",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.179,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_porotherm_30_hs_tm_hoszigetelo_habarccsa",
+  "nev": "Porotherm 30 HS (TM hőszigetelő habarccsal)",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.141,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_porotherm_30_hs_m30_vagy_m100_habarccsal",
+  "nev": "Porotherm 30 HS (M30 vagy M100 habarccsal)",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.171,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_ytong_p2_0_5",
+  "nev": "Ytong P2-0,5",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.127,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_ytong_p4_0_6",
+  "nev": "Ytong P4-0,6",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.148,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_ytong_vasalt_falpallo_wl_p3_3_500_kg_m3",
+  "nev": "Ytong vasalt falpalló WL-P3,3 (ρ = 500 kg/m3)",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.14,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_ytong_vasalt_falpallo_wl_p3_3_600_kg_m3",
+  "nev": "Ytong vasalt falpalló WL-P3,3 (ρ = 600 kg/m3)",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.16,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_ytong_vasalt_falpallo_wl_p4_4_500_kg_m3",
+  "nev": "Ytong vasalt falpalló WL-P4,4 (ρ = 500 kg/m3)",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.16,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_ytong_vasalt_falpallo_wl_p4_4_600_kg_m3",
+  "nev": "Ytong vasalt falpalló WL-P4,4 (ρ = 600 kg/m3)",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.21,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_zalatherm_falazat",
+  "nev": "Zalatherm falazat",
+  "kategoria": "Falazat",
+  "sraffozas": "falazat",
+  "lambda": 0.247,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_vasbeton_pallofodem_1_cm_vakolat",
+  "nev": "Vasbeton pallófödém + 1 cm vakolat",
+  "kategoria": "Födém",
+  "sraffozas": "beton",
+  "lambda": 1.2,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_vasbeton_gerendas_fodem_1_cm_vakolat",
+  "nev": "Vasbeton gerendás födém + 1 cm vakolat",
+  "kategoria": "Födém",
+  "sraffozas": "beton",
+  "lambda": 1.2,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_keramiaelemes_fodem_felbetonnal_vakolat_",
+  "nev": "Kerámiaelemes födém felbetonnal, vakolat nélkül",
+  "kategoria": "Födém",
+  "sraffozas": "beton",
+  "lambda": 0.66,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_bohn_fodem_1_cm_vakolat",
+  "nev": "Bohn-födém + 1 cm vakolat",
+  "kategoria": "Födém",
+  "sraffozas": "beton",
+  "lambda": 0.76,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_monolit_vasbeton_lemezfodem",
+  "nev": "Monolit vasbeton lemezfödém",
+  "kategoria": "Födém",
+  "sraffozas": "beton",
+  "lambda": 1.55,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_ytong_tetopallo_da_p3_3_500_kg_m3",
+  "nev": "Ytong tetőpalló DA-P3,3 (ρ = 500 kg/m3)",
+  "kategoria": "Födém",
+  "sraffozas": "falazat",
+  "lambda": 0.14,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_ytong_tetopallo_da_p3_3_600_kg_m3",
+  "nev": "Ytong tetőpalló DA-P3,3 (ρ = 600 kg/m3)",
+  "kategoria": "Födém",
+  "sraffozas": "falazat",
+  "lambda": 0.16,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_ytong_tetopallo_da_p4_4_500_kg_m3",
+  "nev": "Ytong tetőpalló DA-P4,4 (ρ = 500 kg/m3)",
+  "kategoria": "Födém",
+  "sraffozas": "falazat",
+  "lambda": 0.16,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_ytong_tetopallo_da_p4_4_600_kg_m3",
+  "nev": "Ytong tetőpalló DA-P4,4 (ρ = 600 kg/m3)",
+  "kategoria": "Födém",
+  "sraffozas": "falazat",
+  "lambda": 0.21,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_szalagparketta",
+  "nev": "Szalagparketta",
+  "kategoria": "Burkolat",
+  "sraffozas": "burkolat",
+  "lambda": 0.21,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_parketta_panel",
+  "nev": "Parketta panel",
+  "kategoria": "Burkolat",
+  "sraffozas": "burkolat",
+  "lambda": 0.2,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_tolgyfaparketta",
+  "nev": "Tölgyfaparketta",
+  "kategoria": "Burkolat",
+  "sraffozas": "burkolat",
+  "lambda": 0.22,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_hajopadlo",
+  "nev": "Hajópadló",
+  "kategoria": "Burkolat",
+  "sraffozas": "burkolat",
+  "lambda": 0.19,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_habalatetes_szonyeg",
+  "nev": "Habalátétes szőnyeg",
+  "kategoria": "Burkolat",
+  "sraffozas": "burkolat",
+  "lambda": 0.044,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_gipsz_esztrich",
+  "nev": "Gipsz esztrich",
+  "kategoria": "Burkolat",
+  "sraffozas": "burkolat",
+  "lambda": 0.23,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_kolap",
+  "nev": "Kőlap",
+  "kategoria": "Burkolat",
+  "sraffozas": "burkolat",
+  "lambda": 3.5,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_csempe",
+  "nev": "Csempe",
+  "kategoria": "Burkolat",
+  "sraffozas": "burkolat",
+  "lambda": 1.05,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_padlasburkolo_tegla",
+  "nev": "Padlásburkoló tégla",
+  "kategoria": "Burkolat",
+  "sraffozas": "burkolat",
+  "lambda": 0.5,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_meszvakolat",
+  "nev": "Mészvakolat",
+  "kategoria": "Vakolat",
+  "sraffozas": "vakolat",
+  "lambda": 0.81,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_javitott_meszvakolat",
+  "nev": "Javított mészvakolat",
+  "kategoria": "Vakolat",
+  "sraffozas": "vakolat",
+  "lambda": 0.87,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_cementvakolat",
+  "nev": "Cementvakolat",
+  "kategoria": "Vakolat",
+  "sraffozas": "vakolat",
+  "lambda": 0.93,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_nemesvakolat",
+  "nev": "Nemesvakolat",
+  "kategoria": "Vakolat",
+  "sraffozas": "vakolat",
+  "lambda": 0.99,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_perlitvakolat_800_kg_m3",
+  "nev": "Perlitvakolat (ρ = 800 kg/m3)",
+  "kategoria": "Vakolat",
+  "sraffozas": "vakolat",
+  "lambda": 0.187,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_perlitvakolat_500_kg_m3",
+  "nev": "Perlitvakolat (ρ = 500 kg/m3)",
+  "kategoria": "Vakolat",
+  "sraffozas": "vakolat",
+  "lambda": 0.174,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_perlitvakolat_350_kg_m3",
+  "nev": "Perlitvakolat (ρ = 350 kg/m3)",
+  "kategoria": "Vakolat",
+  "sraffozas": "vakolat",
+  "lambda": 0.127,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_perlithabarcs_300_kg_m3",
+  "nev": "Perlithabarcs (ρ = 300 kg/m3)",
+  "kategoria": "Vakolat",
+  "sraffozas": "vakolat",
+  "lambda": 0.12,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_perlithabarcs_400_kg_m3",
+  "nev": "Perlithabarcs (ρ = 400 kg/m3)",
+  "kategoria": "Vakolat",
+  "sraffozas": "vakolat",
+  "lambda": 0.14,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_dryvit_kvarc_putz",
+  "nev": "Dryvit kvarc putz",
+  "kategoria": "Vakolat",
+  "sraffozas": "vakolat",
+  "lambda": 1.0,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_dryvit_primus",
+  "nev": "Dryvit primus",
+  "kategoria": "Vakolat",
+  "sraffozas": "vakolat",
+  "lambda": 1.0,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_polisztirol_habarcs",
+  "nev": "Polisztirol habarcs",
+  "kategoria": "Vakolat",
+  "sraffozas": "vakolat",
+  "lambda": 0.09,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_gipszvakolat",
+  "nev": "Gipszvakolat",
+  "kategoria": "Vakolat",
+  "sraffozas": "vakolat",
+  "lambda": 0.29,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_gipszes_simitohabarcs",
+  "nev": "Gipszes simítóhabarcs",
+  "kategoria": "Vakolat",
+  "sraffozas": "vakolat",
+  "lambda": 0.52,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_terranova_vakolat",
+  "nev": "Terranova vakolat",
+  "kategoria": "Vakolat",
+  "sraffozas": "vakolat",
+  "lambda": 0.87,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_terranova_hoszigetelo_vakolat",
+  "nev": "Terranova hőszigetelő vakolat",
+  "kategoria": "Vakolat",
+  "sraffozas": "vakolat",
+  "lambda": 0.11,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_hostop_hoszigetelo_vakolat",
+  "nev": "Hőstop hőszigetelő vakolat",
+  "kategoria": "Vakolat",
+  "sraffozas": "vakolat",
+  "lambda": 0.08,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_ytong_hoszigetelo_falazohabarcs",
+  "nev": "Ytong hőszigetelő falazóhabarcs",
+  "kategoria": "Vakolat",
+  "sraffozas": "vakolat",
+  "lambda": 0.15,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_polisztirol_hab_15_kg_m3",
+  "nev": "Polisztirol hab (ρ = 15 kg/m3)",
+  "kategoria": "Hőszigetelés",
+  "sraffozas": "hoszigeteles_hab",
+  "lambda": 0.04,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_polisztirol_hab_20_kg_m3",
+  "nev": "Polisztirol hab (ρ = 20 kg/m3)",
+  "kategoria": "Hőszigetelés",
+  "sraffozas": "hoszigeteles_hab",
+  "lambda": 0.042,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_nikecell_s",
+  "nev": "Nikecell S",
+  "kategoria": "Hőszigetelés",
+  "sraffozas": "hoszigeteles_hab",
+  "lambda": 0.047,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_poliuretan_kemenyhab",
+  "nev": "Poliuretán keményhab",
+  "kategoria": "Hőszigetelés",
+  "sraffozas": "hoszigeteles_hab",
+  "lambda": 0.034,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_poliuretan_lagyhab",
+  "nev": "Poliuretán lágyhab",
+  "kategoria": "Hőszigetelés",
+  "sraffozas": "hoszigeteles_hab",
+  "lambda": 0.045,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_asvanygyapot_100_kg_m3",
+  "nev": "Ásványgyapot (ρ = 100 kg/m3)",
+  "kategoria": "Hőszigetelés",
+  "sraffozas": "hoszigeteles_szalas",
+  "lambda": 0.042,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_asvanygyapot_150_kg_m3",
+  "nev": "Ásványgyapot (ρ = 150 kg/m3)",
+  "kategoria": "Hőszigetelés",
+  "sraffozas": "hoszigeteles_szalas",
+  "lambda": 0.044,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_isolyth_l_panel",
+  "nev": "Isolyth L panel",
+  "kategoria": "Hőszigetelés",
+  "sraffozas": "hoszigeteles_hab",
+  "lambda": 0.1,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_uveggyapot_200_kg_m3",
+  "nev": "Üveggyapot (ρ = 200 kg/m3)",
+  "kategoria": "Hőszigetelés",
+  "sraffozas": "hoszigeteles_szalas",
+  "lambda": 0.058,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_habuveg_350_kg_m3",
+  "nev": "Habüveg (ρ = 350 kg/m3)",
+  "kategoria": "Hőszigetelés",
+  "sraffozas": "hoszigeteles_hab",
+  "lambda": 0.093,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": false,
+  "megjegyzes": "Az eredeti táblázatban 0,93 szerepel – nyilvánvaló elírás (a 400 kg/m³-es habüveg 0,105), 0,093-mal vettük fel."
+ },
+ {
+  "id": "tt_habuveg_400_kg_m3",
+  "nev": "Habüveg (ρ = 400 kg/m3)",
+  "kategoria": "Hőszigetelés",
+  "sraffozas": "hoszigeteles_hab",
+  "lambda": 0.105,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_koszivacslap_750_kg_m3",
+  "nev": "Kőszivacslap (ρ = 750 kg/m3)",
+  "kategoria": "Hőszigetelés",
+  "sraffozas": "hoszigeteles_hab",
+  "lambda": 0.174,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_koszivacslap_1100_kg_m3",
+  "nev": "Kőszivacslap (ρ = 1100 kg/m3)",
+  "kategoria": "Hőszigetelés",
+  "sraffozas": "hoszigeteles_hab",
+  "lambda": 0.35,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_perlitbeton",
+  "nev": "Perlitbeton",
+  "kategoria": "Hőszigetelés",
+  "sraffozas": "hoszigeteles_hab",
+  "lambda": 0.068,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_termonit_hab",
+  "nev": "Termonit hab",
+  "kategoria": "Hőszigetelés",
+  "sraffozas": "hoszigeteles_hab",
+  "lambda": 0.034,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_expanzit_parafalemez",
+  "nev": "Expanzit parafalemez",
+  "kategoria": "Hőszigetelés",
+  "sraffozas": "hoszigeteles_szalas",
+  "lambda": 0.046,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_ytong_koszoruelem_pke",
+  "nev": "Ytong koszorúelem PKE",
+  "kategoria": "Hőszigetelés",
+  "sraffozas": "hoszigeteles_hab",
+  "lambda": 0.13,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_ytong_koszoruelem_pke_uveggyapot",
+  "nev": "Ytong koszorúelem PKE üveggyapot",
+  "kategoria": "Hőszigetelés",
+  "sraffozas": "hoszigeteles_szalas",
+  "lambda": 0.038,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_vasbeton",
+  "nev": "Vasbeton",
+  "kategoria": "Beton",
+  "sraffozas": "beton",
+  "lambda": 1.55,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_kavicsbeton",
+  "nev": "Kavicsbeton",
+  "kategoria": "Beton",
+  "sraffozas": "beton",
+  "lambda": 1.28,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_kohosalakbeton_1400_kg_m3",
+  "nev": "Kohósalakbeton (ρ = 1400 kg/m3)",
+  "kategoria": "Beton",
+  "sraffozas": "beton",
+  "lambda": 0.47,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_kohosalakbeton_1600_kg_m3",
+  "nev": "Kohósalakbeton (ρ = 1600 kg/m3)",
+  "kategoria": "Beton",
+  "sraffozas": "beton",
+  "lambda": 0.58,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_kazansalakbeton_1400_kg_m3",
+  "nev": "Kazánsalakbeton (ρ = 1400 kg/m3)",
+  "kategoria": "Beton",
+  "sraffozas": "beton",
+  "lambda": 0.56,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_kazansalakbeton_1600_kg_m3",
+  "nev": "Kazánsalakbeton (ρ = 1600 kg/m3)",
+  "kategoria": "Beton",
+  "sraffozas": "beton",
+  "lambda": 0.7,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_bitumenperlit_300_kg_m3",
+  "nev": "Bitumenperlit (ρ = 300 kg/m3)",
+  "kategoria": "Beton",
+  "sraffozas": "beton",
+  "lambda": 0.09,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_bitumenperlit_400_kg_m3",
+  "nev": "Bitumenperlit (ρ = 400 kg/m3)",
+  "kategoria": "Beton",
+  "sraffozas": "beton",
+  "lambda": 0.12,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_perlitbeton_300_kg_m3",
+  "nev": "Perlitbeton (ρ = 300 kg/m3)",
+  "kategoria": "Beton",
+  "sraffozas": "beton",
+  "lambda": 0.12,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_perlitbeton_400_kg_m3",
+  "nev": "Perlitbeton (ρ = 400 kg/m3)",
+  "kategoria": "Beton",
+  "sraffozas": "beton",
+  "lambda": 0.14,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_perlitbeton_500_kg_m3",
+  "nev": "Perlitbeton (ρ = 500 kg/m3)",
+  "kategoria": "Beton",
+  "sraffozas": "beton",
+  "lambda": 0.16,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_perlitbeton_600_kg_m3",
+  "nev": "Perlitbeton (ρ = 600 kg/m3)",
+  "kategoria": "Beton",
+  "sraffozas": "beton",
+  "lambda": 0.2,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_polisztirolbeton_250_kg_m3",
+  "nev": "Polisztirolbeton (ρ = 250 kg/m3)",
+  "kategoria": "Beton",
+  "sraffozas": "beton",
+  "lambda": 0.08,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_polisztirolbeton_300_kg_m3",
+  "nev": "Polisztirolbeton (ρ = 300 kg/m3)",
+  "kategoria": "Beton",
+  "sraffozas": "beton",
+  "lambda": 0.1,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_polisztirolbeton_350_kg_m3",
+  "nev": "Polisztirolbeton (ρ = 350 kg/m3)",
+  "kategoria": "Beton",
+  "sraffozas": "beton",
+  "lambda": 0.12,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_egyszemcses_kozuzalekbeton",
+  "nev": "Egyszemcsés kőzúzalékbeton",
+  "kategoria": "Beton",
+  "sraffozas": "beton",
+  "lambda": 0.76,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_homokfeltoltes",
+  "nev": "Homokfeltöltés",
+  "kategoria": "Feltöltés",
+  "sraffozas": "burkolat",
+  "lambda": 0.58,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_kavicsfeltoltes",
+  "nev": "Kavicsfeltöltés",
+  "kategoria": "Feltöltés",
+  "sraffozas": "burkolat",
+  "lambda": 0.35,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_kazansalak_feltoltes",
+  "nev": "Kazánsalak feltöltés",
+  "kategoria": "Feltöltés",
+  "sraffozas": "burkolat",
+  "lambda": 0.29,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_kohosalak_feltoltes",
+  "nev": "Kohósalak feltöltés",
+  "kategoria": "Feltöltés",
+  "sraffozas": "burkolat",
+  "lambda": 0.45,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_duzzasztott_perlit_110_kg_m3",
+  "nev": "Duzzasztott perlit (ρ = 110 kg/m3)",
+  "kategoria": "Feltöltés",
+  "sraffozas": "burkolat",
+  "lambda": 0.052,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_duzzasztott_perlit_130_kg_m3",
+  "nev": "Duzzasztott perlit (ρ = 130 kg/m3)",
+  "kategoria": "Feltöltés",
+  "sraffozas": "burkolat",
+  "lambda": 0.058,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_vizzel_toltott_perlit",
+  "nev": "Vízzel töltött perlit",
+  "kategoria": "Feltöltés",
+  "sraffozas": "burkolat",
+  "lambda": 0.08,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_fenyofa_400_kg_m3",
+  "nev": "Fenyőfa (ρ = 400 kg/m3)",
+  "kategoria": "Fa",
+  "sraffozas": "fa",
+  "lambda": 0.13,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_fenyofa_550_kg_m3",
+  "nev": "Fenyőfa (ρ = 550 kg/m3)",
+  "kategoria": "Fa",
+  "sraffozas": "fa",
+  "lambda": 0.19,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_tolgyfa",
+  "nev": "Tölgyfa",
+  "kategoria": "Fa",
+  "sraffozas": "fa",
+  "lambda": 0.22,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_farostlemez",
+  "nev": "Farostlemez",
+  "kategoria": "Fa",
+  "sraffozas": "fa",
+  "lambda": 0.1,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_gipszkarton_lemez",
+  "nev": "Gipszkarton lemez",
+  "kategoria": "Fa",
+  "sraffozas": "fa",
+  "lambda": 0.23,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_faforgacslap_650_kg_m3",
+  "nev": "Faforgácslap (ρ = 650 kg/m3)",
+  "kategoria": "Fa",
+  "sraffozas": "fa",
+  "lambda": 0.16,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_faforgacslap_650_kg_m3_2",
+  "nev": "Faforgácslap (ρ = 650 kg/m3)",
+  "kategoria": "Fa",
+  "sraffozas": "fa",
+  "lambda": 0.19,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true,
+  "megjegyzes": "A táblázatban azonos sűrűséggel két érték szerepel (0,16 és 0,19)."
+ },
+ {
+  "id": "tt_karton_papir_lemez",
+  "nev": "Karton (papír) lemez",
+  "kategoria": "Fa",
+  "sraffozas": "fa",
+  "lambda": 0.17,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_azbesztcement_lemez_1800_kg_m3",
+  "nev": "Azbesztcement lemez (ρ = 1800 kg/m3)",
+  "kategoria": "Fa",
+  "sraffozas": "fa",
+  "lambda": 0.42,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_azbesztcement_lemez_2000_kg_m3",
+  "nev": "Azbesztcement lemez (ρ = 2000 kg/m3)",
+  "kategoria": "Fa",
+  "sraffozas": "fa",
+  "lambda": 0.45,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_betonyp_faforgacslap",
+  "nev": "Betonyp faforgácslap",
+  "kategoria": "Fa",
+  "sraffozas": "fa",
+  "lambda": 0.26,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_aluminium_lemez",
+  "nev": "Alumínium lemez",
+  "kategoria": "Egyéb",
+  "sraffozas": "burkolat",
+  "lambda": 170.0,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_gumi",
+  "nev": "Gumi",
+  "kategoria": "Egyéb",
+  "sraffozas": "burkolat",
+  "lambda": 0.15,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_linoleum",
+  "nev": "Linóleum",
+  "kategoria": "Egyéb",
+  "sraffozas": "burkolat",
+  "lambda": 0.38,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_nadlemez",
+  "nev": "Nádlemez",
+  "kategoria": "Egyéb",
+  "sraffozas": "burkolat",
+  "lambda": 0.06,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ },
+ {
+  "id": "tt_tablauveg",
+  "nev": "Táblaüveg",
+  "kategoria": "Egyéb",
+  "sraffozas": "burkolat",
+  "lambda": 0.76,
+  "forras": "Tájékoztató λ-táblázat (a tanúsító saját „lambda-értékek” táblázata; hazai szakirodalmi, MSZ-04-140 korabeli értékek)",
+  "ellenorzott": true
+ }
+];
+
+ALAP_ANYAGOK.push(...BOVITETT_ANYAGOK, ...TAJEKOZTATO_ANYAGOK);

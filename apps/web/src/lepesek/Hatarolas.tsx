@@ -1,6 +1,6 @@
 import { klima } from '@mag/index';
 import { Mezo, Szam, Szoveg, Valaszto, sz, kov } from '../ui';
-import { ujId, feluletNettoA, geometria, atlagBelmagassag, falhosszHelyisegekbol, CHI_VALASZTEK, HATAR_NEV, SZEREP_NEV, type Projekt, type HatarKod, type Felulet } from '../modell';
+import { ujId, feluletNettoA, geometria, atlagBelmagassag, padloKerulet, falhosszHelyisegekbol, CHI_VALASZTEK, HATAR_NEV, SZEREP_NEV, type Projekt, type HatarKod, type Felulet } from '../modell';
 import { Fogantyu, huzasProps } from '../huzas';
 
 type Modosit = (fn: (p: Projekt) => void) => void;
@@ -50,7 +50,7 @@ export function HatarolasLepes({ p, modosit }: { p: Projekt; modosit: Modosit })
                     <td style="min-width:160px"><Szoveg ertek={f.nev} valt={(v) => fv(f.id, (x) => { x.nev = v; })} /></td>
                     <td style="min-width:200px"><Valaszto cimke="Rétegrend" ertek={f.retegrendId} ures="Válassz…" valt={(v) => fv(f.id, (x) => { x.retegrendId = v; })} opciok={retegrendOpciok(false)} /></td>
                     <td style="min-width:170px"><Valaszto cimke="Határoló tér" ertek={f.hatar} valt={(v) => fv(f.id, (x) => { x.hatar = v; })} opciok={HATAROK} /></td>
-                    <td style="min-width:230px">
+                    <td style="min-width:440px">
                       <div class="meret-mod">
                         <select aria-label="Felület megadása" value={f.meret ? 'meret' : 'A'} onChange={(e) => fv(f.id, (x) => {
                           if ((e.target as HTMLSelectElement).value === 'meret') { const h = falhosszHelyisegekbol(p, x.retegrendId) || Math.round(((x.A ?? 0) / atlagBelmagassag(p)) * 100) / 100; x.meret = { hossz: h, magassag: atlagBelmagassag(p) }; x.A = Math.round(h * x.meret.magassag * 100) / 100; }
@@ -130,7 +130,11 @@ export function HatarolasLepes({ p, modosit }: { p: Projekt; modosit: Modosit })
                 <Mezo cim="Megnevezés"><Szoveg ertek={f.nev} valt={(v) => fv(f.id, (x) => { x.nev = v; })} /></Mezo>
                 <Mezo cim="Rétegrend"><Valaszto ertek={f.retegrendId} ures="Válassz…" valt={(v) => fv(f.id, (x) => { x.retegrendId = v; })} opciok={retegrendOpciok(true)} /></Mezo>
                 <Mezo cim="Alapterület"><Szam ertek={f.A} egyseg="m²" valt={(v) => fv(f.id, (x) => { x.A = v; })} /></Mezo>
-                <Mezo cim="Kitett kerület" sugo="Külső tér és fűtetlen tér felé"><Szam ertek={f.padlo?.P} egyseg="m" valt={(v) => fv(f.id, (x) => { x.padlo!.P = v; })} /></Mezo>
+                <Mezo cim="Kitett kerület" sugo={f.padlo?.falIds?.length ? `A kijelölt külső falak hossza (${f.padlo.falIds.length} fal)` : 'Külső tér és fűtetlen tér felé'}>
+                  {f.padlo?.falIds?.length
+                    ? <div class="egyseg"><span class="szam-kijelzo">{sz(padloKerulet(p, f), 2)} m</span><button class="gomb halk-gomb" onClick={() => fv(f.id, (x) => { x.padlo!.P = padloKerulet(p, x); delete x.padlo!.falIds; })}>kézi</button></div>
+                    : <Szam ertek={f.padlo?.P} egyseg="m" valt={(v) => fv(f.id, (x) => { x.padlo!.P = v; })} />}
+                </Mezo>
                 <Mezo cim="Csatlakozó fal vastagsága"><Szam ertek={f.padlo?.dfCm} egyseg="cm" valt={(v) => fv(f.id, (x) => { x.padlo!.dfCm = v; })} /></Mezo>
                 <Mezo cim="Padló mélysége a terep alatt" sugo="±0,5 m-en belül: 0"><Szam ertek={f.padlo?.z} egyseg="m" valt={(v) => fv(f.id, (x) => { x.padlo!.z = v; })} /></Mezo>
                 <Mezo cim="Perem-hőszigetelés">
@@ -143,6 +147,25 @@ export function HatarolasLepes({ p, modosit }: { p: Projekt; modosit: Modosit })
                 </>}
                 <Mezo cim="Ψ padló–fal csatlakozás" sugo="6.4. táblázat a falazat λ, a lábazat és a padló szigetelése szerint"><Szam ertek={f.padlo?.psiPF} egyseg="W/mK" valt={(v) => fv(f.id, (x) => { x.padlo!.psiPF = v; })} /></Mezo>
               </div>
+              {(() => {
+                const falak = opak.filter((o) => o.meret && o.hatar === 'kulso' && p.retegrendek.find((r) => r.id === o.retegrendId)?.szerep === 'fal');
+                if (!falak.length) return <p class="halkabb" style="margin-top:8px">A kerület a külső falak hosszából is számolható, ha a homlokzati falakat „Hossz × magasság” módban adod meg.</p>;
+                const kij = f.padlo?.falIds ?? [];
+                return (
+                  <fieldset class="fal-valaszto">
+                    <legend>Kerület a földszinti külső falak hosszából</legend>
+                    {falak.map((o) => (
+                      <label class="jelolo"><input type="checkbox" checked={kij.includes(o.id)} onChange={(e) => fv(f.id, (x) => {
+                        const l = new Set(x.padlo!.falIds ?? []);
+                        if ((e.target as HTMLInputElement).checked) l.add(o.id); else l.delete(o.id);
+                        x.padlo!.falIds = [...l];
+                        if (!l.size) delete x.padlo!.falIds;
+                      })} /> {o.nev} – {sz(o.meret!.hossz, 2)} m</label>
+                    ))}
+                    {p.meta.szintek > 1 && <span class="halkabb">Több szintnél csak a földszinti falszakaszokat jelöld ki.</span>}
+                  </fieldset>
+                );
+              })()}
               <div class="gombsor" style="margin-top:12px;justify-content:flex-end"><button class="gomb halk-gomb" onClick={() => torol(f.id)}>Padló törlése</button></div>
             </div>
           ))}

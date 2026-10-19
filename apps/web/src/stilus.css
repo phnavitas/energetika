@@ -313,8 +313,13 @@ input:disabled { color: var(--tus-3); }
 .huzas-forras { opacity: .45; }
 .huzas-cel { box-shadow: inset 0 2px 0 var(--hideg); }
 .meret-mod { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.meret-mod > select { flex-basis: 100%; }
-.meret-mod .szam-mezo, .meret-mod > div { max-width: 110px; }
+.meret-mod > select { width: auto; flex: 0 0 auto; max-width: 140px; }
+.meret-mod > div { min-width: 76px; flex: 1 1 0; }
+.meret-mod > .halkabb { white-space: nowrap; }
+.meret-mod .link-gomb { white-space: nowrap; flex-basis: 100%; text-align: left; }
+.fal-valaszto { border: 1px solid var(--vonal); border-radius: 8px; padding: 8px 12px; margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.fal-valaszto legend { padding: 0 4px; font-size: 12px; color: var(--tus-2); }
+.szam-kijelzo { font-variant-numeric: tabular-nums; padding: 8px 0; }
 .pv-havi { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 4px; align-items: end; height: 170px; }
 .pv-oszlop { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 2px; font-size: 11px; }
 .pv-sav { width: 70%; max-width: 28px; min-height: 2px; background: var(--meleg); border-radius: 3px 3px 0 0; }
