@@ -394,7 +394,7 @@ function App() {
           {nezet === 'hatarolas' && <HatarolasLepes p={p} modosit={modosit} />}
           {nezet === 'hoszukseglet' && <HoszuksegletLepes p={p} modosit={modosit} />}
           {nezet === 'gepeszet' && <GepeszetLepes p={p} modosit={modosit} eredmeny={e} />}
-          {nezet === 'eredmeny' && <EredmenyLepes p={p} e={e} g={atal.geometria} hibak={hibak} modosit={modosit} rogzit={aktivKapcsolat ? rogzit : undefined} />}
+          {nezet === 'eredmeny' && <EredmenyLepes p={p} e={e} g={atal.geometria} atal={atal} hibak={hibak} modosit={modosit} rogzit={aktivKapcsolat ? rogzit : undefined} />}
           {nezet === 'projektek' && iroda && <ProjektekNezet iroda={iroda} aktivId={aktivKapcsolat?.id ?? null} megnyit={projektMegnyit} ujProjekt={ujTavoliProjekt} frissitKulcs={projektLista} />}
           {nezet === 'konyvtar' && tavoliAllapot && <KonyvtarNezet p={p} modosit={modosit} ugrik={setNezet} />}
           {nezet === 'iroda' && iroda && felh && irodak && (

@@ -110,7 +110,7 @@ export async function meghivoTorol(irodaId: string, email: string) {
 
 function cimSzoveg(p: Projekt) {
   const m = p.meta;
-  return [m.irsz, m.telepules, [m.kozterulet, m.kozteruletJelleg, m.hazszam].filter(Boolean).join(' ')].filter(Boolean).join(', ') || null;
+  return [m.irsz, m.telepules, m.kozterulet ? [m.kozterulet, m.kozteruletJelleg, m.hazszam].filter(Boolean).join(' ') : ''].filter(Boolean).join(', ') || null;
 }
 
 export async function projektLista(irodaId: string): Promise<ProjektSor[]> {

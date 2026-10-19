@@ -71,6 +71,23 @@ olyan tesztépület kell, amelynek minden nyílászárójáról ismert a tájol�
 - Régi (1. verziójú) projektfájlok betöltéskor automatikusan átalakulnak (`projektMigral`).
 - XML: szellőzés és napelem esetén `XmlKodHianyzik` – a kódok az XSD-ből veendők át.
 
+## Helyiségenkénti hőszükséglet
+
+- `packages/mag/src/hoszukseglet.ts`: ΦHL = ΦT + ΦV + ΦRH helyiségenként (MSZ EN 12831 szerkezete: külső, fűtetlen tér
+  bu-val, talaj fg1·fg2·Gw-vel, eltérő hőmérsékletű szomszéd fij-vel; V̇ = max(2·V·n50·e·ε, nmin·V), hővisszanyerésnél
+  V̇inf + nmin·V·(1 − ηr)).
+- Az alapértékek (θe = −15 °C, θint, nmin, e, ε, fg1) az MSZ EN 12831:2003 D tájékoztató mellékletéből és a hazai
+  gyakorlatból valók; a nemzeti melléklet nem volt elérhető – **ellenőrizendő**, ezért mind felülírható.
+- A felületen a helyiségekhez külső falhossz, padlás/tető és talaj jelölés tartozik; a nyílászárók a Határolás lépés
+  helyiség-hozzárendeléséből jönnek. Az összevetés a határolással mutatja a hiányzó vagy kettőzött felületeket.
+
+## Számítási jegyzőkönyv (PDF)
+
+- `apps/web/src/jegyzokonyv.ts` (pdfmake, Roboto; csak generáláskor töltődik be): összesítő és osztályskála,
+  rétegrendek rétegtáblával, nyílászárók, határoló felületek, követelményellenőrzés, havi mérleg, rendszerek,
+  célonkénti primerenergia, rendszerértékelés, hőszükséglet, alkalmazott értelmezések.
+- Az e-tanúsítás XML `CalculationsPdfFileContent` mezőjébe base64-ben beágyazva.
+
 ## e-tanúsítás XML
 
 A Lechner XSD-je nincs meg. A generátor szerkezete egy elfogadott WinWatt-export elemsorrendjét követi (tesztelve).

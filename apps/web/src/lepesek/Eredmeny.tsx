@@ -3,20 +3,22 @@ import type { EpuletEredmeny } from '@mag/index';
 import { feltoltesiXml, XmlKodHianyzik } from '@export/xml';
 import { Osztalyskala, HaviMerleg } from '../abrak/Eredmenyabrak';
 import { Mezo, Szoveg, sz, kov } from '../ui';
-import type { Geometria, Projekt } from '../modell';
+import type { Atalakitas, Geometria, Projekt } from '../modell';
+import { jegyzokonyvPdf, base64 } from '../jegyzokonyv';
 
 type Modosit = (fn: (p: Projekt) => void) => void;
 const MIN: Record<string, string> = { kivalo: 'kiváló', jo: 'jó', kozepes: 'közepes', gyenge: 'gyenge', rossz: 'rossz' };
 
-type Letoltes = { save: (r: { filename: string; data: string }) => Promise<unknown> };
+type Letoltes = { save: (r: { filename: string; data: string | Blob }) => Promise<unknown> };
 declare global { interface Window { claude?: { use: (n: string) => Promise<unknown> } } }
 
 /** Letöltés: megosztott artifact-nézetben a platform mentési párbeszédén át, helyben közvetlen fájlként. */
-async function letolt(nev: string, tartalom: string, tipus: string): Promise<string | null> {
+async function letolt(nev: string, tartalom: string | Uint8Array, tipus: string): Promise<string | null> {
+  const adat = typeof tartalom === 'string' ? tartalom : new Blob([tartalom as BlobPart], { type: tipus });
   if (window.claude?.use) {
     const d = (await window.claude.use('downloads')) as Letoltes | null;
     if (d) {
-      try { await d.save({ filename: nev, data: tartalom }); return null; } catch (e) {
+      try { await d.save({ filename: nev, data: adat }); return null; } catch (e) {
         const kod = (e as { code?: string }).code;
         if (kod === 'declined') return null;
         if (kod === 'rejected_extension') return 'Ebben a megosztott nézetben ez a fájltípus nem menthető. Az XML-t a helyben futtatott alkalmazásból töltsd le.';
@@ -24,14 +26,15 @@ async function letolt(nev: string, tartalom: string, tipus: string): Promise<str
       }
     }
   }
-  const url = URL.createObjectURL(new Blob([tartalom], { type: tipus }));
+  const url = URL.createObjectURL(typeof adat === 'string' ? new Blob([adat], { type: tipus }) : adat);
   const a = document.createElement('a');
   a.href = url; a.download = nev; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   return null;
 }
 
-export function EredmenyLepes({ p, e, g, hibak, modosit, rogzit }: { p: Projekt; e: EpuletEredmeny | null; g: Geometria; hibak: string[]; modosit: Modosit; rogzit?: () => Promise<string> }) {
+export function EredmenyLepes({ p, e, g, atal, hibak, modosit, rogzit }: { p: Projekt; e: EpuletEredmeny | null; g: Geometria; atal: Atalakitas; hibak: string[]; modosit: Modosit; rogzit?: () => Promise<string> }) {
+  const [pdfFut, setPdfFut] = useState(false);
   const [xmlHiba, setXmlHiba] = useState<string | null>(null);
   const [rogzitve, setRogzitve] = useState<string | null>(null);
   if (!e) {
@@ -49,22 +52,26 @@ export function EredmenyLepes({ p, e, g, hibak, modosit, rogzit }: { p: Projekt;
     <tr><td>{nev}</td><td class="szam">{ertek}</td><td class="szam">{max}</td><td>{ok === null ? '–' : <span class={`jel ${ok ? 'jo' : 'rossz'}`}>{ok ? 'Megfelel' : 'Nem felel meg'}</span>}</td></tr>
   );
 
-  function xml() {
+  async function xml() {
     setXmlHiba(null);
     try {
+      setPdfFut(true);
+      const pdf = base64(await jegyzokonyvPdf(p, e!, atal));
+      setPdfFut(false);
       const x = feltoltesiXml(e!, {
         megrendelo: p.meta.megrendelo,
         epuletCim: { iranyitoszam: p.meta.irsz, telepules: p.meta.telepules, kozterulet: p.meta.kozterulet, kozteruletJelleg: p.meta.kozteruletJelleg, epulet: '-', lepcsohaz: '-', emelet: '-', ajto: p.meta.hazszam || '-' },
         hrsz: p.meta.hrsz, tanusitasOka: 'Other', rendeltetes: 'ResidentialBuilding', epuletKategoria: 'SingleFamilyDetachedHome',
         epitesiEv: p.meta.epitesiEv, vedett: false, szintekSzama: p.meta.szintek, kozforgalmu: false, kozTulajdon: false, onalloRendeltetesiEgyseg: false,
         tanusito: { nev: p.tanusito.nev, cim: { iranyitoszam: '', telepules: '', kozterulet: '', kozteruletJelleg: '', hazszam: '' }, telefon: p.tanusito.telefon, email: p.tanusito.email, jogosultsag: p.tanusito.jogosultsag },
-        szoftver: 'EKM számítómag 0.2 (fejlesztői előnézet)', helysziniSzemle: new Date().toISOString().slice(0, 10),
-        fotok: [], jegyzokonyvPdfBase64: '', alternativEnergiak: e!.rendszerek.some((r) => r.tetelek.some((t) => t.energiahordozo === 'kornyezeti_ho')) ? ['HeatPump'] : [],
+        szoftver: 'ÉKM energetikai számító 0.3 (fejlesztői előnézet)', helysziniSzemle: new Date().toISOString().slice(0, 10),
+        fotok: [], jegyzokonyvPdfBase64: pdf, alternativEnergiak: e!.rendszerek.some((r) => r.tetelek.some((t) => t.energiahordozo === 'kornyezeti_ho')) ? ['HeatPump'] : [],
       }, { AN: g.AN, V: g.V });
       letolt('tanusitvany-elonezet.xml', x, 'application/xml').then(setXmlHiba);
       setRogzitve(null);
       rogzit?.().then(setRogzitve, (err: Error) => setXmlHiba(`Az XML elkészült, de a számítás rögzítése nem sikerült: ${err.message}`));
     } catch (err) {
+      setPdfFut(false);
       setXmlHiba(err instanceof XmlKodHianyzik ? err.message : `Hiba: ${(err as Error).message}`);
     }
   }
@@ -138,7 +145,7 @@ export function EredmenyLepes({ p, e, g, hibak, modosit, rogzit }: { p: Projekt;
 
       <section class="szakasz">
         <h2>Tanúsítvány</h2>
-        <p class="halk">A feltöltési fájlhoz a tanúsító adatai, a fotók és a számítási jegyzőkönyv kell. Az XML jelenleg előnézet: a szerkezete egy elfogadott WinWatt-exportot követ, a Lechner XSD-vel még nem ellenőrzött.</p>
+        <p class="halk">A feltöltési fájlhoz a tanúsító adatai, a fotók és a számítási jegyzőkönyv kell; a jegyzőkönyvet a program elkészíti és az XML-be is beágyazza. Az XML jelenleg előnézet: a szerkezete egy elfogadott WinWatt-exportot követ, a Lechner XSD-vel még nem ellenőrzött.</p>
         <div class="racs" style="margin-bottom:12px">
           <Mezo cim="Tanúsító neve"><Szoveg ertek={p.tanusito.nev} valt={(v) => modosit((q) => { q.tanusito.nev = v; })} /></Mezo>
           <Mezo cim="Jogosultság száma"><Szoveg ertek={p.tanusito.jogosultsag} hely="TÉ 00-0000" valt={(v) => modosit((q) => { q.tanusito.jogosultsag = v; })} /></Mezo>
@@ -146,7 +153,13 @@ export function EredmenyLepes({ p, e, g, hibak, modosit, rogzit }: { p: Projekt;
           <Mezo cim="Telefon"><Szoveg ertek={p.tanusito.telefon} valt={(v) => modosit((q) => { q.tanusito.telefon = v; })} /></Mezo>
         </div>
         <div class="gombsor">
-          <button class="gomb fo" onClick={xml}>XML előnézet letöltése</button>
+          <button class="gomb fo" disabled={pdfFut} onClick={xml}>XML előnézet letöltése</button>
+          <button class="gomb" disabled={pdfFut} onClick={async () => {
+            setXmlHiba(null); setPdfFut(true);
+            try { const b = await jegyzokonyvPdf(p, e, atal); setXmlHiba(await letolt(`${(p.meta.nev || 'projekt').replace(/[^\p{L}\p{N} _-]/gu, '')}-jegyzokonyv.pdf`, b, 'application/pdf')); }
+            catch (err) { setXmlHiba(`A jegyzőkönyv nem készült el: ${(err as Error).message}`); }
+            finally { setPdfFut(false); }
+          }}>{pdfFut ? 'Jegyzőkönyv készül…' : 'Számítási jegyzőkönyv (PDF)'}</button>
           <button class="gomb" onClick={() => letolt(`${(p.meta.nev || 'projekt').replace(/[^\p{L}\p{N} _-]/gu, '')}.json`, JSON.stringify(p, null, 1), 'application/json').then(setXmlHiba)}>Projekt mentése fájlba</button>
         </div>
         {xmlHiba && <div class="hiba-doboz" style="margin-top:12px">{xmlHiba}</div>}

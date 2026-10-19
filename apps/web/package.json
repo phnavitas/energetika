@@ -9,6 +9,8 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",
+    "@types/pdfmake": "^0.2.13",
+    "pdfmake": "^0.2.23",
     "preact": "^10.24.0"
   },
   "devDependencies": {
