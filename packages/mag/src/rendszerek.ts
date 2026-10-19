@@ -5,6 +5,7 @@
 import { interpolal, type Figyelmeztetes, type TablazatOszlop } from './interpolacio.js';
 import type { Energiahordozo } from './tablak/sulyozo.js';
 import * as T from './tablak/gepeszet.js';
+import * as H from './tablak/hutes.js';
 
 export interface VegenergiaTetel {
   /** Energiahordozó a súlyozó tényezőhöz (7. melléklet). */
@@ -18,7 +19,7 @@ export interface VegenergiaTetel {
 
 export interface RendszerEredmeny {
   nev: string;
-  cel: 'futes' | 'hmv' | 'szellozes';
+  cel: 'futes' | 'hmv' | 'szellozes' | 'hutes';
   tetelek: VegenergiaTetel[];
   reszletek: Record<string, number>;
   figyelmeztetesek: Figyelmeztetes[];
@@ -341,4 +342,45 @@ export function szellozesRendszer(s: SzellozesRendszer): RendszerEredmeny {
     tetelek: W > 0 ? [{ energiahordozo: 'villamos', Q: W, jelleg: 'seged', megnevezes: 'Szellőzés – ventilátor villamos energia' }] : [],
     reszletek: { V: s.V, uzemora: s.uzemora, Wvent, W },
   };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Hűtés (11. fejezet, egyszerűsített módszer)
+
+export interface HutesRendszer {
+  nev: string;
+  /** Hűtőgép: táblázati típus (11.2.) vagy adatlap szerinti SEER. Passzív talajhőcserélős hűtésnél 'passziv_talaj'. */
+  gep: { tipus: 'tabla'; kod: H.HutogepKod } | { tipus: 'seer'; SEER: number; energiahordozo: 'villamos' | 'fosszilis_gaz' } | { tipus: 'passziv_talaj' };
+  cH: H.HutesChKod;
+  szab: H.HutesSzabKod;
+  /** A nettó hűtési igény ennyiszeres hányadát fedezi (több rendszer esetén); alapérték 1. */
+  lefedes?: number;
+  /** A SEER-ben nem foglalt villamos segédenergia (11.2) [kWh/év]; egyszerűsített esetben 0. */
+  segedKWh?: number;
+}
+
+export function hutesRendszer(QHnet: number, r: HutesRendszer): RendszerEredmeny {
+  const fw: Figyelmeztetes[] = [];
+  const Q = QHnet * (r.lefedes ?? 1);
+  const cH = H.HUTES_CH[r.cH].cH;
+  const eSzab = H.HUTES_SZAB[r.szab].eps;
+  const eSzall = 1; // 11.1.3
+  const tetelek: VegenergiaTetel[] = [];
+  let epsH = 0, SEER = 0;
+  if (r.gep.tipus === 'passziv_talaj') {
+    // 11.1.2 utolsó bekezdés: 1 kWh segédenergia 10 kWh nettó hűtési igényt fedez.
+    const W = Q / H.PASSZIV_TALAJ_ARANY;
+    if (W > 0) tetelek.push({ energiahordozo: 'villamos', Q: W, jelleg: 'seged', megnevezes: 'Hűtés – passzív talajhőcserélő keringtetése' });
+  } else {
+    let eh: 'villamos' | 'fosszilis_gaz';
+    if (r.gep.tipus === 'tabla') { const g = H.HUTOGEPEK[r.gep.kod]; SEER = g.SEER; eh = g.energiahordozo; }
+    else { SEER = r.gep.SEER; eh = r.gep.energiahordozo; }
+    if (!(SEER > 0)) throw new Error('A hűtőgép SEER értéke legyen pozitív.');
+    epsH = 1 / SEER; // 11.3
+    const Qveg = Q * cH * eSzab * eSzall * epsH; // 11.1
+    if (Qveg > 0) tetelek.push({ energiahordozo: eh, Q: Qveg, jelleg: 'ho', megnevezes: `Hűtés – hűtőgép (SEER ${SEER.toLocaleString('hu-HU')})` });
+  }
+  if ((r.segedKWh ?? 0) > 0) tetelek.push({ energiahordozo: 'villamos', Q: r.segedKWh!, jelleg: 'seged', megnevezes: 'Hűtés – egyéb villamos segédenergia' });
+  if (Q <= 0) fw.push({ kod: 'HUTES_NINCS_IGENY', uzenet: `„${r.nev}”: a zóna nettó hűtési igénye 0, a hűtés nem okoz energiafogyasztást.`, forras: H.HUTES_FORRAS });
+  return { nev: r.nev, cel: 'hutes', tetelek, figyelmeztetesek: fw, reszletek: { QHnet: Q, cH, eSzab, eSzall, epsH, SEER } };
 }

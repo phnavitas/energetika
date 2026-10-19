@@ -313,9 +313,36 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
     tartalom.push(cim('Gépi szellőzés', 2));
     tartalom.push(adatsor(reszlet(szR, [['V', 'Friss levegő [m³/h]', 0], ['uzemora', 'Üzemidő [h/a]', 0], ['Wvent', 'Ventilátor villamos energia [kWh/a]', 0]])));
   }
+  const hutesR = e.rendszerek.filter((r) => r.cel === 'hutes');
+  if (hutesR.length) {
+    tartalom.push(cim('Hűtés (11.1–11.3 képlet)', 2));
+    tartalom.push(adatsor([['Zóna nettó hűtési igénye (6.8)', `${f(zr?.QHnetEv, 0)} kWh/a (${f((zr?.QHnetEv ?? 0) / g.AN, 1)} kWh/m²a)`]], 150));
+    tartalom.push(tabla(['Rendszer', 'QH,net [kWh/a]', 'cH', 'εH,szab', 'SEER', 'εH', 'Végenergia [kWh/a]'], hutesR.map((r) => [
+      r.nev, f(r.reszletek.QHnet, 0), f(r.reszletek.cH, 2), f(r.reszletek.eSzab, 3), r.reszletek.SEER ? f(r.reszletek.SEER, 2) : 'passzív', r.reszletek.epsH ? f(r.reszletek.epsH, 3) : '–',
+      f(r.tetelek.reduce((s2, t) => s2 + t.Q, 0), 0),
+    ]), ['*', 55, 30, 40, 35, 35, 60], [1, 2, 3, 4, 5, 6]));
+    tartalom.push(megj('QH,vég = QH,net · cH · εH,szab · εH,száll · εH, ahol εH = 1/SEER és egyszerűsített módszernél εH,száll = 1. Passzív talajhőcserélőnél 1 kWh segédenergia 10 kWh nettó hűtési igényt fedez (11.1.2).'));
+  }
   if (e.napelem.length) {
-    tartalom.push(cim('Napelem (exportáltként elszámolva, 13.1 és 14.7 képlet)', 2));
-    tartalom.push(tabla(['Mező', 'kWp', 'Tájolás', 'Hajlásszög', 'Termelés [kWh/a]'], p.gepeszet.napelem.map((n, i) => [n.nev, f(n.kWp, 2), n.tajolas.replace('_', '/'), `${n.hajlasszog}°`, f(e.napelem[i]?.W, 0)]), ['*', 40, 60, 50, 70], [1, 3, 4]));
+    tartalom.push(cim('Napelem (exportáltként elszámolva, 14.7)', 2));
+    tartalom.push(tabla(['Mező', 'kWp', 'Tájolás / azimut', 'Hajlásszög', 'Módszer', 'Termelés [kWh/a]'], p.gepeszet.napelem.map((n, i) => [
+      n.nev, f(n.kWp, 2), n.modszer === 'pvgis' ? `${n.azimut ?? 0}°` : n.tajolas.replace('_', '/'), `${n.hajlasszog}°`,
+      n.modszer === 'pvgis' ? 'PVGIS (13.2.2)' : '13.1. táblázat', f(e.napelem[i]?.W, 0),
+    ]), ['*', 36, 60, 46, 70, 64], [1, 3, 5]));
+    for (const n of p.gepeszet.napelem) {
+      const pv = n.modszer === 'pvgis' ? n.pvgis : undefined;
+      if (!pv) continue;
+      const b = pv.bemenet;
+      tartalom.push({ stack: [
+        { text: `${n.nev} – PVGIS igazoló adatok`, bold: true, margin: [0, 4, 0, 2] },
+        megj(`Hely: ${f(pv.hely.lat, 4)}° É, ${f(pv.hely.lon, 4)}° K${pv.hely.magassag !== null ? `, ${f(pv.hely.magassag, 0)} m` : ''} · adatbázis: ${pv.meteo.sugarzasDb ?? '–'} ${pv.meteo.evTol ?? ''}–${pv.meteo.evIg ?? ''}${pv.meteo.horizont ? ', terepárnyékolással' : ''} · ${f(b.kWp, 2)} kWp, dőlés ${b.hajlasszog}°, azimut ${b.azimut}°, ${b.elhelyezes === 'free' ? 'szabadon álló' : 'épületre szerelt'}, rendszerveszteség ${f(b.veszteseg, 0)}%${pv.ossz.l_total !== null ? `, összes veszteség ${f(pv.ossz.l_total, 1)}%` : ''} · lekérve ${new Date(pv.lekerve).toLocaleDateString('hu-HU')}`),
+        tabla(['', ...HO, 'Év'], [
+          ['Em [kWh]', ...pv.havi.map((h) => f(h.E_m, 0)), { text: f(pv.ossz.E_y, 0), bold: true, alignment: 'right' }],
+          ['H(i)m [kWh/m²]', ...pv.havi.map((h) => f(h.H_m, 0)), f(pv.ossz.H_y, 0)],
+        ] as TableCell[][], [52, ...HO.map(() => '*'), 34], Array.from({ length: 13 }, (_, i) => i + 1)),
+        megj(`Forrás: PVGIS 5.3 (EU JRC) PVcalc. ${pv.url.startsWith('http') ? pv.url : pv.url}`),
+      ], unbreakable: true });
+    }
   }
 
   // --- 5. Indikátorok -------------------------------------------------------------------------

@@ -13,3 +13,5 @@ export * as panel from './tablak/panel.js';
 export * from './szettek.js';
 export * as hoszukseglet from './hoszukseglet.js';
 export * as nyilaszaroSablon from './tablak/nyilaszaro_sablon.js';
+export * as pvgis from './pvgis.js';
+export * as hutes from './tablak/hutes.js';

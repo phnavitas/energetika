@@ -5,9 +5,9 @@
  */
 import {
   retegrendU, talajonFekvoPadlo, osztottAblak, kapcsoltLegretegR, kethejuNyilaszaroU, nyilaszaroU, nyilaszaroArnyekoloval, nyilaszaroSablon,
-  epuletfizika, kovetelmeny, klima, hoszukseglet, GEPESZETI_SZETTEK, szabalyozasiTenyezo,
+  epuletfizika, kovetelmeny, klima, hoszukseglet, GEPESZETI_SZETTEK, FUTES_SZETTEK, HMV_SZETTEK, SZELLOZES_SZETTEK, HUTES_SZETTEK, szabalyozasiTenyezo, pvgis,
   type EpuletBemenet, type HataroloElem, type Reteg, type Hatar, type FutesiHotermelo, type HmvHotermelo,
-  type FutesSablon, type HmvSablon, type SzellozesRendszer,
+  type FutesSablon, type HmvSablon, type HutesSablon, type SzellozesRendszer,
 } from '@mag/index';
 import type { BTenyezoKod, HoaramIrany, Legzaras, NyilasElhelyezes } from '@mag/tablak/epuletfizika';
 import type { Tajolas, Hajlasszog } from '@mag/tablak/klima';
@@ -103,9 +103,21 @@ export interface SzellozesUI {
   uzemArany: number;
   ventilator: SzellozesRendszer['ventilator'];
   segedKWh?: number;
+  szettKod?: string;
 }
-export interface NapelemUI { id: string; nev: string; kWp: number; tajolas: 'K_Ny' | 'DK_DNy' | 'D'; hajlasszog: number; }
-export interface Gepeszet { futes: FutesAlrendszerUI[]; hmv: HmvUI; szellozes: SzellozesUI | null; napelem: NapelemUI[]; }
+export interface NapelemUI {
+  id: string; nev: string; kWp: number;
+  /** 13.1. táblázat oszlopa (egyszerűsített módszer). */
+  tajolas: 'K_Ny' | 'DK_DNy' | 'D'; hajlasszog: number;
+  /** 'tabla': 13.2.1 egyszerűsített (≤ 20 kWp); 'pvgis': 13.2.2 részletes, PVGIS lekérdezéssel. */
+  modszer?: 'tabla' | 'pvgis';
+  /** PVGIS: azimut [°] (0 = dél, −90 = kelet, +90 = nyugat), rendszerveszteség [%], elhelyezés. */
+  azimut?: number; veszteseg?: number; elhelyezes?: 'building' | 'free';
+  /** A legutóbbi PVGIS lekérdezés teljes, igazolásként tárolt eredménye. */
+  pvgis?: pvgis.PvgisEredmeny;
+}
+export interface HutesUI extends HutesSablon { id: string; nev: string; szettKod?: string }
+export interface Gepeszet { futes: FutesAlrendszerUI[]; hmv: HmvUI; szellozes: SzellozesUI | null; napelem: NapelemUI[]; hutes?: HutesUI[] }
 
 export interface Projekt {
   verzio: 2;
@@ -113,7 +125,10 @@ export interface Projekt {
     nev: string; megrendelo: string; irsz: string; telepules: string; kozterulet: string; kozteruletJelleg: string; hazszam: string;
     hrsz: string; epitesiEv: number;
     /** A nyílászárók cseréjének éve (a kortipikus ablakajánláshoz); üres: az építés éve. */
-    nyilaszaroCsereEv?: number; kategoria: 'csaladi_haz' | 'egyeb_lakoepulet';
+    nyilaszaroCsereEv?: number;
+    /** Az épület földrajzi helye (PVGIS-hez); forrás: címkereső vagy kézi. */
+    koordinata?: { lat: number; lon: number; forras?: string };
+    kategoria: 'csaladi_haz' | 'egyeb_lakoepulet';
     kovetelmenySzint: 'kozel_nulla' | 'jelentos_felujitas' | 'meglevo'; epulettipus?: string; szintek: number;
   };
   zona: { legzaras: Legzaras; elhelyezes: NyilasElhelyezes; szelnekKitett: boolean; hotarolo: keyof typeof epuletfizika.HOTAROLO_KEPESSEG; cmEffFajl?: number; futesProgramozhato: boolean };
@@ -324,6 +339,12 @@ export function atalakit(p: Projekt): Atalakitas {
   if (!gp.futes.length) hibak.push('Vegyél fel legalább egy fűtési rendszert.');
   const lefedesOssz = gp.futes.reduce((x, f) => x + (f.lefedes ?? 1), 0);
   if (gp.futes.length && Math.abs(lefedesOssz - 1) > 0.005) hibak.push(`A fűtési rendszerek lefedési arányainak összege ${(lefedesOssz * 100).toFixed(0)}%; 100% kell.`);
+  for (const n of gp.napelem) {
+    if (n.modszer !== 'pvgis') continue;
+    const be = napelemPvgisBemenet(p, n);
+    if (!be) hibak.push(`„${n.nev}”: a PVGIS-számításhoz add meg az épület koordinátáit (Gépészet → Napelem).`);
+    else if (!pvgis.pvgisErvenyes(n.pvgis, be)) hibak.push(`„${n.nev}”: a PVGIS-adat hiányzik vagy a bemenetek megváltoztak – kérd le újra.`);
+  }
   if (hibak.length) return { bemenet: null, hibak, geometria: g };
 
   const futes = gp.futes.map(({ id: _id, szettKod: _sz, szabalyozas, ...a }) => ({
@@ -346,7 +367,13 @@ export function atalakit(p: Projekt): Atalakitas {
       gepiSzellozes: gp.szellozes ? { etaR: gp.szellozes.etaR, uzemArany: gp.szellozes.uzemArany } : undefined,
     }],
     futes, hmv: [hmv], szellozes,
-    napelem: gp.napelem.map(({ nev, kWp, tajolas, hajlasszog }) => ({ nev, kWp, tajolas, hajlasszog })),
+    hutes: (gp.hutes ?? []).map(({ id: _i, szettKod: _s, ...h }) => ({ ...structuredClone(h), zona: 'F1' })),
+    napelem: gp.napelem.map((n) => {
+      const alap = { nev: n.nev, kWp: n.kWp, tajolas: n.tajolas, hajlasszog: n.hajlasszog };
+      if (n.modszer !== 'pvgis') return alap;
+      const pv = n.pvgis!;
+      return { ...alap, reszletes: { Wev: pv.ossz.E_y, forras: `PVGIS 5.3, ${pv.meteo.sugarzasDb ?? 'n. a.'} ${pv.meteo.evTol ?? ''}–${pv.meteo.evIg ?? ''}, lekérve ${pv.lekerve.slice(0, 10)}` } };
+    }),
   };
   return { bemenet, hibak, geometria: g };
 }
@@ -471,13 +498,37 @@ export function szabalyozasErtek(s: FutesSablon['szabalyozas']): number {
   return 'valasztas' in s ? szabalyozasiTenyezo(s.valasztas).epszilon : s.kozvetlen;
 }
 
+/** Fűtési szett (részszett vagy régi kombinált szett kódja alapján). */
 export function futesSzettbol(kod: string): FutesAlrendszerUI {
-  const sz = GEPESZETI_SZETTEK.find((x) => x.kod === kod)!;
-  return { ...structuredClone(sz.futes), id: ujId(), nev: sz.nev.split(' + ')[0] ?? sz.nev, szettKod: kod };
+  const k = GEPESZETI_SZETTEK.find((x) => x.kod === kod)?.futesKod ?? kod;
+  const sz = FUTES_SZETTEK.find((x) => x.kod === k) ?? FUTES_SZETTEK[0]!;
+  return { ...structuredClone(sz.adat), id: ujId(), nev: sz.nev, szettKod: sz.kod };
 }
 export function hmvSzettbol(kod: string): HmvUI {
-  const sz = GEPESZETI_SZETTEK.find((x) => x.kod === kod)!;
-  return { ...structuredClone(sz.hmv), szettKod: kod };
+  const k = GEPESZETI_SZETTEK.find((x) => x.kod === kod)?.hmvKod ?? kod;
+  const sz = HMV_SZETTEK.find((x) => x.kod === k) ?? HMV_SZETTEK[0]!;
+  return { ...structuredClone(sz.adat), szettKod: sz.kod };
+}
+export function szellozesSzettbol(kod: string): SzellozesUI {
+  const sz = SZELLOZES_SZETTEK.find((x) => x.kod === kod)!;
+  return { ...structuredClone(sz.adat), szettKod: kod };
+}
+export function hutesSzettbol(kod: string): HutesUI {
+  const sz = HUTES_SZETTEK.find((x) => x.kod === kod)!;
+  return { ...structuredClone(sz.adat), id: ujId(), nev: sz.nev, szettKod: kod };
+}
+/** A szett aktuális neve kód alapján (régi kombinált kódokat is felold). */
+export function szettNev(lista: readonly { kod: string; nev: string }[], kod: string | undefined, regi?: 'futesKod' | 'hmvKod'): string | null {
+  if (!kod) return null;
+  const k = regi ? GEPESZETI_SZETTEK.find((x) => x.kod === kod)?.[regi] ?? kod : kod;
+  return lista.find((x) => x.kod === k)?.nev ?? null;
+}
+
+/** A napelem PVGIS-bemenete a projekt adataiból (null, ha nincs koordináta). */
+export function napelemPvgisBemenet(p: Projekt, n: NapelemUI): pvgis.PvgisBemenet | null {
+  const k = p.meta.koordinata;
+  if (!k) return null;
+  return { lat: k.lat, lon: k.lon, kWp: n.kWp, veszteseg: n.veszteseg ?? 14, hajlasszog: n.hajlasszog, azimut: n.azimut ?? 0, elhelyezes: n.elhelyezes ?? 'building' };
 }
 
 export function erpFutes(h: FutesiHotermelo, eta: number): FutesiHotermelo {
@@ -505,6 +556,7 @@ export function projektMigral(nyers: unknown): Projekt {
   }
   p.gepeszet.napelem ??= [];
   p.gepeszet.szellozes ??= null;
+  p.gepeszet.hutes ??= [];
   return p;
 }
 

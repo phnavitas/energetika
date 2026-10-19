@@ -1,11 +1,12 @@
 import { useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
-import { GEPESZETI_SZETTEK, gepeszet as T, szabalyozasiTenyezo, type EpuletEredmeny, type FutesiHotermelo, type HmvHotermelo, type RendszerEredmeny } from '@mag/index';
+import { GEPESZETI_SZETTEK, FUTES_SZETTEK, HMV_SZETTEK, SZELLOZES_SZETTEK, HUTES_SZETTEK, hutes as HT, gepeszet as T, szabalyozasiTenyezo, type EpuletEredmeny, type FutesiHotermelo, type HmvHotermelo, type RendszerEredmeny } from '@mag/index';
 import { Mezo, Szam, Szoveg, Valaszto, sz } from '../ui';
 import {
-  ujId, futesSzettbol, hmvSzettbol, erpFutes, erpHmv, szabalyozasErtek,
-  type Projekt, type Gepeszet, type FutesAlrendszerUI, type HmvUI, type SzellozesUI,
+  ujId, futesSzettbol, hmvSzettbol, szellozesSzettbol, hutesSzettbol, erpFutes, erpHmv, szabalyozasErtek, szettNev,
+  type Projekt, type Gepeszet, type FutesAlrendszerUI, type HmvUI, type SzellozesUI, type HutesUI,
 } from '../modell';
+import { NapelemSzakasz } from './Napelem';
 import * as C from '../gepeszetCimkek';
 import { useTavoli } from '../fiok';
 import { szettMent } from '../tarolo';
@@ -43,6 +44,26 @@ function Eredmenysor({ r, kulcsok }: { r: RendszerEredmeny | undefined; kulcsok:
   );
 }
 
+/** Részrendszer-szettek rácsa lenyitható gombbal. */
+function SzettRacs({ cimke, lista, aktiv, valaszt, nyitva: kezdo = false }: { cimke: string; lista: readonly { kod: string; nev: string; leiras: string }[]; aktiv?: string | null; valaszt: (kod: string) => void; nyitva?: boolean }) {
+  const [nyitva, setNyitva] = useState(kezdo);
+  return (
+    <div class="szett-sor">
+      <button class="gomb" aria-expanded={nyitva} onClick={() => setNyitva(!nyitva)}>{nyitva ? 'Szettek elrejtése' : cimke}</button>
+      {nyitva && (
+        <div class="szettek" style="margin-top:8px">
+          {lista.map((s) => (
+            <button class="szett" aria-pressed={aktiv === s.kod} onClick={() => { valaszt(s.kod); setNyitva(false); }}>
+              <h3>{s.nev}</h3>
+              <p>{s.leiras}</p>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // =============================================================================================
 
 export function GepeszetLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: Modosit; eredmeny: EpuletEredmeny | null }) {
@@ -61,11 +82,13 @@ export function GepeszetLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: M
   function szettAlkalmaz(cim: string, uj: Gepeszet) {
     const megtartva = structuredClone(uj);
     let atviheto = false;
-    const f0 = gp.futes[0]?.hotermelo, h0 = gp.hmv.hotermelo;
-    if (f0 && (f0.tipus === 'kazan_erp' || f0.tipus === 'hoszivattyu_erp') && megtartva.futes[0]) {
-      const cel = erpFutes(megtartva.futes[0].hotermelo, f0.etaS);
-      if (cel.tipus === f0.tipus && JSON.stringify(cel) !== JSON.stringify(megtartva.futes[0].hotermelo)) { megtartva.futes[0].hotermelo = cel; atviheto = true; }
-    }
+    const h0 = gp.hmv.hotermelo;
+    megtartva.futes.forEach((uf, i) => {
+      const f0 = gp.futes[i]?.hotermelo;
+      if (!f0 || (f0.tipus !== 'kazan_erp' && f0.tipus !== 'hoszivattyu_erp') || JSON.stringify(uf) === JSON.stringify(gp.futes[i])) return;
+      const cel = erpFutes(uf.hotermelo, f0.etaS);
+      if (cel.tipus === f0.tipus && JSON.stringify(cel) !== JSON.stringify(uf.hotermelo)) { uf.hotermelo = cel; atviheto = true; }
+    });
     if (h0.tipus === 'erp' || h0.tipus === 'erp_elektromos') {
       const cel = erpHmv(megtartva.hmv.hotermelo, h0.etaWH);
       if (cel.tipus === h0.tipus && JSON.stringify(cel) !== JSON.stringify(megtartva.hmv.hotermelo)) { megtartva.hmv.hotermelo = cel; atviheto = true; }
@@ -74,18 +97,32 @@ export function GepeszetLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: M
     else { mg((g) => { Object.assign(g, uj); }); setSzettNyitva(false); }
   }
   function beepitettSzett(kod: string) {
-    szettAlkalmaz(GEPESZETI_SZETTEK.find((s) => s.kod === kod)!.nev, { futes: [futesSzettbol(kod)], hmv: hmvSzettbol(kod), szellozes: gp.szellozes, napelem: gp.napelem });
+    szettAlkalmaz(GEPESZETI_SZETTEK.find((s) => s.kod === kod)!.nev, { ...gp, futes: [futesSzettbol(kod)], hmv: hmvSzettbol(kod) });
   }
+  /** Egy fűtési alrendszer cseréje szettre (az azonosító és a lefedés megmarad). */
+  function futesSzett(i: number, kod: string) {
+    const uj = structuredClone(gp);
+    const f = futesSzettbol(kod);
+    uj.futes[i] = { ...f, id: gp.futes[i]!.id, lefedes: gp.futes[i]!.lefedes };
+    szettAlkalmaz(f.nev, uj);
+  }
+  function hmvSzett(kod: string) {
+    const uj = structuredClone(gp);
+    uj.hmv = hmvSzettbol(kod);
+    szettAlkalmaz(HMV_SZETTEK.find((x) => x.kod === kod)!.nev, uj);
+  }
+  const hutesEredm = eredmeny?.rendszerek.filter((r) => r.cel === 'hutes') ?? [];
+  const QHnet = eredmeny?.zonak[0]?.QHnetEv ?? 0;
 
-  const aktivSzett = gp.futes.length === 1 && gp.futes[0]!.szettKod && gp.hmv.szettKod === gp.futes[0]!.szettKod ? gp.futes[0]!.szettKod : null;
+  const aktivSzett = gp.futes.length === 1 ? GEPESZETI_SZETTEK.find((c) => (c.futesKod === gp.futes[0]!.szettKod || c.kod === gp.futes[0]!.szettKod) && (c.hmvKod === gp.hmv.szettKod || c.kod === gp.hmv.szettKod))?.kod ?? null : null;
 
   return (
     <>
       <section class="szakasz">
         <h2>Kiindulás</h2>
-        <p class="halk">Válassz egy szettet a leggyakoribb rendszerekből, majd lent állítsd be a tényleges berendezést. A szett csak kiindulópont: minden elem külön módosítható, és az eredmény azonnal frissül.</p>
+        <p class="halk">Gyors kezdéshez választhatsz teljes fűtés + HMV kombinációt, de a fűtés, a HMV, a szellőzés és a hűtés lent külön-külön is szettből tölthető. A szett csak kiindulópont: minden elem módosítható, és az eredmény azonnal frissül.</p>
         <div class="gombsor" style="margin-bottom:12px">
-          <button class="gomb" aria-expanded={szettNyitva} onClick={() => setSzettNyitva(!szettNyitva)}>{szettNyitva ? 'Szettek elrejtése' : 'Szett választása'}</button>
+          <button class="gomb" aria-expanded={szettNyitva} onClick={() => setSzettNyitva(!szettNyitva)}>{szettNyitva ? 'Kombinációk elrejtése' : 'Teljes rendszer-kombináció'}</button>
           <span class="halk">{aktivSzett ? `Jelenleg: ${GEPESZETI_SZETTEK.find((s) => s.kod === aktivSzett)?.nev}` : 'Egyedi beállítás'}</span>
           {tv && <SzettMentes gp={gp} />}
         </div>
@@ -132,7 +169,7 @@ export function GepeszetLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: M
         <p class="halk">A veszteségeket és a segédenergiát a program a 8. fejezet táblázataiból számolja a rendszer-alapterületre. Ha a hőtermelőnek van ErP adatlapja, válaszd az adatlapos változatot: az pontosabb a táblázati értéknél. Bivalens rendszernél (pl. hőszivattyú és kazán) vegyél fel több hőtermelőt, és add meg, mekkora részt fedeznek a fűtési igényből.</p>
         <div style="display:flex;flex-direction:column;gap:16px">
           {gp.futes.map((f, i) => (
-            <FutesKartya key={f.id} f={f} tobb={gp.futes.length > 1} r={futesEredm[i]}
+            <FutesKartya key={f.id} f={f} tobb={gp.futes.length > 1} r={futesEredm[i]} szett={(kod) => futesSzett(i, kod)}
               m={(fn) => mg((g) => fn(g.futes[i]!))}
               torol={() => mg((g) => { g.futes.splice(i, 1); if (g.futes.length === 1) delete g.futes[0]!.lefedes; })} />
           ))}
@@ -152,52 +189,45 @@ export function GepeszetLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: M
       <section class="szakasz">
         <h2>Használati melegvíz</h2>
         <p class="halk">A nettó HMV igény lakóépületre kötelezően {p.meta.kategoria === 'csaladi_haz' ? 25 : 30} kWh/m²a (2. függ. 2.2. táblázat).</p>
-        <HmvKartya h={gp.hmv} r={hmvEredm} m={(fn) => mg((g) => fn(g.hmv))} />
+        <HmvKartya h={gp.hmv} r={hmvEredm} m={(fn) => mg((g) => fn(g.hmv))} szett={hmvSzett} />
       </section>
 
       <section class="szakasz">
         <h2>Gépi szellőzés</h2>
         <p class="halk">Hővisszanyerős, állandó térfogatáramú szellőzés (6.12 és 10. fejezet). Lakóépületnél a friss levegő mennyisége kötelezően 0,5 1/h légcsere: {sz(0.5 * Vfutott, 0)} m³/h. Léghevítéses (légfűtéses) rendszer még nem számolható.</p>
-        <label class="jelolo" style="margin-bottom:12px">
-          <input type="checkbox" checked={!!gp.szellozes} onChange={(e) => mg((g) => {
-            g.szellozes = (e.target as HTMLInputElement).checked
-              ? { etaR: 0.8, uzemArany: 1, ventilator: { mod: 'erp', SPI: 0.00035, misc: 'legcsatornas', ctrl: 'kezi', x: 'fokozatmentes' } }
-              : null;
-          })} />
-          Van gépi szellőzés hővisszanyeréssel
-        </label>
-        {gp.szellozes && <SzellozesKartya s={gp.szellozes} r={szellEredm} m={(fn) => mg((g) => fn(g.szellozes!))} />}
+        <div class="gombsor" style="margin-bottom:12px;align-items:flex-start">
+          <SzettRacs cimke={gp.szellozes ? 'Szellőzési szett cseréje' : 'Gépi szellőzés hozzáadása szettből'} lista={SZELLOZES_SZETTEK} aktiv={gp.szellozes?.szettKod} valaszt={(kod) => mg((g) => { g.szellozes = szellozesSzettbol(kod); })} />
+          {gp.szellozes && <button class="gomb halk-gomb" onClick={() => mg((g) => { g.szellozes = null; })}>Nincs gépi szellőzés</button>}
+        </div>
+        {gp.szellozes && <>
+          <p class="halkabb" style="margin-bottom:8px">{szettNev(SZELLOZES_SZETTEK, gp.szellozes.szettKod) ? `Szett: ${szettNev(SZELLOZES_SZETTEK, gp.szellozes.szettKod)}. ` : 'Egyedi beállítás. '}A szettek ηr és SPI értéke jellemző termékadat, nem rendeleti táblázati érték: a tényleges berendezés adatlapja szerint írd át.</p>
+          <SzellozesKartya s={gp.szellozes} r={szellEredm} m={(fn) => mg((g) => { fn(g.szellozes!); g.szellozes!.szettKod = undefined; })} />
+        </>}
       </section>
 
       <section class="szakasz">
-        <h2>Napelem</h2>
-        <p class="halk">Egyszerűsített módszer 20 kWp-ig (13.1. táblázat). A termelés teljes egészében exportáltként számít, és súlyozott értékével csökkenti az összesített energetikai jellemzőt (14.7). Észak felé néző mezőt a táblázat nem kezel.</p>
-        {gp.napelem.length > 0 && (
-          <div class="tabla-gorgeto">
-            <table class="tabla">
-              <thead><tr><th>Megnevezés</th><th class="szam">Teljesítmény</th><th>Tájolás</th><th class="szam">Hajlásszög</th><th class="szam">Éves termelés</th><th></th></tr></thead>
-              <tbody>
-                {gp.napelem.map((n, i) => (
-                  <tr>
-                    <td style="min-width:160px"><Szoveg ertek={n.nev} valt={(v) => mg((g) => { g.napelem[i]!.nev = v; })} /></td>
-                    <td style="width:130px"><Szam cimke="Teljesítmény" ertek={n.kWp} egyseg="kWp" valt={(v) => mg((g) => { g.napelem[i]!.kWp = v; })} /></td>
-                    <td style="min-width:170px"><Valaszto cimke="Tájolás" ertek={n.tajolas} valt={(v) => mg((g) => { g.napelem[i]!.tajolas = v; })} opciok={C.opciok(C.PV_TAJOLAS_NEV)} /></td>
-                    <td style="width:110px"><Szam cimke="Hajlásszög" ertek={n.hajlasszog} egyseg="°" valt={(v) => mg((g) => { g.napelem[i]!.hajlasszog = Math.min(Math.max(v, 0), 90); })} /></td>
-                    <td class="szam">{sz(eredmeny?.napelem[i]?.W, 0)} kWh/a</td>
-                    <td><button class="gomb halk-gomb" onClick={() => mg((g) => { g.napelem.splice(i, 1); })}>Törlés</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <div class="gombsor" style="margin-top:12px">
-          <button class="gomb" onClick={() => mg((g) => { g.napelem.push({ id: ujId(), nev: g.napelem.length ? `Napelem ${g.napelem.length + 1}` : 'Napelem', kWp: 4, tajolas: 'D', hajlasszog: 30 }); })}>Napelem hozzáadása</button>
-          {eredmeny && eredmeny.indikatorok.celonkent.export.nren > 0 && (
-            <span class="halk">Az összesített energetikai jellemzőt {sz(eredmeny.indikatorok.celonkent.export.nren / eredmeny.indikatorok.AN, 1)} kWh/m²a-val csökkenti.</span>
-          )}
+        <h2>Hűtés</h2>
+        <p class="halk">Gépi hűtés a 11. fejezet egyszerűsített módszerével: QH,vég = QH,net · cH · εH,szab · εH (11.1), εH = 1/SEER. Hűtési rendszer felvételekor a zóna nettó hűtési igényét (6.8) is számolja a program.{gp.hutes?.length ? ` Nettó hűtési igény: ${sz(QHnet, 0)} kWh/a (${sz(QHnet / (eredmeny?.indikatorok.AN || 1), 1)} kWh/m²a).` : ''}</p>
+        <div style="display:flex;flex-direction:column;gap:16px">
+          {(gp.hutes ?? []).map((h, i) => (
+            <HutesKartya key={h.id} h={h} tobb={(gp.hutes?.length ?? 0) > 1} r={hutesEredm[i]}
+              m={(fn) => mg((g) => fn(g.hutes![i]!))}
+              szett={(kod) => mg((g) => { g.hutes![i] = { ...hutesSzettbol(kod), id: h.id, lefedes: h.lefedes }; })}
+              torol={() => mg((g) => { g.hutes!.splice(i, 1); if (g.hutes!.length === 1) delete g.hutes![0]!.lefedes; })} />
+          ))}
+        </div>
+        <div style="margin-top:12px">
+          <SzettRacs cimke={gp.hutes?.length ? 'További hűtési rendszer' : 'Hűtés hozzáadása szettből'} lista={HUTES_SZETTEK} valaszt={(kod) => mg((g) => {
+            const uj = hutesSzettbol(kod);
+            g.hutes ??= [];
+            if (g.hutes.length === 1) g.hutes[0]!.lefedes = 0.5;
+            if (g.hutes.length) uj.lefedes = Math.max(0, 1 - g.hutes.reduce((s, x) => s + (x.lefedes ?? 1), 0)) || 0.5;
+            g.hutes.push(uj);
+          })} />
         </div>
       </section>
+
+      <NapelemSzakasz p={p} modosit={modosit} eredmeny={eredmeny} />
     </>
   );
 }
@@ -205,7 +235,7 @@ export function GepeszetLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: M
 // =============================================================================================
 // Fűtési alrendszer
 
-function FutesKartya({ f, tobb, r, m, torol }: { f: FutesAlrendszerUI; tobb: boolean; r: RendszerEredmeny | undefined; m: (fn: (f: FutesAlrendszerUI) => void) => void; torol: () => void }) {
+function FutesKartya({ f, tobb, r, m, torol, szett }: { f: FutesAlrendszerUI; tobb: boolean; r: RendszerEredmeny | undefined; m: (fn: (f: FutesAlrendszerUI) => void) => void; torol: () => void; szett: (kod: string) => void }) {
   const h = f.hotermelo;
   const vizes = 'valasztas' in f.szabalyozas;
   let szabHiba: string | null = null, eSzab: number | null = null;
@@ -224,6 +254,10 @@ function FutesKartya({ f, tobb, r, m, torol }: { f: FutesAlrendszerUI; tobb: boo
           </div>
         )}
         {tobb && <button class="gomb halk-gomb" onClick={torol}>Eltávolítás</button>}
+      </div>
+      <div class="gep-szett">
+        <span class="halkabb">{szettNev(FUTES_SZETTEK, f.szettKod, 'futesKod') ? `Szett: ${szettNev(FUTES_SZETTEK, f.szettKod, 'futesKod')}` : 'Egyedi beállítás'}</span>
+        <SzettRacs cimke="Fűtési szett választása" lista={FUTES_SZETTEK} aktiv={f.szettKod} valaszt={szett} />
       </div>
 
       <div class="gep-racs">
@@ -352,13 +386,17 @@ function VizesSzab({ v, m }: { v: SzabValasztas; m: (fn: (v: SzabValasztas) => v
 // =============================================================================================
 // HMV
 
-function HmvKartya({ h, r, m }: { h: HmvUI; r: RendszerEredmeny | undefined; m: (fn: (h: HmvUI) => void) => void }) {
+function HmvKartya({ h, r, m, szett }: { h: HmvUI; r: RendszerEredmeny | undefined; m: (fn: (h: HmvUI) => void) => void; szett: (kod: string) => void }) {
   const ht = h.hotermelo;
   const hset = (uj: HmvHotermelo) => m((x) => { x.hotermelo = uj; x.szettKod = undefined; });
   const hm = (fn: (h: Barmely) => void) => m((x) => { fn(x.hotermelo); x.szettKod = undefined; });
   const k = h.napkollektor;
   return (
     <div class="kartya gep-kartya">
+      <div class="gep-szett">
+        <span class="halkabb">{szettNev(HMV_SZETTEK, h.szettKod, 'hmvKod') ? `Szett: ${szettNev(HMV_SZETTEK, h.szettKod, 'hmvKod')}` : 'Egyedi beállítás'}</span>
+        <SzettRacs cimke="HMV szett választása" lista={HMV_SZETTEK} aktiv={h.szettKod} valaszt={szett} />
+      </div>
       <div class="gep-racs">
         <Csoport cim="Vízmelegítő">
           <Mezo cim="Típus"><Valaszto ertek={ht.tipus} valt={(t) => hset(C.hmvHotermeloAlap(t))} opciok={C.opciok(C.HMV_HOTERMELO_NEV)} /></Mezo>
@@ -450,6 +488,53 @@ function SzellozesKartya({ s, r, m }: { s: SzellozesUI; r: RendszerEredmeny | un
         </Csoport>
       </div>
       <Eredmenysor r={r} kulcsok={[['V', 'Friss levegő', 0, 'm³/h'], ['uzemora', 'Üzemidő', 0, 'h/a']]} />
+    </div>
+  );
+}
+
+// =============================================================================================
+// Hűtés
+
+const HUTOGEP_OPC = [
+  ...Object.entries(HT.HUTOGEPEK).map(([k, g]) => ({ ertek: k, nev: `${g.nev} – SEER ${String(g.SEER).replace('.', ',')}` })),
+  { ertek: 'seer', nev: 'Adatlap szerinti SEER' },
+  { ertek: 'passziv_talaj', nev: 'Passzív hűtés talajhőcserélővel (hőszivattyú nélkül)' },
+];
+
+function HutesKartya({ h, tobb, r, m, szett, torol }: { h: HutesUI; tobb: boolean; r: RendszerEredmeny | undefined; m: (fn: (h: HutesUI) => void) => void; szett: (kod: string) => void; torol: () => void }) {
+  const mm = (fn: (h: HutesUI) => void) => m((x) => { fn(x); x.szettKod = undefined; });
+  const gepErtek = h.gep.tipus === 'tabla' ? h.gep.kod : h.gep.tipus;
+  return (
+    <div class="kartya gep-kartya">
+      <div class="gep-fej">
+        <div style="flex:1;min-width:200px"><Szoveg ertek={h.nev} valt={(v) => m((x) => { x.nev = v; })} /></div>
+        {tobb && <div style="width:160px"><Mezo cim="Lefedés"><Szazalek cimke="Lefedés" ertek={h.lefedes ?? 1} valt={(v) => m((x) => { x.lefedes = Math.min(Math.max(v, 0), 1); })} /></Mezo></div>}
+        <button class="gomb halk-gomb" onClick={torol}>Eltávolítás</button>
+      </div>
+      <div class="gep-szett">
+        <span class="halkabb">{szettNev(HUTES_SZETTEK, h.szettKod) ? `Szett: ${szettNev(HUTES_SZETTEK, h.szettKod)}` : 'Egyedi beállítás'}</span>
+        <SzettRacs cimke="Hűtési szett választása" lista={HUTES_SZETTEK} aktiv={h.szettKod} valaszt={szett} />
+      </div>
+      <div class="gep-racs">
+        <Csoport cim="Hűtőgép (11.2. táblázat)">
+          <Mezo cim="Típus">
+            <Valaszto ertek={gepErtek} valt={(v) => mm((x) => {
+              x.gep = v === 'seer' ? { tipus: 'seer', SEER: 4, energiahordozo: 'villamos' } : v === 'passziv_talaj' ? { tipus: 'passziv_talaj' } : { tipus: 'tabla', kod: v as HT.HutogepKod };
+            })} opciok={HUTOGEP_OPC} />
+          </Mezo>
+          {h.gep.tipus === 'seer' && <>
+            <Mezo cim="SEER (adatlap)" sugo="εH = 1 / SEER (11.3)"><Szam ertek={h.gep.SEER} valt={(v) => mm((x) => { (x.gep as { SEER: number }).SEER = v; })} /></Mezo>
+            <Mezo cim="Energiahordozó"><Valaszto ertek={h.gep.energiahordozo} valt={(v) => mm((x) => { (x.gep as { energiahordozo: string }).energiahordozo = v; })} opciok={[{ ertek: 'villamos', nev: 'Villamos energia' }, { ertek: 'fosszilis_gaz', nev: 'Földgáz (gázmotoros hőszivattyú)' }]} /></Mezo>
+          </>}
+          {h.gep.tipus === 'passziv_talaj' && <p class="halkabb">11.1.2: 1 kWh keringtetési segédenergia 10 kWh nettó hűtési igényt fedez.</p>}
+        </Csoport>
+        <Csoport cim="Hőleadás és szabályozás">
+          <Mezo cim="Hűtőközeg (11.1. táblázat, cH)"><Valaszto ertek={h.cH} valt={(v) => mm((x) => { x.cH = v; })} opciok={Object.entries(HT.HUTES_CH).map(([k, v]) => ({ ertek: k as HT.HutesChKod, nev: `${v.nev} – ${String(v.cH).replace('.', ',')}` }))} /></Mezo>
+          <Mezo cim="Szabályozás (11.3. táblázat, εH,szab)"><Valaszto ertek={h.szab} valt={(v) => mm((x) => { x.szab = v; })} opciok={Object.entries(HT.HUTES_SZAB).map(([k, v]) => ({ ertek: k as HT.HutesSzabKod, nev: `${v.nev} – ${String(v.eps).replace('.', ',')}` }))} /></Mezo>
+          <Mezo cim="Egyéb segédenergia" sugo="Csak ami a SEER-ben nincs benne (11.2); egyszerűsített esetben 0"><Szam ertek={h.segedKWh ?? 0} egyseg="kWh/a" valt={(v) => mm((x) => { x.segedKWh = v; })} /></Mezo>
+        </Csoport>
+      </div>
+      <Eredmenysor r={r} kulcsok={[['QHnet', 'Fedezett nettó hűtési igény', 0, 'kWh/a'], ['SEER', 'SEER', 2, ''], ['cH', 'cH', 2, ''], ['eSzab', 'εH,szab', 3, '']]} />
     </div>
   );
 }

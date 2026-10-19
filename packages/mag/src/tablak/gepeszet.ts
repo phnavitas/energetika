@@ -316,24 +316,7 @@ export function kollektorTermeles(tipus: 'sik' | 'vakuum', Akoll: number, Arszr:
 
 // --- 11. Hűtés, 13. napelem --------------------------------------------------------------------
 
-/** 11.1. táblázat – teljes/érezhető hűtőteljesítmény aránya cH. */
-export const HUTES_CH = { klimagerenda_16_18: 1.0, fancoil_6_12: 1.25, kozvetlen_elparologtatas: 1.45 } as const;
-/** 11.2. táblázat – hűtőgépek SEER és εH. */
-export const HUTOGEP = [
-  { kod: 'split', megnevezes: 'Kompresszoros léghűtés (split)', SEER: 2.5, eH: 0.4 },
-  { kod: 'leghuteses_folyadekhuto', megnevezes: 'Léghűtéses kompakt és osztott kivitelű folyadékhűtő', SEER: 3.0, eH: 0.33 },
-  { kod: 'vizhuteses_scroll', megnevezes: 'Vízhűtéses folyadékhűtő (scroll)', SEER: 4.3, eH: 0.23 },
-  { kod: 'vizhuteses_csavar', megnevezes: 'Vízhűtéses folyadékhűtő (csavar)', SEER: 5.0, eH: 0.2 },
-  { kod: 'vizhuteses_turbo', megnevezes: 'Vízhűtéses folyadékhűtő (turbó)', SEER: 7.0, eH: 0.14 },
-  { kod: 'talaj_viz_hsz', megnevezes: 'Talajhő/víz elektromos hőszivattyú', SEER: 5.0, eH: 0.2 },
-  { kod: 'gaz_hsz_hulladekho', megnevezes: 'Földgáz üzemű hőszivattyú, gázmotor hulladékhője hasznosítva', SEER: 1.7, eH: 0.58 },
-  { kod: 'gaz_hsz', megnevezes: 'Földgáz üzemű hőszivattyú, hulladékhő nem hasznosítva', SEER: 1.4, eH: 0.71 },
-] as const;
-/** 11.3. táblázat – hűtés szabályozási veszteségtényezője. */
-export const HUTES_SZAB = {
-  viz_6_12: 1.13, viz_8_14: 1.1, viz_14_18: 1.0, viz_16_18: 1.0, viz_18_20_padlo: 1.1,
-  levego_passziv: 1.0, levego_aktiv: 1.1, direkt_elparologtatas: 1.13,
-} as const;
+// (A hűtés táblázatai: tablak/hutes.ts.)
 
 /** 13.1. táblázat – napelemek fajlagos éves termelése [kWh/kWp], ≤ 20 kWp. */
 export const PV_HAJLASSZOG = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90] as const;

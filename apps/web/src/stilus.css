@@ -295,3 +295,13 @@ input:disabled { color: var(--tus-3); }
 .foto img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; background: var(--vonal); }
 .foto figcaption { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 .foto-lab { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+
+/* ---- Gépészeti részszettek, napelem ------------------------------------------------------------- */
+.gep-szett { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 12px; }
+.gep-szett .szett-sor:has(> .szettek) { flex-basis: 100%; }
+.szett-sor { display: flex; flex-direction: column; align-items: flex-start; }
+.szett-sor .szettek { width: 100%; }
+.pvgis-igazolas { border: 1px solid var(--vonal); border-radius: 8px; padding: 10px 12px; background: var(--lap); }
+.pvgis-igazolas summary { cursor: pointer; }
+.pvgis-tabla td, .pvgis-tabla th { padding-top: 3px; padding-bottom: 3px; }
+.sav-mini { display: block; height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--meleg) 70%, var(--lap)); }
