@@ -11,3 +11,4 @@ export * as kovetelmeny from './tablak/kovetelmeny.js';
 export * as sulyozo from './tablak/sulyozo.js';
 export * as panel from './tablak/panel.js';
 export * from './szettek.js';
+export * as hoszukseglet from './hoszukseglet.js';

@@ -265,3 +265,11 @@ input:disabled { color: var(--tus-3); }
 .gep-eredmeny dd { margin: 0; font-weight: 600; font-size: 15px; }
 .gep-eredmeny dd span { font-weight: 400; font-size: 12px; color: var(--tus-3); }
 .szakasz > h3 { font-size: 14px; }
+
+/* ---- Hőszükséglet ------------------------------------------------------------------------------ */
+.hsz-tabla td { vertical-align: middle; }
+.hsz-tabla tr.nyitott td { background: var(--kijelolt); }
+.hsz-oszlop { position: relative; min-width: 120px; }
+.hsz-sav { position: absolute; right: 8px; top: 50%; height: 6px; transform: translateY(10px); background: var(--meleg); opacity: .55; border-radius: 3px; max-width: calc(100% - 16px); }
+.hsz-reszlet td { background: var(--lap); padding: 12px 16px 16px; border-bottom: 2px solid var(--vonal); }
+.hsz-reszletek h3 { font-size: 14px; }

@@ -5,7 +5,7 @@
  */
 import {
   retegrendU, talajonFekvoPadlo, teglalapAblak, nyilaszaroU, nyilaszaroArnyekoloval,
-  epuletfizika, kovetelmeny, GEPESZETI_SZETTEK, szabalyozasiTenyezo,
+  epuletfizika, kovetelmeny, klima, hoszukseglet, GEPESZETI_SZETTEK, szabalyozasiTenyezo,
   type EpuletBemenet, type HataroloElem, type Reteg, type Hatar, type FutesiHotermelo, type HmvHotermelo,
   type FutesSablon, type HmvSablon, type SzellozesRendszer,
 } from '@mag/index';
@@ -14,7 +14,20 @@ import type { Tajolas, Hajlasszog } from '@mag/tablak/klima';
 import { anyag, beepitett, type Anyag } from './katalogus';
 
 export type HelyisegKategoria = 'kondicionalt' | 'erosen_kapcsolt' | 'gyengen_kapcsolt';
-export interface Helyiseg { id: string; nev: string; kategoria: HelyisegKategoria; A: number; h: number; }
+export interface Helyiseg { id: string; nev: string; kategoria: HelyisegKategoria; A: number; h: number; hsz?: HelyisegHsz; }
+
+/** Helyiségenkénti hőszükséglet adatai (MSZ EN 12831); üres mező = alapérték. */
+export interface HelyisegHsz {
+  theta?: number;
+  nmin?: number;
+  nyilasok?: hoszukseglet.NyilasSzam;
+  kulsoFalak: { id: string; retegrendId: string; hossz: number }[];
+  padlas: boolean;
+  padlo: boolean;
+  szomszedok: { id: string; helyisegId: string; A: number; U: number }[];
+}
+export interface HoszuksegletBeallitas { thetaE: number; n50: number; vedettseg: hoszukseglet.Vedettseg; Gw: number; fRH: number; }
+export const HSZ_ALAP: HoszuksegletBeallitas = { thetaE: -15, n50: 3, vedettseg: 'mersekelt', Gw: 1, fRH: 0 };
 
 export type Szerep = 'fal' | 'padlas' | 'teto' | 'pincefodem' | 'padlo' | 'belso';
 export interface RetegUI { id: string; anyagId?: string; nev?: string; dCm: number; lambda?: number; R?: number; legreteg?: 'zart' | 'intenziv'; }
@@ -91,6 +104,8 @@ export interface Projekt {
   feluletek: Felulet[];
   gepeszet: Gepeszet;
   tanusito: { nev: string; jogosultsag: string; email: string; telefon: string };
+  /** Helyiségenkénti hőszükséglet beállításai. */
+  hoszukseglet?: HoszuksegletBeallitas;
   /** A projektben használt nem beépített (irodai) anyagok pillanatképe: a projekt így önmagában is számolható. */
   anyagok?: Anyag[];
 }
@@ -223,13 +238,8 @@ export function atalakit(p: Projekt): Atalakitas {
       } else if (f.fajta === 'padlo') {
         const r = p.retegrendek.find((x) => x.id === f.retegrendId);
         if (!r || !f.padlo) { hibak.push(`„${f.nev}”: hiányzó padló rétegrend vagy kerület.`); continue; }
-        const e = retegrendSzamitas(r);
-        const Rp = e.retegR.reduce((s, x) => s + x, 0);
-        const t = talajonFekvoPadlo({
-          A: f.A ?? 0, P: f.padlo.P, df: f.padlo.dfCm / 100, Rp, z: f.padlo.z,
-          peremSzigetelesek: f.padlo.perem ? [{ irany: f.padlo.perem.irany, D: f.padlo.perem.D, dpsz: f.padlo.perem.dCm / 100, Rpsz: f.padlo.perem.R }] : [],
-        });
-        elemek.push({ tipus: 'talaj', nev: f.nev, A: f.A ?? 0, UT: t.UTp, P: f.padlo.P, psiPF: f.padlo.psiPF, kovetelmenyKod: r.kovetelmenyKod });
+        const UTp = padloUT(r, f);
+        elemek.push({ tipus: 'talaj', nev: f.nev, A: f.A ?? 0, UT: UTp, P: f.padlo.P, psiPF: f.padlo.psiPF, kovetelmenyKod: r.kovetelmenyKod });
       } else {
         const r = p.retegrendek.find((x) => x.id === f.retegrendId);
         if (!r) { hibak.push(`„${f.nev}”: nincs rétegrend kiválasztva.`); continue; }
@@ -270,6 +280,122 @@ export function atalakit(p: Projekt): Atalakitas {
     napelem: gp.napelem.map(({ nev, kWp, tajolas, hajlasszog }) => ({ nev, kWp, tajolas, hajlasszog })),
   };
   return { bemenet, hibak, geometria: g };
+}
+
+/** Talajon fekvő padló egyenértékű hőátbocsátási tényezője (MSZ EN ISO 13370, 4.20–4.33). */
+export function padloUT(r: Retegrend, f: Felulet): number {
+  const e = retegrendSzamitas(r);
+  const Rp = e.retegR.reduce((s, x) => s + x, 0);
+  return talajonFekvoPadlo({
+    A: f.A ?? 0, P: f.padlo!.P, df: f.padlo!.dfCm / 100, Rp, z: f.padlo!.z,
+    peremSzigetelesek: f.padlo!.perem ? [{ irany: f.padlo!.perem.irany, D: f.padlo!.perem.D, dpsz: f.padlo!.perem.dCm / 100, Rpsz: f.padlo!.perem.R }] : [],
+  }).UTp;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Helyiségenkénti hőszükséglet
+
+/** Helyiségnév alapján javasolt belső hőmérséklet és minimális légcsere (tervezői alapérték, módosítható). */
+export function hszAlapertek(nev: string): { theta: number; nmin: number; tipus: string } {
+  const n = nev.toLowerCase();
+  if (/fürdő|furdo|zuhany/.test(n)) return { theta: 24, nmin: hoszukseglet.NMIN.konyha_furdo.ertek, tipus: 'fürdő' };
+  if (/nappali|szoba|háló|halo|étkező|etkezo|dolgozó/.test(n)) return { theta: 20, nmin: hoszukseglet.NMIN.lakohelyiseg.ertek, tipus: 'lakóhelyiség' };
+  if (/konyha|wc|mosdó|mosókonyha/.test(n)) return { theta: 20, nmin: hoszukseglet.NMIN.konyha_furdo.ertek, tipus: 'konyha, WC' };
+  if (/közlekedő|kozlekedo|előtér|eloter|folyosó|lépcső|kamra|tároló|gardrób/.test(n)) return { theta: 18, nmin: hoszukseglet.NMIN.lakohelyiseg.ertek, tipus: 'közlekedő, tároló' };
+  return { theta: 20, nmin: hoszukseglet.NMIN.lakohelyiseg.ertek, tipus: 'lakóhelyiség' };
+}
+
+export const hszUres = (): HelyisegHsz => ({ kulsoFalak: [], padlas: false, padlo: false, szomszedok: [] });
+
+export interface HszOsszevetes { falHelyisegek: number; falHatarolas: number; padlasHelyisegek: number; padlasHatarolas: number; padloHelyisegek: number; padloHatarolas: number; }
+
+export function hoszuksegletBemenet(p: Projekt): { bemenet: hoszukseglet.HszBemenet; hibak: string[]; osszevetes: HszOsszevetes; ablakA: Record<string, number> } {
+  const hibak: string[] = [];
+  const be = { ...HSZ_ALAP, ...p.hoszukseglet };
+  const opak = (szerep: Szerep) => p.feluletek.find((f) => f.fajta === 'opak' && p.retegrendek.find((r) => r.id === f.retegrendId)?.szerep === szerep);
+  const Uopak = (rId: string | undefined, chi = 0) => {
+    const r = p.retegrendek.find((x) => x.id === rId);
+    if (!r) return null;
+    try { return retegrendSzamitas(r).U * (1 + chi); } catch { return null; }
+  };
+  const padlasF = opak('padlas') ?? opak('teto');
+  const padloF = p.feluletek.find((f) => f.fajta === 'padlo');
+  let padloU: number | null = null;
+  if (padloF) { const r = p.retegrendek.find((x) => x.id === padloF.retegrendId); if (r && padloF.padlo) { try { padloU = padloUT(r, padloF); } catch { /* hiányos */ } } }
+
+  const osszevetes: HszOsszevetes = {
+    falHelyisegek: 0, padlasHelyisegek: 0, padloHelyisegek: 0,
+    falHatarolas: p.feluletek.filter((f) => f.fajta === 'opak' && f.hatar === 'kulso' && p.retegrendek.find((r) => r.id === f.retegrendId)?.szerep === 'fal').reduce((s, f) => s + feluletNettoA(p, f), 0),
+    padlasHatarolas: p.feluletek.filter((f) => f.fajta === 'opak' && ['padlas', 'teto'].includes(p.retegrendek.find((r) => r.id === f.retegrendId)?.szerep ?? '')).reduce((s, f) => s + feluletNettoA(p, f), 0),
+    padloHatarolas: p.feluletek.filter((f) => f.fajta === 'padlo').reduce((s, f) => s + (f.A ?? 0), 0),
+  };
+  const ablakA: Record<string, number> = {};
+
+  const futott = p.helyisegek.filter((h) => h.kategoria !== 'gyengen_kapcsolt');
+  const helyisegek = futott.map((h): hoszukseglet.HelyisegHszBemenet => {
+    const hz = h.hsz ?? hszUres();
+    const alap = hszAlapertek(h.nev);
+    const theta = hz.theta ?? alap.theta;
+    const elemek: hoszukseglet.HszElem[] = [];
+    // nyílászárók a helyiségben
+    let nyilasDb = 0, nyilasA = 0;
+    for (const f of p.feluletek.filter((x) => x.fajta === 'nyilaszaro' && x.helyisegId === h.id)) {
+      const n = p.nyilaszarok.find((x) => x.id === f.nyilaszaroId);
+      if (!n) continue;
+      const d = nyilaszaroAdatok(n);
+      const db = f.darab ?? 1;
+      const A = d.A * db;
+      if (f.hatar === 'kulso') { elemek.push({ tipus: 'kulso', nev: f.nev, A, U: d.U }); nyilasDb += db; nyilasA += A; }
+      else elemek.push({ tipus: 'futetlen', nev: f.nev, A, U: d.U, bu: epuletfizika.B_TENYEZO[f.hatar].tel });
+    }
+    ablakA[h.id] = nyilasA;
+    // külső falak: hossz × belmagasság − nyílászárók
+    const falBrutto = hz.kulsoFalak.reduce((s, x) => s + x.hossz * h.h, 0);
+    let levonando = nyilasA;
+    for (const fal of hz.kulsoFalak) {
+      const chi = p.feluletek.find((f) => f.retegrendId === fal.retegrendId)?.chi ?? 0;
+      const U = Uopak(fal.retegrendId, chi);
+      if (U === null) { hibak.push(`${h.nev}: a külső fal rétegrendje hiányos.`); continue; }
+      const brutto = fal.hossz * h.h;
+      const le = falBrutto > 0 ? Math.min(levonando, nyilasA * (brutto / falBrutto)) : 0;
+      levonando -= le;
+      elemek.push({ tipus: 'kulso', nev: 'Külső fal', A: Math.max(brutto - le, 0), U });
+      osszevetes.falHelyisegek += Math.max(brutto - le, 0);
+    }
+    if (nyilasA > 0 && falBrutto < nyilasA) hibak.push(`${h.nev}: a nyílászárók felülete (${nyilasA.toFixed(1)} m²) nagyobb a megadott külső falnál – add meg a külső fal hosszát.`);
+    if (hz.padlas) {
+      const U = padlasF ? Uopak(padlasF.retegrendId, padlasF.chi ?? 0) : null;
+      if (U === null || !padlasF) hibak.push(`${h.nev}: nincs padlásfödém vagy tető a határolásban.`);
+      else if (padlasF.hatar === 'kulso') elemek.push({ tipus: 'kulso', nev: 'Tető', A: h.A, U });
+      else elemek.push({ tipus: 'futetlen', nev: 'Padlásfödém', A: h.A, U, bu: epuletfizika.B_TENYEZO[padlasF.hatar].tel });
+      osszevetes.padlasHelyisegek += h.A;
+    }
+    if (hz.padlo) {
+      if (padloU === null) hibak.push(`${h.nev}: nincs talajon fekvő padló a határolásban.`);
+      else elemek.push({ tipus: 'talaj', nev: 'Talajon fekvő padló', A: h.A, Uequiv: padloU });
+      osszevetes.padloHelyisegek += h.A;
+    }
+    for (const sz of hz.szomszedok) {
+      const m = p.helyisegek.find((x) => x.id === sz.helyisegId);
+      if (!m) continue;
+      const tm = m.kategoria === 'gyengen_kapcsolt' ? null : (m.hsz?.theta ?? hszAlapertek(m.nev).theta);
+      if (tm === null) elemek.push({ tipus: 'futetlen', nev: m.nev, A: sz.A, U: sz.U, bu: epuletfizika.B_TENYEZO.futetlen_helyiseg.tel });
+      else elemek.push({ tipus: 'szomszed', nev: m.nev, A: sz.A, U: sz.U, thetaSzomszed: tm });
+    }
+    return {
+      id: h.id, nev: h.nev, A: h.A, V: h.A * h.h, thetaInt: theta, nmin: hz.nmin ?? alap.nmin,
+      nyilasok: hz.nyilasok ?? (nyilasDb >= 2 ? 'tobb' : nyilasDb === 1 ? 'egy' : 'nincs'),
+      elemek, fRH: be.fRH,
+    };
+  });
+  const gsz = p.gepeszet.szellozes;
+  return {
+    bemenet: {
+      thetaE: be.thetaE, thetaME: klima.KULSO_HOMERSEKLET_EVES, n50: be.n50, vedettseg: be.vedettseg, Gw: be.Gw,
+      hovisszanyeres: gsz ? { etaR: gsz.etaR } : null, helyisegek,
+    },
+    hibak, osszevetes, ablakA,
+  };
 }
 
 export function szabalyozasErtek(s: FutesSablon['szabalyozas']): number {

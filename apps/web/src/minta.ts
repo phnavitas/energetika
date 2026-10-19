@@ -1,7 +1,8 @@
 /**
  * Minta projekt a tarjáni WinWatt-tesztépület szerkezeteivel (validacio-tarjan.test.ts).
  * A helyiséglista szemléltető (a jegyzőkönyv csak az összesített 100,5 m²-t és 267,3 m³-t közli);
- * négy ablak tájolása a jegyzőkönyvből nem ismert, ezért itt feltételezett (D).
+ * négy ablak tájolása a jegyzőkönyvből nem ismert, ezért itt feltételezett (D). A helyiségenkénti külső falhosszak
+ * szintén szemléltetők: összegük a padló kerületével (37,7 m), nettó felületük a 72 m²-es homlokzattal egyezik.
  */
 import { futesSzettbol, hmvSzettbol, type Projekt } from './modell';
 
@@ -15,15 +16,15 @@ export function mintaProjekt(): Projekt {
     },
     zona: { legzaras: 'jo', elhelyezes: 'egy_homlokzat', szelnekKitett: false, hotarolo: 'kozepes', cmEffFajl: 187, futesProgramozhato: false },
     helyisegek: [
-      { id: 'h1', nev: 'Nappali – konyha – étkező', kategoria: 'kondicionalt', A: 38.2, h },
-      { id: 'h2', nev: 'Hálószoba', kategoria: 'kondicionalt', A: 14.6, h },
-      { id: 'h3', nev: 'Szoba', kategoria: 'kondicionalt', A: 11.8, h },
-      { id: 'h4', nev: 'Gyerekszoba', kategoria: 'kondicionalt', A: 11.2, h },
-      { id: 'h5', nev: 'Fürdőszoba', kategoria: 'kondicionalt', A: 6.4, h },
-      { id: 'h6', nev: 'WC', kategoria: 'erosen_kapcsolt', A: 1.9, h },
-      { id: 'h7', nev: 'Közlekedő', kategoria: 'erosen_kapcsolt', A: 9.8, h },
-      { id: 'h8', nev: 'Kamra', kategoria: 'erosen_kapcsolt', A: 2.1, h },
-      { id: 'h9', nev: 'Előtér', kategoria: 'erosen_kapcsolt', A: 4.5, h },
+      { id: 'h1', nev: 'Nappali – konyha – étkező', kategoria: 'kondicionalt', A: 38.2, h, hsz: { kulsoFalak: [{ id: 'kfh1', retegrendId: 'r_fal', hossz: 13.5 }], padlas: true, padlo: true, szomszedok: [] } },
+      { id: 'h2', nev: 'Hálószoba', kategoria: 'kondicionalt', A: 14.6, h, hsz: { kulsoFalak: [{ id: 'kfh2', retegrendId: 'r_fal', hossz: 5.8 }], padlas: true, padlo: true, szomszedok: [] } },
+      { id: 'h3', nev: 'Szoba', kategoria: 'kondicionalt', A: 11.8, h, hsz: { kulsoFalak: [{ id: 'kfh3', retegrendId: 'r_fal', hossz: 5.0 }], padlas: true, padlo: true, szomszedok: [] } },
+      { id: 'h4', nev: 'Gyerekszoba', kategoria: 'kondicionalt', A: 11.2, h, hsz: { kulsoFalak: [{ id: 'kfh4', retegrendId: 'r_fal', hossz: 4.9 }], padlas: true, padlo: true, szomszedok: [] } },
+      { id: 'h5', nev: 'Fürdőszoba', kategoria: 'kondicionalt', A: 6.4, h, hsz: { kulsoFalak: [{ id: 'kfh5', retegrendId: 'r_fal', hossz: 2.6 }], padlas: true, padlo: true, szomszedok: [] } },
+      { id: 'h6', nev: 'WC', kategoria: 'erosen_kapcsolt', A: 1.9, h, hsz: { kulsoFalak: [{ id: 'kfh6', retegrendId: 'r_fal', hossz: 1.3 }], padlas: true, padlo: true, szomszedok: [] } },
+      { id: 'h7', nev: 'Közlekedő', kategoria: 'erosen_kapcsolt', A: 9.8, h, hsz: { kulsoFalak: [], padlas: true, padlo: true, szomszedok: [] } },
+      { id: 'h8', nev: 'Kamra', kategoria: 'erosen_kapcsolt', A: 2.1, h, hsz: { kulsoFalak: [{ id: 'kfh8', retegrendId: 'r_fal', hossz: 1.8 }], padlas: true, padlo: true, szomszedok: [] } },
+      { id: 'h9', nev: 'Előtér', kategoria: 'erosen_kapcsolt', A: 4.5, h, hsz: { kulsoFalak: [{ id: 'kfh9', retegrendId: 'r_fal', hossz: 2.8 }], padlas: true, padlo: true, szomszedok: [] } },
     ],
     retegrendek: [
       {
