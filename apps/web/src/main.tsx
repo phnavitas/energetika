@@ -15,6 +15,7 @@ import { EredmenyLepes } from './lepesek/Eredmeny';
 import { HoszuksegletLepes } from './lepesek/Hoszukseglet';
 import { FelujitasLepes } from './lepesek/Felujitas';
 import { AlternativLepes } from './lepesek/Alternativ';
+import { TervbolLepes } from './lepesek/Tervbol';
 import { Belepes, IrodaLetrehozas, IrodaNezet, KonyvtarNezet, ProjektekNezet, TavoliKontextus, konyvtarBetolt, type Konyvtar, type TavoliAllapot } from './fiok';
 import * as t from './tarolo';
 import './stilus.css';
@@ -37,10 +38,11 @@ function betolt(): Projekt {
 interface Kapcsolat { id: string; irodaId: string; verzio: number; modositva: string; piszkos: boolean; }
 type MentesAllapot = { a: 'mentve' } | { a: 'varakozik' } | { a: 'mentes' } | { a: 'hiba'; uzenet: string } | { a: 'utkozes' } | { a: 'torolve' };
 
-type LepesKod = 'epulet' | 'helyisegek' | 'retegrendek' | 'nyilaszarok' | 'hatarolas' | 'hoszukseglet' | 'gepeszet' | 'eredmeny' | 'alternativ' | 'felujitas';
+type LepesKod = 'epulet' | 'terv' | 'helyisegek' | 'retegrendek' | 'nyilaszarok' | 'hatarolas' | 'hoszukseglet' | 'gepeszet' | 'eredmeny' | 'alternativ' | 'felujitas';
 type Nezet = LepesKod | 'projektek' | 'konyvtar' | 'iroda';
 const LEPESEK: { kod: LepesKod; nev: string; leiras: string }[] = [
   { kod: 'epulet', nev: 'Épület', leiras: 'Alapadatok, rendeltetés, követelményszint és meglévő épületnél a tipikus szerkezetek.' },
+  { kod: 'terv', nev: 'Tervből', leiras: 'Alaprajz és metszet PDF-ből: helyiségek, tájolás, rétegrendek, szintek, külső falak és nyílászárók felismerése, ellenőrzés után átvétel.' },
   { kod: 'helyisegek', nev: 'Helyiségek', leiras: 'A helyiségekből adódik a hasznos alapterület és a fűtött térfogat; később ebből készül a helyiségenkénti hőveszteség-számítás is.' },
   { kod: 'retegrendek', nev: 'Rétegrendek', leiras: 'Építsd fel a szerkezeteket rétegenként. A metszet és az U-érték minden módosításra frissül.' },
   { kod: 'nyilaszarok', nev: 'Nyílászárók', leiras: 'Ablak- és ajtótípusok összetevőkből vagy teljesítménynyilatkozat szerinti Uw-ből.' },
@@ -261,6 +263,7 @@ function App() {
   try { const hb = hoszuksegletBemenet(p); hszOsszeg = hb.bemenet.helyisegek.some((h) => h.elemek.length) ? hoszukseglet.helyisegHoszukseglet(hb.bemenet).osszesen : null; } catch { /* hiányos */ }
   const allapot: Record<LepesKod, string> = {
     epulet: p.meta.telepules || 'nincs cím',
+    terv: 'PDF alaprajz, metszet',
     helyisegek: `${p.helyisegek.length} helyiség, ${sz(atal.geometria.AN, 1)} m²`,
     retegrendek: `${p.retegrendek.length} rétegrend`,
     nyilaszarok: `${p.nyilaszarok.length} típus`,
@@ -395,6 +398,7 @@ function App() {
             <div class="figyelmeztetes" style="margin-bottom:16px">A most szerkesztett projekt ({p.meta.nev || 'névtelen'}) még nincs az irodában. Ha megnyitsz egy másikat, ez csak fájlba mentve marad meg. Az „A szerkesztett projekt mentése újként” gombbal felveheted.</div>
           )}
           {nezet === 'epulet' && <EpuletLepes p={p} modosit={modosit} />}
+          {nezet === 'terv' && <TervbolLepes p={p} modosit={modosit} ugrik={setNezet} />}
           {nezet === 'helyisegek' && <HelyisegekLepes p={p} modosit={modosit} />}
           {nezet === 'retegrendek' && <RetegrendekLepes p={p} modosit={modosit} />}
           {nezet === 'nyilaszarok' && <NyilaszarokLepes p={p} modosit={modosit} />}
