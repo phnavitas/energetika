@@ -14,6 +14,7 @@ import { GepeszetLepes } from './lepesek/Gepeszet';
 import { EredmenyLepes } from './lepesek/Eredmeny';
 import { HoszuksegletLepes } from './lepesek/Hoszukseglet';
 import { FelujitasLepes } from './lepesek/Felujitas';
+import { AlternativLepes } from './lepesek/Alternativ';
 import { Belepes, IrodaLetrehozas, IrodaNezet, KonyvtarNezet, ProjektekNezet, TavoliKontextus, konyvtarBetolt, type Konyvtar, type TavoliAllapot } from './fiok';
 import * as t from './tarolo';
 import './stilus.css';
@@ -36,7 +37,7 @@ function betolt(): Projekt {
 interface Kapcsolat { id: string; irodaId: string; verzio: number; modositva: string; piszkos: boolean; }
 type MentesAllapot = { a: 'mentve' } | { a: 'varakozik' } | { a: 'mentes' } | { a: 'hiba'; uzenet: string } | { a: 'utkozes' } | { a: 'torolve' };
 
-type LepesKod = 'epulet' | 'helyisegek' | 'retegrendek' | 'nyilaszarok' | 'hatarolas' | 'hoszukseglet' | 'gepeszet' | 'eredmeny' | 'felujitas';
+type LepesKod = 'epulet' | 'helyisegek' | 'retegrendek' | 'nyilaszarok' | 'hatarolas' | 'hoszukseglet' | 'gepeszet' | 'eredmeny' | 'alternativ' | 'felujitas';
 type Nezet = LepesKod | 'projektek' | 'konyvtar' | 'iroda';
 const LEPESEK: { kod: LepesKod; nev: string; leiras: string }[] = [
   { kod: 'epulet', nev: 'Épület', leiras: 'Alapadatok, rendeltetés, követelményszint és meglévő épületnél a tipikus szerkezetek.' },
@@ -47,6 +48,7 @@ const LEPESEK: { kod: LepesKod; nev: string; leiras: string }[] = [
   { kod: 'hoszukseglet', nev: 'Hőszükséglet', leiras: 'Helyiségenkénti tervezési hőszükséglet (MSZ EN 12831) a hőleadók és a hőtermelő méretezéséhez.' },
   { kod: 'gepeszet', nev: 'Gépészet', leiras: 'Fűtési és melegvíz-rendszer a leggyakoribb beállításokkal, ErP adatlappal pontosítható.' },
   { kod: 'eredmeny', nev: 'Eredmény', leiras: 'Besorolás, követelmények, havi mérleg, és a tanúsítvány előkészítése.' },
+  { kod: 'alternativ', nev: 'Alternatív rendszerek', leiras: 'Az alternatív energiaellátási rendszerek vizsgálata (9/2023 ÉKM 5. §, 4. melléklet): műszaki-környezeti és gazdasági alkalmasság.' },
   { kod: 'felujitas', nev: 'Felújítás', leiras: 'Felújítási intézkedések költsége, megtakarítása, megtérülése és hatása a besorolásra.' },
 ];
 const EGYEB_NEZET: Record<'projektek' | 'konyvtar' | 'iroda', { nev: string; leiras: string }> = {
@@ -266,6 +268,7 @@ function App() {
     hoszukseglet: hszOsszeg !== null ? `${sz(hszOsszeg / 1000, 1)} kW` : '–',
     gepeszet: e ? 'kiválasztva' : '–',
     eredmeny: e ? `${e.besorolas.energetikai} osztály` : 'hiányos adatok',
+    alternativ: p.alternativ ? 'vizsgálva' : 'nincs vizsgálat',
     felujitas: p.felujitas ? `${p.felujitas.intezkedesek.filter((m) => m.aktiv).length} intézkedés` : 'nincs elemzés',
   };
   const lepesIdx = LEPESEK.findIndex((l) => l.kod === nezet);
@@ -399,6 +402,7 @@ function App() {
           {nezet === 'hoszukseglet' && <HoszuksegletLepes p={p} modosit={modosit} />}
           {nezet === 'gepeszet' && <GepeszetLepes p={p} modosit={modosit} eredmeny={e} />}
           {nezet === 'eredmeny' && <EredmenyLepes p={p} e={e} g={atal.geometria} atal={atal} hibak={hibak} modosit={modosit} rogzit={aktivKapcsolat ? rogzit : undefined} />}
+          {nezet === 'alternativ' && <AlternativLepes p={p} modosit={modosit} />}
           {nezet === 'felujitas' && <FelujitasLepes p={p} modosit={modosit} />}
           {nezet === 'projektek' && iroda && <ProjektekNezet iroda={iroda} aktivId={aktivKapcsolat?.id ?? null} megnyit={projektMegnyit} ujProjekt={ujTavoliProjekt} frissitKulcs={projektLista} />}
           {nezet === 'konyvtar' && tavoliAllapot && <KonyvtarNezet p={p} modosit={modosit} ugrik={setNezet} />}

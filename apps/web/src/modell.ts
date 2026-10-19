@@ -13,6 +13,7 @@ import type { BTenyezoKod, HoaramIrany, Legzaras, NyilasElhelyezes } from '@mag/
 import type { Tajolas, Hajlasszog } from '@mag/tablak/klima';
 import { anyag, beepitett, type Anyag } from './katalogus';
 import type { FelujitasBeallitas } from './felujitas';
+import type { AlternativBeallitas } from './alternativ';
 
 export type HelyisegKategoria = 'kondicionalt' | 'erosen_kapcsolt' | 'gyengen_kapcsolt';
 export interface Helyiseg { id: string; nev: string; kategoria: HelyisegKategoria; A: number; h: number; hsz?: HelyisegHsz; }
@@ -162,6 +163,8 @@ export interface Projekt {
   anyagok?: Anyag[];
   /** Felújítás-elemző beállításai (árak, intézkedések). */
   felujitas?: FelujitasBeallitas;
+  /** Alternatív rendszerek vizsgálata (9/2023 ÉKM 5. §, 4. melléklet). */
+  alternativ?: AlternativBeallitas;
 }
 
 export type FotoKategoria = 'CoverPhoto' | 'Facade' | 'CharacteristicOpeningStructure' | 'HeatGeneratorAndHeatStorageSituation' | 'CharacteristicHeatExchanger';

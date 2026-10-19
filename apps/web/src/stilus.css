@@ -327,3 +327,4 @@ input:disabled { color: var(--tus-3); }
 @media (max-width: 520px) { .pv-ertek { display: none; } }
 .felujitas-tabla td { vertical-align: middle; }
 .reszlet-sor > td { background: var(--papir); }
+.urlap-tabla input[type=text], .urlap-tabla select { width: 100%; }

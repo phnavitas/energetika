@@ -10,6 +10,7 @@ import {
 } from './modell';
 import { anyag } from './katalogus';
 import { MAG_VERZIO } from './tarolo-tipusok';
+import { alternativVizsgalat, ALT_NEV, URLAP } from './alternativ';
 
 const SZOFTVER = `ÉKM energetikai számító ${MAG_VERZIO}`;
 const MODSZER = '9/2023. (V. 25.) ÉKM rendelet; számítási módszer: kormany.hu, 2023.07.27.; 176/2008. (VI. 30.) Korm. rendelet';
@@ -375,6 +376,32 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
         ['*', 40, 42, 45, 45, 45, 50, 35], [1, 2, 3, 4, 5, 6, 7]));
     }
   } catch { /* hiányos hőszükséglet-adatok: kimarad */ }
+
+  // --- Alternatív rendszerek ----------------------------------------------------------------
+  if (p.alternativ) {
+    const av = alternativVizsgalat(p, p.alternativ);
+    if (av.ref) {
+      tartalom.push(cim('Alternatív rendszerek vizsgálata (9/2023 ÉKM 5. §, 4. melléklet)'));
+      tartalom.push(megj(`Viszonyítás (2.9): az azonos geometriájú és határolású épület a referencia épülettechnikai rendszerrel: ${f(av.ref.EnrenFajl, 1)} kWh/m²a. Gazdaságossági feltétel (3.6): egyszerű megtérülés ≤ 10 év. Üzemköltség: éves energiaköltség-különbség a referencia rendszerhez.`));
+      tartalom.push(tabla(['Alternatív rendszer', 'Ep [kWh/m²a]', 'Műszaki-körny.', 'Ber. többlet [Ft]', 'Üzemk.-csökk. [Ft/év]', 'Megtérülés', 'Gazdaságos'],
+        av.valtozatok.map((x) => [ALT_NEV[x.kod], x.EnrenFajl === null ? '–' : f(x.EnrenFajl, 1), x.muszakiAlkalmas === null ? '–' : x.muszakiAlkalmas ? 'igen' : 'nem',
+          x.muszakiAlkalmas ? f(x.beruhazasKulonbseg, 0) : '–', x.muszakiAlkalmas && x.uzemKulonbseg !== null ? f(x.uzemKulonbseg, 0) : '–',
+          x.muszakiAlkalmas ? (x.megterules === null ? 'nem térül meg' : `${f(x.megterules, 1)} év`) : '–', x.gazdasagos === null ? '–' : x.gazdasagos ? 'igen' : 'nem']),
+        ['*', 48, 48, 60, 64, 52, 46], [1, 3, 4, 5]));
+      for (const x of av.valtozatok) {
+        const a0 = p.alternativ.valtozatok[x.kod];
+        const sorok = URLAP[x.kod].map((u) => [u.kod, `${u.nev}${u.egyseg ? ` [${u.egyseg}]` : ''}`, u.tipus === 'szamolt' ? x.szamolt[u.kod] ?? '–' : u.tipus === 'in' ? ({ I: 'igen', N: 'nem' } as Record<string, string>)[a0?.valaszok[u.kod] ?? ''] ?? '–' : a0?.valaszok[u.kod] || '–']);
+        if (x.muszakiAlkalmas) sorok.push(['f.1', 'Nem megújuló primerenergia-igény alternatív ellátással [kWh/m²a]', f(x.EnrenFajl, 1)], ['f.2', 'Ugyanez referencia rendszerrel [kWh/m²a]', f(av.ref.EnrenFajl, 1)],
+          ['g.1', 'Beruházási költség (nettó) [Ft]', f(x.beruhazas, 0)], ['g.3', 'Különbség a referenciához [Ft]', f(x.beruhazasKulonbseg, 0)], ['g.4', 'Üzemeltetési költségkülönbség [Ft/év]', x.uzemKulonbseg === null ? '–' : f(x.uzemKulonbseg, 0)],
+          ['g.5', 'Egyszerű megtérülési idő [év]', x.megterules === null ? 'nem térül meg' : f(x.megterules, 1)], ['g.6', 'Gazdaságossági szempontból célszerű', x.gazdasagos ? 'igen' : 'nem']);
+        tartalom.push({ stack: [
+          { text: ALT_NEV[x.kod], bold: true, margin: [0, 4, 0, 2] },
+          tabla(['Sor', 'Megnevezés', 'Érték'], sorok, [26, '*', 120], []),
+          ...(a0?.megjegyzes || x.hiba ? [megj([a0?.megjegyzes ?? '', x.hiba ? ` ${x.hiba}` : ''].join(''))] : []),
+        ], unbreakable: true });
+      }
+    }
+  }
 
   // --- 7. Megjegyzések ------------------------------------------------------------------------
   const fw = [...new Map(e.figyelmeztetesek.map((x) => [x.kod + x.uzenet, x])).values()];

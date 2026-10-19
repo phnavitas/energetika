@@ -80,6 +80,8 @@ export interface EpuletEredmeny {
   besorolas: { energetikai: string; energetikaiSzazalek: number; CO2: string; CO2Szazalek: number };
   nyariHovedelem: { erintettFelulet: number; arany: number; mutato: number | null; megfelel: boolean };
   szerkezetek: SzerkezetErtekeles[];
+  /** 4. melléklet 2.9: azonos geometriájú és határolású épület a referencia épülettechnikai rendszerrel (természetes szellőzéssel). */
+  referenciaEpulet: { Enren: number; EnrenFajl: number; ECO2Fajl: number };
   rendszerErtekeles: { futes: { Enren: number; EnrenRef: number; szazalek: number; minosites: Minosites } | null; hmv: { Enren: number; EnrenRef: number; szazalek: number; minosites: Minosites } | null };
   figyelmeztetesek: Figyelmeztetes[];
 }
@@ -219,6 +221,11 @@ export function epuletSzamitas(b: EpuletBemenet, opciok?: SzamitasiOpciok): Epul
   // Épülettechnikai rendszerek értékelése (176/2008 5. melléklet) – referencia rendszerhez
   const ref = referenciaRendszerek(b, zonaQ);
   const refInd = indikatorok(ref, b.AN);
+  // Referencia épület: a gépi szellőzés hővisszanyerése nélkül számolt nettó igénnyel (a referencia rendszer természetes szellőzésű).
+  const refZonaQ = b.zonak.some((z) => z.gepiSzellozes)
+    ? new Map(b.zonak.map((z) => { const { gepiSzellozes: _g, ...zz } = z; return [z.nev, zonaHaviMerleg(hutottZonak.has(z.nev) ? { ...zz, hutott: true } : zz).QFnetEv] as [string, number]; }))
+    : zonaQ;
+  const refEpInd = refZonaQ === zonaQ ? refInd : indikatorok(referenciaRendszerek(b, refZonaQ), b.AN);
   const fE = ind.celonkent.futes.nren, fR = refInd.celonkent.futes.nren;
   const hE = ind.celonkent.hmv.nren, hR = refInd.celonkent.hmv.nren;
 
@@ -234,6 +241,7 @@ export function epuletSzamitas(b: EpuletBemenet, opciok?: SzamitasiOpciok): Epul
     besorolas: { energetikai: besorolas(energSzaz), energetikaiSzazalek: energSzaz, CO2: besorolas(co2Szaz), CO2Szazalek: co2Szaz },
     nyariHovedelem: nyariHovedelem(b.zonak, b.AN),
     szerkezetek,
+    referenciaEpulet: { Enren: refEpInd.osszes.nren, EnrenFajl: refEpInd.fajlagos.EnrenFajl, ECO2Fajl: refEpInd.fajlagos.ECO2Fajl },
     rendszerErtekeles: {
       futes: fR > 0 ? { Enren: fE, EnrenRef: fR, szazalek: (fE / fR) * 100, minosites: rendszerMinosites('futes', (fE / fR) * 100) } : null,
       hmv: hR > 0 ? { Enren: hE, EnrenRef: hR, szazalek: (hE / hR) * 100, minosites: rendszerMinosites('hmv', (hE / hR) * 100) } : null,
