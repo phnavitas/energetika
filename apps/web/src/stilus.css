@@ -325,3 +325,5 @@ input:disabled { color: var(--tus-3); }
 .pv-sav { width: 70%; max-width: 28px; min-height: 2px; background: var(--meleg); border-radius: 3px 3px 0 0; }
 .pv-ertek { font-variant-numeric: tabular-nums; color: var(--tus-2); }
 @media (max-width: 520px) { .pv-ertek { display: none; } }
+.felujitas-tabla td { vertical-align: middle; }
+.reszlet-sor > td { background: var(--papir); }

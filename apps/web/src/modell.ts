@@ -12,6 +12,7 @@ import {
 import type { BTenyezoKod, HoaramIrany, Legzaras, NyilasElhelyezes } from '@mag/tablak/epuletfizika';
 import type { Tajolas, Hajlasszog } from '@mag/tablak/klima';
 import { anyag, beepitett, type Anyag } from './katalogus';
+import type { FelujitasBeallitas } from './felujitas';
 
 export type HelyisegKategoria = 'kondicionalt' | 'erosen_kapcsolt' | 'gyengen_kapcsolt';
 export interface Helyiseg { id: string; nev: string; kategoria: HelyisegKategoria; A: number; h: number; hsz?: HelyisegHsz; }
@@ -159,6 +160,8 @@ export interface Projekt {
   fotok?: Foto[];
   /** A projektben használt nem beépített (irodai) anyagok pillanatképe: a projekt így önmagában is számolható. */
   anyagok?: Anyag[];
+  /** Felújítás-elemző beállításai (árak, intézkedések). */
+  felujitas?: FelujitasBeallitas;
 }
 
 export type FotoKategoria = 'CoverPhoto' | 'Facade' | 'CharacteristicOpeningStructure' | 'HeatGeneratorAndHeatStorageSituation' | 'CharacteristicHeatExchanger';
