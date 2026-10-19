@@ -2,6 +2,7 @@ import { useState } from 'preact/hooks';
 import { panel, epuletfizika } from '@mag/index';
 import { Mezo, Szoveg, Szam, Valaszto, sz } from '../ui';
 import { ujId, type Projekt } from '../modell';
+import { FotokSzakasz } from './Fotok';
 
 type Modosit = (fn: (p: Projekt) => void) => void;
 
@@ -100,6 +101,7 @@ export function EpuletLepes({ p, modosit }: { p: Projekt; modosit: Modosit }) {
           </div>
         )}
       </section>
+      <FotokSzakasz p={p} modosit={modosit} />
     </>
   );
 }

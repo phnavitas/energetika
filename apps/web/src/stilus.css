@@ -284,3 +284,14 @@ input:disabled { color: var(--tus-3); }
 .ablak-uveg.kapcsolt { stroke-width: 2.2; stroke-dasharray: none; }
 .ablak-lec { stroke: var(--tus-2); stroke-width: 1.6; }
 .ablak-felirat { font-size: 11px; fill: var(--tus-2); font-family: var(--betu); }
+
+/* ---- Fotók -------------------------------------------------------------------------------------- */
+.foto-feltolto { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 20px; border: 1.5px dashed var(--vonal-eros, var(--vonal)); border-radius: 8px; cursor: pointer; text-align: center; background: var(--lap); }
+.foto-feltolto:hover, .foto-feltolto:focus-within { border-color: var(--hideg); }
+.foto-feltolto.tolt { opacity: .6; pointer-events: none; }
+.foto-feltolto input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.foto-racs { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-top: 12px; }
+.foto { margin: 0; border: 1px solid var(--vonal); border-radius: 8px; overflow: hidden; background: var(--lap); display: flex; flex-direction: column; }
+.foto img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; background: var(--vonal); }
+.foto figcaption { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.foto-lab { display: flex; justify-content: space-between; align-items: center; gap: 8px; }

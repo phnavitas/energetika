@@ -23,7 +23,7 @@ const HELYI_KULCS = 'ekm-helyi-mod';
 const IRODA_KULCS = 'ekm-iroda';
 
 const olvas = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
-const ir = (k: string, v: string | null) => { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch { /* privát mód */ } };
+const ir = (k: string, v: string | null) => { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); return true; } catch { return false; /* privát mód vagy betelt */ } };
 
 function betolt(): Projekt {
   const s = olvas(KULCS);
@@ -129,7 +129,8 @@ function App() {
     if (k && !k.piszkos) setKapcsolat({ ...k, piszkos: true });
   };
 
-  useEffect(() => { ir(KULCS, JSON.stringify(p)); }, [p]);
+  // A böngésző tárhelye ~5 MB: ha a fotókkal nem fér el, a helyi vázlat fotók nélkül marad (a fiókba mentés és a projektfájl tartalmazza őket).
+  useEffect(() => { if (!ir(KULCS, JSON.stringify(p)) && p.fotok?.length) ir(KULCS, JSON.stringify({ ...p, fotok: [] })); }, [p]);
 
   projektAnyagokBeallit(p.anyagok);
   const { atal, e, hiba } = useMemo(() => {

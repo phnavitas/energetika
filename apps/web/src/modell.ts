@@ -125,9 +125,21 @@ export interface Projekt {
   tanusito: { nev: string; jogosultsag: string; email: string; telefon: string };
   /** Helyiségenkénti hőszükséglet beállításai. */
   hoszukseglet?: HoszuksegletBeallitas;
+  /** Csatolt fotók (tömörített JPEG dataURL); az e-tanúsítás XML Photos blokkjába és a jegyzőkönyvbe kerülnek. */
+  fotok?: Foto[];
   /** A projektben használt nem beépített (irodai) anyagok pillanatképe: a projekt így önmagában is számolható. */
   anyagok?: Anyag[];
 }
+
+export type FotoKategoria = 'CoverPhoto' | 'Facade' | 'CharacteristicOpeningStructure' | 'HeatGeneratorAndHeatStorageSituation' | 'CharacteristicHeatExchanger';
+export const FOTO_KATEGORIAK: { ertek: FotoKategoria; nev: string }[] = [
+  { ertek: 'CoverPhoto', nev: 'Címlapfotó (az épület)' },
+  { ertek: 'Facade', nev: 'Homlokzat' },
+  { ertek: 'CharacteristicOpeningStructure', nev: 'Jellemző nyílászáró' },
+  { ertek: 'HeatGeneratorAndHeatStorageSituation', nev: 'Hőtermelő, hőtároló' },
+  { ertek: 'CharacteristicHeatExchanger', nev: 'Jellemző hőleadó' },
+];
+export interface Foto { id: string; kategoria: FotoKategoria; megjegyzes?: string; dataUrl: string; szel: number; mag: number }
 
 export const ujId = () => Math.random().toString(36).slice(2, 10);
 
