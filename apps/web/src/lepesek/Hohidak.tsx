@@ -1,0 +1,184 @@
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import type { Projekt, HohidUI } from '../modell';
+import { Mezo, Szam, Szoveg, Valaszto, sz } from '../ui';
+import { HOHID_SABLONOK, sablon, alapParameterek, type Parameter } from '../hohid/katalogus';
+import { hohidSzamol, ujHohid, projektParameterek, javasoltHossz, ajanlott, type HohidSzamitas } from '../hohid/projekt';
+import { geometriaRajz, izotermRajz } from '../hohid/rajz';
+
+type Modosit = (f: (q: Projekt) => void) => void;
+
+function Ikon({ kod }: { kod: string }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => { const s = sablon(kod); if (s && ref.current) geometriaRajz(ref.current, s.epit(alapParameterek(s)).geometria, 220, false); }, [kod]);
+  return <canvas ref={ref} aria-hidden="true" style="display:block;width:100%;border-radius:6px" />;
+}
+
+function letolt(nev: string, adat: Blob) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(adat); a.download = nev; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+export function HohidakLepes({ p, modosit }: { p: Projekt; modosit: Modosit }) {
+  const hidak = p.hohidak ?? [];
+  const [aktiv, setAktiv] = useState<string | null>(hidak[0]?.id ?? null);
+  const [katalog, setKatalog] = useState(!hidak.length);
+  const aj = ajanlott(p);
+  const h = hidak.find((x) => x.id === aktiv) ?? null;
+  const mod = p.hohidMod ?? 'chi';
+  const osszPsiL = hidak.filter((x) => x.szamit && x.eredmeny).reduce((a, x) => a + (x.meretrendszer === 'kulso' ? x.eredmeny!.psiE : x.eredmeny!.psiI) * x.hossz, 0);
+
+  function uj(kod: string) {
+    const x = ujHohid(p, kod);
+    modosit((q) => { (q.hohidak ??= []).push(x); });
+    setAktiv(x.id); setKatalog(false);
+  }
+  async function pdf(lista: HohidUI[]) {
+    const { hohidPdf } = await import('../hohid/pdf');
+    const b = await hohidPdf(p, lista);
+    letolt(`hohid_${(p.meta.nev || 'projekt').replace(/[^\p{L}\d]+/gu, '_')}.pdf`, new Blob([b as BlobPart], { type: 'application/pdf' }));
+  }
+
+  return (
+    <>
+      <section class="szakasz">
+        <h2>Hőhidak a számításban</h2>
+        <p class="halk">Egyszerűsített módszernél a felületek χ tényezője (6.1. táblázat) veszi figyelembe a hőhidakat. Részletes módszernél a χ helyett az itt számított vonalmenti Ψ · l tagok kerülnek a fajlagos hőveszteség-tényezőbe (MSZ EN ISO 10211, 14683).</p>
+        <div class="gombsor" style="gap:18px">
+          <label><input type="radio" name="hhmod" checked={mod === 'chi'} onChange={() => modosit((q) => { q.hohidMod = 'chi'; })} /> Egyszerűsített (χ a határoló felületeken)</label>
+          <label><input type="radio" name="hhmod" checked={mod === 'psi'} onChange={() => modosit((q) => { q.hohidMod = 'psi'; })} /> Részletes (Ψ · l a hőhíd-számításból)</label>
+        </div>
+        {mod === 'psi' && <p class="halkabb" style="margin-top:8px">A számításba vett hőhidak összesen: Σ Ψ·l = <strong>{sz(osszPsiL, 2)} W/K</strong>. A felületek χ értéke ilyenkor nem számít – ügyelj, hogy minden lényeges csomópont (sarkok, födémcsatlakozások, nyílászáró-beépítések, lábazat) szerepeljen.</p>}
+      </section>
+
+      <section class="szakasz">
+        <h2>Csomópontok</h2>
+        {hidak.length > 0 && (
+          <div class="tabla-gorgeto"><table class="tabla">
+            <thead><tr><th>Csomópont</th><th class="szam">Ψ</th><th class="szam">Hossz</th><th class="szam">Ψ·l</th><th class="szam">θsi,min / fRsi</th><th>Számításba</th><th></th></tr></thead>
+            <tbody>{hidak.map((x) => { const psi = x.eredmeny ? (x.meretrendszer === 'kulso' ? x.eredmeny.psiE : x.eredmeny.psiI) : null; return (
+              <tr style={x.id === aktiv ? 'background:var(--kijelolt)' : ''}>
+                <td><button class="link-gomb" onClick={() => { setAktiv(x.id); setKatalog(false); }}>{x.nev}</button></td>
+                <td class="szam">{psi !== null ? `${sz(psi, 3)} W/mK` : '–'}</td>
+                <td class="szam">{sz(x.hossz, 2)} m</td>
+                <td class="szam">{psi !== null ? `${sz(psi * x.hossz, 2)} W/K` : '–'}</td>
+                <td class="szam">{x.eredmeny ? `${sz(x.eredmeny.thetaSiMin, 1)} °C / ${sz(x.eredmeny.fRsi, 2)}` : '–'}</td>
+                <td><input type="checkbox" aria-label={`${x.nev} számításba`} checked={x.szamit} onChange={(e) => modosit((q) => { q.hohidak!.find((y) => y.id === x.id)!.szamit = (e.target as HTMLInputElement).checked; })} /></td>
+                <td><button class="gomb halk-gomb" onClick={() => { modosit((q) => { q.hohidak = q.hohidak!.filter((y) => y.id !== x.id); }); if (aktiv === x.id) setAktiv(null); }}>Törlés</button></td>
+              </tr>
+            ); })}</tbody>
+          </table></div>
+        )}
+        <div class="gombsor" style="margin-top:12px">
+          <button class="gomb fo" onClick={() => setKatalog(!katalog)}>{katalog ? 'Katalógus bezárása' : 'Új hőhíd a katalógusból'}</button>
+          {hidak.some((x) => x.eredmeny) && <button class="gomb" onClick={() => void pdf(hidak.filter((x) => x.eredmeny))}>Összes hőhíd PDF-ben</button>}
+        </div>
+        {katalog && (
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-top:14px">
+            {HOHID_SABLONOK.map((s) => (
+              <button class="kartya" style="text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:6px;padding:10px" onClick={() => uj(s.kod)}>
+                <Ikon kod={s.kod} />
+                <strong>{s.nev}{aj.has(s.kod) && <span class="jel jo" style="margin-left:6px;font-size:11px">ajánlott</span>}</strong>
+                <span class="halkabb">{s.leiras}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {h && <Szerkeszto key={h.id} p={p} h={h} modosit={modosit} pdf={() => void pdf([h])} />}
+    </>
+  );
+}
+
+function Szerkeszto({ p, h, modosit, pdf }: { p: Projekt; h: HohidUI; modosit: Modosit; pdf: () => void }) {
+  const s = sablon(h.sablon)!;
+  const mh = (fn: (x: HohidUI) => void) => modosit((q) => { const x = q.hohidak!.find((y) => y.id === h.id); if (x) fn(x); });
+  const param = { ...alapParameterek(s), ...h.param };
+  const kulcs = JSON.stringify([h.sablon, param, h.thetaI, h.thetaE]);
+  const [sz2, setSz2] = useState<HohidSzamitas | null>(null);
+  const [szamol, setSzamol] = useState(false);
+  // késleltetett újraszámítás paraméterváltozáskor
+  useEffect(() => {
+    setSzamol(true);
+    const t = setTimeout(() => {
+      const r = hohidSzamol(h);
+      setSzamol(false); setSz2(r);
+      if (r && JSON.stringify(r.eredmeny) !== JSON.stringify(h.eredmeny)) mh((x) => { x.eredmeny = r.eredmeny; });
+    }, 250);
+    return () => clearTimeout(t);
+  }, [kulcs]);
+  const geo = useMemo(() => s.epit(param).geometria, [kulcs]);
+  const gRef = useRef<HTMLCanvasElement>(null), iRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => { if (gRef.current) geometriaRajz(gRef.current, geo, 520); }, [geo]);
+  useEffect(() => { if (iRef.current && sz2) izotermRajz(iRef.current, sz2.csomopont.geometria, sz2.mf, h.thetaI, h.thetaE, 640); }, [sz2]);
+  const csoportok = [...new Set(s.parameterek.map((q) => q.csoport ?? ''))];
+  const jh = javasoltHossz(p, s);
+  const e = sz2?.eredmeny ?? h.eredmeny;
+  const psi = e ? (h.meretrendszer === 'kulso' ? e.psiE : e.psiI) : null;
+  const ParamMezo = ({ q }: { q: Parameter }) => {
+    const v = param[q.kulcs]!; const cm = q.egyseg === 'm';
+    return <Mezo cim={q.nev}><Szam ertek={cm ? Math.round(v * 1000) / 10 : v} egyseg={cm ? 'cm' : q.egyseg} valt={(u) => mh((x) => { const w = cm ? u / 100 : u; x.param = { ...x.param, [q.kulcs]: Math.min(q.max, Math.max(q.min, w)) }; })} /></Mezo>;
+  };
+  return (
+    <section class="szakasz">
+      <h2>{h.nev}</h2>
+      <p class="halk">{s.leiras}</p>
+      <div class="racs" style="margin-bottom:12px">
+        <Mezo cim="Megnevezés"><Szoveg ertek={h.nev} valt={(v) => mh((x) => { x.nev = v; })} /></Mezo>
+        <Mezo cim="Belső hőmérséklet θi"><Szam ertek={h.thetaI} egyseg="°C" valt={(v) => mh((x) => { x.thetaI = v; })} /></Mezo>
+        <Mezo cim="Külső hőmérséklet θe"><Szam ertek={h.thetaE} egyseg="°C" valt={(v) => mh((x) => { x.thetaE = v; })} /></Mezo>
+        <div class="mezo"><span>Paraméterek</span><button class="gomb" onClick={() => { const r = projektParameterek(p, s); mh((x) => { x.param = r.param; }); }}>Átvétel a projekt szerkezeteiből</button></div>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(260px,1fr) minmax(280px,1.2fr);gap:20px;align-items:start" class="hohid-racs">
+        <div>
+          {csoportok.map((c) => (
+            <fieldset style="border:1px solid var(--vonal);border-radius:8px;padding:10px 12px;margin:0 0 10px">
+              <legend class="halkabb" style="padding:0 6px">{c || 'Paraméterek'}</legend>
+              <div class="racs" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">{s.parameterek.filter((q) => (q.csoport ?? '') === c).map((q) => <ParamMezo q={q} />)}</div>
+            </fieldset>
+          ))}
+        </div>
+        <div>
+          <div class="kartya" style="padding:8px"><canvas ref={gRef} role="img" aria-label="A csomópont geometriája" /></div>
+        </div>
+      </div>
+
+      <h3 style="margin:16px 0 6px">Eredmény {szamol && <span class="halkabb">– számítás…</span>}</h3>
+      {e && (
+        <div style="display:grid;grid-template-columns:minmax(260px,1fr) minmax(300px,1.4fr);gap:20px;align-items:start" class="hohid-racs">
+          <div>
+            <table class="tabla">
+              <tbody>
+                <tr><td>Kétdimenziós hőátbocsátás, L2D</td><td class="szam">{sz(e.L2D, 4)} W/mK</td></tr>
+                {e.karimak.map((k) => <tr><td>{k.nev}: U = {sz(k.U, 3)} W/m²K, l = {sz(h.meretrendszer === 'kulso' ? k.lKulso : k.lBelso, 2)} m</td><td class="szam">{sz(k.U * (h.meretrendszer === 'kulso' ? k.lKulso : k.lBelso), 4)} W/mK</td></tr>)}
+                <tr><td><strong>Ψ ({h.meretrendszer === 'kulso' ? 'külső' : 'belső'} méretrendszer)</strong></td><td class="szam"><strong>{sz(psi!, 3)} W/mK</strong></td></tr>
+                <tr><td>Ψ a másik méretrendszerben</td><td class="szam">{sz(h.meretrendszer === 'kulso' ? e.psiI : e.psiE, 3)} W/mK</td></tr>
+                <tr><td>θsi,min (Rsi = 0,25) / fRsi</td><td class="szam">{sz(e.thetaSiMin, 1)} °C / {sz(e.fRsi, 3)}</td></tr>
+              </tbody>
+            </table>
+            {e.fRsi < 0.75 && <div class="figyelmeztetes" style="margin-top:8px">fRsi &lt; 0,75: a csomópont belső felületén penészedés, páralecsapódás veszélye áll fenn (MSZ EN ISO 13788).</div>}
+            <div class="racs" style="margin-top:12px">
+              <Mezo cim="Méretrendszer" sugo="A program a felületeket belső (nettó) méretből számítja – ehhez a belső méretrendszerű Ψ illik">
+                <Valaszto ertek={h.meretrendszer} valt={(v) => mh((x) => { x.meretrendszer = v; })} opciok={[{ ertek: 'belso', nev: 'Belső (Ψi)' }, { ertek: 'kulso', nev: 'Külső (Ψe)' }]} />
+              </Mezo>
+              <Mezo cim="Hossz a projektben" sugo={jh ? `Javaslat: ${sz(jh.hossz, 2)} m (${jh.leiras})` : 'A csomópont hossza az épületben'}>
+                <div class="egyseg"><Szam ertek={h.hossz} egyseg="m" valt={(v) => mh((x) => { x.hossz = Math.max(0, v); })} />{jh && <button class="gomb halk-gomb" onClick={() => mh((x) => { x.hossz = jh.hossz; })}>javaslat</button>}</div>
+              </Mezo>
+              <div class="mezo"><span>Átvitel</span>
+                <label><input type="checkbox" checked={h.szamit} onChange={(ev) => mh((x) => { x.szamit = (ev.target as HTMLInputElement).checked; })} /> Számításba veszem (részletes módban)</label>
+                {psi !== null && <small>Ψ·l = {sz(psi * h.hossz, 2)} W/K</small>}
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="kartya" style="padding:8px"><canvas ref={iRef} role="img" aria-label="Izotermás hőmérséklet-eloszlás" /></div>
+            <div class="gombsor" style="margin-top:8px">
+              <button class="gomb" onClick={() => iRef.current?.toBlob((b) => b && letolt(`${h.nev}_izoterma.png`, b))}>Izotermás ábra (PNG)</button>
+              <button class="gomb" onClick={pdf}>Hőhíd-jegyzőkönyv (PDF)</button>
+            </div>
+            <p class="halkabb" style="margin-top:6px">Az ábra Rsi = 0,25 m²K/W belső felületi ellenállással (felületi hőmérséklet-vizsgálat) készült; 1 °C-onkénti izotermák, a piros pont a legalacsonyabb belső felületi hőmérséklet. Ψ: Rsi = 0,13, Rse = 0,04 m²K/W, adiabatikus vágósíkok (MSZ EN ISO 10211).</p>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}

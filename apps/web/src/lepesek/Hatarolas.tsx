@@ -38,6 +38,7 @@ export function HatarolasLepes({ p, modosit }: { p: Projekt; modosit: Modosit })
       <section class="szakasz">
         <h2>Falak, födémek, tetők</h2>
         <p class="halk">Bruttó felületet adj meg közvetlenül, vagy határoló hossz × magasság alapján (alapérték az átlagos belmagasság; a hossz a helyiségeknél megadott külső falhosszakból is átvehető). A hozzá rendelt nyílászárókat a program levonja. A sorok a fogantyúval áthúzhatók. A csatlakozási hőhidakat a 6.1. táblázat χ tényezője veszi figyelembe.</p>
+        {p.hohidMod === 'psi' && <div class="figyelmeztetes" style="margin-top:8px">Részletes hőhíd-módszer van beállítva (Hőhidak lépés): a felületek χ értéke most nem számít, helyette a csomópontok Ψ·l tagjai.</div>}
         <div class="tabla-gorgeto">
           <table class="tabla">
             <thead><tr><th aria-label="Sorrend"></th><th>Megnevezés</th><th>Rétegrend</th><th>Határoló tér</th><th>Bruttó felület</th><th class="szam">Nettó</th><th>Hőhidasság</th><th></th></tr></thead>

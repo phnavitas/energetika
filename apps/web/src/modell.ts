@@ -167,6 +167,23 @@ export interface Projekt {
   felujitas?: FelujitasBeallitas;
   /** Alternatív rendszerek vizsgálata (9/2023 ÉKM 5. §, 4. melléklet). */
   alternativ?: AlternativBeallitas;
+  /** Hőhidak: 'chi' egyszerűsített (6.1. táblázat, felületenkénti χ), 'psi' részletes (vonalmenti Ψ · l a hőhíd-számításból). */
+  hohidMod?: 'chi' | 'psi';
+  hohidak?: HohidUI[];
+}
+
+/** Egy kétdimenziós hőhíd-számítás (MSZ EN ISO 10211) a katalógus-csomópontból. */
+export interface HohidUI {
+  id: string; nev: string; sablon: string;
+  param: Record<string, number>;
+  thetaI: number; thetaE: number;
+  /** A hőhíd hossza a projektben (m) és a használt méretrendszer (a felületek belső vagy külső méretből számítottak). */
+  hossz: number; meretrendszer: 'belso' | 'kulso';
+  /** Bekerül-e a számításba (részletes módban). */
+  szamit: boolean;
+  /** A határoló tér (b tényezőhöz). */
+  hatar?: HatarKod;
+  eredmeny?: { L2D: number; psiE: number; psiI: number; thetaSiMin: number; fRsi: number; karimak: { nev: string; U: number; lKulso: number; lBelso: number }[] };
 }
 
 export type FotoKategoria = 'CoverPhoto' | 'Facade' | 'CharacteristicOpeningStructure' | 'HeatGeneratorAndHeatStorageSituation' | 'CharacteristicHeatExchanger';
@@ -423,10 +440,18 @@ export function atalakit(p: Projekt): Atalakitas {
         const r = p.retegrendek.find((x) => x.id === f.retegrendId);
         if (!r) { hibak.push(`„${f.nev}”: nincs rétegrend kiválasztva.`); continue; }
         const e = retegrendSzamitas(r);
-        elemek.push({ tipus: 'opak', nev: f.nev, A: feluletNettoA(p, f), U: e.U, chi: f.chi ?? 0, hatar: hatar(f.hatar), kovetelmenyKod: r.kovetelmenyKod });
+        elemek.push({ tipus: 'opak', nev: f.nev, A: feluletNettoA(p, f), U: e.U, chi: p.hohidMod === 'psi' ? 0 : f.chi ?? 0, hatar: hatar(f.hatar), kovetelmenyKod: r.kovetelmenyKod });
       }
     } catch (err) {
       hibak.push(`„${f.nev}”: ${(err as Error).message}`);
+    }
+  }
+  // részletes hőhíd-számítás: a χ helyett vonalmenti Ψ · l (MSZ EN ISO 10211)
+  if (p.hohidMod === 'psi') {
+    for (const h of p.hohidak ?? []) {
+      if (!h.szamit) continue;
+      if (!h.eredmeny) { hibak.push(`„${h.nev}”: a hőhíd még nincs kiszámítva.`); continue; }
+      elemek.push({ tipus: 'vonal', nev: h.nev, l: h.hossz, psi: h.meretrendszer === 'kulso' ? h.eredmeny.psiE : h.eredmeny.psiI, hatar: hatar(h.hatar ?? 'kulso') });
     }
   }
 

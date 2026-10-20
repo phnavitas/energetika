@@ -403,6 +403,15 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
     }
   }
 
+  // --- Hőhidak (MSZ EN ISO 10211) -------------------------------------------------------------
+  const hidak = (p.hohidak ?? []).filter((h) => h.eredmeny);
+  if (hidak.length) {
+    tartalom.push(cim('Hőhidak – kétdimenziós számítás (MSZ EN ISO 10211)'));
+    tartalom.push({ text: p.hohidMod === 'psi' ? 'A számítás a hőhidakat részletesen, vonalmenti Ψ · l taggal veszi figyelembe (a felületek χ korrekciója nélkül).' : 'A számítás a hőhidakat az egyszerűsített χ módszerrel veszi figyelembe; az alábbi Ψ értékek tájékoztató, ellenőrző számítások.', fontSize: 7.5, color: SZIN.halk, margin: [0, 0, 0, 4] });
+    const { hohidTartalom } = await import('./hohid/pdf');
+    for (const h of hidak) tartalom.push(...hohidTartalom(h, (t) => cim(t, 2)));
+  }
+
   // --- 7. Megjegyzések ------------------------------------------------------------------------
   const fw = [...new Map(e.figyelmeztetesek.map((x) => [x.kod + x.uzenet, x])).values()];
   if (fw.length) {

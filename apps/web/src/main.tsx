@@ -13,6 +13,7 @@ import { HatarolasLepes } from './lepesek/Hatarolas';
 import { GepeszetLepes } from './lepesek/Gepeszet';
 import { EredmenyLepes } from './lepesek/Eredmeny';
 import { HoszuksegletLepes } from './lepesek/Hoszukseglet';
+import { HohidakLepes } from './lepesek/Hohidak';
 import { FelujitasLepes } from './lepesek/Felujitas';
 import { AlternativLepes } from './lepesek/Alternativ';
 import { TervbolLepes } from './lepesek/Tervbol';
@@ -38,7 +39,7 @@ function betolt(): Projekt {
 interface Kapcsolat { id: string; irodaId: string; verzio: number; modositva: string; piszkos: boolean; }
 type MentesAllapot = { a: 'mentve' } | { a: 'varakozik' } | { a: 'mentes' } | { a: 'hiba'; uzenet: string } | { a: 'utkozes' } | { a: 'torolve' };
 
-type LepesKod = 'epulet' | 'terv' | 'helyisegek' | 'retegrendek' | 'nyilaszarok' | 'hatarolas' | 'hoszukseglet' | 'gepeszet' | 'eredmeny' | 'alternativ' | 'felujitas';
+type LepesKod = 'epulet' | 'terv' | 'helyisegek' | 'retegrendek' | 'nyilaszarok' | 'hatarolas' | 'hohidak' | 'hoszukseglet' | 'gepeszet' | 'eredmeny' | 'alternativ' | 'felujitas';
 type Nezet = LepesKod | 'projektek' | 'konyvtar' | 'iroda';
 const LEPESEK: { kod: LepesKod; nev: string; leiras: string }[] = [
   { kod: 'epulet', nev: 'Épület', leiras: 'Alapadatok, rendeltetés, követelményszint és meglévő épületnél a tipikus szerkezetek.' },
@@ -47,6 +48,7 @@ const LEPESEK: { kod: LepesKod; nev: string; leiras: string }[] = [
   { kod: 'retegrendek', nev: 'Rétegrendek', leiras: 'Építsd fel a szerkezeteket rétegenként. A metszet és az U-érték minden módosításra frissül.' },
   { kod: 'nyilaszarok', nev: 'Nyílászárók', leiras: 'Ablak- és ajtótípusok összetevőkből vagy teljesítménynyilatkozat szerinti Uw-ből.' },
   { kod: 'hatarolas', nev: 'Határolás', leiras: 'Melyik szerkezet mekkora felületen, milyen tájolással és milyen tér felé határol.' },
+  { kod: 'hohidak', nev: 'Hőhidak', leiras: 'Katalógus-csomópontok kétdimenziós hőhíd-számítása (MSZ EN ISO 10211): Ψ, felületi hőmérséklet, izotermás ábra; a Ψ·l átvihető a számításba.' },
   { kod: 'hoszukseglet', nev: 'Hőszükséglet', leiras: 'Helyiségenkénti tervezési hőszükséglet (MSZ EN 12831) a hőleadók és a hőtermelő méretezéséhez.' },
   { kod: 'gepeszet', nev: 'Gépészet', leiras: 'Fűtési és melegvíz-rendszer a leggyakoribb beállításokkal, ErP adatlappal pontosítható.' },
   { kod: 'eredmeny', nev: 'Eredmény', leiras: 'Besorolás, követelmények, havi mérleg, és a tanúsítvány előkészítése.' },
@@ -268,6 +270,7 @@ function App() {
     retegrendek: `${p.retegrendek.length} rétegrend`,
     nyilaszarok: `${p.nyilaszarok.length} típus`,
     hatarolas: `${p.feluletek.length} felület`,
+    hohidak: p.hohidak?.length ? `${p.hohidak.length} csomópont${p.hohidMod === 'psi' ? ', Ψ-mód' : ''}` : (p.hohidMod === 'psi' ? 'Ψ-mód' : 'χ-tényezővel'),
     hoszukseglet: hszOsszeg !== null ? `${sz(hszOsszeg / 1000, 1)} kW` : '–',
     gepeszet: e ? 'kiválasztva' : '–',
     eredmeny: e ? `${e.besorolas.energetikai} osztály` : 'hiányos adatok',
@@ -403,6 +406,7 @@ function App() {
           {nezet === 'retegrendek' && <RetegrendekLepes p={p} modosit={modosit} />}
           {nezet === 'nyilaszarok' && <NyilaszarokLepes p={p} modosit={modosit} />}
           {nezet === 'hatarolas' && <HatarolasLepes p={p} modosit={modosit} />}
+          {nezet === 'hohidak' && <HohidakLepes p={p} modosit={modosit} />}
           {nezet === 'hoszukseglet' && <HoszuksegletLepes p={p} modosit={modosit} />}
           {nezet === 'gepeszet' && <GepeszetLepes p={p} modosit={modosit} eredmeny={e} />}
           {nezet === 'eredmeny' && <EredmenyLepes p={p} e={e} g={atal.geometria} atal={atal} hibak={hibak} modosit={modosit} rogzit={aktivKapcsolat ? rogzit : undefined} />}
