@@ -157,15 +157,18 @@ export function hohidSzamol(h: HohidUI, felbontas = 0.01): HohidSzamitas | null 
   return osszerak(h, e.c, megold(e.c.geometria, pf!, e.cel), megold(e.c.geometria, pff!, e.cel));
 }
 
-let worker: Worker | null = null, sorszam = 0;
-const varo = new Map<number, (v: { ms?: Megoldas[]; hiba?: string }) => void>();
+let worker: Worker | null = null, workerHibas = false, sorszam = 0;
+const varo = new Map<number, (v: { ms?: Megoldas[]; hiba?: string; tartalek?: boolean }) => void>();
 function munkas(): Worker | null {
+  if (workerHibas) return null;
   if (worker) return worker;
   try {
     worker = new SzamitoWorker();
     worker.onmessage = (e: MessageEvent<{ id: number; ms?: Megoldas[]; hiba?: string }>) => { const f = varo.get(e.data.id); varo.delete(e.data.id); f?.(e.data); };
+    // pl. a beágyazó oldal tartalombiztonsági szabálya tiltja a workert: szinkron tartalék
+    worker.onerror = () => { workerHibas = true; worker?.terminate(); worker = null; for (const [id, f] of varo) { varo.delete(id); f({ tartalek: true }); } };
     return worker;
-  } catch { return null; }
+  } catch { workerHibas = true; return null; }
 }
 /** A számítás háttérszálon (Web Worker), hogy a felület ne akadjon meg; ha nincs worker, szinkron. */
 export async function hohidSzamolHatter(h: HohidUI, felbontas = 0.01): Promise<HohidSzamitas | null> {
@@ -173,7 +176,8 @@ export async function hohidSzamolHatter(h: HohidUI, felbontas = 0.01): Promise<H
   const w = munkas();
   if (!w) return hohidSzamol(h, felbontas);
   const id = ++sorszam;
-  const v = await new Promise<{ ms?: Megoldas[]; hiba?: string }>((ok) => { varo.set(id, ok); w.postMessage({ id, g: e.c.geometria as Geometria, pfs: PF(h), cel: e.cel }); });
+  const v = await new Promise<{ ms?: Megoldas[]; hiba?: string; tartalek?: boolean }>((ok) => { varo.set(id, ok); w.postMessage({ id, g: e.c.geometria as Geometria, pfs: PF(h), cel: e.cel }); });
+  if (v.tartalek) return hohidSzamol(h, felbontas);
   if (!v.ms) throw new Error(v.hiba ?? 'hőhíd-számítási hiba');
   return osszerak(h, e.c, v.ms[0]!, v.ms[1]!);
 }
