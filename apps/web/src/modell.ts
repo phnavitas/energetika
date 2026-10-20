@@ -45,6 +45,8 @@ export interface Retegrend {
   kezidU?: number; rseFelulbiralas?: number;
   /** A nevet a felhasználó írta: a program nem nevezi át a rétegek alapján. */
   nevKezi?: boolean;
+  /** Tervből (PDF-metszetből) átvett rétegrend: felülíró beolvasáskor törlődik, ha nem módosították. */
+  tervbol?: boolean;
 }
 
 export interface NyilaszaroTipus {
@@ -59,7 +61,11 @@ export interface NyilaszaroTipus {
   keretarany?: number;
   /** Társított árnyékoló (fűtési U-hoz ΔR, hűtéshez gárny). */
   arnyekolo?: { kod: string; dR: number; garnyH: number };
+  /** Nyílászáró-csoport: a csoport közös (keret-, üveg-, árnyékoló-) jellemzői egyszerre állíthatók. */
+  csoportId?: string;
 }
+
+export interface NyilaszaroCsoport { id: string; nev: string }
 
 export interface NyilaszaroKomponens {
   keretMm: number; Ug: number; Uk: number; psi: number;
@@ -173,6 +179,7 @@ export interface Projekt {
    *  'vegyes': a kijelölt felületeken Ψ · l, a többin χ. */
   hohidMod?: 'chi' | 'psi' | 'vegyes';
   hohidak?: HohidUI[];
+  nyilaszaroCsoportok?: NyilaszaroCsoport[];
 }
 
 /** Egy kétdimenziós hőhíd-számítás (MSZ EN ISO 10211) a katalógus-csomópontból. */
@@ -507,6 +514,60 @@ export function atalakit(p: Projekt): Atalakitas {
 }
 
 /** Talajon fekvő padló egyenértékű hőátbocsátási tényezője (MSZ EN ISO 13370, 4.20–4.33). */
+/** Az összevonható (azonos) felületek kulcsa; null: nem vonható össze. */
+export function feluletKulcs(f: Felulet): string | null {
+  if (f.fajta === 'opak') return ['o', f.retegrendId, f.hatar, f.tajolas ?? '-', f.hajlasszog ?? '-', f.chiKod ?? f.chi ?? '-', f.chiPsi ? 1 : 0].join('|');
+  if (f.fajta === 'padlo') return f.padlo ? ['p', f.retegrendId, f.hatar, f.padlo.dfCm, f.padlo.z, f.padlo.psiPF, JSON.stringify(f.padlo.perem ?? null)].join('|') : null;
+  return ['n', f.nyilaszaroId, f.hatar, f.tajolas ?? '-', f.hajlasszog ?? '-', f.szuloId ?? '-', f.helyisegId ?? '-', f.arnyekolas ?? '-'].join('|');
+}
+
+/** Az azonos (azonos szerkezetű, határú, tájolású) felületek csoportjai. */
+export function azonosFeluletek(p: Projekt): Felulet[][] {
+  const m = new Map<string, Felulet[]>();
+  for (const f of p.feluletek) { const k = feluletKulcs(f); if (k) m.set(k, [...(m.get(k) ?? []), f]); }
+  return [...m.values()].filter((x) => x.length > 1);
+}
+
+/**
+ * Az azonos felületek összevonása: opak felületnél azonos magasságnál a határoló hosszak, különben a felületek összegződnek;
+ * padlónál a terület és a kerület; nyílászárónál a darabszám. A levont nyílászárók és a padló falhivatkozásai az
+ * összevont felületre mutatnak. Visszaadja az összevont felületek számát.
+ */
+export function feluletekOsszevon(p: Projekt, csak?: (f: Felulet) => boolean): number {
+  let db = 0;
+  // előbb az opak felületek (a nyílászárók szülő-hivatkozása miatt), aztán a többi
+  for (const fajta of ['opak', 'padlo', 'nyilaszaro'] as const) {
+    for (const cs of azonosFeluletek(p).filter((c) => c[0]!.fajta === fajta)) {
+      const tagok = csak ? cs.filter(csak) : cs; if (tagok.length < 2) continue;
+      const [fo, ...tobbi] = tagok as [Felulet, ...Felulet[]];
+      for (const x of tobbi) {
+        if (fajta === 'opak') {
+          if (fo.meret && x.meret && Math.abs(fo.meret.magassag - x.meret.magassag) < 1e-6) {
+            fo.meret.hossz = Math.round((fo.meret.hossz + x.meret.hossz) * 1000) / 1000;
+            fo.A = Math.round(fo.meret.hossz * fo.meret.magassag * 100) / 100;
+          } else {
+            fo.A = Math.round(((fo.A ?? 0) + (x.A ?? 0)) * 100) / 100; delete fo.meret;
+          }
+        } else if (fajta === 'padlo') {
+          fo.A = Math.round(((fo.A ?? 0) + (x.A ?? 0)) * 100) / 100;
+          fo.padlo!.P = Math.round((padloKerulet(p, fo) + padloKerulet(p, x)) * 100) / 100;
+          delete fo.padlo!.falIds;
+        } else {
+          fo.darab = (fo.darab ?? 1) + (x.darab ?? 1);
+        }
+        for (const y of p.feluletek) {
+          if (y.szuloId === x.id) y.szuloId = fo.id;
+          if (y.padlo?.falIds?.includes(x.id)) y.padlo.falIds = [...new Set(y.padlo.falIds.map((i) => (i === x.id ? fo.id : i)))];
+        }
+        for (const h of p.hohidak ?? []) if (h.padloId === x.id) h.padloId = fo.id;
+        p.feluletek = p.feluletek.filter((y) => y.id !== x.id);
+        db++;
+      }
+    }
+  }
+  return db;
+}
+
 /** A felület érvényes χ-tényezője a hőhíd-mód szerint. */
 export function chiErvenyes(p: Projekt, f: Felulet): number {
   if (p.hohidMod === 'psi') return 0;

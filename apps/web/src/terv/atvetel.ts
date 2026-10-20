@@ -2,8 +2,9 @@
  * A tervből felismert adatok átvétele a projektbe: helyiségek (helyiségenkénti külső falhosszal), rétegrendek,
  * homlokzati falfelületek tájolás szerint, talajon fekvő padló, padlásfödém, nyílászáró-típusok és -felületek.
  */
+import { AJTO_KAPU_SABLONOK } from '../katalogus';
 import type { Projekt, Retegrend, Felulet, NyilaszaroTipus, HelyisegKategoria, Helyiseg } from '../modell';
-import { ujId, sablonbolNyilaszaro, retegrendAutoNev } from '../modell';
+import { ujId, sablonbolNyilaszaro, retegrendAutoNev, feluletekOsszevon } from '../modell';
 import { nyilaszaroSablon as NS } from '@mag/index';
 import type { Tajolas } from '@mag/tablak/klima';
 import type { TervRetegUI, SzerepBecsles, TervRetegrend } from './metszet';
@@ -18,7 +19,7 @@ export interface AtvettHelyiseg {
 }
 export interface AtvettRetegrend { rr: TervRetegrend; becsles: SzerepBecsles; retegek: TervRetegUI[] }
 export interface AtvettNyilas {
-  fajta: 'ablak' | 'erkelyajto' | 'bejarati_ajto';
+  fajta: 'ablak' | 'erkelyajto' | 'bejarati_ajto' | 'garazskapu';
   szel: number; mag: number; pm: number | null;
   /** Index az `helyisegek` tömbben. */
   helyiseg: number; irany: number;
@@ -41,17 +42,32 @@ export interface TervAtvetel {
 
 const kerek = (x: number, n = 2) => Math.round(x * 10 ** n) / 10 ** n;
 
+const CSOPORT_NEV = { ablak: 'Ablakok', erkelyajto: 'Erkélyajtók', bejarati_ajto: 'Bejárati ajtók', garazskapu: 'Garázskapuk' } as const;
+/** A fajtának megfelelő nyílászáró-csoport (szükség esetén létrehozza). */
+function csoportFajta(p: Projekt, fajta: AtvettNyilas['fajta'], leiras?: string): string {
+  const nev = leiras ? `${CSOPORT_NEV[fajta]} – ${leiras.charAt(0).toLowerCase()}${leiras.slice(1)}` : CSOPORT_NEV[fajta];
+  p.nyilaszaroCsoportok ??= [];
+  let c = p.nyilaszaroCsoportok.find((x) => x.nev === nev);
+  if (!c) { c = { id: ujId(), nev }; p.nyilaszaroCsoportok.push(c); }
+  return c.id;
+}
+
 function nyilaszaroTipus(p: Projekt, ny: AtvettNyilas): NyilaszaroTipus {
   const meret = `${String(Math.round(ny.szel * 100))}×${String(Math.round(ny.mag * 100))}`;
   if (ny.fajta === 'bejarati_ajto') {
-    return { id: ujId(), nev: `Bejárati ajtó ${meret}`, kovetelmenyKod: 'ajto', szelesseg: ny.szel, magassag: ny.mag, uwKezi: 1.2, gn: 0 };
+    return { id: ujId(), nev: `Bejárati ajtó ${meret}`, kovetelmenyKod: 'ajto', szelesseg: ny.szel, magassag: ny.mag, uwKezi: 1.2, gn: 0, csoportId: csoportFajta(p, 'bejarati_ajto') };
+  }
+  if (ny.fajta === 'garazskapu') {
+    const k = AJTO_KAPU_SABLONOK.find((x) => x.kod === 'kapu_szekc_42')!;
+    return { id: ujId(), nev: `Garázskapu ${meret}`, kovetelmenyKod: 'kapu', szelesseg: ny.szel, magassag: ny.mag, uwKezi: k.U, gn: 0, sablonKod: k.kod, csoportId: csoportFajta(p, 'garazskapu') };
   }
   // az építés (ill. nyílászárócsere) évének megfelelő kortipikus ablak; új épületnél háromrétegű üvegezésű műanyag
   const ev = p.meta.nyilaszaroCsereEv ?? p.meta.epitesiEv;
   const s = NS.NYILASZARO_SABLONOK.filter((x) => x.anyag === 'pvc' && ev >= x.korszak[0] && ev <= x.korszak[1]).at(-1)
     ?? NS.NYILASZARO_SABLONOK.find((x) => x.kod === 'pvc_3r')!;
   const n = sablonbolNyilaszaro(s, { id: ujId(), szelesseg: ny.szel, magassag: ny.mag, kovetelmenyKod: 'ablak_fa_pvc' });
-  n.nev = `${ny.fajta === 'erkelyajto' ? 'Erkélyajtó' : 'Ablak'} ${meret} – ${s.nev.charAt(0).toLowerCase()}${s.nev.slice(1)}`;
+  n.nev = `${ny.fajta === 'erkelyajto' ? 'Erkélyajtó' : 'Ablak'} ${meret}`;
+  n.csoportId = csoportFajta(p, ny.fajta, s.nev);
   return n;
 }
 
@@ -59,9 +75,14 @@ function nyilaszaroTipus(p: Projekt, ny: AtvettNyilas): NyilaszaroTipus {
 export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
   const uz: string[] = [];
   if (a.csere) {
+    // felülírás: a korábbi helyiségek, felületek, nyílászárók és a korábban tervből átvett rétegrendek törlődnek
     p.helyisegek = []; p.feluletek = [];
     p.nyilaszarok = p.nyilaszarok.filter(() => false);
+    p.nyilaszaroCsoportok = [];
+    p.retegrendek = p.retegrendek.filter((r) => !r.tervbol);
+    for (const h of p.hohidak ?? []) delete h.padloId;
   }
+  const retegAlairas = (r: Pick<Retegrend, 'szerep' | 'retegek'>) => JSON.stringify([r.szerep, r.retegek.map((l) => [l.anyagId ?? l.nev ?? '', l.dCm, l.lambda ?? null, l.R ?? null, l.legreteg ?? null])]);
   p.meta.szintek = a.szintszam;
 
   // rétegrendek
@@ -78,7 +99,10 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
     };
     const auto = retegrendAutoNev(r);
     r.nev = auto ? `${x.rr.kod} ${auto}` : `${x.rr.kod} ${x.rr.cim.charAt(0)}${x.rr.cim.slice(1).toLowerCase()}`;
-    r.nevKezi = true;
+    r.nevKezi = true; r.tervbol = true;
+    // hozzáadáskor az azonos rétegrend nem duplikálódik
+    const meglevo = !a.csere ? p.retegrendek.find((q) => retegAlairas(q) === retegAlairas(r)) : undefined;
+    if (meglevo) { rrId[x.rr.kod] = meglevo.id; continue; }
     p.retegrendek.push(r);
     rrId[x.rr.kod] = r.id;
   }
@@ -160,6 +184,12 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
     if (a.helyisegek[ny.helyiseg] && !burok(a.helyisegek[ny.helyiseg]!)) continue;
     const k = `${ny.fajta}|${ny.szel}|${ny.mag}`;
     let t = tipusok.get(k);
+    if (!t && !a.csere) {
+      // hozzáadáskor a meglévő, azonos méretű és fajtájú típus használható
+      const kk = ny.fajta === 'garazskapu' ? 'kapu' : ny.fajta === 'bejarati_ajto' ? 'ajto' : null;
+      t = p.nyilaszarok.find((x) => Math.abs(x.szelesseg - ny.szel) < 1e-6 && Math.abs(x.magassag - ny.mag) < 1e-6 && (kk ? x.kovetelmenyKod === kk : x.kovetelmenyKod !== 'ajto' && x.kovetelmenyKod !== 'kapu') && (ny.fajta !== 'erkelyajto') === !/^Erkélyajtó/.test(x.nev));
+      if (t) tipusok.set(k, t);
+    }
     if (!t) { t = nyilaszaroTipus(p, ny); tipusok.set(k, t); p.nyilaszarok.push(t); }
     const ck = `${ny.helyiseg}|${ny.irany}|${k}`;
     const c = csoport.get(ck); if (c) c.db++; else csoport.set(ck, { ny, db: 1, tipus: t });
@@ -172,5 +202,10 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
       hatar: 'kulso', darab: db, tajolas: t, hajlasszog: 90, szuloId: falFel[ny.irany],
     });
   }
+  const nyilasNelkul = a.nyilasok.filter((ny) => (!a.helyisegek[ny.helyiseg] || burok(a.helyisegek[ny.helyiseg]!)) && !falFel[ny.irany]).length;
+  if (nyilasNelkul) uz.push(`${nyilasNelkul} nyílászáróhoz nem tartozik homlokzati fal azonos irányban – a falból nem vonódik le, a Határolás lépésben rendeld falhoz.`);
+  // azonos falfelületek, padlók összevonása (ismételt, mellé olvasott beolvasásnál is egy felület tájolásonként)
+  const ossze = feluletekOsszevon(p, (f) => f.fajta !== 'nyilaszaro');
+  if (ossze) uz.push(`${ossze} azonos felület összevonva (azonos szerkezet, határ és tájolás).`);
   return { uzenetek: uz };
 }

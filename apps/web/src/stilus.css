@@ -328,3 +328,28 @@ input:disabled { color: var(--tus-3); }
 .felujitas-tabla td { vertical-align: middle; }
 .reszlet-sor > td { background: var(--papir); }
 .urlap-tabla input[type=text], .urlap-tabla select { width: 100%; }
+
+/* Hőhíd-szerkesztő: tömör adatpanel | geometria | izotermák egy sorban, a panel az ábrák magasságáig (görgethető) */
+.hohid-fo { display: grid; grid-template-columns: minmax(300px, 1.05fr) minmax(220px, 1fr) minmax(220px, 1fr); gap: 14px; align-items: stretch; }
+.hohid-panel { position: relative; min-height: 470px; }
+.hohid-panel-belso { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px; }
+.hh-gorgeto { flex: 1; min-height: 0; overflow-y: auto; padding-right: 4px; display: flex; flex-direction: column; gap: 8px; }
+.hh-eredmeny-blokk { flex: none; }
+.hohid-abra { margin: 0; padding: 6px; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+.hohid-abra canvas { display: block; width: 100%; height: auto; }
+.hohid-abra figcaption { font-size: 12px; text-align: center; }
+.hh-csoport { border-top: 1px solid var(--vonal-2); padding-top: 6px; }
+.hh-csoport-cim { font-size: 12px; font-weight: 600; color: var(--tus-2); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .03em; }
+.hh-param { display: grid; grid-template-columns: minmax(0, 1fr) 118px; gap: 3px 8px; align-items: center; font-size: 13px; }
+.hh-param > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--tus-2); }
+.hh-param input.szammezo, .hh-param input[type=text] { padding: 3px 6px; font-size: 13px; min-height: 0; height: 26px; }
+.hh-param .egyseg em { font-size: 11.5px; min-width: 30px; }
+.hh-ket { display: flex; gap: 4px; } .hh-ket .egyseg { flex: 1; } .hh-ket .egyseg em { min-width: 0; }
+.hh-eredmeny { font-size: 12.5px; } .hh-eredmeny td { padding: 3px 6px; }
+@media (max-width: 1000px) {
+  .hohid-fo { grid-template-columns: 1fr 1fr; }
+  .hohid-panel { grid-column: 1 / -1; min-height: 0; }
+  .hohid-panel-belso { position: static; }
+  .hh-gorgeto { overflow: visible; }
+}
+@media (max-width: 620px) { .hohid-fo { grid-template-columns: 1fr; } }

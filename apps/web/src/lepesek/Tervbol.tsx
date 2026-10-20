@@ -14,7 +14,7 @@ const KATEGORIAK: { ertek: HelyisegKategoria; nev: string }[] = [
   { ertek: 'erosen_kapcsolt', nev: 'Fűtetlen, lakótéren belüli' },
   { ertek: 'gyengen_kapcsolt', nev: 'Fűtetlen tér (b tényezővel)' },
 ];
-const FAJTA_NEV = { ablak: 'Ablak', erkelyajto: 'Erkélyajtó', bejarati_ajto: 'Bejárati ajtó', belso_ajto: 'Belső ajtó' } as const;
+const FAJTA_NEV = { ablak: 'Ablak', erkelyajto: 'Erkélyajtó', bejarati_ajto: 'Bejárati ajtó', garazskapu: 'Garázskapu', belso_ajto: 'Belső ajtó' } as const;
 const IRANY_SZIN: Record<number, string> = { 0: '#C2410C', 90: '#2E6DB4', 180: '#15803D', 270: '#A21CAF' };
 const IRANY_NEV: Record<number, string> = { 0: 'lapon fent', 90: 'lapon jobbra', 180: 'lapon lent', 270: 'lapon balra' };
 const norm = (d: number) => ((Math.round(d * 10) / 10) % 360 + 360) % 360;
@@ -212,7 +212,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
               })}
               {nyilasok.map(({ n, k }) => (
                 <g opacity={kizartNy.has(k) ? 0.3 : 1}>
-                  <rect x={n.x - 9} y={n.y - 4} width={18} height={8} rx={1.5} fill={n.fajta === 'ablak' ? '#0EA5E9' : n.fajta === 'erkelyajto' ? '#6366F1' : '#B45309'} opacity={0.85} />
+                  <rect x={n.x - 9} y={n.y - 4} width={18} height={8} rx={1.5} fill={n.fajta === 'ablak' ? '#0EA5E9' : n.fajta === 'erkelyajto' ? '#6366F1' : n.fajta === 'garazskapu' ? '#475569' : '#B45309'} opacity={0.85} />
                   <text x={n.x} y={n.y + 2.2} font-size={5.5} text-anchor="middle" fill="#fff" font-family="system-ui">{Math.round(n.szel * 100)}×{Math.round(n.mag * 100)}</text>
                 </g>
               ))}
@@ -315,7 +315,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                     <td>{FAJTA_NEV[n.fajta]}</td>
                     <td class="szam">{Math.round(n.szel * 100)} × {Math.round(n.mag * 100)} cm</td>
                     <td class="szam">{n.pm === null ? '–' : `${Math.round(n.pm * 100)} cm`}</td>
-                    <td>{helyisegek[hi]?.kod} {helyisegek[hi]?.nev}</td>
+                    <td>{helyisegek[hi]?.kod} {helyisegek[hi]?.nev}{kategoria(hi) === 'gyengen_kapcsolt' && <small class="halkabb" style="display:block">fűtetlen tér – nem kerül a hőburokba</small>}</td>
                     <td>{egtaj(n.irany!, eszakSz)}</td>
                   </tr>
                 ))}
@@ -329,7 +329,11 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
         <section class="szakasz">
           <h2>Átvétel</h2>
           <p class="halk">Létrejönnek a helyiségek (a hőszükséglethez helyiségenkénti külső falhosszal), a kijelölt rétegrendek, a homlokzati falak tájolás szerint, a talajon fekvő padló, a padlásfödém, a nyílászáró-típusok és -felületek. Az ablaktípus az építési év szerinti kortipikus műanyag ablak – a Nyílászárók lépésben pontosítható.</p>
-          <label style="display:flex;gap:8px;align-items:center;margin-bottom:12px"><input type="checkbox" checked={csere} onChange={(e) => setCsere((e.target as HTMLInputElement).checked)} /> A meglévő {p.helyisegek.length} helyiség, {p.feluletek.length} határoló felület és {p.nyilaszarok.length} nyílászáró-típus cseréje (különben hozzáadás – ismételt beolvasásnál duplikál)</label>
+          <fieldset style="border:1px solid var(--vonal);border-radius:8px;padding:10px 12px;margin:0 0 12px;display:flex;flex-direction:column;gap:6px">
+            <legend class="halkabb" style="padding:0 6px">A projekt meglévő adatai ({p.helyisegek.length} helyiség, {p.feluletek.length} határoló felület, {p.nyilaszarok.length} nyílászáró-típus)</legend>
+            <label><input type="radio" name="atvetelMod" checked={csere} onChange={() => setCsere(true)} /> <strong>Felülírás</strong> – az eddigi helyiségek, határoló felületek, nyílászárók és a korábban tervből átvett rétegrendek törlődnek, helyettük az újak kerülnek be</label>
+            <label><input type="radio" name="atvetelMod" checked={!csere} onChange={() => setCsere(false)} /> <strong>Hozzáadás</strong> – a meglévők mellé olvassa be (pl. másik szint, másik lakás); az azonos rétegrendek, nyílászáró-típusok nem duplikálódnak, az azonos tájolású falfelületek összegződnek</label>
+          </fieldset>
           <div class="gombsor">
             <button class="gomb fo" disabled={!valasztott.some(Boolean)} onClick={atvesz}>Átvétel a projektbe</button>
           </div>

@@ -128,84 +128,82 @@ function Szerkeszto({ p, h, modosit, pdf }: { p: Projekt; h: HohidUI; modosit: M
   }, [kulcs]);
   const geo = useMemo(() => s.epit(param).geometria, [kulcs]);
   const gRef = useRef<HTMLCanvasElement>(null), iRef = useRef<HTMLCanvasElement>(null);
-  useEffect(() => { if (gRef.current) geometriaRajz(gRef.current, geo, 520); }, [geo]);
-  useEffect(() => { if (iRef.current && sz2) izotermRajz(iRef.current, sz2.csomopont.geometria, sz2.mf, h.thetaI, h.thetaE, 640); }, [sz2]);
+  useEffect(() => { if (gRef.current) geometriaRajz(gRef.current, geo, 420); }, [geo]);
+  useEffect(() => { if (iRef.current && sz2) izotermRajz(iRef.current, sz2.csomopont.geometria, sz2.mf, h.thetaI, h.thetaE, 420); }, [sz2]);
   const csoportok = [...new Set(s.parameterek.map((q) => q.csoport ?? ''))];
   const jh = javasoltHossz(p, s);
   const e = sz2?.eredmeny ?? h.eredmeny;
   const psi = e ? (h.meretrendszer === 'kulso' ? e.psiE : e.psiI) : null;
-  const ParamMezo = ({ q }: { q: Parameter }) => {
+  // függvényként (nem komponensként) hívva: így újrarajzoláskor nem jön létre új komponenstípus, a mező nem veszti el a fókuszt
+  const paramMezo = (q: Parameter) => {
     const v = param[q.kulcs]!; const cm = q.egyseg === 'm';
-    return <Mezo cim={q.nev}><Szam ertek={cm ? Math.round(v * 1000) / 10 : v} egyseg={cm ? 'cm' : q.egyseg} valt={(u) => mh((x) => { const w = cm ? u / 100 : u; x.param = { ...x.param, [q.kulcs]: Math.min(q.max, Math.max(q.min, w)) }; })} /></Mezo>;
+    return <><span title={q.nev}>{q.nev}</span><Szam cimke={q.nev} ertek={cm ? Math.round(v * 1000) / 10 : v} egyseg={cm ? 'cm' : q.egyseg} valt={(u) => mh((x) => { const w = cm ? u / 100 : u; x.param = { ...x.param, [q.kulcs]: Math.min(q.max, Math.max(q.min, w)) }; })} /></>;
   };
   return (
     <section class="szakasz">
-      <h2>{h.nev}</h2>
-      <p class="halk">{s.leiras}</p>
-      <div class="racs" style="margin-bottom:12px">
-        <Mezo cim="Megnevezés"><Szoveg ertek={h.nev} valt={(v) => mh((x) => { x.nev = v; })} /></Mezo>
-        <Mezo cim="Belső hőmérséklet θi"><Szam ertek={h.thetaI} egyseg="°C" valt={(v) => mh((x) => { x.thetaI = v; })} /></Mezo>
-        <Mezo cim="Külső hőmérséklet θe"><Szam ertek={h.thetaE} egyseg="°C" valt={(v) => mh((x) => { x.thetaE = v; })} /></Mezo>
-        <div class="mezo"><span>Paraméterek</span><button class="gomb" onClick={() => { const r = projektParameterek(p, s); mh((x) => { x.param = r.param; }); }}>Átvétel a projekt szerkezeteiből</button></div>
+      <div class="gombsor" style="justify-content:space-between;align-items:baseline;margin-bottom:4px">
+        <h2>{h.nev}</h2>
+        <button class="gomb halk-gomb semleges" onClick={() => { const r = projektParameterek(p, s); mh((x) => { x.param = r.param; }); }}>Paraméterek a projekt szerkezeteiből</button>
       </div>
-      <div style="display:grid;grid-template-columns:minmax(260px,1fr) minmax(280px,1.2fr);gap:20px;align-items:start" class="hohid-racs">
-        <div>
+      <p class="halk" style="margin-bottom:10px">{s.leiras}</p>
+      <div class="hohid-fo">
+        {/* bal panel: tömör adatmegadás, alatta az eredmény – az ábrák magasságáig, ha hosszabb, görgethető */}
+        <div class="hohid-panel"><div class="hohid-panel-belso">
+          <div class="hh-gorgeto">
+          <div class="hh-param">
+            <span>Megnevezés</span><Szoveg ertek={h.nev} valt={(v) => mh((x) => { x.nev = v; })} />
+            <span>Belső hőmérséklet θi</span><Szam cimke="Belső hőmérséklet" ertek={h.thetaI} egyseg="°C" valt={(v) => mh((x) => { x.thetaI = v; })} />
+            <span>Külső hőmérséklet θe</span><Szam cimke="Külső hőmérséklet" ertek={h.thetaE} egyseg="°C" valt={(v) => mh((x) => { x.thetaE = v; })} />
+          </div>
           {csoportok.map((c) => (
-            <fieldset style="border:1px solid var(--vonal);border-radius:8px;padding:10px 12px;margin:0 0 10px">
-              <legend class="halkabb" style="padding:0 6px">{c || 'Paraméterek'}</legend>
-              <div class="racs" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">{s.parameterek.filter((q) => (q.csoport ?? '') === c).map((q) => <ParamMezo q={q} />)}</div>
-            </fieldset>
+            <div class="hh-csoport">
+              <div class="hh-csoport-cim">{c || 'Paraméterek'}</div>
+              <div class="hh-param">{s.parameterek.filter((q) => (q.csoport ?? '') === c).map((q) => paramMezo(q))}</div>
+            </div>
           ))}
-        </div>
-        <div>
-          <div class="kartya" style="padding:8px"><canvas ref={gRef} role="img" aria-label="A csomópont geometriája" /></div>
-        </div>
+          </div>
+          <div class="hh-csoport hh-eredmeny-blokk">
+            <div class="hh-csoport-cim">Eredmény {szamol && <span class="halkabb">– számítás…</span>}</div>
+            {e && <table class="tabla hh-eredmeny">
+              <tbody>
+                <tr><td>L2D</td><td class="szam">{sz(e.L2D, 4)} W/mK</td></tr>
+                {e.karimak.map((k) => <tr><td>{k.nev}: U {sz(k.U, 3)} · l {sz(h.meretrendszer === 'kulso' ? k.lKulso : k.lBelso, 2)} m</td><td class="szam">{sz(k.U * (h.meretrendszer === 'kulso' ? k.lKulso : k.lBelso), 4)}</td></tr>)}
+                <tr><td><strong>Ψ{h.meretrendszer === 'kulso' ? 'e (külső méret)' : 'i (belső méret)'}</strong></td><td class="szam"><strong>{sz(psi!, 3)} W/mK</strong></td></tr>
+                <tr><td>Ψ{h.meretrendszer === 'kulso' ? 'i' : 'e'}</td><td class="szam">{sz(h.meretrendszer === 'kulso' ? e.psiI : e.psiE, 3)} W/mK</td></tr>
+                <tr><td>θsi,min / fRsi</td><td class="szam">{sz(e.thetaSiMin, 1)} °C / {sz(e.fRsi, 3)}</td></tr>
+              </tbody>
+            </table>}
+            {e && e.fRsi < 0.75 && <div class="figyelmeztetes" style="margin-top:6px;font-size:13px">fRsi &lt; 0,75: penészedés, felületi páralecsapódás veszélye (MSZ EN ISO 13788).</div>}
+          </div>
+        </div></div>
+        <figure class="kartya hohid-abra"><canvas ref={gRef} role="img" aria-label="A csomópont geometriája" /><figcaption class="halkabb">Geometria, anyagok</figcaption></figure>
+        <figure class="kartya hohid-abra"><canvas ref={iRef} role="img" aria-label="Izotermás hőmérséklet-eloszlás" /><figcaption class="halkabb">Izotermák (Rsi = 0,25)</figcaption></figure>
       </div>
 
-      <h3 style="margin:16px 0 6px">Eredmény {szamol && <span class="halkabb">– számítás…</span>}</h3>
-      {e && (
-        <div style="display:grid;grid-template-columns:minmax(260px,1fr) minmax(300px,1.4fr);gap:20px;align-items:start" class="hohid-racs">
-          <div>
-            <table class="tabla">
-              <tbody>
-                <tr><td>Kétdimenziós hőátbocsátás, L2D</td><td class="szam">{sz(e.L2D, 4)} W/mK</td></tr>
-                {e.karimak.map((k) => <tr><td>{k.nev}: U = {sz(k.U, 3)} W/m²K, l = {sz(h.meretrendszer === 'kulso' ? k.lKulso : k.lBelso, 2)} m</td><td class="szam">{sz(k.U * (h.meretrendszer === 'kulso' ? k.lKulso : k.lBelso), 4)} W/mK</td></tr>)}
-                <tr><td><strong>Ψ ({h.meretrendszer === 'kulso' ? 'külső' : 'belső'} méretrendszer)</strong></td><td class="szam"><strong>{sz(psi!, 3)} W/mK</strong></td></tr>
-                <tr><td>Ψ a másik méretrendszerben</td><td class="szam">{sz(h.meretrendszer === 'kulso' ? e.psiI : e.psiE, 3)} W/mK</td></tr>
-                <tr><td>θsi,min (Rsi = 0,25) / fRsi</td><td class="szam">{sz(e.thetaSiMin, 1)} °C / {sz(e.fRsi, 3)}</td></tr>
-              </tbody>
-            </table>
-            {e.fRsi < 0.75 && <div class="figyelmeztetes" style="margin-top:8px">fRsi &lt; 0,75: a csomópont belső felületén penészedés, páralecsapódás veszélye áll fenn (MSZ EN ISO 13788).</div>}
-            <div class="racs" style="margin-top:12px">
-              <Mezo cim="Méretrendszer" sugo="A program a felületeket belső (nettó) méretből számítja – ehhez a belső méretrendszerű Ψ illik">
-                <Valaszto ertek={h.meretrendszer} valt={(v) => mh((x) => { x.meretrendszer = v; })} opciok={[{ ertek: 'belso', nev: 'Belső (Ψi)' }, { ertek: 'kulso', nev: 'Külső (Ψe)' }]} />
-              </Mezo>
-              {s.csoport === 'labazat' && (
-                <Mezo cim="Átvitel a padlóhoz" sugo="A választott talajon fekvő padló padló–fal csatlakozási Ψ-je ebből a számításból adódik (a padló kerületével szorozva), külön vonalmenti tagként nem kerül be">
-                  <Valaszto ertek={h.padloId ?? ''} valt={(v) => mh((x) => { x.padloId = v || undefined; })} opciok={[{ ertek: '', nev: 'Nincs (vonalmenti tag)' }, ...p.feluletek.filter((f) => f.fajta === 'padlo').map((f) => ({ ertek: f.id, nev: f.nev }))]} />
-                </Mezo>
-              )}
-              {!h.padloId && <Mezo cim="Hossz a projektben" sugo={jh ? `Javaslat: ${sz(jh.hossz, 2)} m (${jh.leiras})` : 'A csomópont hossza az épületben'}>
-                <div class="egyseg"><Szam ertek={h.hossz} egyseg="m" valt={(v) => mh((x) => { x.hossz = Math.max(0, v); })} />{jh && <button class="gomb halk-gomb" onClick={() => mh((x) => { x.hossz = jh.hossz; })}>javaslat</button>}</div>
-              </Mezo>}
-              <div class="mezo"><span>Átvitel</span>
-                <label><input type="checkbox" checked={h.szamit} onChange={(ev) => mh((x) => { x.szamit = (ev.target as HTMLInputElement).checked; })} /> Számításba veszem{h.padloId ? '' : ' (részletes / vegyes módban)'}</label>
-                {psi !== null && !h.padloId && <small>Ψ·l = {sz(psi * h.hossz, 2)} W/K</small>}
-                {h.padloId && <small>a padló Ψ padló–fal értéke: {psi !== null ? sz(psi, 3) : '–'} W/mK</small>}
-              </div>
-            </div>
-          </div>
-          <div>
-            <div class="kartya" style="padding:8px"><canvas ref={iRef} role="img" aria-label="Izotermás hőmérséklet-eloszlás" /></div>
-            <div class="gombsor" style="margin-top:8px">
-              <button class="gomb" onClick={() => iRef.current?.toBlob((b) => b && letolt(`${h.nev}_izoterma.png`, b))}>Izotermás ábra (PNG)</button>
-              <button class="gomb" onClick={pdf}>Hőhíd-jegyzőkönyv (PDF)</button>
-            </div>
-            {s.csoport === 'labazat' && <p class="halkabb" style="margin-top:6px">Talajmodell (MSZ EN ISO 10211): λtalaj = 2,0 W/mK, a modell az épületen belül B'/2, kívül és lefelé 2,5·B' kiterjedésű; az ábra a csomópont környezetét mutatja. Ψ = L2D − Ufal·hfal − U0·B'/2, ahol U0 a padló MSZ EN ISO 13370 szerinti alapértéke (peremszigetelés nélkül – azt a 2D modell tartalmazza, ezért a padlónál ne adj meg külön peremszigetelést).</p>}
-            <p class="halkabb" style="margin-top:6px">Az ábra Rsi = 0,25 m²K/W belső felületi ellenállással (felületi hőmérséklet-vizsgálat) készült; 1 °C-onkénti izotermák, a piros pont a legalacsonyabb belső felületi hőmérséklet. Ψ: Rsi = 0,13, Rse = 0,04 m²K/W, adiabatikus vágósíkok (MSZ EN ISO 10211).</p>
-          </div>
+      <div class="racs" style="margin-top:14px">
+        <Mezo cim="Méretrendszer" sugo="A program a felületeket belső (nettó) méretből számítja – ehhez a belső méretrendszerű Ψ illik">
+          <Valaszto ertek={h.meretrendszer} valt={(v) => mh((x) => { x.meretrendszer = v; })} opciok={[{ ertek: 'belso', nev: 'Belső (Ψi)' }, { ertek: 'kulso', nev: 'Külső (Ψe)' }]} />
+        </Mezo>
+        {s.csoport === 'labazat' && (
+          <Mezo cim="Átvitel a padlóhoz" sugo="A választott talajon fekvő padló padló–fal csatlakozási Ψ-je ebből a számításból adódik (a padló kerületével szorozva), külön vonalmenti tagként nem kerül be">
+            <Valaszto ertek={h.padloId ?? ''} valt={(v) => mh((x) => { x.padloId = v || undefined; })} opciok={[{ ertek: '', nev: 'Nincs (vonalmenti tag)' }, ...p.feluletek.filter((f) => f.fajta === 'padlo').map((f) => ({ ertek: f.id, nev: f.nev }))]} />
+          </Mezo>
+        )}
+        {!h.padloId && <Mezo cim="Hossz a projektben" sugo={jh ? `Javaslat: ${sz(jh.hossz, 2)} m (${jh.leiras})` : 'A csomópont hossza az épületben'}>
+          <div class="egyseg"><Szam ertek={h.hossz} egyseg="m" valt={(v) => mh((x) => { x.hossz = Math.max(0, v); })} />{jh && <button class="gomb halk-gomb" onClick={() => mh((x) => { x.hossz = jh.hossz; })}>javaslat</button>}</div>
+        </Mezo>}
+        <div class="mezo"><span>Átvitel</span>
+          <label><input type="checkbox" checked={h.szamit} onChange={(ev) => mh((x) => { x.szamit = (ev.target as HTMLInputElement).checked; })} /> Számításba veszem{h.padloId ? '' : ' (részletes / vegyes módban)'}</label>
+          {psi !== null && !h.padloId && <small>Ψ·l = {sz(psi * h.hossz, 2)} W/K</small>}
+          {h.padloId && <small>a padló Ψ padló–fal értéke: {psi !== null ? sz(psi, 3) : '–'} W/mK</small>}
         </div>
-      )}
+      </div>
+      <div class="gombsor" style="margin-top:10px">
+        <button class="gomb" disabled={!sz2} onClick={() => iRef.current?.toBlob((b) => b && letolt(`${h.nev}_izoterma.png`, b))}>Izotermás ábra (PNG)</button>
+        <button class="gomb" disabled={!e} onClick={pdf}>Hőhíd-jegyzőkönyv (PDF)</button>
+      </div>
+      {s.csoport === 'labazat' && <p class="halkabb" style="margin-top:6px">Talajmodell (MSZ EN ISO 10211): λtalaj = 2,0 W/mK, a modell az épületen belül B'/2, kívül és lefelé 2,5·B' kiterjedésű; az ábra a csomópont környezetét mutatja. Ψ = L2D − Ufal·hfal − U0·B'/2, ahol U0 a padló MSZ EN ISO 13370 szerinti alapértéke (peremszigetelés nélkül – azt a 2D modell tartalmazza, ezért a padlónál ne adj meg külön peremszigetelést).</p>}
+      <p class="halkabb" style="margin-top:6px">Ψ: Rsi = 0,13, Rse = 0,04 m²K/W, adiabatikus vágósíkok (MSZ EN ISO 10211). Az izotermás ábra Rsi = 0,25 m²K/W-mal (felületi hőmérséklet-vizsgálat) készül; 1 °C-onkénti izotermák, a piros pont a legalacsonyabb belső felületi hőmérséklet.</p>
     </section>
   );
 }

@@ -17,10 +17,13 @@ export interface TervNyilas {
   helyiseg: number | null;
   irany: number | null;
   kulso: boolean;
-  fajta: 'ablak' | 'erkelyajto' | 'bejarati_ajto' | 'belso_ajto';
+  fajta: 'ablak' | 'erkelyajto' | 'bejarati_ajto' | 'garazskapu' | 'belso_ajto';
 }
 
 const SZAM = /^\d{2,3}$/;
+/** Méterben írt nyílásméret (kapuknál gyakori: „2,65” / „2,40”). */
+const SZAM_M = /^\d,\d{2}$/;
+const mSzam = (s: string) => Number(s.trim().replace(',', '.'));
 const PM = /^(?:pm|ph|mv|p\.m\.?|mellvéd|parapet)\s*[.:=]?\s*([+-]?\d{1,3}(?:[,.]\d{1,2})?)\s*(cm|m)?$/i;
 /** Egy szövegben: „90/150”, „90x150”, „90×150”, opcionálisan mellvéddel: „90/150 pm 90”. */
 const EGYBEN = /^(\d{2,3})\s*[\/x×*]\s*(\d{2,3})(?:\s*[,;]?\s*(?:pm|ph|mv|p\.m\.?|mellvéd)\s*[.:=]?\s*([+-]?\d{1,3}))?$/i;
@@ -33,7 +36,7 @@ function geom(t: Szoveg) {
   return { dir, fel, cx, cy };
 }
 
-export interface NyilasFelirat { szel: number; mag: number; pm: number | null; x: number; y: number; /** A fal iránya a lapon: vízszintes / függőleges. */ fal: 'v' | 'f' }
+export interface NyilasFelirat { szel: number; mag: number; pm: number | null; x: number; y: number; /** A fal iránya a lapon: vízszintes / függőleges. */ fal: 'v' | 'f'; /** Méterben írt, kapuméretű feliratpár: csak garázs jellegű helyiségben, falnyíláshoz kötve fogadjuk el. */ kapuJelolt?: boolean }
 
 export function nyilasFeliratok(sz: Szoveg[]): NyilasFelirat[] {
   const szamok = sz.filter((t) => SZAM.test(t.s.trim()) && Number(t.s) >= 30 && Number(t.s) <= 600);
@@ -78,6 +81,28 @@ export function nyilasFeliratok(sz: Szoveg[]): NyilasFelirat[] {
     hasznalt.add(a); hasznalt.add(legjobb.b);
     ki.push({ szel: Number(felso.s) / 100, mag: Number(also.s) / 100, pm: pm ? pmErtek(pm.m![1]!, pm.m![2]) : null, x, y, fal: Math.abs(ga.fel[0]) >= Math.abs(ga.fel[1]) ? 'v' : 'f' });
   }
+  // méterben írt kapuméretek (szélesség ≥ 1,8 m, magasság 1,8–3,2 m) – a méretláncok számaitól a hozzárendelés választja el
+  const mSzamok = sz.filter((t) => SZAM_M.test(t.s.trim()) && mSzam(t.s) >= 1.8 && mSzam(t.s) <= 6);
+  const mHasznalt = new Set<Szoveg>();
+  for (const a of mSzamok) {
+    if (mHasznalt.has(a)) continue;
+    const ga = geom(a);
+    let legjobb: { b: Szoveg; perp: number } | null = null;
+    for (const b of mSzamok) {
+      if (b === a || mHasznalt.has(b) || Math.abs(b.szog - a.szog) > 2 || Math.abs(b.meret - a.meret) > a.meret * 0.15) continue;
+      const gb = geom(b); const dx = gb.cx - ga.cx, dy = gb.cy - ga.cy;
+      const menti = Math.abs(dx * ga.dir[0] + dy * ga.dir[1]), perp = dx * ga.fel[0] + dy * ga.fel[1];
+      if (menti > a.meret * 1.0 || Math.abs(perp) < a.meret * 0.9 || Math.abs(perp) > a.meret * 1.9) continue;
+      if (!legjobb || Math.abs(perp) < Math.abs(legjobb.perp)) legjobb = { b, perp };
+    }
+    if (!legjobb) continue;
+    const [felso, also] = legjobb.perp > 0 ? [legjobb.b, a] : [a, legjobb.b];
+    const w = mSzam(felso.s), h = mSzam(also.s);
+    if (h < 1.8 || h > 3.2) continue;
+    const gb = geom(legjobb.b);
+    mHasznalt.add(a); mHasznalt.add(legjobb.b);
+    ki.push({ szel: w, mag: h, pm: null, x: (ga.cx + gb.cx) / 2, y: (ga.cy + gb.cy) / 2, fal: Math.abs(ga.fel[0]) >= Math.abs(ga.fel[1]) ? 'v' : 'f', kapuJelolt: true });
+  }
   // egy szövegben megadott méretek
   for (const t of sz) {
     const m = EGYBEN.exec(szovegJavit(t.s)); if (!m) continue;
@@ -97,7 +122,8 @@ export function nyilasFeliratok(sz: Szoveg[]): NyilasFelirat[] {
  * A feliratokat a raszter nyílásaihoz rendeli: a felirathoz legközelebbi áthidalt nyílás (≤ 1,3 m), majd a nyílás
  * előtti helyiségfal-szakasz adja a helyiséget és a homlokzat irányát; ha a szakasz túloldala külső tér, a nyílás külső.
  */
-export function nyilasokHozzarendel(feliratok: NyilasFelirat[], r: Raszter): TervNyilas[] {
+export function nyilasokHozzarendel(feliratok: NyilasFelirat[], r: Raszter, nevek: string[] = []): TervNyilas[] {
+  const GARAZS = /gar[aá]zs|gépkocsi|gepkocsi|beálló|autó/i;
   const ptPx = r.mPerPt / r.px;
   const ki: TervNyilas[] = [];
   const vanPm = feliratok.some((f) => f.pm !== null);
@@ -166,9 +192,13 @@ export function nyilasokHozzarendel(feliratok: NyilasFelirat[], r: Raszter): Ter
     }
     if (!jeloltek.length && !p) continue;
     const kulso = !!p?.kulso;
+    const garazsban = p ? GARAZS.test(nevek[p.h] ?? '') : false;
+    // méterben írt kapupár: csak falnyíláshoz kötve, garázsban (vagy nagyon széles nyílásnál) – különben méretlánc-részlet
+    if (f.kapuJelolt && !(p && kulso && (garazsban || f.szel >= 2.2))) continue;
     // feliratozott mellvédű tervben a mellvéd nélküli, ajtómagasságnál alacsonyabb „nyílás” valójában méretlánc-részlet
     if (vanPm && f.pm === null && f.mag < 1.9) continue;
-    const fajta: TervNyilas['fajta'] = !kulso ? 'belso_ajto' : f.pm !== null && f.pm > 0.05 ? 'ablak' : f.pm !== null ? 'erkelyajto' : f.mag >= 1.9 ? 'bejarati_ajto' : 'ablak';
+    const kapu = kulso && f.pm === null && f.mag >= 1.8 && (f.kapuJelolt || (garazsban && f.szel >= 1.8) || f.szel >= 2.2);
+    const fajta: TervNyilas['fajta'] = kapu ? 'garazskapu' : !kulso ? 'belso_ajto' : f.pm !== null && f.pm > 0.05 ? 'ablak' : f.pm !== null ? 'erkelyajto' : f.mag >= 1.9 ? 'bejarati_ajto' : 'ablak';
     ki.push({ ...f, helyiseg: p?.h ?? null, irany: p?.irany ?? null, kulso, fajta });
   }
   return ki;

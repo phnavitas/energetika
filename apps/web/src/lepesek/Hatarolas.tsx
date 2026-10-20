@@ -1,6 +1,6 @@
 import { klima } from '@mag/index';
 import { Mezo, Szam, Szoveg, Valaszto, sz, kov } from '../ui';
-import { ujId, feluletNettoA, geometria, atlagBelmagassag, padloKerulet, padloPsi, chiErvenyes, falhosszHelyisegekbol, nyilasNapnyereseg, CHI_VALASZTEK, HATAR_NEV, SZEREP_NEV, type Projekt, type HatarKod, type Felulet } from '../modell';
+import { ujId, feluletNettoA, geometria, atlagBelmagassag, padloKerulet, padloPsi, chiErvenyes, azonosFeluletek, feluletekOsszevon, falhosszHelyisegekbol, nyilasNapnyereseg, CHI_VALASZTEK, HATAR_NEV, SZEREP_NEV, type Projekt, type HatarKod, type Felulet } from '../modell';
 import { Fogantyu, huzasProps } from '../huzas';
 import { ARNYEKOLOK } from '../katalogus';
 
@@ -95,6 +95,8 @@ export function HatarolasLepes({ p, modosit }: { p: Projekt; modosit: Modosit })
           q.feluletek.push({ id: ujId(), nev: 'Homlokzati fal', fajta: 'opak', retegrendId: rid, hatar: 'kulso', meret: { hossz: h, magassag: m }, A: Math.round(h * m * 100) / 100, chi: 0.2 });
         })}>Felület hozzáadása</button>
       </section>
+
+      <Osszesites p={p} modosit={modosit} />
 
       <section class="szakasz">
         <h2>Nyílászárók</h2>
@@ -197,5 +199,44 @@ export function HatarolasLepes({ p, modosit }: { p: Projekt; modosit: Modosit })
         </div>
       </section>
     </>
+  );
+}
+
+/** Összesítés szerkezetenként (rétegrend × határ × tájolás): bruttó felület, levont nyílászárók, nettó; azonos felületek összevonása. */
+function Osszesites({ p, modosit }: { p: Projekt; modosit: Modosit }) {
+  const opak = p.feluletek.filter((f) => f.fajta === 'opak');
+  if (!opak.length) return null;
+  const csop = new Map<string, { rr: string; hatar: HatarKod; taj: string; db: number; brutto: number; levon: number; netto: number }>();
+  for (const f of opak) {
+    const k = `${f.retegrendId}|${f.hatar}|${f.tajolas ?? '-'}`;
+    const rr = p.retegrendek.find((r) => r.id === f.retegrendId)?.nev ?? '–';
+    const c = csop.get(k) ?? { rr, hatar: f.hatar, taj: f.tajolas ?? '–', db: 0, brutto: 0, levon: 0, netto: 0 };
+    const netto = feluletNettoA(p, f);
+    c.db++; c.brutto += f.A ?? 0; c.netto += netto; c.levon += (f.A ?? 0) - netto;
+    csop.set(k, c);
+  }
+  const sorok = [...csop.values()];
+  const azonos = azonosFeluletek(p);
+  const kotetlen = p.feluletek.filter((f) => f.fajta === 'nyilaszaro' && !f.szuloId);
+  const ossz = sorok.reduce((a, x) => ({ brutto: a.brutto + x.brutto, levon: a.levon + x.levon, netto: a.netto + x.netto }), { brutto: 0, levon: 0, netto: 0 });
+  return (
+    <section class="szakasz">
+      <h2>Összesítés szerkezetenként</h2>
+      <p class="halk">Az azonos rétegrendű, határú és tájolású felületek összesítve; a nettó felület a falhoz rendelt nyílászárók levonásával adódik.</p>
+      <div class="tabla-gorgeto"><table class="tabla">
+        <thead><tr><th>Rétegrend</th><th>Határoló tér</th><th>Tájolás</th><th class="szam">Felületek</th><th class="szam">Bruttó</th><th class="szam">Nyílászárók</th><th class="szam">Nettó</th></tr></thead>
+        <tbody>{sorok.map((x) => (
+          <tr><td>{x.rr}</td><td>{HATAR_NEV[x.hatar]}</td><td>{x.taj}</td><td class="szam">{x.db} db</td><td class="szam">{sz(x.brutto, 2)} m²</td><td class="szam">{x.levon > 0 ? `− ${sz(x.levon, 2)} m²` : '–'}</td><td class="szam">{sz(x.netto, 2)} m²</td></tr>
+        ))}</tbody>
+        <tfoot><tr><td colSpan={4}>Összesen</td><td class="szam">{sz(ossz.brutto, 2)} m²</td><td class="szam">− {sz(ossz.levon, 2)} m²</td><td class="szam">{sz(ossz.netto, 2)} m²</td></tr></tfoot>
+      </table></div>
+      {azonos.length > 0 && (
+        <div class="gombsor" style="margin-top:10px">
+          <button class="gomb" onClick={() => modosit((q) => { feluletekOsszevon(q); })}>Azonos felületek összevonása ({azonos.reduce((a, c) => a + c.length - 1, 0)} felület)</button>
+          <span class="halkabb">Azonos szerkezet, határ, tájolás és hőhidasság; a hosszak (vagy felületek), padlónál a terület és a kerület, nyílászárónál a darabszám összegződik.</span>
+        </div>
+      )}
+      {kotetlen.length > 0 && <div class="figyelmeztetes" style="margin-top:10px">{kotetlen.length} nyílászáró-felület nincs falhoz rendelve, így egyik falból sem vonódik le: {kotetlen.map((f) => f.nev).join(', ')}. A „Falban” oszlopban rendeld a megfelelő falhoz.</div>}
+    </section>
   );
 }

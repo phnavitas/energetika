@@ -79,7 +79,7 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number): AlaprajzFeldol
   if (!e.mPerPt || !magHelyisegek.length) return { e, magHelyisegek, r: null, nyilasok: [] };
   const r = raszterEpit(lap, e.mPerPt, magHelyisegek.map((h) => h.mutato ?? h));
   kotaEllenoriz(r, lap.szovegek);
-  const nyilasok = nyilasokHozzarendel(nyilasFeliratok(lap.szovegek), r);
+  const nyilasok = nyilasokHozzarendel(nyilasFeliratok(lap.szovegek), r, magHelyisegek.map((h) => h.nev));
   return { e, magHelyisegek, r, nyilasok };
 }
 
