@@ -86,7 +86,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const kategoria = (i: number): HelyisegKategoria => kat[i] ?? kategoriaJavaslat(helyisegek[i]!.nev) ?? 'kondicionalt';
   const falak = (i: number) => {
     const ri = raszterIdx(i); if (!al?.r || ri < 0) return [];
-    return al.r.helyisegek[ri]!.szakaszok.filter((s) => s.tul === 'kulso' && s.hossz >= 0.2);
+    return al.r.helyisegek[ri]!.szakaszok.filter((s) => s.tul === 'kulso' && s.hossz >= 0.3);
   };
   const nyilasok = (al?.nyilasok ?? []).map((n, k) => ({ n, k })).filter(({ n }) => n.kulso && n.helyiseg !== null && n.irany !== null)
     .map(({ n, k }) => ({ n, k, hi: helyisegek.indexOf(al!.magHelyisegek[n.helyiseg!]!) }))

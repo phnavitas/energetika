@@ -1,6 +1,8 @@
 import { useState } from 'preact/hooks';
 import { kovetelmeny, szerkezetSablon as SS } from '@mag/index';
 import { Metszet } from '../abrak/Metszet';
+import { GlaserAbra } from '../abrak/Glaser';
+import { glaser, muAlap, GLASER_ALAP, type GlaserFeltetel } from '../paradiffuzio';
 import { useTavoli, KonyvtarbaGomb } from '../fiok';
 import { retegrendKonyvtarba } from '../tarolo';
 import { anyagLista, anyag, beepitett } from '../katalogus';
@@ -71,7 +73,7 @@ export function RetegrendekLepes({ p, modosit }: { p: Projekt; modosit: Modosit 
             return (
               <button aria-pressed={x.id === aktivId} onClick={() => setAktivId(x.id)}>
                 <span class="lista-cim">{x.nev}</span>
-                <span class="lista-al"><span>{SZEREP_NEV[x.szerep]}</span><span>{o.e ? `U ${sz(o.e.U, 3)}` : 'hiányos'}</span></span>
+                <span class="lista-al"><span>{SZEREP_NEV[x.szerep]}</span><span>{o.e ? `U ${sz(o.e.U, 3)}` : 'hiányos'}{x.szerep !== 'padlo' && o.e && (glaser(x)?.kondenzacio.length ?? 0) > 0 ? ' · páralecsapódás' : ''}</span></span>
               </button>
             );
           })}
@@ -150,12 +152,14 @@ function Szerkeszto({ r, m, kijelolt, jelol, torol }: { r: Retegrend; m: (fn: (r
         <p class="halkabb" style="padding:4px 0 8px">Hőmérséklet-lefutás 20 °C belső és −13 °C külső hőmérsékletnél (6.55 képlet szerinti méretezési érték), állandósult állapotban.</p>
       </div>
 
+      <Paradiffuzio r={r} />
+
       {o.hiba && <div class="hiba-doboz">{o.hiba}</div>}
       {o.e?.figyelmeztetesek.map((f) => <div class="figyelmeztetes">{f.uzenet}<small>{f.forras}</small></div>)}
 
       <div class="tabla-gorgeto">
         <table class="tabla retegek-tabla">
-          <thead><tr><th aria-label="Sorrend"></th><th>Réteg (belülről kifelé)</th><th class="szam">Vastagság</th><th class="szam">λ</th><th class="szam">R</th><th></th></tr></thead>
+          <thead><tr><th aria-label="Sorrend"></th><th>Réteg (belülről kifelé)</th><th class="szam">Vastagság</th><th class="szam">λ</th><th class="szam">R</th><th class="szam" title="Páradiffúziós ellenállási szám (üres: katalógus / jellemző érték)">μ</th><th></th></tr></thead>
           <tbody>
             {r.retegek.map((x, i) => {
               const a = anyag(x.anyagId);
@@ -195,6 +199,7 @@ function Szerkeszto({ r, m, kijelolt, jelol, torol }: { r: Retegrend; m: (fn: (r
                       : a?.lambda ? sz(a.lambda, 3) : a?.R ? <span class="halkabb">termék R</span> : '–'}
                   </td>
                   <td class="szam">{R !== undefined ? sz(R, 3) : '–'}</td>
+                  <td style="width:96px" title={muAlap(x).forras}><Szam cimke="Páradiffúziós ellenállási szám" ertek={muAlap(x).mu} valt={(v) => m((q) => { q.retegek[i]!.mu = v > 0 ? v : undefined; })} /></td>
                   <td style="white-space:nowrap">
                     <button class="gomb halk-gomb" onClick={() => m((q) => { q.retegek.splice(i, 1); })}>Törlés</button>
                   </td>
@@ -223,5 +228,46 @@ function Szerkeszto({ r, m, kijelolt, jelol, torol }: { r: Retegrend; m: (fn: (r
         </div>
       </details>
     </div>
+  );
+}
+
+function Paradiffuzio({ r }: { r: Retegrend }) {
+  const [f, setF] = useState<GlaserFeltetel>(GLASER_ALAP);
+  const [sdSkala, setSdSkala] = useState(false);
+  if (r.szerep === 'padlo') return <p class="halkabb">Páradiffúziós vizsgálat: talajon fekvő padlónál a Glaser-módszer nem alkalmazható (a külső oldal a talaj).</p>;
+  const g = glaser(r, f);
+  if (!g) return null;
+  const allapot = g.kondenzacio.length === 0 ? 'jo' : g.g60 <= 0.5 ? 'figyel' : 'rossz';
+  return (
+    <details class="kartya" open={allapot !== 'jo' || undefined}>
+      <summary style="cursor:pointer;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <strong>Páradiffúzió (Glaser)</strong>
+        <span class={`jel ${allapot === 'jo' ? 'jo' : 'rossz'}`}>{allapot === 'jo' ? 'Nincs páralecsapódás a szerkezetben' : `Páralecsapódás várható: ${sz(g.gNap, 2)} g/m²·nap, 60 napra ${sz(g.g60 * 1000, 0)} g/m²`}</span>
+        {(g.feluletiKondenzacio || g.penesz) && <span class="jel rossz">{g.feluletiKondenzacio ? 'Felületi páralecsapódás' : 'Penészveszély a belső felületen'}</span>}
+      </summary>
+      <div class="racs" style="margin:12px 0">
+        <Mezo cim="Belső hőmérséklet"><Szam ertek={f.thetaI} egyseg="°C" valt={(v) => setF({ ...f, thetaI: v })} /></Mezo>
+        <Mezo cim="Belső relatív páratartalom"><Szam ertek={Math.round(f.phiI * 100)} egyseg="%" valt={(v) => setF({ ...f, phiI: Math.min(100, Math.max(1, v)) / 100 })} /></Mezo>
+        <Mezo cim="Külső hőmérséklet"><Szam ertek={f.thetaE} egyseg="°C" valt={(v) => setF({ ...f, thetaE: v })} /></Mezo>
+        <Mezo cim="Külső relatív páratartalom"><Szam ertek={Math.round(f.phiE * 100)} egyseg="%" valt={(v) => setF({ ...f, phiE: Math.min(100, Math.max(1, v)) / 100 })} /></Mezo>
+      </div>
+      <GlaserAbra g={g} sdSkala={sdSkala} />
+      <div class="gombsor" style="margin:6px 0 10px"><label><input type="checkbox" checked={sdSkala} onChange={(e) => setSdSkala((e.target as HTMLInputElement).checked)} /> Vízszintes tengely: egyenértékű légrétegvastagság (sd)</label></div>
+      <table class="tabla" style="max-width:720px">
+        <tbody>
+          <tr><td>Belső / külső parciális gőznyomás</td><td class="szam">{sz(g.pi, 0)} / {sz(g.pe, 0)} Pa</td></tr>
+          <tr><td>Összes egyenértékű légrétegvastagság, sd</td><td class="szam">{sz(g.sdOssz, 2)} m</td></tr>
+          <tr><td>Belső felület hőmérséklete / a belső levegő harmatpontja</td><td class="szam">{sz(g.thetaSi, 1)} / {sz(g.harmatpontI, 1)} °C</td></tr>
+          <tr><td>Felületi hőmérsékleti tényező fRsi (penészmentességhez legalább, φsi ≤ 80 %)</td><td class="szam">{sz(g.fRsi, 3)} ({sz(g.fRsiMin, 3)})</td></tr>
+          {g.kondenzacio.map((k) => <tr><td>Kondenzációs sík a belső felülettől</td><td class="szam">{sz(k.x, 1)} cm – {sz(k.g, 2)} g/m²·nap</td></tr>)}
+        </tbody>
+      </table>
+      <p class="halkabb" style="margin-top:8px">
+        Állandósult állapotú Glaser-vizsgálat (MSZ EN ISO 13788 egyszerűsítés): psat a 13788 E.1 képletével, a gőznyomás-lefutás sd = μ·d szerint, kondenzációnál a telítési görbe alsó burka; δ₀ = 2·10⁻¹⁰ kg/(m·s·Pa). A méretezési állapot alapértéke a hazai gyakorlat (MSZ-04-140-2): belső 20 °C / 60 %, külső −2 °C / 90 %.
+        {allapot === 'figyel' && ' A lecsapódó mennyiség kicsi (≤ 0,5 kg/m² a 60 napos téli időszakra); megengedhető, ha a nyári időszakban kiszárad – a havi mérleggel (MSZ EN ISO 13788) ellenőrizendő.'}
+        {allapot === 'rossz' && ' A lecsapódó mennyiség jelentős: belső oldali párafékezés (párazáró) vagy külső oldali páranyitottabb réteg szükséges.'}
+        {' '}A μ értékek – ahol a katalógus nem ad meg – anyagcsoport szerinti jellemző értékek (MSZ EN ISO 10456), a rétegtáblában felülírhatók.
+      </p>
+    </details>
   );
 }

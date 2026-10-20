@@ -37,7 +37,7 @@ export interface HoszuksegletBeallitas {
 export const HSZ_ALAP: HoszuksegletBeallitas = { thetaE: -15, n50: 3, vedettseg: 'mersekelt', Gw: 1, fRH: 0 };
 
 export type Szerep = 'fal' | 'padlas' | 'teto' | 'pincefodem' | 'padlo' | 'belso';
-export interface RetegUI { id: string; anyagId?: string; nev?: string; dCm: number; lambda?: number; R?: number; legreteg?: 'zart' | 'intenziv'; }
+export interface RetegUI { id: string; anyagId?: string; nev?: string; dCm: number; lambda?: number; R?: number; legreteg?: 'zart' | 'intenziv'; /** Páradiffúziós ellenállási szám kézi értéke (üres: katalógus / jellemző érték). */ mu?: number; }
 export interface Retegrend {
   id: string; nev: string; szerep: Szerep; kovetelmenyKod: string;
   hoaramIrany: HoaramIrany; kulsoOldal: 'kulso' | 'futetlen' | 'belso';
@@ -91,6 +91,8 @@ export interface Felulet {
   meret?: { hossz: number; magassag: number };
   /** A nyílászáró ebből a falból vonódik le. */
   szuloId?: string;
+  /** Nyílászáró: fűtési idényre vonatkozó árnyékolási tényező (környező beépítés, erkély, előtető, növényzet; 1 = nincs árnyékolás). */
+  arnyekolas?: number;
   chi?: number;
   /** A CHI_VALASZTEK sorindexe (az azonos χ értékű sorok megkülönböztetésére). */
   chiKod?: number;
@@ -372,6 +374,26 @@ export function feluletNettoA(p: Projekt, f: Felulet): number {
 
 export interface Atalakitas { bemenet: EpuletBemenet | null; hibak: string[]; geometria: Geometria; }
 
+/** A fűtési idény hónapjai (január–április, október–december) – a napnyereség tájékoztató összesítéséhez. */
+export const FUTESI_HONAPOK = [0, 1, 2, 3, 9, 10, 11];
+
+/**
+ * Nyílászáró-felület passzív szoláris nyeresége (6.29: Qsd = Au · 0,9 · gn · F · Gs), kWh – a fűtési idényre és egész évre.
+ * Gs a 2. függ. 1.6. táblázat havi sugárzási hozama a tájolás és dőlés szerint; F a felülethez megadott árnyékolási tényező.
+ */
+export function nyilasNapnyereseg(p: Projekt, f: Felulet): { ideny: number; ev: number } | null {
+  if (f.fajta !== 'nyilaszaro' || f.hatar !== 'kulso') return null;
+  const n = p.nyilaszarok.find((x) => x.id === f.nyilaszaroId); if (!n) return null;
+  const d = nyilaszaroAdatok(n); const Au = d.Au * (f.darab ?? 1);
+  const F = f.arnyekolas ?? 1;
+  let ideny = 0, ev = 0;
+  for (let m = 0; m < 12; m++) {
+    const q = Au * epuletfizika.F_UVEGEZES_BEESESI * n.gn * F * klima.sugarzasiHozam(f.tajolas ?? null, f.hajlasszog ?? 90, m);
+    ev += q; if (FUTESI_HONAPOK.includes(m)) ideny += q;
+  }
+  return { ideny, ev };
+}
+
 export function atalakit(p: Projekt): Atalakitas {
   const hibak: string[] = [];
   const g = geometria(p);
@@ -390,6 +412,7 @@ export function atalakit(p: Projekt): Atalakitas {
           tipus: 'nyilaszaro', nev: f.nev, A: d.A * db, U: d.U, UFutes: d.UFutes, hatar: hatar(f.hatar),
           tajolas: f.tajolas ?? null, hajlasszog: f.hajlasszog ?? 90, Au: d.Au * db, gn: n.gn,
           garnyH: n.arnyekolo?.garnyH, kovetelmenyKod: n.kovetelmenyKod,
+          ...(f.arnyekolas !== undefined && f.arnyekolas < 1 ? { Farny: Array(12).fill(Math.max(0, f.arnyekolas)) } : {}),
         });
       } else if (f.fajta === 'padlo') {
         const r = p.retegrendek.find((x) => x.id === f.retegrendId);

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'preact/hooks';
 import { hoszukseglet as H } from '@mag/index';
 import { Mezo, Szam, Valaszto, sz } from '../ui';
-import { ujId, hoszuksegletBemenet, hszAlapertek, hszUres, HSZ_ALAP, SZEREP_NEV, retegrendSzamitas, type Projekt, type Helyiseg, type HelyisegHsz } from '../modell';
+import { ujId, hoszuksegletBemenet, hszAlapertek, hszUres, HSZ_ALAP, nyilasNapnyereseg, SZEREP_NEV, retegrendSzamitas, type Projekt, type Helyiseg, type HelyisegHsz } from '../modell';
 
 type Modosit = (fn: (p: Projekt) => void) => void;
 
@@ -53,12 +53,12 @@ export function HoszuksegletLepes({ p, modosit }: { p: Projekt; modosit: Modosit
 
       <section class="szakasz">
         <h2>Helyiségek</h2>
-        <p class="halk">Add meg helyiségenként a külső fal hosszát, és jelöld, ha a helyiség padlás alatt vagy talajon fekszik. A nyílászárók a Határolás lépésből jönnek (ahol helyiséghez vannak rendelve), és levonódnak a falból.</p>
+        <p class="halk">A külső falak hossza a tervből vagy a helyiség Részleteinél adható meg; jelöld, ha a helyiség padlás alatt vagy talajon fekszik. A nyílászárók a Határolás lépésből jönnek (ahol helyiséghez vannak rendelve), és levonódnak a falból.</p>
         {!falak.length && <div class="figyelmeztetes" style="margin-bottom:12px">Nincs homlokzati fal rétegrend. Előbb vegyél fel egyet a Rétegrendek lépésben.</div>}
         <div class="tabla-gorgeto">
           <table class="tabla hsz-tabla">
             <thead>
-              <tr><th>Helyiség</th><th class="szam">θint</th><th class="szam">Külső fal</th><th>Padlás / tető</th><th>Talaj</th><th class="szam">ΦT</th><th class="szam">ΦV</th><th class="szam">Hőszükséglet</th><th class="szam">W/m²</th><th></th></tr>
+              <tr><th>Helyiség</th><th class="szam" title="Belső méretezési hőmérséklet">Belső hőm.</th><th class="szam" title="A helyiséghez rendelt külső falszakaszok nettó hossza (a tervből vagy a Részletekben)">Külső fal</th><th>Padlás / tető</th><th>Talaj</th><th class="szam" title="Transzmissziós hőveszteség">Transzm.</th><th class="szam" title="Szellőzési hőveszteség">Szellőz.</th><th class="szam">Hőszükséglet</th><th class="szam">W/m²</th><th class="szam" title="A helyiség nyílászáróinak passzív szoláris nyeresége a fűtési idényben (tájékoztató; a méretezési hőszükséglet az MSZ EN 12831 szerint napnyereség nélkül számít)">Napnyereség</th><th></th></tr>
             </thead>
             <tbody>
               {futott.map((h) => {
@@ -72,14 +72,7 @@ export function HoszuksegletLepes({ p, modosit }: { p: Projekt; modosit: Modosit
                     <tr class={nyitva ? 'nyitott' : ''}>
                       <td><button class="link-gomb" aria-expanded={nyitva} onClick={() => setNyitott(nyitva ? null : h.id)}>{h.nev}</button><small class="halkabb" style="display:block">{sz(h.A, 1)} m²</small></td>
                       <td class="szam" style="width:96px"><Szam cimke={`${h.nev} belső hőmérséklet`} ertek={hz.theta ?? alap.theta} egyseg="°C" valt={(v) => mh(h.id, (x) => { x.theta = v; })} /></td>
-                      <td class="szam" style="width:110px">
-                        {hz.kulsoFalak.length <= 1
-                          ? <Szam cimke={`${h.nev} külső fal hossza`} ertek={hossz} egyseg="m" valt={(v) => mh(h.id, (x) => {
-                            if (!x.kulsoFalak.length) { if (!falak[0]) return; x.kulsoFalak.push({ id: ujId(), retegrendId: falak[0].id, hossz: v }); } else x.kulsoFalak[0]!.hossz = v;
-                            if (v === 0) x.kulsoFalak = [];
-                          })} />
-                          : <span>{sz(hossz, 2)} m</span>}
-                      </td>
+                      <td class="szam" style="width:90px">{hossz > 0 ? `${sz(hossz, 2)} m` : '–'}</td>
                       <td><label class="jelolo"><input type="checkbox" aria-label={`${h.nev} padlás alatt`} checked={hz.padlas} onChange={(e) => mh(h.id, (x) => { x.padlas = (e.target as HTMLInputElement).checked; })} /></label></td>
                       <td><label class="jelolo"><input type="checkbox" aria-label={`${h.nev} talajon`} checked={hz.padlo} onChange={(e) => mh(h.id, (x) => { x.padlo = (e.target as HTMLInputElement).checked; })} /></label></td>
                       <td class="szam">{sz(r?.PhiT, 0)}</td>
@@ -89,10 +82,11 @@ export function HoszuksegletLepes({ p, modosit }: { p: Projekt; modosit: Modosit
                         <strong>{sz(r?.PhiHL, 0)} W</strong>
                       </td>
                       <td class="szam">{sz(r?.fajlagos, 0)}</td>
+                      <td class="szam" style="white-space:nowrap">{(() => { const q = p.feluletek.filter((f) => f.helyisegId === h.id).reduce((a, f) => a + (nyilasNapnyereseg(p, f)?.ideny ?? 0), 0); return q > 0 ? `${sz(q, 0)} kWh` : '–'; })()}</td>
                       <td><button class="gomb halk-gomb semleges" onClick={() => setNyitott(nyitva ? null : h.id)}>{nyitva ? 'Bezár' : 'Részletek'}</button></td>
                     </tr>
                     {nyitva && (
-                      <tr class="hsz-reszlet"><td colSpan={10}>
+                      <tr class="hsz-reszlet"><td colSpan={11}>
                         <Reszletek h={h} p={p} r={r} mh={(fn) => mh(h.id, fn)} />
                       </td></tr>
                     )}
@@ -101,9 +95,10 @@ export function HoszuksegletLepes({ p, modosit }: { p: Projekt; modosit: Modosit
               })}
             </tbody>
             <tfoot>
-              <tr><td>Összesen</td><td /><td class="szam">{sz(osszevetes.falHelyisegek, 1)} m²</td><td class="szam">{sz(osszevetes.padlasHelyisegek, 1)} m²</td><td class="szam">{sz(osszevetes.padloHelyisegek, 1)} m²</td>
+              <tr><td>Összesen</td><td /><td class="szam">{sz(futott.reduce((a, h) => a + (h.hsz?.kulsoFalak ?? []).reduce((b, x) => b + x.hossz, 0), 0), 2)} m</td><td class="szam">{sz(osszevetes.padlasHelyisegek, 1)} m²</td><td class="szam">{sz(osszevetes.padloHelyisegek, 1)} m²</td>
                 <td class="szam">{sz(eredmeny.PhiT, 0)}</td><td class="szam">{sz(eredmeny.PhiV, 0)}</td><td class="szam"><strong>{sz(eredmeny.osszesen / 1000, 2)} kW</strong></td>
-                <td class="szam">{sz(eredmeny.osszesen / Math.max(1, futott.reduce((s, h) => s + h.A, 0)), 0)}</td><td /></tr>
+                <td class="szam">{sz(eredmeny.osszesen / Math.max(1, futott.reduce((s, h) => s + h.A, 0)), 0)}</td>
+                <td class="szam" style="white-space:nowrap">{sz(p.feluletek.reduce((a, f) => a + (nyilasNapnyereseg(p, f)?.ideny ?? 0), 0), 0)} kWh</td><td /></tr>
             </tfoot>
           </table>
         </div>

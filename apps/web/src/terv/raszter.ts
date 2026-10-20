@@ -38,6 +38,8 @@ export interface Raszter {
   /** A rács bal felső sarka lapkoordinátában (pt) és a pt→m szorzó. */
   x0: number; y0: number; mPerPt: number;
   fal: Uint8Array;
+  /** Falanyag-stílus azonosító pixelenként (0 = nincs). */
+  stilus: Uint16Array;
   /** 0 = nincs, 1 = külső tér, 2+i = i. helyiség */
   cimke: Int32Array;
   /** Helyiségenként: terület (m²) és határoló falszakaszok. */
@@ -67,7 +69,7 @@ export function falKitoltes(u: Utvonal, mPerPt: number, maxFal = 0.9): boolean {
 }
 
 /** Sokszögek kitöltése páros-páratlan szabállyal a rácsra. */
-function poliRajzol(m: Uint8Array, w: number, h: number, polik: number[][], tr: (x: number, y: number) => [number, number]) {
+function poliRajzol(m: Uint8Array | Uint16Array, w: number, h: number, polik: number[][], tr: (x: number, y: number) => [number, number], ertek = 1) {
   const el: [number, number, number, number][] = [];
   let ymin = Infinity, ymax = -Infinity;
   for (const p of polik) {
@@ -85,11 +87,11 @@ function poliRajzol(m: Uint8Array, w: number, h: number, polik: number[][], tr: 
     xs.sort((a, b) => a - b);
     for (let k = 0; k + 1 < xs.length; k += 2) {
       const a = Math.max(0, Math.round(xs[k]!)), b = Math.min(w - 1, Math.round(xs[k + 1]!) - 1);
-      for (let x = a; x <= b; x++) m[y * w + x] = 1;
+      for (let x = a; x <= b; x++) m[y * w + x] = ertek;
     }
   }
   // vékony (1 px alatti) sávok se maradjanak ki: a csúcsokat is jelöljük
-  for (const [ax, ay] of el) { const x = Math.round(ax), y = Math.round(ay); if (x >= 0 && y >= 0 && x < w && y < h) m[y * w + x] = 1; }
+  for (const [ax, ay] of el) { const x = Math.round(ax), y = Math.round(ay); if (x >= 0 && y >= 0 && x < w && y < h) m[y * w + x] = ertek; }
 }
 
 /** Négyzetes (sakktábla-távolságú) tágítás r pixellel – két menetben, sávosan. */
@@ -187,12 +189,29 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   const darabok: [number, number, number, number][] = [];
   // először a színes (nem fehér) falmetszet-kitöltések, aztán a fehér falmagok – utóbbi csak akkor fal, ha hosszanti
   // oldala színes falréteghez (vakolat, falazat, hőszigetelés) simul; a bútor, ajtólap fehér kitöltése nem ilyen
+  // terepburkolat (kavicssáv, zúzottkő): sok apró „kő” elem a kitöltésben – nem fal, hanem külső tér
+  const apro: [number, number][] = [];
+  for (const u of lap.utvonalak) {
+    if (u.muvelet !== 'stroke' || u.bbox[2] < x0 || u.bbox[0] > x1 || u.bbox[3] < y0 || u.bbox[1] > y1) continue;
+    if (Math.max(u.bbox[2] - u.bbox[0], u.bbox[3] - u.bbox[1]) * mPerPt < 0.15) apro.push([(u.bbox[0] + u.bbox[2]) / 2, (u.bbox[1] + u.bbox[3]) / 2]);
+  }
+  const aproIdx = new Map<number, [number, number][]>(); const AR = 10;
+  for (const q of apro) { const k = Math.floor(q[0] / AR) * 100000 + Math.floor(q[1] / AR); const l = aproIdx.get(k); if (l) l.push(q); else aproIdx.set(k, [q]); }
+  const terepburkolat = (u: Utvonal) => {
+    const [bx0, by0, bx1, by1] = u.bbox; const A = poliTerulet(u.pontok[0] ?? []) * mPerPt * mPerPt; if (A < 1) return false;
+    let db = 0;
+    for (let gx = Math.floor(bx0 / AR); gx <= Math.floor(bx1 / AR); gx++) for (let gy = Math.floor(by0 / AR); gy <= Math.floor(by1 / AR); gy++) for (const [cx, cy] of aproIdx.get(gx * 100000 + gy) ?? []) if (cx > bx0 && cx < bx1 && cy > by0 && cy < by1) db++;
+    return db >= 10 && db / A >= 3;
+  };
   const feherJeloltek: Utvonal[] = []; const sraffozott = new Set<Utvonal>();
+  // falanyag-stílus térkép (kitöltésszín + sraffozottság): a fal azonosításához a sarkokban
+  const stilus = new Uint16Array(w * h); const stilusId = new Map<string, number>();
+  const stilusRajzol = (u: Utvonal, sraff: boolean) => { const k = `${u.toltoSzin}|${sraff}`; let id = stilusId.get(k); if (!id) { id = stilusId.size + 1; stilusId.set(k, id); } poliRajzol(stilus, w, h, u.pontok, tr, id); };
   for (const u of lap.utvonalak) {
     if (u.bbox[2] < x0 || u.bbox[0] > x1 || u.bbox[3] < y0 || u.bbox[1] > y1) continue;
-    if (!falKitoltes(u, mPerPt, maxFal)) continue;
+    if (!falKitoltes(u, mPerPt, maxFal) || terepburkolat(u)) continue;
     if (feher(u.toltoSzin)) { feherJeloltek.push(u); continue; }
-    poliRajzol(fal, w, h, u.pontok, tr);
+    poliRajzol(fal, w, h, u.pontok, tr); stilusRajzol(u, false);
     darabok.push(u.bbox);
   }
   // sraffozott fehér kitöltés (falazat, hőszigetelés metszeti mintázattal): a befoglalójában legalább 3 rövid, ferde
@@ -218,7 +237,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       for (let gx = Math.floor(bx0 / SR); gx <= Math.floor(bx1 / SR); gx++) for (let gy = Math.floor(by0 / SR); gy <= Math.floor(by1 / SR); gy++)
         for (const [cx, cy, sz, l] of sraffIdx.get(gx * 100000 + gy) ?? []) if (cx > bx0 && cx < bx1 && cy > by0 && cy < by1 && l >= rov * 0.4) { const kk = Math.round(sz / 5); szogek.set(kk, (szogek.get(kk) ?? 0) + 1); }
       if (Math.max(0, ...szogek.values()) < 3) continue;
-      poliRajzol(fal, w, h, u.pontok, tr); poliRajzol(reteg, w, h, u.pontok, tr);
+      poliRajzol(fal, w, h, u.pontok, tr); poliRajzol(reteg, w, h, u.pontok, tr); stilusRajzol(u, true);
       darabok.push(u.bbox); sraffozott.add(u); feherJeloltek.splice(k, 1);
     }
   }
@@ -251,7 +270,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       ok = db > 0 && jo / db >= 0.7;
     }
     if (!ok) continue;
-    poliRajzol(fal, w, h, u.pontok, tr);
+    poliRajzol(fal, w, h, u.pontok, tr); stilusRajzol(u, false);
     if (vanSzines) poliRajzol(reteg, w, h, u.pontok, tr);
     darabok.push(u.bbox);
   }
@@ -434,7 +453,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
     }
   }
   return {
-    w, h, px, x0, y0, mPerPt, fal, cimke: helyCimke,
+    w, h, px, x0, y0, mPerPt, fal, cimke: helyCimke, stilus,
     nyilas,
     helyisegek: helyisegek.map((H, k) => ({
       A: H.A, szivarog: szivarog[k]!,

@@ -1,7 +1,8 @@
 import { klima } from '@mag/index';
 import { Mezo, Szam, Szoveg, Valaszto, sz, kov } from '../ui';
-import { ujId, feluletNettoA, geometria, atlagBelmagassag, padloKerulet, falhosszHelyisegekbol, CHI_VALASZTEK, HATAR_NEV, SZEREP_NEV, type Projekt, type HatarKod, type Felulet } from '../modell';
+import { ujId, feluletNettoA, geometria, atlagBelmagassag, padloKerulet, falhosszHelyisegekbol, nyilasNapnyereseg, CHI_VALASZTEK, HATAR_NEV, SZEREP_NEV, type Projekt, type HatarKod, type Felulet } from '../modell';
 import { Fogantyu, huzasProps } from '../huzas';
+import { ARNYEKOLOK } from '../katalogus';
 
 type Modosit = (fn: (p: Projekt) => void) => void;
 
@@ -97,9 +98,9 @@ export function HatarolasLepes({ p, modosit }: { p: Projekt; modosit: Modosit })
         <p class="halk">A tájolás és a dőlés a havi sugárzási nyereséghez kell (2. függ. 1.6. táblázat). Ha a nyílászárót egy falhoz rendeled, a fal felületéből levonódik.</p>
         <div class="tabla-gorgeto">
           <table class="tabla">
-            <thead><tr><th aria-label="Sorrend"></th><th>Megnevezés</th><th>Típus</th><th class="szam">Db</th><th>Tájolás</th><th>Dőlés</th><th>Falban</th><th>Helyiség</th><th class="szam">Felület</th><th></th></tr></thead>
+            <thead><tr><th aria-label="Sorrend"></th><th>Megnevezés</th><th>Típus</th><th class="szam">Db</th><th>Tájolás</th><th>Dőlés</th><th>Falban</th><th>Helyiség</th><th class="szam">Felület</th><th>Árnyékoló</th><th class="szam" title="Fűtési idényre vonatkozó árnyékolási tényező: környező beépítés, erkély, előtető, növényzet (1 = nincs)">Árnyékolás F</th><th class="szam" title="Passzív szoláris nyereség Qsd = Au · 0,9 · gn · F · Gs">Napnyereség<br /><span class="halkabb">fűtési idény / év</span></th><th></th></tr></thead>
             <tbody>
-              {ny.map((f) => (
+              {ny.map((f) => { const nt = p.nyilaszarok.find((x) => x.id === f.nyilaszaroId); const napny = nyilasNapnyereseg(p, f); const ar = nt?.arnyekolo ? ARNYEKOLOK.find((a) => a.kod === nt.arnyekolo!.kod) : undefined; return (
                 <tr {...huzasProps('nyilas', f.id, athelyez)}>
                   <td><Fogantyu cimke={f.nev} fel={() => lep(f.id, -1)} le={() => lep(f.id, 1)} /></td>
                   <td style="min-width:150px"><Szoveg ertek={f.nev} valt={(v) => fv(f.id, (x) => { x.nev = v; })} /></td>
@@ -110,10 +111,16 @@ export function HatarolasLepes({ p, modosit }: { p: Projekt; modosit: Modosit })
                   <td style="min-width:150px"><Valaszto cimke="Szülő fal" ertek={f.szuloId} ures="Nincs levonás" valt={(v) => fv(f.id, (x) => { x.szuloId = v || undefined; })} opciok={opak.map((o) => ({ ertek: o.id, nev: o.nev }))} /></td>
                   <td style="min-width:140px"><Valaszto cimke="Helyiség" ertek={f.helyisegId} ures="–" valt={(v) => fv(f.id, (x) => { x.helyisegId = v || undefined; })} opciok={helyisegOpciok} /></td>
                   <td class="szam">{sz(feluletNettoA(p, f), 2)} m²</td>
+                  <td class="halkabb" style="min-width:90px">{ar ? ar.megnevezes : 'nincs'}</td>
+                  <td style="width:90px"><Szam cimke="Árnyékolási tényező" ertek={f.arnyekolas ?? 1} lepes={0.05} min={0} valt={(v) => fv(f.id, (x) => { x.arnyekolas = Math.min(1, Math.max(0, v)); if (x.arnyekolas === 1) delete x.arnyekolas; })} /></td>
+                  <td class="szam" style="white-space:nowrap">{napny ? <>{sz(napny.ideny, 0)} / {sz(napny.ev, 0)} kWh</> : '–'}</td>
                   <td><button class="gomb halk-gomb" onClick={() => torol(f.id)}>Törlés</button></td>
                 </tr>
-              ))}
+              ); })}
             </tbody>
+            {ny.length > 0 && (() => { const o = ny.map((f) => nyilasNapnyereseg(p, f)).reduce<{ ideny: number; ev: number }>((a, x) => ({ ideny: a.ideny + (x?.ideny ?? 0), ev: a.ev + (x?.ev ?? 0) }), { ideny: 0, ev: 0 }); return (
+              <tfoot><tr><td colSpan={11}>Passzív szoláris nyereség összesen (árnyékolással, hasznosítási tényező nélkül)</td><td class="szam" style="white-space:nowrap">{sz(o.ideny, 0)} / {sz(o.ev, 0)} kWh</td><td /></tr></tfoot>
+            ); })()}
           </table>
         </div>
         <button class="gomb" style="margin-top:12px" disabled={!p.nyilaszarok.length} onClick={() => modosit((q) => { q.feluletek.push({ id: ujId(), nev: 'Ablak', fajta: 'nyilaszaro', nyilaszaroId: q.nyilaszarok[0]?.id, hatar: 'kulso', darab: 1, tajolas: 'D', hajlasszog: 90 }); })}>Nyílászáró hozzáadása</button>

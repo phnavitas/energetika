@@ -95,7 +95,7 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
     const hz: Helyiseg = {
       id, nev: h.kod ? `${h.nev} (${h.kod})` : h.nev, kategoria: h.kategoria, A: kerek(h.A), h: a.belmagassag,
       hsz: {
-        kulsoFalak: falRid ? h.falak.filter((f) => f.hossz >= 0.2).map((f) => ({ id: ujId(), retegrendId: falRid, hossz: kerek(f.hossz) })) : [],
+        kulsoFalak: falRid ? h.falak.filter((f) => f.hossz >= 0.3).map((f) => ({ id: ujId(), retegrendId: falRid, hossz: kerek(f.hossz) })) : [],
         padlas: legfelso && !!padlas, padlo: foldszint && !!padlok.length, szomszedok: [],
       },
     };
