@@ -109,7 +109,10 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     let uzenetek: string[] = [];
     modosit((q) => {
       uzenetek = tervAtvesz(q, {
-        helyisegek: kivalasztott.map(({ h, i }) => ({ kod: h.kod, nev: h.nev, burkolat: h.burkolat, A: h.A, kategoria: kategoria(i), falak: falak(i).map((f) => ({ irany: f.irany, hossz: f.hossz })) })),
+        helyisegek: kivalasztott.map(({ h, i }) => ({ kod: h.kod, nev: h.nev, burkolat: h.burkolat, A: h.A, kategoria: kategoria(i), falak: falak(i).map((f) => ({ irany: f.irany, hossz: f.hossz })),
+          // fal fűtetlen (gyengén kapcsolt) helyiség felé, pl. garázs
+          futetlenFalak: (() => { const ri = raszterIdx(i); if (!al.r || ri < 0) return []; return al.r.helyisegek[ri]!.szakaszok.filter((s) => typeof s.tul === 'number' && s.hossz >= 0.3).flatMap((s) => {
+            const mi = helyisegek.indexOf(al.magHelyisegek[s.tul as number]!); return mi >= 0 && valasztott[mi] && kategoria(mi) === 'gyengen_kapcsolt' && kategoria(i) !== 'gyengen_kapcsolt' ? [{ hossz: s.hossz, fele: helyisegek[mi]!.nev }] : []; }); })() })),
         retegrendek: blokkok,
         nyilasok: nyilasok.filter(({ k }) => !kizartNy.has(k)).map(({ n, hi }): AtvettNyilas => ({ fajta: n.fajta as AtvettNyilas['fajta'], szel: n.szel, mag: n.mag, pm: n.pm, helyiseg: index.get(hi)!, irany: n.irany! })),
         eszakSzog: eszakSz, belmagassag: bm ?? 2.7, szintszam: szintszam ?? 1, csere,

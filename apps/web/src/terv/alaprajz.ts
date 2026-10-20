@@ -95,7 +95,7 @@ export function pecsetek(sz: Szoveg[]): TervHelyiseg[] {
       if (!t) break;
       const ts = szovegJavit(t.s);
       // másik pecsét / méretszám (a magyar méretszám tizedesvesszős; a pontos „1.01” helyiségkód lehet)
-      if (TERULET.test(ts) || /^\d+(,\d+)?$/.test(ts)) break;
+      if (TERULET.test(ts) || /^\d+,\d+$/.test(ts) || /^\d{4,}$/.test(ts)) break;
       sorok.unshift(t); akt = t;
       if (KOD.test(ts) && /\d/.test(ts)) break;
     }
@@ -112,7 +112,7 @@ export function pecsetek(sz: Szoveg[]): TervHelyiseg[] {
     const ys = [...sorok, a].map((t) => t.y);
     const bal = Math.min(...[...sorok, a].map((t) => t.x)), jobb = Math.max(...[...sorok, a].map((t) => t.x + t.szel));
     const bbox: [number, number, number, number] = [bal, Math.min(...ys) - a.meret, jobb, Math.max(...ys) + a.meret * 0.25];
-    ki.push({ kod, nev: nagybetuJavit(nev), burkolat, A: ter, x: cx, y: (Math.min(...ys) + Math.max(...ys)) / 2 - a.meret / 2, bbox, forras: 'pecset', kulter: KULTER.test(nev), egyseg: kod ? egysegKod(kod) : undefined });
+    ki.push({ kod, nev: nagybetuJavit(nev), burkolat, A: ter, x: cx, y: (Math.min(...ys) + Math.max(...ys)) / 2 - a.meret / 2, bbox, forras: 'pecset', kulter: KULTER.test(nev) || (!kod && BURKOLAT.test(nev) && nev.split(' ').length <= 2), egyseg: kod ? egysegKod(kod) : undefined });
   }
   // azonos pecsét kétszeri felismerése ellen
   return ki.filter((h, i) => ki.findIndex((g) => Math.hypot(g.x - h.x, g.y - h.y) < 3 && g.A === h.A) === i);

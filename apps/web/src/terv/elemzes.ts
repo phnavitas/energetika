@@ -5,6 +5,7 @@
 import { lapKinyer, type Lap } from './kinyeres';
 import { alaprajzElemez, type AlaprajzEredmeny, type TervHelyiseg } from './alaprajz';
 import { raszterEpit, type Raszter } from './raszter';
+import { kotaEllenoriz } from './kota';
 import { nyilasFeliratok, nyilasokHozzarendel, type TervNyilas } from './nyilaszarok';
 import { retegrendBlokkok, szerepBecsles, retegekEpit, szintekKeres, type TervRetegrend, type SzerepBecsles, type TervRetegUI, type SzintEredmeny } from './metszet';
 import { ujId } from '../modell';
@@ -77,6 +78,7 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number): AlaprajzFeldol
   const magHelyisegek = e.helyisegek.filter((h) => h.forras === 'pecset' && !h.kulter);
   if (!e.mPerPt || !magHelyisegek.length) return { e, magHelyisegek, r: null, nyilasok: [] };
   const r = raszterEpit(lap, e.mPerPt, magHelyisegek.map((h) => h.mutato ?? h));
+  kotaEllenoriz(r, lap.szovegek);
   const nyilasok = nyilasokHozzarendel(nyilasFeliratok(lap.szovegek), r);
   return { e, magHelyisegek, r, nyilasok };
 }
@@ -96,11 +98,10 @@ export function metszetFeldolgoz(lap: Lap): MetszetFeldolgozas {
 
 // ——— északjel-javítások megjegyzése (alakonként) ———
 
-const JAVITAS_KULCS = 'ekm-eszakjel-javitas';
+const JAVITAS_KULCS = 'ekm-eszakjel-javitas-v2';
 /** Ismert irodai északjelek: az alak ujjlenyomata → a becsült iránytól való elteres (fok). */
 const ISMERT: Record<string, number> = {
-  // PH Navitas „É” betűs északjel: a betű teteje mutat északra (az alakbecslés az ellenkező irányt adja)
-  '1:25:6': 180,
+  // (a PH Navitas jelénél az alakbecslés helyes iránya ellenőrzött – nincs szükség javításra)
 };
 export function eszakJavitas(alairas: string | undefined): number {
   if (!alairas) return 0;

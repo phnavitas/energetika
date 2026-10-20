@@ -18,8 +18,8 @@ export interface TervRetegrend {
   x: number; y: number;
 }
 
-const FEJLEC_KOD = /^[A-ZÁÉ]{1,3}[-.]?\d{1,3}[a-z]?$/;
-const FEJLEC_CIM = /rétegrend|rétegfelépítés|réteg-?rend|szerkezet/i;
+const FEJLEC_KOD = /^[A-ZÁÉ]{1,3}[-.]?\d{1,3}[a-z]?[*'’]?$/;
+const FEJLEC_CIM = /rétegrend|rétegfelépítés|réteg-?rend/i;
 const VASTAG = /^(\d+(?:[,.]\d+)?)\s*(cm|mm|m)\.?$|^(\d+)\s*rtg\.?$|^-{1,3}$|^–$/i;
 
 function vastagsag(s: string): { dCm: number | null; rtg?: number } | null {
@@ -84,7 +84,8 @@ export function retegrendBlokkok(sz: Szoveg[]): TervRetegrend[] {
       else if (retegek.length && /^[a-záéíóöőúüű(]/.test(leiras)) retegek.at(-1)!.leiras += ' ' + leiras;
       else retegek.push({ dCm: null, leiras });
     }
-    if (retegek.length) ki.push({ kod: kod.s.trim(), cim: sorFuz([cim]).replace(/\s*rétegrend(je)?\s*$/i, '').trim(), retegek, x: kod.x, y: kod.y });
+    // valódi rétegrend-tábla: legalább két réteg vastagsággal (a rajzon álló szerkezetjelölő felirat nem ilyen)
+    if (retegek.filter((r) => r.dCm !== null || r.rtg).length >= 2) ki.push({ kod: kod.s.trim(), cim: sorFuz([cim]).replace(/\s*rétegrend(je)?\s*$/i, '').trim(), retegek, x: kod.x, y: kod.y });
   }
   return ki;
 }
@@ -106,6 +107,7 @@ export function szerepBecsles(rr: TervRetegrend, mind: TervRetegrend[]): SzerepB
   const vanPadlasfodem = mind.some((m) => /padlásfödém|padlasfodem/i.test(m.cim));
   if (/terasz|járda|erkély|burkolt felület/.test(c)) return { szerep: null, kihagy: 'Külső burkolat, nem a hőburok része.', kovetelmenyKod: '', hoaramIrany: 'lefele', kulsoOldal: 'kulso' };
   if (/válaszfal|valaszfal/.test(c)) return { szerep: 'belso', kihagy: 'Belső válaszfal – két fűtött tér között.', kovetelmenyKod: '', hoaramIrany: 'vizszintes', kulsoOldal: 'belso' };
+  if (/belső teherhordó|belső fal|teherhordó fal/.test(c) && !/külső|homlokzat/.test(c)) return { szerep: 'belso', kihagy: 'Belső fal – fűtött terek között nincs hőáram (fűtetlen helyiség, pl. garázs felé a határolásnál választható).', kovetelmenyKod: '', hoaramIrany: 'vizszintes', kulsoOldal: 'belso' };
   if (/lakáselválasztó|lakaselvalaszto|elválasztó fal/.test(c)) return { szerep: 'belso', kihagy: 'Fűtött lakások közötti fal (azonos hőmérsékletű terek között nincs hőáram).', kovetelmenyKod: 'szomszedos_futott', hoaramIrany: 'vizszintes', kulsoOldal: 'belso' };
   if (/lábazat|labazat|pincefal|talajjal érintkező fal/.test(c)) return { szerep: 'fal', kihagy: 'Lábazati / talajjal érintkező fal – a padló kerületi hőszigetelésénél (perem) vehető figyelembe.', kovetelmenyKod: 'talajjal_erintkezo_fal', hoaramIrany: 'vizszintes', kulsoOldal: 'kulso' };
   if (/padlásfödém|padlasfodem|zárófödém/.test(c)) return { szerep: 'padlas', kovetelmenyKod: 'padlasfodem', hoaramIrany: 'felfele', kulsoOldal: 'futetlen' };
@@ -139,9 +141,9 @@ export function anyagKepez(leiras: string, dCm: number | null, szerep: Szerep | 
   if (/vasalt aljzat|vasbeton|monolit beton|alaplemez/.test(n)) return { anyagId: 'vasbeton_2300' };
   if (/zsalukő|zsaluelem/.test(n)) return { anyagId: 'zsalufal_leier_beton' };
   if (/zúzott ?kő|kavics/.test(n)) return { anyagId: 'kavics_homok' };
+  if (/xps|extrudált/.test(n)) return { anyagId: 'xps_labazati' };
   if (/eps ?100|lépésálló/.test(n)) return { anyagId: /grafit/.test(n) ? 'eps100_grafit' : 'eps100_feher' };
   if (/eps ?80|eps ?70|homlokzati eps|hőszigetelő vakolatrendszer/.test(n)) return { anyagId: /grafit/.test(n) ? 'eps80_grafit' : 'eps80_feher' };
-  if (/xps|extrudált/.test(n)) return { anyagId: 'xps_labazati' };
   if (/eps|polisztirol/.test(n)) return { anyagId: szerep === 'padlo' ? 'eps100_feher' : 'eps80_feher' };
   if (/kőzetgyapot|ásványgyapot|üveggyapot/.test(n)) {
     const tartoval = /szeglemez|szarufa|gerenda|fa ?váz|tetőszerkezet|profil/.test(n);
@@ -217,19 +219,24 @@ export function szintekKeres(sz: Szoveg[]): SzintEredmeny {
     .filter((x) => x.m![1] !== '' || x.t.s.includes('±'))
     .map((x) => ({ x: x.t.x, y: x.t.y, ertek: (x.m![1] === '-' || x.m![1] === '−' || x.m![1] === '–' ? -1 : 1) * szamErtek(x.m![2]!), meret: x.t.meret }));
   const fig: string[] = [];
+  const fuggoMeretek = sz.filter((t) => Math.abs(Math.abs(t.szog) - 90) < 3 && /^\d,\d{2}$/.test(t.s.trim())).map((t) => szamErtek(t.s));
   if (!jelek.length) return { szintek: [], szintszam: 1, belmagassag: [], padlo: [], figyelmeztetes: ['Szintmagasság-jelet (pl. „±0,00”, „+2,70”) nem találtam a metszeten.'] };
   // oszlopok: közel azonos x
   const oszlopok: (typeof jelek)[] = [];
   for (const j of [...jelek].sort((a, b) => a.x - b.x)) { const o = oszlopok.find((c) => Math.abs(c[0]!.x - j.x) < j.meret * 2); if (o) o.push(j); else oszlopok.push([j]); }
+  // belső oszlop: van benne ±0,00 (a negatív értékei alapozási szintek lehetnek); külső: terepszint (negatív), ±0,00 nélkül
   const kulsoErtekek = new Set<number>();
-  for (const o of oszlopok) if (o.some((j) => j.ertek < 0)) for (const j of o) kulsoErtekek.add(j.ertek);
-  const belso = oszlopok.filter((o) => o.some((j) => j.ertek === 0) && !o.some((j) => j.ertek < 0));
+  for (const o of oszlopok) if (o.some((j) => j.ertek < 0) && !o.some((j) => j.ertek === 0)) for (const j of o) kulsoErtekek.add(j.ertek);
+  const belso = oszlopok.filter((o) => o.some((j) => j.ertek === 0));
   const ertekek = [...new Set((belso.length ? belso.flat() : jelek).map((j) => j.ertek))].sort((a, b) => a - b);
   const belsoTiszta = ertekek.filter((v) => v === 0 || !kulsoErtekek.has(v) || !belso.length);
   const padlo: number[] = []; const bm: number[] = [];
   let f = belsoTiszta.includes(0) ? 0 : belsoTiszta[0]!;
   for (let k = 0; k < 6; k++) {
-    const c = belsoTiszta.find((v) => v >= f + 2.2 && v <= f + 4.2);
+    // födém alsó síkja: a függőleges méretszámmal igazolt magasság, ill. amely fölött 15–80 cm-en belül újabb szint (födém teteje) van
+    const jeloltek = belsoTiszta.filter((v) => v >= f + 2.2 && v <= f + 4.2);
+    const pont = (c: number) => (fuggoMeretek.some((m) => Math.abs(m - (c - f)) < 0.015) ? 2 : 0) + (belsoTiszta.some((v) => v > c + 0.15 && v <= c + 0.8) ? 1 : 0);
+    const c = jeloltek.sort((a, b) => pont(b) - pont(a) || a - b)[0];
     if (c === undefined) break;
     padlo.push(f); bm.push(Math.round((c - f) * 100) / 100);
     const kov = belsoTiszta.find((v) => v > c && v <= c + 0.8);
@@ -237,7 +244,7 @@ export function szintekKeres(sz: Szoveg[]): SzintEredmeny {
     f = kov;
   }
   if (!bm.length) fig.push('A belmagasságot nem tudtam megállapítani a szintjelekből – add meg kézzel.');
-  const terep = [...kulsoErtekek].filter((v) => v < 0).sort((a, b) => b - a)[0];
+  const terep = [...kulsoErtekek].filter((v) => v < 0 && v > -0.6).sort((a, b) => b - a)[0];
   const gerinc = Math.max(...jelek.map((j) => j.ertek));
   return { szintek: [...new Set(jelek.map((j) => j.ertek))].sort((a, b) => a - b), szintszam: Math.max(1, bm.length), belmagassag: bm, padlo, terepszint: terep, gerinc, figyelmeztetes: fig };
 }

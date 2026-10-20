@@ -154,7 +154,17 @@ export function nyilasokHozzarendel(feliratok: NyilasFelirat[], r: Raszter): Ter
     // az első olyan folt, amely helyiséghez tartozik (a járdaszegély, kerítés „nyílásai” kiesnek)
     let p: { h: number; irany: number; kulso: boolean } | null = null;
     for (const [, { i }] of jeloltek.slice(0, 6)) { p = vizsgal(i); if (p) break; }
-    if (!jeloltek.length) continue;
+    if (!p) {
+      // ha a nyílás nincs áthidalva (pl. a tok, üvegezés kitöltése falként zárja), a felirathoz legközelebbi,
+      // a felirat irányával egyező külső falszakasz adja a helyiséget és a homlokzatot
+      let leg: { h: number; irany: number; d: number } | null = null;
+      r.helyisegek.forEach((H, h) => H.szakaszok.forEach((s) => {
+        if (s.tul !== 'kulso' || ((s.irany === 0 || s.irany === 180) !== (f.fal === 'v'))) return;
+        for (const q of s.pontok) { const d = Math.hypot(q[0] - f.x, q[1] - f.y) * r.mPerPt; if (d < 1.6 && (!leg || d < leg.d)) leg = { h, irany: s.irany, d }; }
+      }));
+      if (leg) p = { h: (leg as { h: number }).h, irany: (leg as { irany: number }).irany, kulso: true };
+    }
+    if (!jeloltek.length && !p) continue;
     const kulso = !!p?.kulso;
     // feliratozott mellvédű tervben a mellvéd nélküli, ajtómagasságnál alacsonyabb „nyílás” valójában méretlánc-részlet
     if (vanPm && f.pm === null && f.mag < 1.9) continue;

@@ -13,6 +13,8 @@ export interface AtvettHelyiseg {
   kod?: string; nev: string; burkolat?: string; A: number; kategoria: HelyisegKategoria;
   /** Külső falak a homlokzat lapiránya szerint (nettó belső hossz, m). */
   falak: { irany: number; hossz: number }[];
+  /** Fal fűtetlen, gyengén kapcsolt helyiség (pl. garázs) felé. */
+  futetlenFalak?: { hossz: number; fele: string }[];
 }
 export interface AtvettRetegrend { rr: TervRetegrend; becsles: SzerepBecsles; retegek: TervRetegUI[] }
 export interface AtvettNyilas {
@@ -102,25 +104,42 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
 
   // homlokzati falak tájolás szerint
   const falFel: Record<number, string> = {};
-  const iranyok = [...new Set(a.helyisegek.flatMap((h) => h.falak.map((f) => f.irany)))].sort((x, y) => x - y);
+  // a fűtetlen (gyengén kapcsolt) helyiség – pl. garázs – külső fala és nyílászárói nem a hőburok részei
+  const burok = (h: AtvettHelyiseg) => h.kategoria !== 'gyengen_kapcsolt';
+  const iranyok = [...new Set(a.helyisegek.filter(burok).flatMap((h) => h.falak.map((f) => f.irany)))].sort((x, y) => x - y);
   for (const ir of iranyok) {
-    const hossz = kerek(a.helyisegek.reduce((s, h) => s + h.falak.filter((f) => f.irany === ir).reduce((q, f) => q + f.hossz, 0), 0));
+    const hossz = kerek(a.helyisegek.filter(burok).reduce((s, h) => s + h.falak.filter((f) => f.irany === ir).reduce((q, f) => q + f.hossz, 0), 0));
     if (hossz < 0.2) continue;
     const t = egtaj(ir, a.eszakSzog);
     const f: Felulet = { id: ujId(), nev: `Homlokzati fal – ${t}`, fajta: 'opak', retegrendId: falRid, hatar: 'kulso', tajolas: t, hajlasszog: 90, meret: { hossz, magassag: a.belmagassag }, A: kerek(hossz * a.belmagassag), chi: 0.2 };
     p.feluletek.push(f); falFel[ir] = f.id;
   }
 
+  // fal fűtetlen helyiség felé (b tényezővel)
+  const futetlen = new Map<string, number>();
+  for (const h of a.helyisegek.filter(burok)) for (const f of h.futetlenFalak ?? []) futetlen.set(f.fele, (futetlen.get(f.fele) ?? 0) + f.hossz);
+  const belsoFal = a.retegrendek.find((x) => x.becsles.szerep === 'fal' && /teherhordó|belső/i.test(x.rr.cim));
+  for (const [fele, hossz] of futetlen) {
+    const b = /garázs|garazs/i.test(fele) ? 'garazs' : 'futetlen_helyiseg';
+    p.feluletek.push({ id: ujId(), nev: `Fal – ${fele} felé`, fajta: 'opak', retegrendId: (belsoFal && rrId[belsoFal.rr.kod]) ?? falRid, hatar: b, hajlasszog: 90, tajolas: null, meret: { hossz: kerek(hossz), magassag: a.belmagassag }, A: kerek(hossz * a.belmagassag), chi: 0.1 });
+  }
+
   // talajon fekvő padló(k) – burkolat szerint a megfelelő padló-rétegrendre; a kerület a terület arányában oszlik meg
   const futott = a.helyisegek.filter((h) => h.kategoria !== 'gyengen_kapcsolt');
   const Aossz = futott.reduce((s, h) => s + h.A, 0);
-  const Possz = a.helyisegek.reduce((s, h) => s + h.falak.reduce((q, f) => q + f.hossz, 0), 0);
+  const Possz = a.helyisegek.filter(burok).reduce((s, h) => s + h.falak.reduce((q, f) => q + f.hossz, 0), 0);
   if (padlok.length && Aossz > 0) {
     const elsoReteg = (x: AtvettRetegrend) => x.retegek.find((l) => !l.kimarad)?.forras.toLowerCase() ?? '';
+    // fűtött helyiség alá nem kerül a garázs / tároló padlója; a vizes helyiség a „vizes” padlót kapja
+    const futottPadlok = padlok.filter((x) => !/garázs|garazs|tároló|pince/i.test(x.rr.cim)) .length ? padlok.filter((x) => !/garázs|garazs|tároló|pince/i.test(x.rr.cim)) : padlok;
     const valaszt = (h: AtvettHelyiseg) => {
+      const vizes = futottPadlok.find((x) => /vizes|nedves/i.test(x.rr.cim));
+      if (vizes && /fürdő|furdo|wc|zuh|mosó|zuhany|kád/i.test(h.nev)) return vizes;
       const b = (h.burkolat ?? '').toLowerCase();
       const kulcs = /kerámia|csempe|gres|járólap|kő/.test(b) ? /kerámia|krámia|csempe|gres|járólap|kő/ : /parkett|lamin/.test(b) ? /parkett|lamin/ : null;
-      return (kulcs && padlok.find((x) => kulcs.test(elsoReteg(x)))) || padlok[0]!;
+      const nemVizes = futottPadlok.filter((x) => !/vizes|nedves/i.test(x.rr.cim));
+      const lista = nemVizes.length ? nemVizes : futottPadlok;
+      return (kulcs && lista.find((x) => kulcs.test(elsoReteg(x)))) || lista[0]!;
     };
     const csop = new Map<AtvettRetegrend, number>();
     for (const h of futott) { const r = valaszt(h); csop.set(r, (csop.get(r) ?? 0) + h.A); }
@@ -138,6 +157,7 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
   const tipusok = new Map<string, NyilaszaroTipus>();
   const csoport = new Map<string, { ny: AtvettNyilas; db: number; tipus: NyilaszaroTipus }>();
   for (const ny of a.nyilasok) {
+    if (a.helyisegek[ny.helyiseg] && !burok(a.helyisegek[ny.helyiseg]!)) continue;
     const k = `${ny.fajta}|${ny.szel}|${ny.mag}`;
     let t = tipusok.get(k);
     if (!t) { t = nyilaszaroTipus(p, ny); tipusok.set(k, t); p.nyilaszarok.push(t); }
