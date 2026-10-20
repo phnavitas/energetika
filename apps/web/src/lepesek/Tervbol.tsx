@@ -34,7 +34,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const [bm, setBm] = useState<number | undefined>(undefined);
   const [szintszam, setSzintszam] = useState<number | undefined>(undefined);
   const [kizartNy, setKizartNy] = useState<Set<number>>(new Set());
-  const [csere, setCsere] = useState(p.helyisegek.length === 0);
+  const [csere, setCsere] = useState(true);
   const [kesz, setKesz] = useState<string[] | null>(null);
   const [nagyit, setNagyit] = useState(true);
 
@@ -174,12 +174,20 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
               {ej && <small class="halkabb">{ej.forras === 'betu' ? 'Az „É” / „N” betűs északjelből.' : eszakJavitas(ej.alairas) !== 0 ? 'Ismert északjel: a korábban rögzített iránnyal. Ellenőrizd az előnézeten (piros nyíl).' : 'Az északjel alakjából – ellenőrizd az előnézeten (piros nyíl), a javítást a program ehhez a jelhez megjegyzi.'}</small>}
             </div>
             {al.e.egysegek.length > 1 && (
-              <div class="mezo"><span>Átvett lakások / egységek</span>
-                <div class="gombsor" style="gap:12px">
-                  {al.e.egysegek.map((eg) => (
-                    <label><input type="checkbox" checked={egysegek.has(eg)} onChange={(e) => { const s = new Set(egysegek); if ((e.target as HTMLInputElement).checked) s.add(eg); else s.delete(eg); setEgysegek(s); }} /> {eg}</label>
-                  ))}
-                </div>
+              <div class="mezo szeles"><span>Lakások / egységek (a helyiségszámozás szerint)</span>
+                <table class="tabla" style="max-width:640px">
+                  <tbody>
+                    {al.e.egysegek.map((eg) => { const inf = al.e.egysegInfo[eg]!; return (
+                      <tr>
+                        <td style="width:28px"><input type="checkbox" aria-label={`${eg} átvétele`} checked={egysegek.has(eg)} onChange={(e) => { const s = new Set(egysegek); if ((e.target as HTMLInputElement).checked) s.add(eg); else s.delete(eg); setEgysegek(s); }} /></td>
+                        <td>{inf.epulet && <span class="halkabb">{inf.epulet} épület · </span>}<strong>{eg}</strong>{inf.nev && <span class="halk"> · {inf.nev}</span>}</td>
+                        <td class="szam">{inf.db} helyiség</td>
+                        <td class="szam">{sz(inf.A)} m²</td>
+                        <td><button class="gomb halk-gomb semleges" onClick={() => setEgysegek(new Set([eg]))}>Csak ez</button></td>
+                      </tr>
+                    ); })}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
@@ -318,7 +326,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
         <section class="szakasz">
           <h2>Átvétel</h2>
           <p class="halk">Létrejönnek a helyiségek (a hőszükséglethez helyiségenkénti külső falhosszal), a kijelölt rétegrendek, a homlokzati falak tájolás szerint, a talajon fekvő padló, a padlásfödém, a nyílászáró-típusok és -felületek. Az ablaktípus az építési év szerinti kortipikus műanyag ablak – a Nyílászárók lépésben pontosítható.</p>
-          <label style="display:flex;gap:8px;align-items:center;margin-bottom:12px"><input type="checkbox" checked={csere} onChange={(e) => setCsere((e.target as HTMLInputElement).checked)} /> A meglévő helyiségek, határoló felületek és nyílászáró-típusok cseréje (különben hozzáadás)</label>
+          <label style="display:flex;gap:8px;align-items:center;margin-bottom:12px"><input type="checkbox" checked={csere} onChange={(e) => setCsere((e.target as HTMLInputElement).checked)} /> A meglévő {p.helyisegek.length} helyiség, {p.feluletek.length} határoló felület és {p.nyilaszarok.length} nyílászáró-típus cseréje (különben hozzáadás – ismételt beolvasásnál duplikál)</label>
           <div class="gombsor">
             <button class="gomb fo" disabled={!valasztott.some(Boolean)} onClick={atvesz}>Átvétel a projektbe</button>
           </div>

@@ -39,6 +39,8 @@ export interface AlaprajzEredmeny {
   mPerPt: number | null;
   helyisegek: TervHelyiseg[];
   egysegek: string[];
+  /** Egységenként: épület (több épület egy lapon), megjelenő név (pl. „1. Lakás”), helyiségszám, alapterület. */
+  egysegInfo: Record<string, { epulet?: string; nev?: string; db: number; A: number }>;
   eszak: Eszakjel | null;
   figyelmeztetesek: string[];
 }
@@ -310,10 +312,32 @@ export function alaprajzElemez(lap: Lap): AlaprajzEredmeny {
   if (!pec.length && jegy.length) figy.push('Helyiségpecsétet nem találtam, a helyiségjegyzékből olvastam be (a helyiségek helye a rajzon nem ismert).');
   if (!helyisegek.length) figy.push('Helyiséget nem találtam: a pecsétekben „xx,xx m²” formájú területnek kell szerepelnie.');
   helyisegek.sort((a, b) => (a.kod ?? '').localeCompare(b.kod ?? '', 'hu', { numeric: true }));
-  const egysegek = [...new Set(helyisegek.map((h) => h.egyseg).filter((e): e is string => !!e))];
+  // kód nélküli pecsét: a legközelebbi „N. lakás” / „Lakás N” felirat szerinti egység
+  const lakasCimkek = lap.szovegek.map((t) => ({ t, m: /^(?:(\d+)\.?\s*(?:lakás|lakóegység|egység|ház|épület)|(?:lakás|lakóegység|egység|ház|épület)\s*(\d+|[A-Z]))$/i.exec(szovegJavit(t.s)) }))
+    .filter((x) => x.m).map((x) => ({ nev: szovegJavit(x.t.s), x: x.t.x + x.t.szel / 2, y: x.t.y - x.t.meret / 2, szam: (x.m![1] ?? x.m![2])! }));
+  if (lakasCimkek.length > 1) for (const h of helyisegek) {
+    if (h.egyseg || h.forras !== 'pecset') continue;
+    const k = [...lakasCimkek].sort((a, b) => Math.hypot(a.x - h.x, a.y - h.y) - Math.hypot(b.x - h.x, b.y - h.y))[0]!;
+    h.egyseg = k.nev;
+  }
+  const egysegek = [...new Set(helyisegek.map((h) => h.egyseg).filter((e): e is string => !!e))].sort((a, b) => a.localeCompare(b, 'hu', { numeric: true }));
+  const egysegInfo: AlaprajzEredmeny['egysegInfo'] = {};
+  for (const eg of egysegek) {
+    const hs = helyisegek.filter((h) => h.egyseg === eg && !h.kulter && h.forras === 'pecset');
+    const hsAll = hs.length ? hs : helyisegek.filter((h) => h.egyseg === eg && !h.kulter);
+    // épület: többszintű kód első tagja (pl. „A.1.02” → A, „B-L01.03” → B)
+    const tagok = eg.split(/[.\-/]/).filter(Boolean);
+    const epulet = tagok.length >= 2 ? tagok[0] : undefined;
+    // név: a kód számával egyező „N. lakás” felirat, vagy a helyiségek súlypontjához legközelebbi
+    const szam = /(\d+)\D*$/.exec(eg)?.[1];
+    const cx = hsAll.reduce((s2, h) => s2 + h.x, 0) / Math.max(1, hsAll.length), cy = hsAll.reduce((s2, h) => s2 + h.y, 0) / Math.max(1, hsAll.length);
+    const nev = lakasCimkek.find((c) => szam && Number(c.szam) === Number(szam))?.nev
+      ?? [...lakasCimkek].sort((a, b) => Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy))[0]?.nev;
+    egysegInfo[eg] = { epulet, nev: nev && nev !== eg ? nev : undefined, db: hsAll.length, A: Math.round(hsAll.reduce((s2, h) => s2 + h.A, 0) * 100) / 100 };
+  }
   // az északjelet a feliratmezőn és a jelmagyarázaton kívül keressük: a helyiségjegyzék sorai és a nagy szövegtömbök körül nem
   const eszak = eszakjelKeres(lap);
   if (!eszak) figy.push('Északjelet nem találtam – add meg kézzel az észak irányát.');
   else if (eszak.bizonytalan) figy.push('Az északjel irányát az alakjából becsültem: ellenőrizd az előnézeten, szükség esetén fordítsd meg.');
-  return { meretarany: M, mPerPt: M ? (25.4 / 72) / 1000 * M : null, helyisegek, egysegek, eszak, figyelmeztetesek: figy };
+  return { meretarany: M, mPerPt: M ? (25.4 / 72) / 1000 * M : null, helyisegek, egysegek, egysegInfo, eszak, figyelmeztetesek: figy };
 }
