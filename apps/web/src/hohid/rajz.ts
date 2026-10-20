@@ -5,10 +5,15 @@
 import { izotermak, type Geometria, type Megoldas } from './szamito';
 
 interface Nezet { s: number; ox: number; oy: number; W: number; H: number }
+const kiv = (g: Geometria) => { const [x0, y0, x1, y1] = g.nezet ?? [g.x0, g.y0, g.x1, g.y1]; return { x0, y0, x1, y1 }; };
 function nezet(g: Geometria, W: number, margo = 28): Nezet {
-  const s = (W - 2 * margo) / (g.x1 - g.x0);
-  const H = Math.round((g.y1 - g.y0) * s + 2 * margo + 30);
-  return { s, ox: margo - g.x0 * s, oy: margo - g.y0 * s, W, H };
+  const k = kiv(g);
+  const s = (W - 2 * margo) / (k.x1 - k.x0);
+  const H = Math.round((k.y1 - k.y0) * s + 2 * margo + 30);
+  return { s, ox: margo - k.x0 * s, oy: margo - k.y0 * s, W, H };
+}
+function vag(ctx: CanvasRenderingContext2D, g: Geometria, n: Nezet) {
+  const k = kiv(g); ctx.save(); ctx.beginPath(); ctx.rect(px(n, k.x0), py(n, k.y0), (k.x1 - k.x0) * n.s, (k.y1 - k.y0) * n.s); ctx.clip();
 }
 const px = (n: Nezet, x: number) => n.ox + x * n.s, py = (n: Nezet, y: number) => n.oy + y * n.s;
 
@@ -27,9 +32,9 @@ function kontur(ctx: CanvasRenderingContext2D, g: Geometria, n: Nezet) {
 function zonaFelirat(ctx: CanvasRenderingContext2D, g: Geometria, n: Nezet, thetaI?: number, thetaE?: number) {
   ctx.font = '600 12px system-ui, sans-serif';
   // mintavételezés: a legfelső (utolsó) lefedő elem dönt; a zóna a tőle legtávolabbi idegen ponttól legmesszebb eső mintánál kap feliratot
-  const N = 36, pts: { x: number; y: number; z: string }[] = [];
+  const N = 36, pts: { x: number; y: number; z: string }[] = [], k = kiv(g);
   for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
-    const x = g.x0 + (i + 0.5) / N * (g.x1 - g.x0), y = g.y0 + (j + 0.5) / N * (g.y1 - g.y0);
+    const x = k.x0 + (i + 0.5) / N * (k.x1 - k.x0), y = k.y0 + (j + 0.5) / N * (k.y1 - k.y0);
     let z = ''; for (const e of g.elemek) if (x >= e.x0 && x <= e.x1 && y >= e.y0 && y <= e.y1) z = e.anyag;
     pts.push({ x, y, z });
   }
@@ -53,11 +58,13 @@ export function geometriaRajz(cv: HTMLCanvasElement, g: Geometria, W = 520, feli
   cv.width = W * d; cv.height = (felirat ? n.H : n.H - 30) * d; cv.style.width = '100%'; cv.style.maxWidth = `${W}px`;
   const ctx = cv.getContext('2d')!; ctx.scale(d, d);
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, n.H);
+  vag(ctx, g, n);
   for (const e of g.elemek) {
     ctx.fillStyle = e.anyag === 'belso' ? '#FFF7ED' : e.anyag === 'kulso' ? '#EFF6FF' : g.anyagok[e.anyag]!.szin;
     ctx.fillRect(px(n, e.x0), py(n, e.y0), (e.x1 - e.x0) * n.s, (e.y1 - e.y0) * n.s);
   }
   kontur(ctx, g, n);
+  ctx.restore();
   if (felirat) {
     zonaFelirat(ctx, g, n);
     // jelmagyarázat
@@ -77,6 +84,7 @@ export function izotermRajz(cv: HTMLCanvasElement, g: Geometria, m: Megoldas, th
   cv.width = W * d; cv.height = n.H * d; cv.style.width = '100%'; cv.style.maxWidth = `${W}px`;
   const ctx = cv.getContext('2d')!; ctx.scale(d, d);
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, n.H);
+  vag(ctx, g, n);
   const nx = m.xs.length - 1;
   for (let k = 0; k < m.T.length; k++) {
     const i = k % nx, j = (k / nx) | 0; const t = m.tipus[k]!;
@@ -93,13 +101,15 @@ export function izotermRajz(cv: HTMLCanvasElement, g: Geometria, m: Megoldas, th
     ctx.beginPath();
     for (const [a, b, c, e] of iz.szakaszok) { ctx.moveTo(px(n, a), py(n, b)); ctx.lineTo(px(n, c), py(n, e)); }
     ctx.stroke();
-    if (fo && iz.szakaszok.length) {
-      const s = iz.szakaszok[Math.floor(iz.szakaszok.length / 2)]!;
+    const kk = kiv(g); const lathato = iz.szakaszok.filter((q) => q[0] > kk.x0 && q[0] < kk.x1 && q[1] > kk.y0 && q[1] < kk.y1);
+    if (fo && lathato.length) {
+      const s = lathato[Math.floor(lathato.length / 2)]!;
       ctx.font = '600 10.5px system-ui, sans-serif'; const txt = `${iz.szint} °C`; const w = ctx.measureText(txt).width;
       ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fillRect(px(n, s[0]) - w / 2 - 2, py(n, s[1]) - 8, w + 4, 11);
       ctx.fillStyle = '#111'; ctx.fillText(txt, px(n, s[0]) - w / 2, py(n, s[1]) + 1);
     }
   }
+  ctx.restore();
   // legalacsonyabb belső felületi hőmérséklet
   ctx.fillStyle = '#B91C1C'; ctx.beginPath(); ctx.arc(px(n, m.hely[0]), py(n, m.hely[1]), 4.5, 0, Math.PI * 2); ctx.fill();
   zonaFelirat(ctx, g, n, thetaI, thetaE);

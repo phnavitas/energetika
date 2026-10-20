@@ -94,6 +94,8 @@ export interface Felulet {
   /** Nyílászáró: fűtési idényre vonatkozó árnyékolási tényező (környező beépítés, erkély, előtető, növényzet; 1 = nincs árnyékolás). */
   arnyekolas?: number;
   chi?: number;
+  /** Vegyes hőhíd-módban: e felület csatlakozási hőhídjait a Ψ·l tagok veszik figyelembe, a χ nem számít. */
+  chiPsi?: boolean;
   /** A CHI_VALASZTEK sorindexe (az azonos χ értékű sorok megkülönböztetésére). */
   chiKod?: number;
   padlo?: {
@@ -167,8 +169,9 @@ export interface Projekt {
   felujitas?: FelujitasBeallitas;
   /** Alternatív rendszerek vizsgálata (9/2023 ÉKM 5. §, 4. melléklet). */
   alternativ?: AlternativBeallitas;
-  /** Hőhidak: 'chi' egyszerűsített (6.1. táblázat, felületenkénti χ), 'psi' részletes (vonalmenti Ψ · l a hőhíd-számításból). */
-  hohidMod?: 'chi' | 'psi';
+  /** Hőhidak: 'chi' egyszerűsített (6.1. táblázat, felületenkénti χ), 'psi' részletes (vonalmenti Ψ · l a hőhíd-számításból),
+   *  'vegyes': a kijelölt felületeken Ψ · l, a többin χ. */
+  hohidMod?: 'chi' | 'psi' | 'vegyes';
   hohidak?: HohidUI[];
 }
 
@@ -183,6 +186,8 @@ export interface HohidUI {
   szamit: boolean;
   /** A határoló tér (b tényezőhöz). */
   hatar?: HatarKod;
+  /** Lábazati csomópont: a Ψ ennek a talajon fekvő padlónak a padló–fal csatlakozási Ψ-jét adja (vonalmenti tagként nem kerül be külön). */
+  padloId?: string;
   eredmeny?: { L2D: number; psiE: number; psiI: number; thetaSiMin: number; fRsi: number; karimak: { nev: string; U: number; lKulso: number; lBelso: number }[] };
 }
 
@@ -435,21 +440,24 @@ export function atalakit(p: Projekt): Atalakitas {
         const r = p.retegrendek.find((x) => x.id === f.retegrendId);
         if (!r || !f.padlo) { hibak.push(`„${f.nev}”: hiányzó padló rétegrend vagy kerület.`); continue; }
         const UTp = padloUT(r, f, p);
-        elemek.push({ tipus: 'talaj', nev: f.nev, A: f.A ?? 0, UT: UTp, P: padloKerulet(p, f), psiPF: f.padlo.psiPF, kovetelmenyKod: r.kovetelmenyKod });
+        elemek.push({ tipus: 'talaj', nev: f.nev, A: f.A ?? 0, UT: UTp, P: padloKerulet(p, f), psiPF: padloPsi(p, f).psi, kovetelmenyKod: r.kovetelmenyKod });
       } else {
         const r = p.retegrendek.find((x) => x.id === f.retegrendId);
         if (!r) { hibak.push(`„${f.nev}”: nincs rétegrend kiválasztva.`); continue; }
         const e = retegrendSzamitas(r);
-        elemek.push({ tipus: 'opak', nev: f.nev, A: feluletNettoA(p, f), U: e.U, chi: p.hohidMod === 'psi' ? 0 : f.chi ?? 0, hatar: hatar(f.hatar), kovetelmenyKod: r.kovetelmenyKod });
+        elemek.push({ tipus: 'opak', nev: f.nev, A: feluletNettoA(p, f), U: e.U, chi: chiErvenyes(p, f), hatar: hatar(f.hatar), kovetelmenyKod: r.kovetelmenyKod });
       }
     } catch (err) {
       hibak.push(`„${f.nev}”: ${(err as Error).message}`);
     }
   }
   // részletes hőhíd-számítás: a χ helyett vonalmenti Ψ · l (MSZ EN ISO 10211)
-  if (p.hohidMod === 'psi') {
+  for (const h of p.hohidak ?? []) {
+    if (h.padloId && h.szamit && !h.eredmeny) hibak.push(`„${h.nev}”: a lábazati hőhíd még nincs kiszámítva.`);
+  }
+  if (p.hohidMod === 'psi' || p.hohidMod === 'vegyes') {
     for (const h of p.hohidak ?? []) {
-      if (!h.szamit) continue;
+      if (!h.szamit || h.padloId) continue;
       if (!h.eredmeny) { hibak.push(`„${h.nev}”: a hőhíd még nincs kiszámítva.`); continue; }
       elemek.push({ tipus: 'vonal', nev: h.nev, l: h.hossz, psi: h.meretrendszer === 'kulso' ? h.eredmeny.psiE : h.eredmeny.psiI, hatar: hatar(h.hatar ?? 'kulso') });
     }
@@ -499,6 +507,19 @@ export function atalakit(p: Projekt): Atalakitas {
 }
 
 /** Talajon fekvő padló egyenértékű hőátbocsátási tényezője (MSZ EN ISO 13370, 4.20–4.33). */
+/** A felület érvényes χ-tényezője a hőhíd-mód szerint. */
+export function chiErvenyes(p: Projekt, f: Felulet): number {
+  if (p.hohidMod === 'psi') return 0;
+  if (p.hohidMod === 'vegyes' && f.chiPsi) return 0;
+  return f.chi ?? 0;
+}
+/** A padló–fal csatlakozás Ψ-je: kézi érték, vagy a hozzárendelt lábazati hőhíd-számításból. */
+export function padloPsi(p: Projekt, f: Felulet): { psi: number; hohid?: HohidUI } {
+  const h = (p.hohidak ?? []).find((x) => x.padloId === f.id && x.szamit && x.eredmeny);
+  if (h) return { psi: h.meretrendszer === 'kulso' ? h.eredmeny!.psiE : h.eredmeny!.psiI, hohid: h };
+  return { psi: f.padlo?.psiPF ?? 0 };
+}
+
 export function padloUT(r: Retegrend, f: Felulet, p?: Projekt): number {
   const e = retegrendSzamitas(r);
   const Rp = e.retegR.reduce((s, x) => s + x, 0);
@@ -569,7 +590,7 @@ export function hoszuksegletBemenet(p: Projekt): { bemenet: hoszukseglet.HszBeme
     const falBrutto = hz.kulsoFalak.reduce((s, x) => s + x.hossz * h.h, 0);
     let levonando = nyilasA;
     for (const fal of hz.kulsoFalak) {
-      const chi = p.feluletek.find((f) => f.retegrendId === fal.retegrendId)?.chi ?? 0;
+      const ff = p.feluletek.find((f) => f.retegrendId === fal.retegrendId); const chi = ff ? chiErvenyes(p, ff) : 0;
       const U = Uopak(fal.retegrendId, chi);
       if (U === null) { hibak.push(`${h.nev}: a külső fal rétegrendje hiányos.`); continue; }
       const brutto = fal.hossz * h.h;
@@ -580,7 +601,7 @@ export function hoszuksegletBemenet(p: Projekt): { bemenet: hoszukseglet.HszBeme
     }
     if (nyilasA > 0 && falBrutto < nyilasA) hibak.push(`${h.nev}: a nyílászárók felülete (${nyilasA.toFixed(1)} m²) nagyobb a megadott külső falnál – add meg a külső fal hosszát.`);
     if (hz.padlas) {
-      const U = padlasF ? Uopak(padlasF.retegrendId, padlasF.chi ?? 0) : null;
+      const U = padlasF ? Uopak(padlasF.retegrendId, chiErvenyes(p, padlasF)) : null;
       if (U === null || !padlasF) hibak.push(`${h.nev}: nincs padlásfödém vagy tető a határolásban.`);
       else if (padlasF.hatar === 'kulso') elemek.push({ tipus: 'kulso', nev: 'Tető', A: h.A, U });
       else elemek.push({ tipus: 'futetlen', nev: 'Padlásfödém', A: h.A, U, bu: epuletfizika.B_TENYEZO[padlasF.hatar].tel });

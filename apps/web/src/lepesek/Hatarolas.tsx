@@ -1,6 +1,6 @@
 import { klima } from '@mag/index';
 import { Mezo, Szam, Szoveg, Valaszto, sz, kov } from '../ui';
-import { ujId, feluletNettoA, geometria, atlagBelmagassag, padloKerulet, falhosszHelyisegekbol, nyilasNapnyereseg, CHI_VALASZTEK, HATAR_NEV, SZEREP_NEV, type Projekt, type HatarKod, type Felulet } from '../modell';
+import { ujId, feluletNettoA, geometria, atlagBelmagassag, padloKerulet, padloPsi, chiErvenyes, falhosszHelyisegekbol, nyilasNapnyereseg, CHI_VALASZTEK, HATAR_NEV, SZEREP_NEV, type Projekt, type HatarKod, type Felulet } from '../modell';
 import { Fogantyu, huzasProps } from '../huzas';
 import { ARNYEKOLOK } from '../katalogus';
 
@@ -39,6 +39,7 @@ export function HatarolasLepes({ p, modosit }: { p: Projekt; modosit: Modosit })
         <h2>Falak, födémek, tetők</h2>
         <p class="halk">Bruttó felületet adj meg közvetlenül, vagy határoló hossz × magasság alapján (alapérték az átlagos belmagasság; a hossz a helyiségeknél megadott külső falhosszakból is átvehető). A hozzá rendelt nyílászárókat a program levonja. A sorok a fogantyúval áthúzhatók. A csatlakozási hőhidakat a 6.1. táblázat χ tényezője veszi figyelembe.</p>
         {p.hohidMod === 'psi' && <div class="figyelmeztetes" style="margin-top:8px">Részletes hőhíd-módszer van beállítva (Hőhidak lépés): a felületek χ értéke most nem számít, helyette a csomópontok Ψ·l tagjai.</div>}
+        {p.hohidMod === 'vegyes' && p.feluletek.some((f) => f.chiPsi) && <div class="figyelmeztetes" style="margin-top:8px">Vegyes hőhíd-módszer (Hőhidak lépés): a „Ψ·l” jelölésű felületeken a χ nem számít, a többin igen.</div>}
         <div class="tabla-gorgeto">
           <table class="tabla">
             <thead><tr><th aria-label="Sorrend"></th><th>Megnevezés</th><th>Rétegrend</th><th>Határoló tér</th><th>Bruttó felület</th><th class="szam">Nettó</th><th>Hőhidasság</th><th></th></tr></thead>
@@ -79,6 +80,7 @@ export function HatarolasLepes({ p, modosit }: { p: Projekt; modosit: Modosit })
                           <option value={String(i)} selected={f.chiKod !== undefined ? f.chiKod === i : f.chi === c.ertek && chiOpciok.findIndex((x) => x.ertek === c.ertek) === chiOpciok.indexOf(c)}>{c.nev} (χ = {kov(c.ertek)})</option>
                         ))}
                       </select>
+                      {p.hohidMod && p.hohidMod !== 'chi' && chiErvenyes(p, f) === 0 && (f.chi ?? 0) > 0 && <small class="halkabb" style="display:block">χ nem számít – Ψ·l a Hőhidak lépésből</small>}
                     </td>
                     <td><button class="gomb halk-gomb" onClick={() => torol(f.id)}>Törlés</button></td>
                   </tr>
@@ -153,7 +155,9 @@ export function HatarolasLepes({ p, modosit }: { p: Projekt; modosit: Modosit })
                   <Mezo cim="Perem-hőszigetelés vastagsága"><Szam ertek={f.padlo.perem.dCm} egyseg="cm" valt={(v) => fv(f.id, (x) => { x.padlo!.perem!.dCm = v; })} /></Mezo>
                   <Mezo cim="Hővezetési ellenállása"><Szam ertek={f.padlo.perem.R} egyseg="m²K/W" valt={(v) => fv(f.id, (x) => { x.padlo!.perem!.R = v; })} /></Mezo>
                 </>}
-                <Mezo cim="Ψ padló–fal csatlakozás" sugo="6.4. táblázat a falazat λ, a lábazat és a padló szigetelése szerint"><Szam ertek={f.padlo?.psiPF} egyseg="W/mK" valt={(v) => fv(f.id, (x) => { x.padlo!.psiPF = v; })} /></Mezo>
+                {(() => { const pp = padloPsi(p, f); return pp.hohid
+                  ? <Mezo cim="Ψ padló–fal csatlakozás" sugo={`A(z) „${pp.hohid.nev}” lábazati hőhíd-számításból (Hőhidak lépés)`}><div class="egyseg"><strong>{kov(pp.psi)}</strong><em>W/mK</em></div></Mezo>
+                  : <Mezo cim="Ψ padló–fal csatlakozás" sugo="6.4. táblázat a falazat λ, a lábazat és a padló szigetelése szerint, vagy lábazati hőhíd-számításból (Hőhidak lépés)"><Szam ertek={f.padlo?.psiPF} egyseg="W/mK" valt={(v) => fv(f.id, (x) => { x.padlo!.psiPF = v; })} /></Mezo>; })()}
               </div>
               {(() => {
                 const falak = opak.filter((o) => o.meret && o.hatar === 'kulso' && p.retegrendek.find((r) => r.id === o.retegrendId)?.szerep === 'fal');

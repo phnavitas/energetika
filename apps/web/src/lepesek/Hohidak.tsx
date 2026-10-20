@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Projekt, HohidUI } from '../modell';
+import { chiErvenyes } from '../modell';
 import { Mezo, Szam, Szoveg, Valaszto, sz } from '../ui';
 import { HOHID_SABLONOK, sablon, alapParameterek, type Parameter } from '../hohid/katalogus';
-import { hohidSzamol, ujHohid, projektParameterek, javasoltHossz, ajanlott, type HohidSzamitas } from '../hohid/projekt';
+import { hohidSzamolHatter, ujHohid, projektParameterek, javasoltHossz, ajanlott, type HohidSzamitas } from '../hohid/projekt';
 import { geometriaRajz, izotermRajz } from '../hohid/rajz';
 
 type Modosit = (f: (q: Projekt) => void) => void;
@@ -24,7 +25,7 @@ export function HohidakLepes({ p, modosit }: { p: Projekt; modosit: Modosit }) {
   const aj = ajanlott(p);
   const h = hidak.find((x) => x.id === aktiv) ?? null;
   const mod = p.hohidMod ?? 'chi';
-  const osszPsiL = hidak.filter((x) => x.szamit && x.eredmeny).reduce((a, x) => a + (x.meretrendszer === 'kulso' ? x.eredmeny!.psiE : x.eredmeny!.psiI) * x.hossz, 0);
+  const osszPsiL = hidak.filter((x) => x.szamit && x.eredmeny && !x.padloId).reduce((a, x) => a + (x.meretrendszer === 'kulso' ? x.eredmeny!.psiE : x.eredmeny!.psiI) * x.hossz, 0);
 
   function uj(kod: string) {
     const x = ujHohid(p, kod);
@@ -41,12 +42,28 @@ export function HohidakLepes({ p, modosit }: { p: Projekt; modosit: Modosit }) {
     <>
       <section class="szakasz">
         <h2>Hőhidak a számításban</h2>
-        <p class="halk">Egyszerűsített módszernél a felületek χ tényezője (6.1. táblázat) veszi figyelembe a hőhidakat. Részletes módszernél a χ helyett az itt számított vonalmenti Ψ · l tagok kerülnek a fajlagos hőveszteség-tényezőbe (MSZ EN ISO 10211, 14683).</p>
+        <p class="halk">Egyszerűsített módszernél a felületek χ tényezője (6.1. táblázat) veszi figyelembe a hőhidakat. Részletes módszernél a χ helyett az itt számított vonalmenti Ψ · l tagok kerülnek a fajlagos hőveszteség-tényezőbe (MSZ EN ISO 10211, 14683). Vegyes módban a kijelölt felületeken a Ψ · l, a többin továbbra is a χ számít. A padlóhoz rendelt lábazati csomópont Ψ-je minden módban a padló–fal csatlakozás Ψ-jét adja.</p>
         <div class="gombsor" style="gap:18px">
           <label><input type="radio" name="hhmod" checked={mod === 'chi'} onChange={() => modosit((q) => { q.hohidMod = 'chi'; })} /> Egyszerűsített (χ a határoló felületeken)</label>
-          <label><input type="radio" name="hhmod" checked={mod === 'psi'} onChange={() => modosit((q) => { q.hohidMod = 'psi'; })} /> Részletes (Ψ · l a hőhíd-számításból)</label>
+          <label><input type="radio" name="hhmod" checked={mod === 'vegyes'} onChange={() => modosit((q) => { q.hohidMod = 'vegyes'; })} /> Vegyes (felületenként χ vagy Ψ · l)</label>
+          <label><input type="radio" name="hhmod" checked={mod === 'psi'} onChange={() => modosit((q) => { q.hohidMod = 'psi'; })} /> Részletes (csak Ψ · l)</label>
         </div>
-        {mod === 'psi' && <p class="halkabb" style="margin-top:8px">A számításba vett hőhidak összesen: Σ Ψ·l = <strong>{sz(osszPsiL, 2)} W/K</strong>. A felületek χ értéke ilyenkor nem számít – ügyelj, hogy minden lényeges csomópont (sarkok, födémcsatlakozások, nyílászáró-beépítések, lábazat) szerepeljen.</p>}
+        {mod !== 'chi' && <p class="halkabb" style="margin-top:8px">A számításba vett vonalmenti hőhidak összesen: Σ Ψ·l = <strong>{sz(osszPsiL, 2)} W/K</strong>{mod === 'psi' ? '. A felületek χ értéke ilyenkor nem számít – ügyelj, hogy minden lényeges csomópont (sarkok, födémcsatlakozások, nyílászáró-beépítések, attika) szerepeljen.' : '.'}</p>}
+        {mod === 'vegyes' && (
+          <div style="margin-top:10px">
+            <p class="halkabb" style="margin-bottom:6px">Jelöld be azokat a felületeket, amelyek csatlakozási hőhídjait a csomópont-számítás fedi le – ezeknél a χ nem számít. Vigyázz a kettős számításra: egy bejelöletlen felület χ-je és egy rá vonatkozó Ψ·l egyszerre is bekerül.</p>
+            <div class="tabla-gorgeto"><table class="tabla">
+              <thead><tr><th>Felület</th><th class="szam">Felület, m²</th><th class="szam">χ (táblázat)</th><th>χ helyett Ψ·l</th><th class="szam">Érvényes χ</th></tr></thead>
+              <tbody>{p.feluletek.filter((f) => f.fajta === 'opak').map((f) => (
+                <tr>
+                  <td>{f.nev}</td><td class="szam">{sz(f.A ?? (f.meret ? f.meret.hossz * f.meret.magassag : 0), 2)}</td><td class="szam">{sz(f.chi ?? 0, 2)}</td>
+                  <td><input type="checkbox" aria-label={`${f.nev}: χ helyett Ψ`} checked={!!f.chiPsi} onChange={(e) => modosit((q) => { q.feluletek.find((x) => x.id === f.id)!.chiPsi = (e.target as HTMLInputElement).checked; })} /></td>
+                  <td class="szam">{sz(chiErvenyes(p, f), 2)}</td>
+                </tr>
+              ))}</tbody>
+            </table></div>
+          </div>
+        )}
       </section>
 
       <section class="szakasz">
@@ -58,8 +75,8 @@ export function HohidakLepes({ p, modosit }: { p: Projekt; modosit: Modosit }) {
               <tr style={x.id === aktiv ? 'background:var(--kijelolt)' : ''}>
                 <td><button class="link-gomb" onClick={() => { setAktiv(x.id); setKatalog(false); }}>{x.nev}</button></td>
                 <td class="szam">{psi !== null ? `${sz(psi, 3)} W/mK` : '–'}</td>
-                <td class="szam">{sz(x.hossz, 2)} m</td>
-                <td class="szam">{psi !== null ? `${sz(psi * x.hossz, 2)} W/K` : '–'}</td>
+                <td class="szam">{x.padloId ? <span class="halkabb">padló Ψ</span> : `${sz(x.hossz, 2)} m`}</td>
+                <td class="szam">{psi !== null && !x.padloId ? `${sz(psi * x.hossz, 2)} W/K` : '–'}</td>
                 <td class="szam">{x.eredmeny ? `${sz(x.eredmeny.thetaSiMin, 1)} °C / ${sz(x.eredmeny.fRsi, 2)}` : '–'}</td>
                 <td><input type="checkbox" aria-label={`${x.nev} számításba`} checked={x.szamit} onChange={(e) => modosit((q) => { q.hohidak!.find((y) => y.id === x.id)!.szamit = (e.target as HTMLInputElement).checked; })} /></td>
                 <td><button class="gomb halk-gomb" onClick={() => { modosit((q) => { q.hohidak = q.hohidak!.filter((y) => y.id !== x.id); }); if (aktiv === x.id) setAktiv(null); }}>Törlés</button></td>
@@ -99,12 +116,15 @@ function Szerkeszto({ p, h, modosit, pdf }: { p: Projekt; h: HohidUI; modosit: M
   // késleltetett újraszámítás paraméterváltozáskor
   useEffect(() => {
     setSzamol(true);
+    let el = false;
     const t = setTimeout(() => {
-      const r = hohidSzamol(h);
-      setSzamol(false); setSz2(r);
-      if (r && JSON.stringify(r.eredmeny) !== JSON.stringify(h.eredmeny)) mh((x) => { x.eredmeny = r.eredmeny; });
+      hohidSzamolHatter(h).then((r) => {
+        if (el) return;
+        setSzamol(false); setSz2(r);
+        if (r && JSON.stringify(r.eredmeny) !== JSON.stringify(h.eredmeny)) mh((x) => { x.eredmeny = r.eredmeny; });
+      }).catch(() => { if (!el) setSzamol(false); });
     }, 250);
-    return () => clearTimeout(t);
+    return () => { el = true; clearTimeout(t); };
   }, [kulcs]);
   const geo = useMemo(() => s.epit(param).geometria, [kulcs]);
   const gRef = useRef<HTMLCanvasElement>(null), iRef = useRef<HTMLCanvasElement>(null);
@@ -160,12 +180,18 @@ function Szerkeszto({ p, h, modosit, pdf }: { p: Projekt; h: HohidUI; modosit: M
               <Mezo cim="Méretrendszer" sugo="A program a felületeket belső (nettó) méretből számítja – ehhez a belső méretrendszerű Ψ illik">
                 <Valaszto ertek={h.meretrendszer} valt={(v) => mh((x) => { x.meretrendszer = v; })} opciok={[{ ertek: 'belso', nev: 'Belső (Ψi)' }, { ertek: 'kulso', nev: 'Külső (Ψe)' }]} />
               </Mezo>
-              <Mezo cim="Hossz a projektben" sugo={jh ? `Javaslat: ${sz(jh.hossz, 2)} m (${jh.leiras})` : 'A csomópont hossza az épületben'}>
+              {s.csoport === 'labazat' && (
+                <Mezo cim="Átvitel a padlóhoz" sugo="A választott talajon fekvő padló padló–fal csatlakozási Ψ-je ebből a számításból adódik (a padló kerületével szorozva), külön vonalmenti tagként nem kerül be">
+                  <Valaszto ertek={h.padloId ?? ''} valt={(v) => mh((x) => { x.padloId = v || undefined; })} opciok={[{ ertek: '', nev: 'Nincs (vonalmenti tag)' }, ...p.feluletek.filter((f) => f.fajta === 'padlo').map((f) => ({ ertek: f.id, nev: f.nev }))]} />
+                </Mezo>
+              )}
+              {!h.padloId && <Mezo cim="Hossz a projektben" sugo={jh ? `Javaslat: ${sz(jh.hossz, 2)} m (${jh.leiras})` : 'A csomópont hossza az épületben'}>
                 <div class="egyseg"><Szam ertek={h.hossz} egyseg="m" valt={(v) => mh((x) => { x.hossz = Math.max(0, v); })} />{jh && <button class="gomb halk-gomb" onClick={() => mh((x) => { x.hossz = jh.hossz; })}>javaslat</button>}</div>
-              </Mezo>
+              </Mezo>}
               <div class="mezo"><span>Átvitel</span>
-                <label><input type="checkbox" checked={h.szamit} onChange={(ev) => mh((x) => { x.szamit = (ev.target as HTMLInputElement).checked; })} /> Számításba veszem (részletes módban)</label>
-                {psi !== null && <small>Ψ·l = {sz(psi * h.hossz, 2)} W/K</small>}
+                <label><input type="checkbox" checked={h.szamit} onChange={(ev) => mh((x) => { x.szamit = (ev.target as HTMLInputElement).checked; })} /> Számításba veszem{h.padloId ? '' : ' (részletes / vegyes módban)'}</label>
+                {psi !== null && !h.padloId && <small>Ψ·l = {sz(psi * h.hossz, 2)} W/K</small>}
+                {h.padloId && <small>a padló Ψ padló–fal értéke: {psi !== null ? sz(psi, 3) : '–'} W/mK</small>}
               </div>
             </div>
           </div>
@@ -175,6 +201,7 @@ function Szerkeszto({ p, h, modosit, pdf }: { p: Projekt; h: HohidUI; modosit: M
               <button class="gomb" onClick={() => iRef.current?.toBlob((b) => b && letolt(`${h.nev}_izoterma.png`, b))}>Izotermás ábra (PNG)</button>
               <button class="gomb" onClick={pdf}>Hőhíd-jegyzőkönyv (PDF)</button>
             </div>
+            {s.csoport === 'labazat' && <p class="halkabb" style="margin-top:6px">Talajmodell (MSZ EN ISO 10211): λtalaj = 2,0 W/mK, a modell az épületen belül B'/2, kívül és lefelé 2,5·B' kiterjedésű; az ábra a csomópont környezetét mutatja. Ψ = L2D − Ufal·hfal − U0·B'/2, ahol U0 a padló MSZ EN ISO 13370 szerinti alapértéke (peremszigetelés nélkül – azt a 2D modell tartalmazza, ezért a padlónál ne adj meg külön peremszigetelést).</p>}
             <p class="halkabb" style="margin-top:6px">Az ábra Rsi = 0,25 m²K/W belső felületi ellenállással (felületi hőmérséklet-vizsgálat) készült; 1 °C-onkénti izotermák, a piros pont a legalacsonyabb belső felületi hőmérséklet. Ψ: Rsi = 0,13, Rse = 0,04 m²K/W, adiabatikus vágósíkok (MSZ EN ISO 10211).</p>
           </div>
         </div>

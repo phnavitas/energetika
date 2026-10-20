@@ -14,6 +14,10 @@ export interface Geometria {
   /** Sorrendben festve: a későbbi felülírja a korábbit. A le nem fedett terület adiabatikus üreg. */
   elemek: Teglalap[];
   anyagok: Record<string, AnyagDef>;
+  /** Finom rácsú (részletes) tartomány: ezen kívül a cellaméret a távolsággal nő (talajmodell). */
+  finom?: [number, number, number, number];
+  /** Az ábrákon megjelenített kivágat (alapérték: a teljes modell). */
+  nezet?: [number, number, number, number];
 }
 export interface Peremfeltetel { thetaI: number; thetaE: number; Rsi: number; Rse: number }
 
@@ -29,7 +33,18 @@ export interface Megoldas {
   iteracio: number;
 }
 
-function racsvonalak(ertekek: number[], a: number, b: number, max: number): number[] {
+function racsvonalak(ertekek: number[], a: number, b: number, max: number, zona?: [number, number]): number[] {
+  const u0 = [...new Set(ertekek.filter((v) => v >= a - 1e-9 && v <= b + 1e-9).map((v) => Math.round(v * 1e6) / 1e6))].sort((p, q) => p - q);
+  if (zona) {
+    // a finom zónán kívül a cellaméret a zónától mért távolsággal nő (max + 0,25·d, legfeljebb 0,5 m)
+    const meret = (v: number) => Math.min(0.5, max + 0.25 * Math.max(0, zona[0] - v, v - zona[1]));
+    const ki: number[] = [u0[0]!];
+    for (let i = 0; i + 1 < u0.length; i++) {
+      const c = u0[i + 1]!; let v = u0[i]!;
+      while (c - v > 1e-9) { const h = meret(v + Math.min(meret(v), c - v) / 2); if (v + h >= c - 0.3 * h) { v = c; } else { v += h; } ki.push(v); }
+    }
+    return ki;
+  }
   const u = [...new Set(ertekek.filter((v) => v >= a - 1e-9 && v <= b + 1e-9).map((v) => Math.round(v * 1e6) / 1e6))].sort((p, q) => p - q);
   const ki: number[] = [];
   for (let i = 0; i < u.length; i++) {
@@ -40,8 +55,8 @@ function racsvonalak(ertekek: number[], a: number, b: number, max: number): numb
 }
 
 export function megold(g: Geometria, pf: Peremfeltetel, maxCella = 0.02): Megoldas {
-  const xs = racsvonalak([g.x0, g.x1, ...g.elemek.flatMap((e) => [e.x0, e.x1])], g.x0, g.x1, maxCella);
-  const ys = racsvonalak([g.y0, g.y1, ...g.elemek.flatMap((e) => [e.y0, e.y1])], g.y0, g.y1, maxCella);
+  const xs = racsvonalak([g.x0, g.x1, ...g.elemek.flatMap((e) => [e.x0, e.x1])], g.x0, g.x1, maxCella, g.finom && [g.finom[0], g.finom[2]]);
+  const ys = racsvonalak([g.y0, g.y1, ...g.elemek.flatMap((e) => [e.y0, e.y1])], g.y0, g.y1, maxCella, g.finom && [g.finom[1], g.finom[3]]);
   const nx = xs.length - 1, ny = ys.length - 1, N = nx * ny;
   const anyagKulcsok = Object.keys(g.anyagok);
   const tipus = new Int16Array(N).fill(-1);

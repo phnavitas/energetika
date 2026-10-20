@@ -16,7 +16,7 @@ export interface Csomopont {
 export interface HohidSablon {
   kod: string; nev: string; leiras: string;
   /** A csomópont típusa a hossz-javaslathoz és az ajánláshoz. */
-  csoport: 'sarok' | 'csatlakozas' | 'fodem' | 'nyilas' | 'konzol';
+  csoport: 'sarok' | 'csatlakozas' | 'fodem' | 'nyilas' | 'konzol' | 'labazat' | 'teto';
   parameterek: Parameter[];
   epit: (p: Record<string, number>) => Csomopont;
 }
@@ -25,7 +25,7 @@ const RSI = 0.13, RSE = 0.04;
 export const U1D = (retegek: [number, number][], Rsi = RSI, Rse = RSE) => 1 / (Rsi + Rse + retegek.reduce((s, [d, l]) => s + (d > 0 ? d / l : 0), 0));
 
 const A = (nev: string, lambda: number, szin: string): AnyagDef => ({ nev, lambda, szin });
-const SZ = { szig: '#F4D35E', fal: '#C8553D', vb: '#8D99AE', vakolat: '#E8E3D9', keret: '#6B4F3A', uveg: '#9AD1F5', fodem: '#8D99AE', szak: '#E07A5F', gipsz: '#EDEDED' };
+const SZ = { talaj: '#B9A27E', feltoltes: '#CDBB97', esztrich: '#D9D4CC', xps: '#7FB7D9', szig: '#F4D35E', fal: '#C8553D', vb: '#8D99AE', vakolat: '#E8E3D9', keret: '#6B4F3A', uveg: '#9AD1F5', fodem: '#8D99AE', szak: '#E07A5F', gipsz: '#EDEDED' };
 
 const falParam = (csoport = 'Külső fal'): Parameter[] => [
   { kulcs: 'di', nev: 'Hőszigetelés vastagsága', egyseg: 'm', alap: 0.15, min: 0, max: 0.4, lepes: 0.01, csoport },
@@ -191,6 +191,150 @@ export const HOHID_SABLONOK: HohidSablon[] = [
     },
   },
 ];
+
+// ---------------------------------------------------------------------------------------------
+// Lábazati csomópontok (talajjal, MSZ EN ISO 10211 + 13370) és lapostető-attika
+
+/** A talaj hővezetési tényezője (MSZ EN ISO 13370, ismeretlen talaj: 2,0 W/mK). */
+export const TALAJ_LAMBDA = 2.0;
+/** Talajon fekvő padló egydimenziós (talajjal együtt értelmezett) U0 értéke, MSZ EN ISO 13370 (8.1.2): B' jellemző méret, w falvastagság, Rf a padló rétegeinek ellenállása. */
+export function U0padlo(B: number, w: number, Rf: number, Rsi = RSI, Rse = RSE, lg = TALAJ_LAMBDA): number {
+  const dt = w + lg * (Rsi + Rf + Rse);
+  return dt < B ? (2 * lg / (Math.PI * B + dt)) * Math.log(Math.PI * B / dt + 1) : lg / (0.457 * B + dt);
+}
+
+const labazatParam = (): Parameter[] => [
+  { kulcs: 'dl', nev: 'Lábazati hőszigetelés vastagsága', egyseg: 'm', alap: 0.12, min: 0, max: 0.3, lepes: 0.01, csoport: 'Lábazat' },
+  { kulcs: 'lamL', nev: 'Lábazati hőszigetelés λ (XPS)', egyseg: 'W/mK', alap: 0.035, min: 0.02, max: 0.1, lepes: 0.001, csoport: 'Lábazat' },
+  { kulcs: 'D', nev: 'Lábazati szigetelés lenyúlása a terep alá', egyseg: 'm', alap: 0.6, min: 0, max: 1.5, lepes: 0.05, csoport: 'Lábazat' },
+  { kulcs: 'h0', nev: 'Padlószint a terep fölött', egyseg: 'm', alap: 0.30, min: -0.2, max: 1.0, lepes: 0.01, csoport: 'Lábazat' },
+];
+const padloParam = (): Parameter[] => [
+  { kulcs: 'dE', nev: 'Esztrich (+ burkolat) vastagsága', egyseg: 'm', alap: 0.07, min: 0.02, max: 0.15, lepes: 0.005, csoport: 'Padló' },
+  { kulcs: 'lamE', nev: 'Esztrich λ', egyseg: 'W/mK', alap: 1.4, min: 0.2, max: 2.3, lepes: 0.05, csoport: 'Padló' },
+  { kulcs: 'dP', nev: 'Padló hőszigetelése (esztrich alatt)', egyseg: 'm', alap: 0.10, min: 0, max: 0.4, lepes: 0.01, csoport: 'Padló' },
+  { kulcs: 'lamP', nev: 'Padló hőszigetelés λ', egyseg: 'W/mK', alap: 0.036, min: 0.015, max: 0.2, lepes: 0.001, csoport: 'Padló' },
+];
+const BParam = (): Parameter => ({ kulcs: 'B', nev: "Jellemző alaprajzi méret B' (= A / 0,5P)", egyseg: 'm', alap: 8, min: 2, max: 40, lepes: 0.5, csoport: 'Modell' });
+
+/** Közös talajmodell-keret: x = 0 a lábazati/homlokzati szigetelés külső síkja, y = 0 a terepszint, y lefelé nő. */
+function talajKeret(p: Record<string, number>, t: number, alja: number, belsoVeg: number, falTeteje: number) {
+  const b = p.B! / 2, kint = 2.5 * p.B!, mely = 2.5 * p.B!;
+  return {
+    x0: -kint, x1: t + b, y0: falTeteje, y1: Math.max(mely, alja + 1),
+    finom: [-0.6, falTeteje, t + Math.min(b, 1.2), Math.max(alja, p.D! ?? 0) + 0.6] as [number, number, number, number],
+    nezet: [-0.7, falTeteje, t + Math.min(b, 1.4), Math.max(alja, p.D ?? 0) + 0.9] as [number, number, number, number],
+    b, belsoVeg,
+  };
+}
+
+HOHID_SABLONOK.push(
+  {
+    kod: 'labazat_lemez', nev: 'Lábazat – lemezalap (talajon fekvő padló)', csoport: 'labazat',
+    leiras: 'Vasbeton lemezalapon álló külső fal, lemez alatti és lábazati hőszigeteléssel; a padló a terepen (függőleges metszet, talajjal, ISO 10211 / 13370). A Ψ a padló–fal csatlakozás Ψ-jébe vihető át.',
+    parameterek: [...falParam(), ...labazatParam(), ...padloParam(),
+      { kulcs: 'dS', nev: 'Lemezalap vastagsága', egyseg: 'm', alap: 0.25, min: 0.1, max: 0.6, lepes: 0.01, csoport: 'Lemezalap' },
+      { kulcs: 'lamS', nev: 'Lemezalap λ (vasbeton)', egyseg: 'W/mK', alap: 2.3, min: 0.5, max: 2.6, lepes: 0.05, csoport: 'Lemezalap' },
+      { kulcs: 'dU', nev: 'Lemez alatti hőszigetelés (XPS)', egyseg: 'm', alap: 0.10, min: 0, max: 0.4, lepes: 0.01, csoport: 'Lemezalap' },
+      { kulcs: 'lamU', nev: 'Lemez alatti hőszigetelés λ', egyseg: 'W/mK', alap: 0.035, min: 0.02, max: 0.1, lepes: 0.001, csoport: 'Lemezalap' },
+      BParam(), karimaParam(1.2)],
+    epit: (p) => {
+      const t = p.di! + p.dw! + p.dv!, H = Math.max(p.L!, 0.8);
+      const yF = -p.h0!, yS = yF + p.dE! + p.dP!, yU = yS + p.dS!, yA = yU + p.dU!;
+      const k = talajKeret(p, t, yA, 0, yF - H);
+      const xL = p.di! - Math.min(p.dl!, p.di!);
+      const el: Teglalap[] = [
+        { x0: k.x0, y0: k.y0, x1: k.x1, y1: k.y1, anyag: 'kulso' },
+        { x0: k.x0, y0: 0, x1: k.x1, y1: k.y1, anyag: 'talaj' },
+        ...(yA < 0 ? [{ x0: p.di!, y0: yA, x1: k.x1, y1: 0, anyag: 'talaj' }] : []),
+        { x0: t, y0: yF - H, x1: k.x1, y1: yF, anyag: 'belso' },
+        { x0: 0, y0: yF - H, x1: p.di!, y1: Math.min(-0.3, yS), anyag: 'szig' },
+        { x0: xL, y0: Math.min(-0.3, yS), x1: p.di!, y1: Math.max(p.D!, yA), anyag: 'xps' },
+        { x0: p.di!, y0: yF - H, x1: p.di! + p.dw!, y1: yS, anyag: 'fal' },
+        { x0: p.di! + p.dw!, y0: yF - H, x1: t, y1: yF, anyag: 'vak' },
+        { x0: p.di! + p.dw!, y0: yF, x1: k.x1, y1: yF + p.dE!, anyag: 'esztrich' },
+        { x0: p.di! + p.dw!, y0: yF + p.dE!, x1: k.x1, y1: yS, anyag: 'pszig' },
+        { x0: p.di!, y0: yS, x1: k.x1, y1: yU, anyag: 'lemez' },
+        ...(p.dU! > 0 ? [{ x0: xL, y0: yU, x1: k.x1, y1: yA, anyag: 'xpsU' }] : []),
+      ];
+      const Uw = falU(p);
+      const Rf = p.dE! / p.lamE! + p.dP! / p.lamP! + p.dS! / p.lamS! + p.dU! / p.lamU!;
+      const U0 = U0padlo(p.B!, t, Rf);
+      return { geometria: { x0: k.x0, y0: k.y0, x1: k.x1, y1: k.y1, finom: k.finom, nezet: k.nezet, elemek: el, anyagok: { ...anyagokFal(p), xps: A('Lábazati hőszigetelés', p.lamL!, SZ.xps), talaj: A('Talaj', TALAJ_LAMBDA, SZ.talaj), esztrich: A('Esztrich', p.lamE!, SZ.esztrich), pszig: A('Padló hőszigetelés', p.lamP!, SZ.szig), lemez: A('Lemezalap', p.lamS!, SZ.vb), xpsU: A('Lemez alatti hőszigetelés', p.lamU!, SZ.xps) } },
+        karimak: [{ nev: 'Külső fal', U: Uw, lKulso: H + (yA - yF), lBelso: H }, { nev: `Padló (ISO 13370, B' = ${p.B!.toLocaleString('hu-HU')} m, U0)`, U: U0, lKulso: k.b + t, lBelso: k.b }], meretek: [] };
+    },
+  },
+  {
+    kod: 'labazat_savalap', nev: 'Lábazat – sávalap, talajon fekvő padló', csoport: 'labazat',
+    leiras: 'Sávalapon (lábazati falon) álló külső fal, a padló aljzatbetonon a feltöltésen; lábazati hőszigetelés lenyúlással (függőleges metszet, talajjal, ISO 10211 / 13370). A Ψ a padló–fal csatlakozás Ψ-jébe vihető át.',
+    parameterek: [...falParam(), ...labazatParam(), ...padloParam(),
+      { kulcs: 'dA', nev: 'Aljzatbeton vastagsága', egyseg: 'm', alap: 0.12, min: 0.05, max: 0.3, lepes: 0.01, csoport: 'Alap' },
+      { kulcs: 'lamA', nev: 'Aljzatbeton λ', egyseg: 'W/mK', alap: 1.55, min: 0.5, max: 2.3, lepes: 0.05, csoport: 'Alap' },
+      { kulcs: 'bS', nev: 'Sávalap / lábazati fal szélessége', egyseg: 'm', alap: 0.40, min: 0.2, max: 1.0, lepes: 0.01, csoport: 'Alap' },
+      { kulcs: 'lamS', nev: 'Sávalap λ (beton)', egyseg: 'W/mK', alap: 1.65, min: 0.3, max: 2.6, lepes: 0.05, csoport: 'Alap' },
+      { kulcs: 'Da', nev: 'Alapozási sík a terep alatt', egyseg: 'm', alap: 0.9, min: 0.4, max: 2.5, lepes: 0.05, csoport: 'Alap' },
+      BParam(), karimaParam(1.2)],
+    epit: (p) => {
+      const t = p.di! + p.dw! + p.dv!, H = Math.max(p.L!, 0.8);
+      const yF = -p.h0!, yS = yF + p.dE! + p.dP!, yA = yS + p.dA!;
+      const k = talajKeret(p, t, p.Da!, 0, yF - H);
+      const xL = p.di! - Math.min(p.dl!, p.di!), bS = Math.max(p.bS!, p.dw!);
+      const el: Teglalap[] = [
+        { x0: k.x0, y0: k.y0, x1: k.x1, y1: k.y1, anyag: 'kulso' },
+        { x0: k.x0, y0: 0, x1: k.x1, y1: k.y1, anyag: 'talaj' },
+        ...(yA < 0 ? [{ x0: p.di!, y0: yA, x1: k.x1, y1: 0, anyag: 'feltoltes' }] : []),
+        { x0: t, y0: yF - H, x1: k.x1, y1: yF, anyag: 'belso' },
+        { x0: 0, y0: yF - H, x1: p.di!, y1: Math.min(-0.3, yS), anyag: 'szig' },
+        { x0: xL, y0: Math.min(-0.3, yS), x1: p.di!, y1: Math.max(p.D!, -0.3), anyag: 'xps' },
+        { x0: p.di!, y0: yF - H, x1: p.di! + p.dw!, y1: yS, anyag: 'fal' },
+        { x0: p.di!, y0: yS, x1: p.di! + bS, y1: p.Da!, anyag: 'alap' },
+        { x0: p.di! + p.dw!, y0: yF - H, x1: t, y1: yF, anyag: 'vak' },
+        { x0: p.di! + p.dw!, y0: yF, x1: k.x1, y1: yF + p.dE!, anyag: 'esztrich' },
+        { x0: p.di! + p.dw!, y0: yF + p.dE!, x1: k.x1, y1: yS, anyag: 'pszig' },
+        { x0: p.di! + bS, y0: yS, x1: k.x1, y1: yA, anyag: 'aljzat' },
+      ];
+      const Uw = falU(p);
+      const Rf = p.dE! / p.lamE! + p.dP! / p.lamP! + p.dA! / p.lamA!;
+      const U0 = U0padlo(p.B!, t, Rf);
+      return { geometria: { x0: k.x0, y0: k.y0, x1: k.x1, y1: k.y1, finom: k.finom, nezet: k.nezet, elemek: el, anyagok: { ...anyagokFal(p), xps: A('Lábazati hőszigetelés', p.lamL!, SZ.xps), talaj: A('Talaj', TALAJ_LAMBDA, SZ.talaj), feltoltes: A('Feltöltés', TALAJ_LAMBDA, SZ.feltoltes), esztrich: A('Esztrich', p.lamE!, SZ.esztrich), pszig: A('Padló hőszigetelés', p.lamP!, SZ.szig), alap: A('Sávalap', p.lamS!, SZ.vb), aljzat: A('Aljzatbeton', p.lamA!, SZ.vb) } },
+        karimak: [{ nev: 'Külső fal', U: Uw, lKulso: H + (yA - yF), lBelso: H }, { nev: `Padló (ISO 13370, B' = ${p.B!.toLocaleString('hu-HU')} m, U0)`, U: U0, lKulso: k.b + t, lBelso: k.b }], meretek: [] };
+    },
+  },
+  {
+    kod: 'lapos_teto_attika', nev: 'Lapostető – külső fal (attika)', csoport: 'teto',
+    leiras: 'Vasbeton födémes, felül hőszigetelt lapostető csatlakozása a külső falhoz, a fal fölé nyúló attikával; az attika körbeszigetelve (függőleges metszet).',
+    parameterek: [...falParam(),
+      { kulcs: 'dF', nev: 'Tetőfödém vastagsága', egyseg: 'm', alap: 0.20, min: 0.1, max: 0.4, lepes: 0.01, csoport: 'Tető' },
+      { kulcs: 'lamF', nev: 'Tetőfödém λ (vasbeton)', egyseg: 'W/mK', alap: 2.3, min: 0.1, max: 2.6, lepes: 0.05, csoport: 'Tető' },
+      { kulcs: 'dR', nev: 'Tető hőszigetelése', egyseg: 'm', alap: 0.25, min: 0, max: 0.6, lepes: 0.01, csoport: 'Tető' },
+      { kulcs: 'lamR', nev: 'Tető hőszigetelés λ', egyseg: 'W/mK', alap: 0.036, min: 0.015, max: 0.2, lepes: 0.001, csoport: 'Tető' },
+      { kulcs: 'hAt', nev: 'Attika magassága a födém fölött', egyseg: 'm', alap: 0.6, min: 0, max: 1.5, lepes: 0.01, csoport: 'Attika' },
+      { kulcs: 'lamAt', nev: 'Attikafal λ', egyseg: 'W/mK', alap: 2.3, min: 0.05, max: 2.6, lepes: 0.05, csoport: 'Attika' },
+      { kulcs: 'dAt', nev: 'Attika belső oldali hőszigetelése', egyseg: 'm', alap: 0.08, min: 0, max: 0.3, lepes: 0.01, csoport: 'Attika' },
+      { kulcs: 'dTop', nev: 'Attika tetején a hőszigetelés', egyseg: 'm', alap: 0.05, min: 0, max: 0.2, lepes: 0.01, csoport: 'Attika' },
+      karimaParam(1.2)],
+    epit: (p) => {
+      const t = p.di! + p.dw! + p.dv!, H = Math.max(p.L!, 0.8), Lx = Math.max(p.L!, t + p.dAt! + 0.6), m = 0.05;
+      const yT = -p.dF!, yAt = yT - Math.max(p.hAt!, p.dR!), yTop = yAt - p.dTop!;
+      const xa = p.di! + p.dw!;
+      const el: Teglalap[] = [
+        { x0: -m, y0: yTop - m, x1: Lx, y1: H, anyag: 'kulso' },
+        { x0: t, y0: 0, x1: Lx, y1: H, anyag: 'belso' },
+        { x0: 0, y0: yTop, x1: xa + (p.hAt! > p.dR! ? p.dAt! : 0), y1: yAt, anyag: 'szig' },
+        { x0: 0, y0: yAt, x1: p.di!, y1: H, anyag: 'szig' },
+        { x0: p.di!, y0: 0, x1: xa, y1: H, anyag: 'fal' },
+        { x0: p.di!, y0: yAt, x1: xa, y1: 0, anyag: 'attika' },
+        { x0: xa, y0: 0, x1: t, y1: H, anyag: 'vak' },
+        { x0: xa, y0: yT, x1: Lx, y1: 0, anyag: 'fodem' },
+        ...(p.dR! > 0 ? [{ x0: xa, y0: yT - p.dR!, x1: Lx, y1: yT, anyag: 'tszig' }] : []),
+        ...(p.dAt! > 0 && p.hAt! > p.dR! ? [{ x0: xa, y0: yAt, x1: xa + p.dAt!, y1: yT - p.dR!, anyag: 'tszig' }] : []),
+      ];
+      const Uw = falU(p), Ur = U1D([[p.dF!, p.lamF!], [p.dR!, p.lamR!]]);
+      return { geometria: { x0: -m, y0: yTop - m, x1: Lx, y1: H, elemek: el, anyagok: { ...anyagokFal(p), attika: A('Attika / koszorú', p.lamAt!, SZ.vb), fodem: A('Tetőfödém', p.lamF!, SZ.fodem), tszig: A('Tető hőszigetelés', p.lamR!, SZ.szig) } },
+        karimak: [{ nev: 'Külső fal', U: Uw, lKulso: H + p.dF! + p.dR!, lBelso: H }, { nev: 'Lapostető', U: Ur, lKulso: Lx, lBelso: Lx - t }], meretek: [] };
+    },
+  },
+);
 
 export const sablon = (kod: string) => HOHID_SABLONOK.find((s) => s.kod === kod);
 export const alapParameterek = (s: HohidSablon) => Object.fromEntries(s.parameterek.map((p) => [p.kulcs, p.alap]));

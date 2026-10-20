@@ -6,8 +6,7 @@ import type { Content, TableCell, TDocumentDefinitions } from 'pdfmake/interface
 import { kovetelmeny, sulyozo, klima, epuletfizika, hoszukseglet as H, type EpuletEredmeny, type RendszerEredmeny, type NyilaszaroElem } from '@mag/index';
 import {
   retegrendSzamitas, nyilaszaroAdatok, nyilaszaroGeometria, FOTO_KATEGORIAK, kovetelmenyNev, szabalyozasErtek, hoszuksegletBemenet,
-  SZEREP_NEV, type Atalakitas, type Projekt,
-} from './modell';
+  SZEREP_NEV, type Atalakitas, type Projekt, chiErvenyes } from './modell';
 import { anyag } from './katalogus';
 import { MAG_VERZIO } from './tarolo-tipusok';
 import { alternativVizsgalat, ALT_NEV, URLAP } from './alternativ';
@@ -143,7 +142,7 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
     try { er = retegrendSzamitas(r); } catch { /* hiányos */ }
     const kn = kovetelmenyNev(r.kovetelmenyKod);
     const fel = p.feluletek.find((x) => x.retegrendId === r.id);
-    const chi = fel?.chi ?? 0;
+    const chi = fel ? chiErvenyes(p, fel) : 0;
     const blokk: Content[] = [{
       columns: [
         { text: r.nev, bold: true, fontSize: 8.5 },
