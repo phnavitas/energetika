@@ -294,11 +294,19 @@ export function alaprajzElemez(lap: Lap): AlaprajzEredmeny {
   mutatokKeres(lap, pec);
   const jegy = jegyzekSorok(lap.szovegek);
   const helyisegek: TervHelyiseg[] = [...pec];
+  // a jegyzék sorát a pecséthez kötjük: azonos kód (írásmódtól függetlenül), vagy azonos terület és hasonló név
+  const kodN = (k?: string) => (k ?? '').toLowerCase().replace(/[^a-z0-9]/g, '').replace(/(\D)0+(\d)/g, '$1$2');
+  const nevN = (n: string) => n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z]/g, '');
+  const parja = (j: TervHelyiseg) => pec.find((h) => (j.kod && h.kod && kodN(h.kod) === kodN(j.kod)))
+    ?? pec.find((h) => !h.jegyzekA && Math.abs(h.A - j.A) < 0.011 && (nevN(h.nev).includes(nevN(j.nev)) || nevN(j.nev).includes(nevN(h.nev))) && (!h.egyseg || !j.egyseg || kodN(h.egyseg) === kodN(j.egyseg)));
+  let csakJegyzek = 0;
   for (const j of jegy) {
-    const p = j.kod ? helyisegek.find((h) => h.kod === j.kod) : undefined;
-    if (p) { p.jegyzekA = j.A; if (Math.abs(p.A - j.A) > 0.011) figy.push(`${p.kod} ${p.nev}: a pecsét ${p.A.toFixed(2)} m², a jegyzék ${j.A.toFixed(2)} m² – ellenőrizd.`); if (!p.burkolat && j.burkolat) p.burkolat = j.burkolat; }
-    else if (!pec.length || (j.kod && !helyisegek.some((h) => h.kod === j.kod))) helyisegek.push(j);
+    const p = parja(j);
+    if (p) { p.jegyzekA = j.A; if (Math.abs(p.A - j.A) > 0.011) figy.push(`${p.kod ?? p.nev}: a pecsét ${p.A.toFixed(2)} m², a jegyzék ${j.A.toFixed(2)} m² – ellenőrizd.`); if (!p.burkolat && j.burkolat) p.burkolat = j.burkolat; continue; }
+    if (helyisegek.some((h) => h.forras === 'jegyzek' && kodN(h.kod) === kodN(j.kod) && Math.abs(h.A - j.A) < 0.011)) continue;
+    helyisegek.push(j); if (pec.length) csakJegyzek++;
   }
+  if (csakJegyzek) figy.push(`${csakJegyzek} helyiség csak a jegyzékben szerepel (pecsétje nem található) – alapból nem kerül át, ellenőrizd.`);
   if (!pec.length && jegy.length) figy.push('Helyiségpecsétet nem találtam, a helyiségjegyzékből olvastam be (a helyiségek helye a rajzon nem ismert).');
   if (!helyisegek.length) figy.push('Helyiséget nem találtam: a pecsétekben „xx,xx m²” formájú területnek kell szerepelnie.');
   helyisegek.sort((a, b) => (a.kod ?? '').localeCompare(b.kod ?? '', 'hu', { numeric: true }));

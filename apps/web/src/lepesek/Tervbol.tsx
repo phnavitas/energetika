@@ -68,7 +68,10 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     const e = al.e.eszak;
     setEszak(e ? norm(e.szog + eszakJavitas(e.alairas)) : 0);
     setEgysegek(new Set(al.e.egysegek.slice(0, 1)));
-    setKizartH(new Set()); setKat({}); setKizartNy(new Set());
+    // ha van helyiségpecsét, a csak a jegyzékben szereplő sorok (párjuk nincs a rajzon) alapból nem kerülnek át
+    const vanPecset = al.e.helyisegek.some((h) => h.forras === 'pecset');
+    setKizartH(new Set(vanPecset ? al.e.helyisegek.map((h, i) => (h.forras === 'jegyzek' ? i : -1)).filter((i) => i >= 0) : []));
+    setKat({}); setKizartNy(new Set());
   }, [al]);
   useEffect(() => {
     if (!me) return;

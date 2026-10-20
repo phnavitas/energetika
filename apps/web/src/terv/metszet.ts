@@ -132,6 +132,8 @@ export function anyagKepez(leiras: string, dCm: number | null, szerep: Szerep | 
   if (/elasztomer|bitumen|bit\. ?lemez|talajnedv|vízszig/.test(n)) return { anyagId: 'bitumenes_lemez' };
   if (/pe fólia|pe párazáró|párazáró|technológiai szig|védőfólia|páraáteresztő/.test(n)) return { anyagId: 'pe_folia' };
   if (/laminált|parketta/.test(n)) return { anyagId: 'parketta' };
+  // általános / meg nem nevezett padlóburkolat: greslap / kerámia
+  if (/burkolat|greslap|gres\b/.test(n) && !/fal ?burkolat|tető|térburkol/.test(n)) return { anyagId: 'keramia' };
   if (/kerámia padló|krámia|kerámia burkolat|járólap|greslap|csempe/.test(n)) return { anyagId: 'keramia' };
   if (/esztrich|aljzatbeton/.test(n)) return { anyagId: 'esztrich_cement' };
   if (/vasalt aljzat|vasbeton|monolit beton|alaplemez/.test(n)) return { anyagId: 'vasbeton_2300' };

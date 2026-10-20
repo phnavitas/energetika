@@ -21,7 +21,10 @@ export interface TervNyilas {
 }
 
 const SZAM = /^\d{2,3}$/;
-const PM = /^(pm|ph|mv|p\.?m\.?)\s*=?\s*([+-]?\d{1,3})$/i;
+const PM = /^(?:pm|ph|mv|p\.m\.?|mellvéd|parapet)\s*[.:=]?\s*([+-]?\d{1,3}(?:[,.]\d{1,2})?)\s*(cm|m)?$/i;
+/** Egy szövegben: „90/150”, „90x150”, „90×150”, opcionálisan mellvéddel: „90/150 pm 90”. */
+const EGYBEN = /^(\d{2,3})\s*[\/x×*]\s*(\d{2,3})(?:\s*[,;]?\s*(?:pm|ph|mv|p\.m\.?|mellvéd)\s*[.:=]?\s*([+-]?\d{1,3}))?$/i;
+const pmErtek = (v: string, e?: string) => { const x = Number(v.replace(',', '.')); return e?.toLowerCase() === 'm' || (v.includes(',') || v.includes('.')) && x < 3 ? x : x / 100; };
 
 function geom(t: Szoveg) {
   const th = t.szog * Math.PI / 180;
@@ -35,6 +38,13 @@ export interface NyilasFelirat { szel: number; mag: number; pm: number | null; x
 export function nyilasFeliratok(sz: Szoveg[]): NyilasFelirat[] {
   const szamok = sz.filter((t) => SZAM.test(t.s.trim()) && Number(t.s) >= 30 && Number(t.s) <= 600);
   const pmek = sz.map((t) => ({ t, m: PM.exec(szovegJavit(t.s)) })).filter((x) => x.m);
+  // „pm” és a szám külön szövegelemben
+  for (const t of sz) {
+    if (!/^(pm|mv|ph)\.?:?$/i.test(t.s.trim())) continue;
+    const g = geom(t);
+    const sz2 = sz.find((u) => u !== t && /^[+-]?\d{1,3}$/.test(u.s.trim()) && Math.abs(u.szog - t.szog) < 2 && Math.hypot(geom(u).cx - g.cx, geom(u).cy - g.cy) < t.meret * 2.5);
+    if (sz2) pmek.push({ t, m: PM.exec(`pm ${sz2.s.trim()}`) });
+  }
   const hasznalt = new Set<Szoveg>(); const pmHasznalt = new Set<Szoveg>();
   const ki: NyilasFelirat[] = [];
   for (const a of szamok) {
@@ -66,7 +76,19 @@ export function nyilasFeliratok(sz: Szoveg[]): NyilasFelirat[] {
     }
     if (pm) pmHasznalt.add(pm.t);
     hasznalt.add(a); hasznalt.add(legjobb.b);
-    ki.push({ szel: Number(felso.s) / 100, mag: Number(also.s) / 100, pm: pm ? Number(pm.m![2]) / 100 : null, x, y, fal: Math.abs(ga.fel[0]) >= Math.abs(ga.fel[1]) ? 'v' : 'f' });
+    ki.push({ szel: Number(felso.s) / 100, mag: Number(also.s) / 100, pm: pm ? pmErtek(pm.m![1]!, pm.m![2]) : null, x, y, fal: Math.abs(ga.fel[0]) >= Math.abs(ga.fel[1]) ? 'v' : 'f' });
+  }
+  // egy szövegben megadott méretek
+  for (const t of sz) {
+    const m = EGYBEN.exec(szovegJavit(t.s)); if (!m) continue;
+    const w = Number(m[1]), h = Number(m[2]); if (w < 30 || h < 30) continue;
+    const g = geom(t);
+    let pm: number | null = m[3] !== undefined ? Number(m[3]) / 100 : null;
+    if (pm === null) {
+      const q = pmek.filter((x) => !pmHasznalt.has(x.t)).map((x) => ({ x, d: Math.hypot(geom(x.t).cx - g.cx, geom(x.t).cy - g.cy) })).filter((x) => x.d < t.meret * 4.8).sort((a, b) => a.d - b.d)[0];
+      if (q) { pmHasznalt.add(q.x.t); pm = pmErtek(q.x.m![1]!, q.x.m![2]); }
+    }
+    ki.push({ szel: w / 100, mag: h / 100, pm, x: g.cx, y: g.cy, fal: Math.abs(g.dir[0]) >= Math.abs(g.dir[1]) ? 'v' : 'f' });
   }
   return ki;
 }
