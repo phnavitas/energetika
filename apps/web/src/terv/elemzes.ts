@@ -70,11 +70,13 @@ export function lapSzerep(lap: Lap): { szerep: TervLap['szerep']; cim: string } 
   return { szerep: 'egyeb', cim: cim || 'Egyéb lap' };
 }
 
-export async function pdfLapok(f: File, kepSzel = 2000): Promise<TervLap[]> {
+export async function pdfLapok(f: File, kepSzel = 2000, halad?: (kesz: number, ossz: number) => void): Promise<TervLap[]> {
   const pdfjs = await pdfjsBetolt();
   const doc = await pdfjs.getDocument({ data: new Uint8Array(await f.arrayBuffer()), verbosity: 0, isEvalSupported: false }).promise;
   const ki: TervLap[] = [];
-  for (let n = 1; n <= Math.min(doc.numPages, 30); n++) {
+  const ossz = Math.min(doc.numPages, 30);
+  halad?.(0, ossz);
+  for (let n = 1; n <= ossz; n++) {
     const page = await doc.getPage(n);
     const lap = await lapKinyer(pdfjs, page);
     const vp0 = page.getViewport({ scale: 1 });
@@ -86,6 +88,7 @@ export async function pdfLapok(f: File, kepSzel = 2000): Promise<TervLap[]> {
     const { szerep, cim } = lapSzerep(lap);
     ki.push({ fajl: f.name, oldal: n, szerep, cim, lap, kep: c.toDataURL('image/jpeg', 0.82), kepSzel: c.width, kepMag: c.height, szurke: szurkeKep(c, scale) });
     page.cleanup();
+    halad?.(n, ossz);
   }
   await doc.destroy();
   return ki;

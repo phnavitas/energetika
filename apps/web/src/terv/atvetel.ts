@@ -8,10 +8,12 @@ import { ujId, sablonbolNyilaszaro, retegrendAutoNev, feluletekOsszevon, SZEREP_
 import { nyilaszaroSablon as NS, szerkezetSablon as SS } from '@mag/index';
 import type { Tajolas } from '@mag/tablak/klima';
 import type { TervRetegUI, SzerepBecsles, TervRetegrend } from './metszet';
-import { egtaj } from './alaprajz';
+import { egtaj, szintNev } from './alaprajz';
 
 export interface AtvettHelyiseg {
   kod?: string; nev: string; burkolat?: string; A: number; kategoria: HelyisegKategoria;
+  /** Lakás / egység megjelenő neve (csoportosításhoz). */
+  egyseg?: string;
   /** Külső falak a homlokzat lapiránya szerint (nettó belső hossz, m). */
   falak: { irany: number; hossz: number }[];
   /** Fal fűtetlen, gyengén kapcsolt helyiség (pl. garázs) felé. */
@@ -143,6 +145,7 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
     const kod = h.kod && n > 1 && sz ? h.kod.replace(new RegExp(`^([A-ZÁÉ]{1,2}\\.)${szintek[0]}(\\.)`), (_m, a: string, b: string) => `${a}${sz}${b}`) : h.kod;
     const hz: Helyiseg = {
       id, nev: (kod ? `${h.nev} (${kod})` : h.nev) + (n > 1 && kod === h.kod && sz ? ` – ${szintCimke(sz)}` : ''), kategoria: h.kategoria, A: kerek(h.A), h: a.belmagassag,
+      ...(sz ? { szint: szintNev(sz) } : {}), ...(h.egyseg ? { egyseg: h.egyseg.replace(/ · (földszint|pince|tetőtér|\d+\. emelet)/, '') } : {}),
       hsz: {
         kulsoFalak: falRid ? h.falak.filter((f) => f.hossz >= 0.3).map((f) => ({ id: ujId(), retegrendId: falRid, hossz: kerek(f.hossz) })) : [],
         padlas: legfelso && si === n - 1 && !!padlas, padlo: foldszint && si === 0 && !!padlok.length, szomszedok: [],

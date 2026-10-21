@@ -34,7 +34,10 @@ export function HelyisegekLepes({ p, modosit }: { p: Projekt; modosit: Modosit }
           <table class="tabla">
             <thead><tr><th>Helyiség</th><th>Besorolás</th><th class="szam">Alapterület</th><th class="szam">Belmagasság</th><th class="szam">Térfogat</th><th></th></tr></thead>
             <tbody>
-              {p.helyisegek.map((h, i) => (
+              {(() => {
+                // tervből átvett helyiségek: szintenként, azon belül lakásonként csoportosítva, részösszegekkel
+                const csoportos = p.helyisegek.some((h) => h.szint || h.egyseg);
+                const sor = (h: Projekt['helyisegek'][number], i: number) => (
                 <tr>
                   <td style="min-width:200px"><Szoveg ertek={h.nev} hely="pl. Nappali" valt={(v) => modosit((q) => { const x = q.helyisegek[i]!; const regi = kategoriaJavaslat(x.nev); x.nev = v; const uj = kategoriaJavaslat(v); if (uj && (!x.nev || regi === x.kategoria || !regi)) x.kategoria = uj; })} /></td>
                   <td style="min-width:200px"><Valaszto cimke="Besorolás" ertek={h.kategoria} valt={(v) => modosit((q) => { q.helyisegek[i]!.kategoria = v; })} opciok={KATEGORIAK} /></td>
@@ -43,7 +46,25 @@ export function HelyisegekLepes({ p, modosit }: { p: Projekt; modosit: Modosit }
                   <td class="szam">{sz(h.A * h.h, 1)} m³</td>
                   <td><button class="gomb halk-gomb" aria-label={`${h.nev || 'Helyiség'} törlése`} onClick={() => modosit((q) => { q.helyisegek.splice(i, 1); })}>Törlés</button></td>
                 </tr>
-              ))}
+                );
+                if (!csoportos) return p.helyisegek.map(sor);
+                const An = (l: { h: Projekt['helyisegek'][number] }[]) => l.filter(({ h }) => h.kategoria !== 'gyengen_kapcsolt').reduce((s0, { h }) => s0 + h.A, 0);
+                const szintek = [...new Set(p.helyisegek.map((h) => h.szint ?? 'Szint nélkül'))];
+                return szintek.flatMap((szn) => {
+                  const lista = p.helyisegek.map((h, i) => ({ h, i })).filter(({ h }) => (h.szint ?? 'Szint nélkül') === szn);
+                  const egysegek = [...new Set(lista.map(({ h }) => h.egyseg ?? '–'))];
+                  return [
+                    <tr class="csoport-fej"><td colSpan={2}><strong>{szn}</strong> <span class="halkabb">{egysegek.filter((e) => e !== '–').length ? `${egysegek.filter((e) => e !== '–').length} egység · ` : ''}{lista.length} helyiség</span></td><td class="szam"><strong>{sz(An(lista), 2)} m²</strong></td><td colSpan={3}></td></tr>,
+                    ...egysegek.flatMap((eg) => {
+                      const el = lista.filter(({ h }) => (h.egyseg ?? '–') === eg);
+                      return [
+                        ...(egysegek.length > 1 || eg !== '–' ? [<tr class="csoport-al"><td colSpan={2}>{eg === '–' ? 'Egyéb' : eg}</td><td class="szam">{sz(An(el), 2)} m²</td><td colSpan={3}></td></tr>] : []),
+                        ...el.map(({ h, i }) => sor(h, i)),
+                      ];
+                    }),
+                  ];
+                });
+              })()}
             </tbody>
             <tfoot><tr><td colSpan={2}>Hasznos alapterület és fűtött térfogat</td><td class="szam">{sz(AN, 2)} m²</td><td></td><td class="szam">{sz(V, 1)} m³</td><td></td></tr></tfoot>
           </table>

@@ -16,7 +16,9 @@ import type { FelujitasBeallitas } from './felujitas';
 import type { AlternativBeallitas } from './alternativ';
 
 export type HelyisegKategoria = 'kondicionalt' | 'erosen_kapcsolt' | 'gyengen_kapcsolt';
-export interface Helyiseg { id: string; nev: string; kategoria: HelyisegKategoria; A: number; h: number; hsz?: HelyisegHsz; }
+export interface Helyiseg { id: string; nev: string; kategoria: HelyisegKategoria; A: number; h: number; hsz?: HelyisegHsz;
+  /** Csoportosításhoz (tervből): a szint („Földszint”, „1. emelet”) és a lakás / egység („A épület · 4. lakás”). */
+  szint?: string; egyseg?: string; }
 
 /** Helyiségenkénti hőszükséglet adatai (MSZ EN 12831); üres mező = alapérték. */
 export interface HelyisegHsz {
