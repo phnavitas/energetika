@@ -380,18 +380,25 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
           </table>
           <div class="tabla-gorgeto">
             <table class="tabla">
-              <thead><tr><th></th><th>Fajta</th><th class="szam">Szélesség × magasság</th><th class="szam">Mellvéd</th><th>Helyiség</th><th>Égtáj</th></tr></thead>
+              <thead><tr><th></th><th>Fajta</th><th class="szam">Szélesség × magasság</th><th class="szam">Mellvéd</th><th>Helyiség</th><th>Égtáj</th><th class="szam">Db</th></tr></thead>
               <tbody>
-                {nyilasok.map(({ n, k, hi }) => (
-                  <tr style={kizartNy.has(k) ? 'opacity:.55' : ''}>
-                    <td><input type="checkbox" aria-label="Átvétel" checked={!kizartNy.has(k)} onChange={(e) => { const s = new Set(kizartNy); if ((e.target as HTMLInputElement).checked) s.delete(k); else s.add(k); setKizartNy(s); }} /></td>
+                {(() => {
+                  // azonos fajta, méret, mellvéd, helyiség és égtáj: egy sor darabszámmal
+                  const csop = new Map<string, { n: (typeof nyilasok)[number]['n']; hi: number; ks: number[] }>();
+                  for (const { n, k, hi } of nyilasok) { const kk = `${n.fajta}|${n.szel}|${n.mag}|${n.pm}|${hi}|${n.irany}`; const c = csop.get(kk); if (c) c.ks.push(k); else csop.set(kk, { n, hi, ks: [k] }); }
+                  const szSz = aIdx >= 0 ? Math.max(1, lapSzintek(aIdx).length) : 1;
+                  return [...csop.values()].map(({ n, hi, ks }) => { const ki = ks.every((k) => kizartNy.has(k)); return (
+                  <tr style={ki ? 'opacity:.55' : ''}>
+                    <td><input type="checkbox" aria-label="Átvétel" checked={!ki} onChange={(e) => { const s = new Set(kizartNy); for (const k of ks) { if ((e.target as HTMLInputElement).checked) s.delete(k); else s.add(k); } setKizartNy(s); }} /></td>
                     <td>{FAJTA_NEV[n.fajta]}</td>
                     <td class="szam">{Math.round(n.szel * 100)} × {Math.round(n.mag * 100)} cm</td>
                     <td class="szam">{n.pm === null ? '–' : `${Math.round(n.pm * 100)} cm`}</td>
                     <td>{helyisegek[hi]?.kod} {helyisegek[hi]?.nev}{kategoria(hi) === 'gyengen_kapcsolt' && <small class="halkabb" style="display:block">fűtetlen tér – nem kerül a hőburokba</small>}</td>
                     <td>{egtaj(n.irany!, eszakSz)}</td>
+                    <td class="szam">{ks.length}{szSz > 1 && <span class="halkabb"> × {szSz} szint</span>}</td>
                   </tr>
-                ))}
+                  ); });
+                })()}
               </tbody>
             </table>
           </div>

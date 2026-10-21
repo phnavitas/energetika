@@ -494,6 +494,37 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   // visszanövesztés a falsíkig (a hajszálrés-tágítás miatt)
   for (let i = 0; i < w * h; i++) if (kulsoMag[i] && !helyCimke[i]) helyCimke[i] = 1;
   araszt(helyCimke, szabad, w, h);
+  if (sraffMod) {
+    // mag nélküli zsebek (a lépcső, a folyosó rajzelemei – korlát, fokok – miatt leválasztott részek): ahhoz a
+    // helyiséghez tartoznak, amelyikkel a leghosszabb áthidalt réssel érintkeznek (a falon át nem)
+    const latott2 = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+      if (helyCimke[i] || !szabad[i] || latott2[i]) continue;
+      const komp: number[] = [i]; latott2[i] = 1;
+      for (let k = 0; k < komp.length; k++) {
+        const q = komp[k]!, x = q % w;
+        for (const n of [x > 0 ? q - 1 : -1, x < w - 1 ? q + 1 : -1, q - w, q + w]) if (n >= 0 && n < w * h && szabad[n] && !helyCimke[n] && !latott2[n]) { latott2[n] = 1; komp.push(n); }
+      }
+      if (komp.length * px * px < 0.3) continue;
+      // a zsebet határoló nyílás-pixeleken át (legfeljebb ~0,6 m) melyik helyiség érhető el
+      const szam = new Map<number, number>();
+      const lepes = Math.round(0.6 / px);
+      for (const q of komp) {
+        const x = q % w, y = (q / w) | 0;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+          let xx = x + dx, yy = y + dy, k = 0;
+          if (xx < 0 || yy < 0 || xx >= w || yy >= h || !nyilas[yy * w + xx]) continue;
+          while (k < lepes && xx >= 0 && yy >= 0 && xx < w && yy < h && nyilas[yy * w + xx]) { xx += dx; yy += dy; k++; }
+          if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+          const c = helyCimke[yy * w + xx]!;
+          if (c >= 2) szam.set(c, (szam.get(c) ?? 0) + 1);
+        }
+      }
+      let legjobb = 0, db = 0;
+      for (const [c, n] of szam) if (n > db) { legjobb = c; db = n; }
+      if (legjobb && db * px >= 0.3) for (const q of komp) helyCimke[q] = legjobb;
+    }
+  }
   const szivarog = magok.map(() => false);
   for (let x = 0; x < w; x++) for (const y of [0, h - 1]) { const c = helyCimke[y * w + x]!; if (c >= 2) szivarog[c - 2] = true; }
   for (let y = 0; y < h; y++) for (const x of [0, w - 1]) { const c = helyCimke[y * w + x]!; if (c >= 2) szivarog[c - 2] = true; }
