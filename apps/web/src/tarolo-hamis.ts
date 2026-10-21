@@ -22,6 +22,8 @@ const db = {
   nyilaszarok: [] as (T.KonyvtarNyilaszaro & { irodaId: string })[],
   szamitasok: [] as unknown[],
   szettek: [] as (T.IrodaiSzett & { irodaId: string })[],
+  profil: null as import('./modell').Tanusito | null,
+  sajatProjekt: 0,
   hivasok: [] as string[],
 };
 (window as unknown as { __hamis: typeof db }).__hamis = db;
@@ -31,6 +33,7 @@ export const sb = null;
 export const tavoliElerheto = true;
 export const MAG_VERZIO = '0.3.0';
 export { hibaSzoveg, FORRAS_TIPUS_NEV } from './tarolo-tipusok';
+import { hibaSzoveg as hibaSzovegH } from './tarolo-tipusok';
 
 export async function munkamenet() { return kesleltet(db.felh); }
 export function authFigyel(cb: (f: T.Felhasznalo | null) => void) { figyelo = cb; return () => { figyelo = null; }; }
@@ -39,7 +42,7 @@ export async function belepesJelszoval(email: string, jelszo: string) {
   if (jelszo !== 'jelszo123') throw new Error('Hibás e-mail cím vagy jelszó.');
   db.felh = { id: 'f1', email }; figyelo?.(db.felh);
 }
-export async function regisztracio() { await kesleltet(0); return false; }
+export async function regisztracio(email: string, _j: string, profil?: { nev: string; kamara: string; jogosultsag: string }) { await kesleltet(0); if (profil) db.profil = { nev: profil.nev, kamara: profil.kamara as 'MEK', jogosultsag: profil.jogosultsag, email, telefon: '' }; return false; }
 export async function belepesiLink() { await kesleltet(0); }
 export async function kilepes() { db.felh = null; figyelo?.(null); }
 
@@ -67,7 +70,8 @@ export async function projektBetolt(id: string) {
 }
 export async function projektUj(irodaId: string, p: Projekt, o: T.Osszesito | null) {
   const sor = { id: uid(), irodaId, nev: p.meta.nev || 'Névtelen projekt', cim: p.meta.telepules || null, statusz: 'vazlat', dokumentum: structuredClone(p), osszesito: o, verzio: 1, modositva: most() };
-  db.projektek.push(sor); db.hivasok.push('uj');
+  if (!/^(TÉ|SZÉS6) \d{2}-\d{4,5}$/.test(db.profil?.jogosultsag ?? '') && db.sajatProjekt >= 1) { await kesleltet(0); throw new Error(hibaSzovegH({ message: 'TANUSITO_SZAM_KELL' })); }
+  db.projektek.push(sor); db.hivasok.push('uj'); db.sajatProjekt++;
   return kesleltet({ id: sor.id, verzio: 1, modositva: sor.modositva });
 }
 export async function projektMent(id: string, v: number, p: Projekt, o: T.Osszesito | null): Promise<T.MentesEredmeny> {
@@ -104,3 +108,7 @@ export async function szettMent(irodaId: string, nev: string, leiras: string, g:
   db.szettek.push({ id: uid(), irodaId, nev, leiras, futes: structuredClone(g.futes), hmv: structuredClone(g.hmv), szellozes: structuredClone(g.szellozes) }); await kesleltet(0);
 }
 export async function szettTorol(id: string) { db.szettek = db.szettek.filter((x) => x.id !== id); await kesleltet(0); }
+
+export async function profilBetolt() { return kesleltet(db.profil); }
+export async function profilMent(t: import('./modell').Tanusito) { db.profil = structuredClone(t); db.hivasok.push('profil'); await kesleltet(0); }
+export async function sajatProjektSzam() { return kesleltet(db.sajatProjekt); }

@@ -4,14 +4,11 @@ import { Szam, Valaszto, sz } from '../ui';
 import { kategoriaJavaslat } from './Helyisegek';
 import { anyag } from '../katalogus';
 import { pecsetKinyer, type PecsetAdat } from '../terv/pecset';
-import panelUrl from '../mintak/tipusalaprajz_panel.pdf?url';
-import blokkosUrl from '../mintak/tipusalaprajz_blokkos.pdf?url';
-import panelSzurkeUrl from '../mintak/tipusalaprajz_panel_szurke.png?url';
-import blokkosSzurkeUrl from '../mintak/tipusalaprajz_blokkos_szurke.png?url';
 import type { SzurkeKep } from '../terv/autohelyiseg';
 import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, eszakJavitas, eszakJavitasMent, type TervLap } from '../terv/elemzes';
 import { egtaj } from '../terv/alaprajz';
 import { tervAtvesz, type AtvettNyilas } from '../terv/atvetel';
+import { MintaLakasok } from './MintaLakasok';
 
 type Modosit = (f: (q: Projekt) => void) => void;
 
@@ -71,16 +68,9 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     if (mIdx < 0) setMIdx(osszes.findIndex((l) => l.szerep === 'metszet'));
   }
 
-  /** Beépített típusalaprajz-mintalap (panel / blokkos lakóépületek szekciói): a 2. oldal az alaprajzlap. */
-  async function mintalap(fajta: 'panel' | 'blokkos') {
-    const url = fajta === 'panel' ? panelUrl : blokkosUrl;
-    setFolyamat('Mintalap betöltése…');
-    try {
-      const b = await (await fetch(url)).blob();
-      const sz = await szurkeBetolt(fajta === 'panel' ? panelSzurkeUrl : blokkosSzurkeUrl, 2);
-      await betolt([new File([b], fajta === 'panel' ? 'Típusalaprajzok – panel.pdf' : 'Típusalaprajzok – blokkos.pdf', { type: 'application/pdf' })], 2, sz);
-      setPadloAt(false); setTetoAt(false); setMintaFajta(fajta);
-    } catch (e) { setFolyamat(null); setHiba(`A mintalap nem tölthető be: ${(e as Error).message}`); }
+  /** Beépített típusalaprajz-mintalap (panel / blokkos): előre feldolgozott lakásadatok, kattintásos lakásválasztás. */
+  function mintalap(fajta: 'panel' | 'blokkos') {
+    setLapok([]); setAIdx(-1); setMIdx(-1); setKesz(null); setHiba(null); setMintaFajta(fajta);
   }
 
   const aLap = aIdx >= 0 ? lapok[aIdx] : undefined;
@@ -167,9 +157,9 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
         <h2>Tervlapok</h2>
         <p class="halk">Tölts fel PDF tervlapokat (vektoros, rajzolóprogramból exportált – nem szkennelt). A program felismeri az alaprajzot és a metszetet, és kiolvassa a helyiségeket, az északjelet, a rétegrendeket, a szintmagasságokat, a külső falakat és a nyílászárókat. Átvétel előtt minden adat ellenőrizhető és javítható. A fájl nem kerül fel a szerverre: a feldolgozás a böngészőben történik.</p>
         <div class="gombsor">
-          <button class="gomb" onClick={() => void mintalap('panel')}>Panel típusalaprajzok</button>
-          <button class="gomb" onClick={() => void mintalap('blokkos')}>Blokkos típusalaprajzok</button>
-          <label class="gomb fo" style="cursor:pointer">PDF tervlapok kiválasztása<input type="file" accept="application/pdf,.pdf" multiple style="display:none" onChange={(e) => { const t = e.target as HTMLInputElement; void betolt(t.files).then(() => { t.value = ''; }); }} /></label>
+          <button class={`gomb${mintaFajta === 'panel' ? ' aktiv-gomb' : ''}`} onClick={() => mintalap('panel')}>Panel típusalaprajzok</button>
+          <button class={`gomb${mintaFajta === 'blokkos' ? ' aktiv-gomb' : ''}`} onClick={() => mintalap('blokkos')}>Blokkos típusalaprajzok</button>
+          <label class="gomb fo" style="cursor:pointer">PDF tervlapok kiválasztása<input type="file" accept="application/pdf,.pdf" multiple style="display:none" onChange={(e) => { const t = e.target as HTMLInputElement; setMintaFajta(null); void betolt(t.files).then(() => { t.value = ''; }); }} /></label>
           {lapok.length > 0 && <button class="gomb halk-gomb semleges" onClick={() => { setLapok([]); setAIdx(-1); setMIdx(-1); setKesz(null); }}>Lapok törlése</button>}
           {folyamat && <span class="halk" role="status">{folyamat}</span>}
         </div>
@@ -191,6 +181,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
           </div>
         )}
       </section>
+
+      {mintaFajta && <MintaLakasok fajta={mintaFajta} modosit={modosit} ugrik={ugrik} />}
 
       {al && aLap && (
         <section class="szakasz">
@@ -415,16 +407,4 @@ function pecsetAtvesz(q: Projekt, d: PecsetAdat) {
   if (d.hrsz) q.meta.hrsz = d.hrsz;
   if (d.cim) { q.meta.irsz = d.cim.irsz; q.meta.telepules = d.cim.telepules; q.meta.kozterulet = d.cim.kozterulet; q.meta.kozteruletJelleg = d.cim.jelleg || q.meta.kozteruletJelleg; q.meta.hazszam = d.cim.hazszam; }
   else if (d.helyszin && !q.meta.telepules) q.meta.telepules = d.helyszin;
-}
-
-/** Előre elkészített árnyalatkép (PNG) betöltése szürkeképként; ptPx: 1 pt hány képpont. */
-async function szurkeBetolt(url: string, ptPx: number): Promise<SzurkeKep | undefined> {
-  try {
-    const img = new Image(); img.src = url; await img.decode();
-    const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
-    const x = c.getContext('2d')!; x.drawImage(img, 0, 0);
-    const d = x.getImageData(0, 0, c.width, c.height).data; const adat = new Uint8Array(c.width * c.height);
-    for (let i = 0; i < adat.length; i++) adat[i] = d[i * 4]!;
-    return { w: c.width, h: c.height, ptPx, adat };
-  } catch { return undefined; }
 }

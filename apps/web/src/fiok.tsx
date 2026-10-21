@@ -5,7 +5,8 @@ import { createContext } from 'preact';
 import { useContext, useEffect, useState } from 'preact/hooks';
 import { Mezo, Szam, Szoveg, Valaszto, sz } from './ui';
 import { SRAFFOZASOK, type Sraffozas } from './katalogus';
-import { ujId, SZEREP_NEV, type Projekt } from './modell';
+import { ujId, SZEREP_NEV, type Projekt, type Tanusito } from './modell';
+import { JOG_TIPUSOK, jogOsszerak, szamFormaOk, type JogTipus } from './profil';
 import * as t from './tarolo';
 
 // ---------------------------------------------------------------------------------------------
@@ -42,6 +43,11 @@ export function Belepes({ helyi }: { helyi: () => void }) {
   const [jelszo, setJelszo] = useState('');
   const [mod, setMod] = useState<'belepes' | 'regisztracio' | 'link'>('belepes');
   const [uzenet, setUzenet] = useState<string | null>(null);
+  const [tnev, setTnev] = useState('');
+  const [kamara, setKamara] = useState<'MEK' | 'MMK'>('MEK');
+  const [jtipus, setJtipus] = useState<JogTipus>('TÉ');
+  const [szam, setSzam] = useState('');
+  const [szamNelkul, setSzamNelkul] = useState(false);
   const { fut, hiba, futtat } = useMuvelet();
 
   function kuld(e: Event) {
@@ -51,7 +57,9 @@ export function Belepes({ helyi }: { helyi: () => void }) {
       if (mod === 'belepes') await t.belepesJelszoval(email, jelszo);
       else if (mod === 'regisztracio') {
         if (jelszo.length < 8) throw new Error('A jelszó legyen legalább 8 karakter.');
-        const azonnal = await t.regisztracio(email, jelszo);
+        if (!tnev.trim()) throw new Error('Add meg a tanúsító nevét.');
+        if (!szamNelkul && !szamFormaOk(szam)) throw new Error('Add meg a kamarai névjegyzéki számot (pl. 11-0296), vagy jelöld, hogy még nincs.');
+        const azonnal = await t.regisztracio(email, jelszo, { nev: tnev.trim(), kamara, jogosultsag: szamNelkul ? '' : jogOsszerak(jtipus, szam) });
         if (!azonnal) setUzenet(`Megerősítő levelet küldtünk ide: ${email}. A levélben lévő linkre kattintva lépsz be.`);
       } else {
         await t.belepesiLink(email);
@@ -78,12 +86,61 @@ export function Belepes({ helyi }: { helyi: () => void }) {
             <input type="password" required autoComplete={mod === 'belepes' ? 'current-password' : 'new-password'} value={jelszo} onInput={(e) => setJelszo((e.target as HTMLInputElement).value)} />
           </Mezo>
         )}
+        {mod === 'regisztracio' && (
+          <ProfilMezok nev={tnev} setNev={setTnev} kamara={kamara} setKamara={setKamara} tipus={jtipus} setTipus={setJtipus} szam={szam} setSzam={setSzam} szamNelkul={szamNelkul} setSzamNelkul={setSzamNelkul} />
+        )}
         {hiba && <div class="hiba-doboz" role="alert">{hiba}</div>}
         {uzenet && <div class="siker-doboz" role="status">{uzenet}</div>}
         <button class="gomb fo" type="submit" disabled={fut}>
           {fut ? 'Folyamatban…' : mod === 'belepes' ? 'Belépés' : mod === 'regisztracio' ? 'Fiók létrehozása' : 'Link küldése'}
         </button>
         <button type="button" class="gomb halk-gomb semleges" onClick={helyi}>Folytatás belépés nélkül (csak ezen a gépen)</button>
+      </form>
+    </div>
+  );
+}
+
+/** Tanúsítói adatok a regisztrációhoz és a profil pótlásához: név, kamara, jogosultság, névjegyzéki szám. */
+function ProfilMezok(p: { nev: string; setNev: (v: string) => void; kamara: 'MEK' | 'MMK'; setKamara: (v: 'MEK' | 'MMK') => void; tipus: JogTipus; setTipus: (v: JogTipus) => void; szam: string; setSzam: (v: string) => void; szamNelkul: boolean; setSzamNelkul: (v: boolean) => void }) {
+  return (
+    <fieldset class="profil-mezok">
+      <legend>Tanúsítói adatok</legend>
+      <Mezo cim="Tanúsító neve"><input type="text" required value={p.nev} onInput={(e) => p.setNev((e.target as HTMLInputElement).value)} /></Mezo>
+      <div class="racs">
+        <Mezo cim="Kamara"><select value={p.kamara} onChange={(e) => p.setKamara((e.target as HTMLSelectElement).value as 'MEK')}><option value="MEK">Magyar Építész Kamara</option><option value="MMK">Magyar Mérnöki Kamara</option></select></Mezo>
+        <Mezo cim="Jogosultság"><select value={p.tipus} disabled={p.szamNelkul} onChange={(e) => p.setTipus((e.target as HTMLSelectElement).value as JogTipus)}>{JOG_TIPUSOK.map((j) => <option value={j.ertek}>{j.nev}</option>)}</select></Mezo>
+        <Mezo rovid cim="Névjegyzéki szám"><input type="text" placeholder="00-0000" required={!p.szamNelkul} disabled={p.szamNelkul} value={p.szam} onInput={(e) => p.setSzam((e.target as HTMLInputElement).value)} /></Mezo>
+      </div>
+      <label class="jelolo"><input type="checkbox" checked={p.szamNelkul} onChange={(e) => p.setSzamNelkul((e.target as HTMLInputElement).checked)} /> Még nincs kamarai számom</label>
+      {p.szamNelkul && <p class="halkabb" style="color:var(--figyel)">Szám nélkül legfeljebb 1 projekt hozható létre, és az XML / PDF dokumentálás nem érhető el. A szám később a Tanúsítói profilban pótolható.</p>}
+    </fieldset>
+  );
+}
+
+/** Belépés után, ha a fióknak még nincs tanúsítói profilja (pl. belépési linkkel jött létre): kötelező kitöltés. */
+export function ProfilKitoltes({ felhasznalo, kesz, kilep }: { felhasznalo: t.Felhasznalo; kesz: (p: Tanusito) => void; kilep: () => void }) {
+  const [nev, setNev] = useState('');
+  const [kamara, setKamara] = useState<'MEK' | 'MMK'>('MEK');
+  const [tipus, setTipus] = useState<JogTipus>('TÉ');
+  const [szam, setSzam] = useState('');
+  const [szamNelkul, setSzamNelkul] = useState(false);
+  const { fut, hiba, futtat } = useMuvelet();
+  return (
+    <div class="belepes-keret">
+      <form class="belepes kartya" onSubmit={(e) => { e.preventDefault(); futtat(async () => {
+        if (!nev.trim()) throw new Error('Add meg a tanúsító nevét.');
+        if (!szamNelkul && !szamFormaOk(szam)) throw new Error('Add meg a kamarai névjegyzéki számot (pl. 11-0296), vagy jelöld, hogy még nincs.');
+        const pr: Tanusito = { nev: nev.trim(), kamara, jogosultsag: szamNelkul ? '' : jogOsszerak(tipus, szam), email: felhasznalo.email ?? '', telefon: '' };
+        await t.profilMent(pr); kesz(pr);
+      }); }}>
+        <div>
+          <h1>Tanúsítói profil</h1>
+          <p class="halk" style="margin-top:6px">A tanúsító adatai a fiókodhoz tartoznak, és minden projektedbe innen kerülnek.</p>
+        </div>
+        <ProfilMezok nev={nev} setNev={setNev} kamara={kamara} setKamara={setKamara} tipus={tipus} setTipus={setTipus} szam={szam} setSzam={setSzam} szamNelkul={szamNelkul} setSzamNelkul={setSzamNelkul} />
+        {hiba && <div class="hiba-doboz" role="alert">{hiba}</div>}
+        <button class="gomb fo" type="submit" disabled={fut}>{fut ? 'Mentés…' : 'Tovább'}</button>
+        <button type="button" class="gomb halk-gomb semleges" onClick={kilep}>Kilépés</button>
       </form>
     </div>
   );

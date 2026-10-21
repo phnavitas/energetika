@@ -14,6 +14,7 @@ export function hibaSzoveg(e: unknown): string {
   if (/Password should be at least/i.test(m)) return 'A jelszó legyen legalább 8 karakter.';
   if (/rate limit|too many/i.test(m)) return 'Túl sok próbálkozás. Várj egy percet, és próbáld újra.';
   if (/Failed to fetch|NetworkError/i.test(m)) return 'Nincs kapcsolat az adatbázissal. Ellenőrizd az internetkapcsolatot.';
+  if (/TANUSITO_SZAM_KELL/.test(m)) return 'Kamarai tanúsítói vagy szakértői szám nélkül legfeljebb 1 projekt hozható létre. A számot a Tanúsítói profilban adhatod meg.';
   if (/row-level security/i.test(m)) return 'Ehhez nincs jogosultságod ebben az irodában.';
   return m;
 }

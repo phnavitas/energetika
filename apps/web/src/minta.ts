@@ -104,7 +104,7 @@ export function mintaProjekt(): Projekt {
 
 /** A böngészőben megjegyzett tanúsító (új projektek kitöltéséhez). */
 export function alapTanusito(): Projekt['tanusito'] {
-  try { const t = JSON.parse(localStorage.getItem('ekm-tanusito') ?? 'null'); if (t && typeof t.nev === 'string') return { ...t, ellenorzes: t.ellenorzes }; } catch { /* nincs tároló */ }
+  try { const t = JSON.parse(localStorage.getItem('ekm-profil') ?? localStorage.getItem('ekm-tanusito') ?? 'null'); if (t && typeof t.nev === 'string') return { ...t, ellenorzes: t.ellenorzes }; } catch { /* nincs tároló */ }
   return { nev: '', jogosultsag: '', email: '', telefon: '' };
 }
 

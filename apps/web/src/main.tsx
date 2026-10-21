@@ -18,8 +18,11 @@ import { HohidakLepes } from './lepesek/Hohidak';
 import { FelujitasLepes } from './lepesek/Felujitas';
 import { AlternativLepes } from './lepesek/Alternativ';
 import { TervbolLepes } from './lepesek/Tervbol';
-import { Belepes, IrodaLetrehozas, IrodaNezet, KonyvtarNezet, ProjektekNezet, TavoliKontextus, konyvtarBetolt, type Konyvtar, type TavoliAllapot } from './fiok';
+import { ProfilKitoltes, Belepes, IrodaLetrehozas, IrodaNezet, KonyvtarNezet, ProjektekNezet, TavoliKontextus, konyvtarBetolt, type Konyvtar, type TavoliAllapot } from './fiok';
 import * as t from './tarolo';
+import { ProfilKontextus, helyiProfil, helyiProfilMent, jogosult as jogosultFv, uresTanusito, ZAR_SZOVEG } from './profil';
+import { TanusitoSzakasz } from './lepesek/Tanusito';
+import type { Tanusito } from './modell';
 import './stilus.css';
 
 const KULCS = 'ekm-projekt-v1';
@@ -42,7 +45,7 @@ type MentesAllapot = { a: 'mentve' } | { a: 'varakozik' } | { a: 'mentes' } | { 
 
 type LepesKod = 'epulet' | 'terv' | 'helyisegek' | 'retegrendek' | 'nyilaszarok' | 'hatarolas' | 'hohidak' | 'hoszukseglet' | 'gepeszet' | 'villamossag' | 'eredmeny' | 'alternativ' | 'felujitas' | 'tanusitvany';
 type Fazis = 'Adatfelvétel' | 'Szerkezetek' | 'Gépészet' | 'Értékelés és tanúsítvány';
-type Nezet = LepesKod | 'projektek' | 'konyvtar' | 'iroda';
+type Nezet = LepesKod | 'projektek' | 'konyvtar' | 'iroda' | 'profil';
 const LEPESEK: { kod: LepesKod; nev: string; leiras: string; fazis: Fazis; opcionalis?: boolean }[] = [
   { kod: 'epulet', nev: 'Épület', leiras: 'Alapadatok, rendeltetés, követelményszint és meglévő épületnél a tipikus szerkezetek.', fazis: 'Adatfelvétel' },
   { kod: 'terv', nev: 'Tervből', leiras: 'Alaprajz és metszet PDF-ből: helyiségek, tájolás, rétegrendek, szintek, külső falak és nyílászárók felismerése, ellenőrzés után átvétel.', fazis: 'Adatfelvétel', opcionalis: true },
@@ -59,7 +62,8 @@ const LEPESEK: { kod: LepesKod; nev: string; leiras: string; fazis: Fazis; opcio
   { kod: 'felujitas', nev: 'Felújítás', leiras: 'Felújítási intézkedések költsége, megtakarítása, megtérülése és hatása a besorolásra.', fazis: 'Értékelés és tanúsítvány', opcionalis: true },
   { kod: 'tanusitvany', nev: 'Tanúsítvány', leiras: 'A tanúsító adatai, fotók, a feltöltési XML és a számítási jegyzőkönyv.', fazis: 'Értékelés és tanúsítvány' },
 ];
-const EGYEB_NEZET: Record<'projektek' | 'konyvtar' | 'iroda', { nev: string; leiras: string }> = {
+const EGYEB_NEZET: Record<'projektek' | 'konyvtar' | 'iroda' | 'profil', { nev: string; leiras: string }> = {
+  profil: { nev: 'Tanúsítói profil', leiras: 'A tanúsító adatai a fiókodhoz kötve; minden projektedbe innen kerülnek.' },
   projektek: { nev: 'Projektek', leiras: 'Az iroda mentett projektjei. A megnyitott projekt minden módosítása automatikusan mentődik.' },
   konyvtar: { nev: 'Irodai könyvtár', leiras: 'Saját anyagok forrással, bevált rétegrendek és nyílászárók, amelyeket bármelyik projektbe átvehetsz.' },
   iroda: { nev: 'Iroda', leiras: 'Az iroda neve, tagjai és a meghívók.' },
@@ -85,6 +89,22 @@ function App() {
   const [fiokHiba, setFiokHiba] = useState<string | null>(null);
   const [projektLista, setProjektLista] = useState(0);
   const tavoli = t.tavoliElerheto && !helyiMod;
+
+  // --- Tanúsítói profil (fiókhoz, belépés nélkül a böngészőhöz kötve)
+  const [profil, setProfil] = useState<Tanusito | null | undefined>(() => (tavoli ? undefined : helyiProfil() ?? uresTanusito()));
+  const profilIdozito = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!tavoli) { setProfil(helyiProfil() ?? uresTanusito()); return; }
+    if (!felh) { setProfil(undefined); return; }
+    t.profilBetolt().then(setProfil, (e) => { setFiokHiba(`A tanúsítói profil nem tölthető be (${(e as Error).message}). Futtasd a 20261021000001_tanusito_profil.sql migrációt.`); setProfil(helyiProfil() ?? uresTanusito()); });
+  }, [felh?.id, tavoli]);
+  const profilValt = (fn: (x: Tanusito) => void) => setProfil((elozo) => {
+    const n = structuredClone(elozo ?? uresTanusito()); fn(n);
+    window.clearTimeout(profilIdozito.current);
+    profilIdozito.current = window.setTimeout(() => { if (tavoli) t.profilMent(n).catch((e) => setFiokHiba(`A profil mentése nem sikerült: ${(e as Error).message}`)); else helyiProfilMent(n); }, 700);
+    return n;
+  });
+  const jogosult = jogosultFv(profil);
 
   useEffect(() => {
     if (!t.tavoliElerheto) return;
@@ -142,6 +162,10 @@ function App() {
   };
 
   // A böngésző tárhelye ~5 MB: ha a fotókkal nem fér el, a helyi vázlat fotók nélkül marad (a fiókba mentés és a projektfájl tartalmazza őket).
+  // A projekt tanúsítói adatai a profilból jönnek.
+  useEffect(() => {
+    if (profil && JSON.stringify(profil) !== JSON.stringify(p.tanusito)) modosit((q) => { q.tanusito = structuredClone(profil); });
+  }, [profil, p.tanusito]);
   // Magyarázó szövegek: egy sorra rövidítve, kattintásra nyílnak (részletezés csak kérésre).
   useEffect(() => {
     for (const el of document.querySelectorAll<HTMLElement>('.munka .szakasz > p.halk, .munka > header p')) {
@@ -223,6 +247,7 @@ function App() {
   }
   async function ujTavoliProjekt(honnan: 'aktualis' | 'ures' | 'minta') {
     if (!iroda) return;
+    if (!jogosult && felh && (await t.sajatProjektSzam(felh)) >= 1) throw new Error('Kamarai tanúsítói vagy szakértői szám nélkül legfeljebb 1 projekt hozható létre. A számot a Tanúsítói profilban adhatod meg.');
     if (kapcsolatRef.current?.piszkos) await ment();
     const dok = honnan === 'aktualis' ? pRef.current : honnan === 'minta' ? mintaProjekt() : uresProjekt();
     const ujE = honnan === 'aktualis' ? eRef.current : { e: null, AN: 0 };
@@ -273,6 +298,8 @@ function App() {
   if (tavoli) {
     if (felh === undefined) return <div class="belepes-keret"><p class="halk">Betöltés…</p></div>;
     if (felh === null) return <Belepes helyi={helyibe} />;
+    if (profil === undefined) return <div class="belepes-keret"><p class="halk">Profil betöltése…</p></div>;
+    if (profil === null) return <ProfilKitoltes felhasznalo={felh} kesz={setProfil} kilep={kilep} />;
     if (irodak === null) return <div class="belepes-keret"><p class="halk">Irodák betöltése…</p></div>;
     if (!irodak.length) return <IrodaLetrehozas felhasznalo={felh} kilep={kilep} kesz={async (id) => { setIrodaId(id); await irodakFrissit(); setNezet('projektek'); }} />;
   }
@@ -293,7 +320,7 @@ function App() {
     eredmeny: e ? `${e.besorolas.energetikai} osztály` : 'hiányos adatok',
     alternativ: p.alternativ ? 'vizsgálva' : 'nincs vizsgálat',
     felujitas: p.felujitas ? `${p.felujitas.intezkedesek.filter((m) => m.aktiv).length} intézkedés` : 'nincs elemzés',
-    tanusitvany: p.tanusito.nev ? p.tanusito.nev : 'tanúsító hiányzik',
+    tanusitvany: !profil?.nev ? 'tanúsító hiányzik' : jogosult ? profil.nev : 'kamarai szám nélkül',
   };
   /** Lépésenkénti készültség: kesz / hiany (kötelező, de hiányos) / figy (kész, de nem felel meg) / null (opcionális, nincs mit jelezni). */
   const kesz: Record<LepesKod, 'kesz' | 'hiany' | 'figy' | null> = {
@@ -310,7 +337,7 @@ function App() {
     eredmeny: !e ? 'hiany' : e.kovetelmeny.qmMegfelel && e.kovetelmeny.EnrenMegfelel && e.kovetelmeny.ECO2Megfelel !== false && !e.szerkezetek.some((x) => x.megfelel === false) ? 'kesz' : 'figy',
     alternativ: p.alternativ ? 'kesz' : null,
     felujitas: p.felujitas ? 'kesz' : null,
-    tanusitvany: p.tanusito.nev && p.tanusito.jogosultsag && e ? 'kesz' : 'hiany',
+    tanusitvany: jogosult && e ? 'kesz' : 'hiany',
   };
   const KESZ_JEL = { kesz: '✓', hiany: '!', figy: '!' } as const;
   const lepesIdx = LEPESEK.findIndex((l) => l.kod === nezet);
@@ -343,6 +370,7 @@ function App() {
   const mentesOsztaly = mentes.a === 'hiba' || mentes.a === 'utkozes' || mentes.a === 'torolve' ? 'rossz' : !aktivKapcsolat ? 'figy' : mentes.a === 'mentve' ? 'jo' : 'folyik';
 
   return (
+    <ProfilKontextus.Provider value={{ profil: profil ?? null, jogosult, szerkeszt: () => setNezet('profil') }}>
     <TavoliKontextus.Provider value={tavoliAllapot}>
       <div class="keret">
         <nav class="oldalsav" aria-label="Lépések">
@@ -379,6 +407,10 @@ function App() {
             </ul>
           )}
           <div class="oldalsav-lab">
+            <button class={`gomb profil-gomb${nezet === 'profil' ? ' aktiv' : ''}`} onClick={() => setNezet('profil')}>
+              <span>Tanúsítói profil</span>
+              <span class={`jel ${jogosult ? 'jo' : 'figy'}`}>{jogosult ? profil!.jogosultsag : 'szám nélkül'}</span>
+            </button>
             {!tavoli && (
               ujMegerosit ? (
                 <div class="kartya" style="padding:10px;display:flex;flex-direction:column;gap:8px">
@@ -388,7 +420,7 @@ function App() {
                     <button class="gomb halk-gomb semleges" onClick={() => setUjMegerosit(false)}>Mégse</button>
                   </div>
                 </div>
-              ) : <button class="gomb" onClick={() => setUjMegerosit(true)}>Új projekt</button>
+              ) : <button class="gomb" onClick={() => { if (!jogosult) { setUzenet('Kamarai szám nélkül legfeljebb 1 projekt lehet: a mostanit szerkesztheted. A számot a Tanúsítói profilban adhatod meg.'); return; } setUjMegerosit(true); }}>Új projekt</button>
             )}
             {!tavoli && <button class="gomb" onClick={() => setP(mintaProjekt())}>Minta betöltése</button>}
             <button class="gomb" onClick={() => fajl.current?.click()}>Projekt megnyitása fájlból</button>
@@ -460,6 +492,12 @@ function App() {
               {lepesIdx < LEPESEK.length - 1 && <button class="gomb fo" onClick={() => { setNezet(LEPESEK[lepesIdx + 1]!.kod); window.scrollTo(0, 0); }}>Tovább: {LEPESEK[lepesIdx + 1]!.nev} →</button>}
             </footer>
           )}
+          {nezet === 'profil' && profil && (
+            <>
+              {!jogosult && <div class="figyelmeztetes" style="margin-bottom:12px">{ZAR_SZOVEG} Szám nélkül legfeljebb 1 projekt hozható létre.</div>}
+              <TanusitoSzakasz t={profil} valt={profilValt} />
+            </>
+          )}
           {nezet === 'projektek' && iroda && <ProjektekNezet iroda={iroda} aktivId={aktivKapcsolat?.id ?? null} megnyit={projektMegnyit} ujProjekt={ujTavoliProjekt} frissitKulcs={projektLista} />}
           {nezet === 'konyvtar' && tavoliAllapot && <KonyvtarNezet p={p} modosit={modosit} ugrik={setNezet} />}
           {nezet === 'iroda' && iroda && felh && irodak && (
@@ -497,6 +535,7 @@ function App() {
         </aside>
       </div>
     </TavoliKontextus.Provider>
+    </ProfilKontextus.Provider>
   );
 }
 

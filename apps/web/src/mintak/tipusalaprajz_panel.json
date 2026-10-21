@@ -1,0 +1,1674 @@
+{
+"forras": "tipusalaprajz_panel.pdf, 2. oldal (1:200)",
+"lakasok": [
+{
+"n": 1,
+"epulet": 1,
+"A": 66.27,
+"doboz": [
+136,
+197,
+437,
+421
+],
+"kozep": [
+300,
+295
+],
+"helyisegek": [
+{
+"nev": "Helyiség 1",
+"A": 18.06,
+"falak": [
+{
+"irany": 0,
+"hossz": 3.47
+},
+{
+"irany": 270,
+"hossz": 5.3
+}
+]
+},
+{
+"nev": "Helyiség 2",
+"A": 13.34,
+"falak": [
+{
+"irany": 90,
+"hossz": 2.54
+},
+{
+"irany": 180,
+"hossz": 5.25
+}
+]
+},
+{
+"nev": "Helyiség 3",
+"A": 10.42,
+"falak": [
+{
+"irany": 0,
+"hossz": 3.44
+},
+{
+"irany": 90,
+"hossz": 3.03
+}
+]
+},
+{
+"nev": "Helyiség 4",
+"A": 7.39,
+"falak": [
+{
+"irany": 90,
+"hossz": 2.15
+}
+]
+},
+{
+"nev": "Helyiség 5",
+"A": 7.12,
+"falak": []
+},
+{
+"nev": "Helyiség 6",
+"A": 6.61,
+"falak": [
+{
+"irany": 0,
+"hossz": 3.44
+}
+]
+},
+{
+"nev": "Helyiség 7",
+"A": 2.62,
+"falak": []
+},
+{
+"nev": "Helyiség 8",
+"A": 0.71,
+"falak": []
+}
+],
+"nyilasok": [
+{
+"irany": 270,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 0
+},
+{
+"irany": 270,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 0
+},
+{
+"irany": 0,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 5
+},
+{
+"irany": 0,
+"fajta": "ablak",
+"szel": 2.1,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 0
+},
+{
+"irany": 90,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 1
+},
+{
+"irany": 90,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 2
+}
+]
+},
+{
+"n": 2,
+"epulet": 2,
+"A": 66.02,
+"doboz": [
+136,
+615,
+437,
+841
+],
+"kozep": [
+302,
+714
+],
+"helyisegek": [
+{
+"nev": "Helyiség 1",
+"A": 18.02,
+"falak": [
+{
+"irany": 0,
+"hossz": 3.44
+},
+{
+"irany": 90,
+"hossz": 5.32
+}
+]
+},
+{
+"nev": "Helyiség 2",
+"A": 13.43,
+"falak": [
+{
+"irany": 90,
+"hossz": 2.56
+}
+]
+},
+{
+"nev": "Helyiség 3",
+"A": 9.63,
+"falak": [
+{
+"irany": 0,
+"hossz": 3.47
+},
+{
+"irany": 270,
+"hossz": 2.79
+}
+]
+},
+{
+"nev": "Helyiség 4",
+"A": 8.11,
+"falak": [
+{
+"irany": 270,
+"hossz": 2.35
+}
+]
+},
+{
+"nev": "Helyiség 5",
+"A": 6.93,
+"falak": []
+},
+{
+"nev": "Helyiség 6",
+"A": 6.61,
+"falak": [
+{
+"irany": 0,
+"hossz": 3.44
+}
+]
+},
+{
+"nev": "Helyiség 7",
+"A": 2.58,
+"falak": []
+},
+{
+"nev": "Helyiség 8",
+"A": 0.71,
+"falak": []
+}
+],
+"nyilasok": [
+{
+"irany": 270,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 2
+},
+{
+"irany": 270,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 3
+},
+{
+"irany": 0,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 5
+},
+{
+"irany": 0,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 0
+},
+{
+"irany": 90,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 1
+},
+{
+"irany": 0,
+"fajta": "erkelyajto",
+"szel": 0.9,
+"mag": 2.4,
+"pm": null,
+"helyiseg": 0
+}
+]
+},
+{
+"n": 3,
+"epulet": 2,
+"A": 61.71,
+"doboz": [
+134,
+847,
+439,
+1019
+],
+"kozep": [
+288,
+933
+],
+"helyisegek": [
+{
+"nev": "Helyiség 1",
+"A": 18.15,
+"falak": [
+{
+"irany": 90,
+"hossz": 3.45
+}
+]
+},
+{
+"nev": "Helyiség 2",
+"A": 13.34,
+"falak": [
+{
+"irany": 90,
+"hossz": 2.54
+},
+{
+"irany": 180,
+"hossz": 5.28
+}
+]
+},
+{
+"nev": "Helyiség 3",
+"A": 11.16,
+"falak": [
+{
+"irany": 180,
+"hossz": 1.57
+}
+]
+},
+{
+"nev": "Helyiség 4",
+"A": 9.09,
+"falak": [
+{
+"irany": 180,
+"hossz": 3.61
+},
+{
+"irany": 270,
+"hossz": 2.54
+}
+]
+},
+{
+"nev": "Helyiség 5",
+"A": 6.65,
+"falak": [
+{
+"irany": 270,
+"hossz": 3.45
+}
+]
+},
+{
+"nev": "Helyiség 6",
+"A": 2.61,
+"falak": []
+},
+{
+"nev": "Helyiség 7",
+"A": 0.71,
+"falak": []
+}
+],
+"nyilasok": [
+{
+"irany": 270,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 4
+},
+{
+"irany": 270,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 3
+},
+{
+"irany": 90,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 0
+},
+{
+"irany": 90,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 1
+},
+{
+"irany": 90,
+"fajta": "erkelyajto",
+"szel": 0.9,
+"mag": 2.4,
+"pm": null,
+"helyiseg": 0
+}
+]
+},
+{
+"n": 4,
+"epulet": 3,
+"A": 52.89,
+"doboz": [
+136,
+1137,
+439,
+1335
+],
+"kozep": [
+263,
+1216
+],
+"helyisegek": [
+{
+"nev": "Helyiség 1",
+"A": 23.87,
+"falak": [
+{
+"irany": 0,
+"hossz": 7.11
+},
+{
+"irany": 90,
+"hossz": 3.44
+}
+]
+},
+{
+"nev": "Helyiség 2",
+"A": 12.2,
+"falak": [
+{
+"irany": 0,
+"hossz": 3.56
+},
+{
+"irany": 270,
+"hossz": 3.44
+}
+]
+},
+{
+"nev": "Helyiség 3",
+"A": 6.99,
+"falak": []
+},
+{
+"nev": "Helyiség 4",
+"A": 6.53,
+"falak": [
+{
+"irany": 270,
+"hossz": 3.45
+}
+]
+},
+{
+"nev": "Helyiség 5",
+"A": 2.59,
+"falak": []
+},
+{
+"nev": "Helyiség 6",
+"A": 0.71,
+"falak": []
+}
+],
+"nyilasok": [
+{
+"irany": 90,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 0
+},
+{
+"irany": 270,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 1
+},
+{
+"irany": 270,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 3
+},
+{
+"irany": 90,
+"fajta": "erkelyajto",
+"szel": 0.9,
+"mag": 2.4,
+"pm": null,
+"helyiseg": 0
+}
+]
+},
+{
+"n": 5,
+"epulet": 3,
+"A": 48.49,
+"doboz": [
+288,
+1238,
+441,
+1512
+],
+"kozep": [
+362,
+1374
+],
+"helyisegek": [
+{
+"nev": "Helyiség 1",
+"A": 18.14,
+"falak": [
+{
+"irany": 90,
+"hossz": 3.45
+}
+]
+},
+{
+"nev": "Helyiség 2",
+"A": 13.43,
+"falak": [
+{
+"irany": 90,
+"hossz": 2.56
+}
+]
+},
+{
+"nev": "Helyiség 3",
+"A": 7.07,
+"falak": []
+},
+{
+"nev": "Helyiség 4",
+"A": 6.53,
+"falak": [
+{
+"irany": 90,
+"hossz": 3.44
+}
+]
+},
+{
+"nev": "Helyiség 5",
+"A": 2.59,
+"falak": []
+},
+{
+"nev": "Helyiség 6",
+"A": 0.73,
+"falak": []
+}
+],
+"nyilasok": [
+{
+"irany": 90,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 1
+},
+{
+"irany": 90,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 3
+},
+{
+"irany": 90,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 0
+},
+{
+"irany": 90,
+"fajta": "erkelyajto",
+"szel": 0.9,
+"mag": 2.4,
+"pm": null,
+"helyiseg": 0
+}
+]
+},
+{
+"n": 6,
+"epulet": 3,
+"A": 53.0,
+"doboz": [
+136,
+1416,
+439,
+1614
+],
+"kozep": [
+263,
+1535
+],
+"helyisegek": [
+{
+"nev": "Helyiség 1",
+"A": 24.02,
+"falak": [
+{
+"irany": 90,
+"hossz": 3.45
+},
+{
+"irany": 180,
+"hossz": 7.03
+}
+]
+},
+{
+"nev": "Helyiség 2",
+"A": 12.15,
+"falak": [
+{
+"irany": 180,
+"hossz": 3.52
+},
+{
+"irany": 270,
+"hossz": 3.45
+}
+]
+},
+{
+"nev": "Helyiség 3",
+"A": 7.0,
+"falak": []
+},
+{
+"nev": "Helyiség 4",
+"A": 6.53,
+"falak": [
+{
+"irany": 270,
+"hossz": 3.45
+}
+]
+},
+{
+"nev": "Helyiség 5",
+"A": 2.59,
+"falak": []
+},
+{
+"nev": "Helyiség 6",
+"A": 0.71,
+"falak": []
+}
+],
+"nyilasok": [
+{
+"irany": 270,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 3
+},
+{
+"irany": 270,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 1
+},
+{
+"irany": 90,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 0
+},
+{
+"irany": 90,
+"fajta": "erkelyajto",
+"szel": 0.9,
+"mag": 2.4,
+"pm": null,
+"helyiseg": 0
+}
+]
+},
+{
+"n": 7,
+"epulet": 4,
+"A": 105.52,
+"doboz": [
+718,
+106,
+1121,
+409
+],
+"kozep": [
+957,
+232
+],
+"helyisegek": [
+{
+"nev": "Helyiség 1",
+"A": 23.87,
+"falak": [
+{
+"irany": 0,
+"hossz": 3.44
+},
+{
+"irany": 90,
+"hossz": 7.1
+}
+]
+},
+{
+"nev": "Helyiség 2",
+"A": 18.11,
+"falak": [
+{
+"irany": 0,
+"hossz": 3.45
+}
+]
+},
+{
+"nev": "Helyiség 3",
+"A": 12.2,
+"falak": [
+{
+"irany": 90,
+"hossz": 3.61
+},
+{
+"irany": 180,
+"hossz": 3.44
+}
+]
+},
+{
+"nev": "Helyiség 4",
+"A": 8.81,
+"falak": [
+{
+"irany": 0,
+"hossz": 3.47
+},
+{
+"irany": 270,
+"hossz": 2.56
+}
+]
+},
+{
+"nev": "Helyiség 5",
+"A": 8.75,
+"falak": [
+{
+"irany": 180,
+"hossz": 1.96
+},
+{
+"irany": 270,
+"hossz": 2.54
+}
+]
+},
+{
+"nev": "Helyiség 6",
+"A": 6.97,
+"falak": []
+},
+{
+"nev": "Helyiség 7",
+"A": 6.96,
+"falak": []
+},
+{
+"nev": "Helyiség 8",
+"A": 6.64,
+"falak": [
+{
+"irany": 180,
+"hossz": 2.71
+}
+]
+},
+{
+"nev": "Helyiség 9",
+"A": 6.62,
+"falak": [
+{
+"irany": 0,
+"hossz": 3.44
+}
+]
+},
+{
+"nev": "Helyiség 10",
+"A": 2.59,
+"falak": []
+},
+{
+"nev": "Helyiség 11",
+"A": 2.59,
+"falak": []
+},
+{
+"nev": "Helyiség 12",
+"A": 0.71,
+"falak": []
+},
+{
+"nev": "Helyiség 13",
+"A": 0.7,
+"falak": []
+}
+],
+"nyilasok": [
+{
+"irany": 270,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 4
+},
+{
+"irany": 270,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 3
+},
+{
+"irany": 0,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 0
+},
+{
+"irany": 0,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 1
+},
+{
+"irany": 0,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 8
+},
+{
+"irany": 180,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 7
+},
+{
+"irany": 180,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 2
+},
+{
+"irany": 0,
+"fajta": "erkelyajto",
+"szel": 0.9,
+"mag": 2.4,
+"pm": null,
+"helyiseg": 0
+},
+{
+"irany": 0,
+"fajta": "erkelyajto",
+"szel": 0.9,
+"mag": 2.4,
+"pm": null,
+"helyiseg": 1
+}
+]
+},
+{
+"n": 8,
+"epulet": 4,
+"A": 105.63,
+"doboz": [
+595,
+342,
+998,
+644
+],
+"kozep": [
+759,
+520
+],
+"helyisegek": [
+{
+"nev": "Helyiség 1",
+"A": 23.91,
+"falak": [
+{
+"irany": 180,
+"hossz": 3.44
+},
+{
+"irany": 270,
+"hossz": 7.03
+}
+]
+},
+{
+"nev": "Helyiség 2",
+"A": 18.1,
+"falak": [
+{
+"irany": 180,
+"hossz": 3.45
+}
+]
+},
+{
+"nev": "Helyiség 3",
+"A": 12.2,
+"falak": [
+{
+"irany": 0,
+"hossz": 3.44
+},
+{
+"irany": 270,
+"hossz": 3.56
+}
+]
+},
+{
+"nev": "Helyiség 4",
+"A": 8.79,
+"falak": [
+{
+"irany": 90,
+"hossz": 2.56
+},
+{
+"irany": 180,
+"hossz": 3.47
+}
+]
+},
+{
+"nev": "Helyiség 5",
+"A": 8.74,
+"falak": [
+{
+"irany": 0,
+"hossz": 1.93
+},
+{
+"irany": 90,
+"hossz": 2.54
+}
+]
+},
+{
+"nev": "Helyiség 6",
+"A": 7.03,
+"falak": []
+},
+{
+"nev": "Helyiség 7",
+"A": 6.96,
+"falak": []
+},
+{
+"nev": "Helyiség 8",
+"A": 6.66,
+"falak": [
+{
+"irany": 0,
+"hossz": 2.71
+}
+]
+},
+{
+"nev": "Helyiség 9",
+"A": 6.61,
+"falak": [
+{
+"irany": 180,
+"hossz": 3.44
+}
+]
+},
+{
+"nev": "Helyiség 10",
+"A": 2.62,
+"falak": []
+},
+{
+"nev": "Helyiség 11",
+"A": 2.59,
+"falak": []
+},
+{
+"nev": "Helyiség 12",
+"A": 0.71,
+"falak": []
+},
+{
+"nev": "Helyiség 13",
+"A": 0.71,
+"falak": []
+}
+],
+"nyilasok": [
+{
+"irany": 180,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 8
+},
+{
+"irany": 180,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 1
+},
+{
+"irany": 180,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 0
+},
+{
+"irany": 0,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 7
+},
+{
+"irany": 0,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 2
+},
+{
+"irany": 90,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 4
+},
+{
+"irany": 90,
+"fajta": "ablak",
+"szel": 1.5,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 3
+},
+{
+"irany": 180,
+"fajta": "erkelyajto",
+"szel": 0.9,
+"mag": 2.4,
+"pm": null,
+"helyiseg": 1
+},
+{
+"irany": 180,
+"fajta": "erkelyajto",
+"szel": 0.9,
+"mag": 2.4,
+"pm": null,
+"helyiseg": 0
+}
+]
+},
+{
+"n": 9,
+"epulet": 5,
+"A": 53.58,
+"doboz": [
+643,
+805,
+791,
+1104
+],
+"kozep": [
+717,
+955
+],
+"helyisegek": [
+{
+"nev": "Helyiség 1",
+"A": 18.08,
+"falak": [
+{
+"irany": 0,
+"hossz": 5.23
+},
+{
+"irany": 90,
+"hossz": 2.42
+},
+{
+"irany": 270,
+"hossz": 3.45
+}
+]
+},
+{
+"nev": "Helyiség 2",
+"A": 18.08,
+"falak": [
+{
+"irany": 270,
+"hossz": 3.45
+}
+]
+},
+{
+"nev": "Helyiség 3",
+"A": 6.96,
+"falak": []
+},
+{
+"nev": "Helyiség 4",
+"A": 6.58,
+"falak": [
+{
+"irany": 270,
+"hossz": 3.44
+}
+]
+},
+{
+"nev": "Helyiség 5",
+"A": 2.45,
+"falak": []
+},
+{
+"nev": "Helyiség 6",
+"A": 1.43,
+"falak": []
+}
+],
+"nyilasok": [
+{
+"irany": 270,
+"fajta": "ablak",
+"szel": 2.1,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 1
+},
+{
+"irany": 270,
+"fajta": "ablak",
+"szel": 2.1,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 3
+},
+{
+"irany": 270,
+"fajta": "ablak",
+"szel": 2.1,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 0
+}
+]
+},
+{
+"n": 10,
+"epulet": 5,
+"A": 53.58,
+"doboz": [
+878,
+805,
+1026,
+1104
+],
+"kozep": [
+953,
+955
+],
+"helyisegek": [
+{
+"nev": "Helyiség 1",
+"A": 18.08,
+"falak": [
+{
+"irany": 0,
+"hossz": 5.23
+},
+{
+"irany": 90,
+"hossz": 3.45
+},
+{
+"irany": 270,
+"hossz": 2.42
+}
+]
+},
+{
+"nev": "Helyiség 2",
+"A": 18.08,
+"falak": [
+{
+"irany": 90,
+"hossz": 3.45
+}
+]
+},
+{
+"nev": "Helyiség 3",
+"A": 6.96,
+"falak": []
+},
+{
+"nev": "Helyiség 4",
+"A": 6.58,
+"falak": [
+{
+"irany": 90,
+"hossz": 3.44
+}
+]
+},
+{
+"nev": "Helyiség 5",
+"A": 2.45,
+"falak": []
+},
+{
+"nev": "Helyiség 6",
+"A": 1.43,
+"falak": []
+}
+],
+"nyilasok": [
+{
+"irany": 90,
+"fajta": "ablak",
+"szel": 2.1,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 1
+},
+{
+"irany": 90,
+"fajta": "ablak",
+"szel": 2.1,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 3
+},
+{
+"irany": 90,
+"fajta": "ablak",
+"szel": 2.1,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 0
+}
+]
+},
+{
+"n": 11,
+"epulet": 5,
+"A": 53.44,
+"doboz": [
+642,
+1111,
+791,
+1410
+],
+"kozep": [
+717,
+1261
+],
+"helyisegek": [
+{
+"nev": "Helyiség 1",
+"A": 17.99,
+"falak": [
+{
+"irany": 270,
+"hossz": 3.44
+}
+]
+},
+{
+"nev": "Helyiség 2",
+"A": 17.99,
+"falak": [
+{
+"irany": 270,
+"hossz": 3.44
+}
+]
+},
+{
+"nev": "Helyiség 3",
+"A": 6.99,
+"falak": []
+},
+{
+"nev": "Helyiség 4",
+"A": 6.61,
+"falak": [
+{
+"irany": 270,
+"hossz": 3.45
+}
+]
+},
+{
+"nev": "Helyiség 5",
+"A": 2.43,
+"falak": []
+},
+{
+"nev": "Helyiség 6",
+"A": 1.43,
+"falak": []
+}
+],
+"nyilasok": [
+{
+"irany": 270,
+"fajta": "ablak",
+"szel": 2.1,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 1
+},
+{
+"irany": 270,
+"fajta": "ablak",
+"szel": 2.1,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 3
+},
+{
+"irany": 270,
+"fajta": "ablak",
+"szel": 2.1,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 0
+}
+]
+},
+{
+"n": 12,
+"epulet": 5,
+"A": 53.44,
+"doboz": [
+878,
+1111,
+1027,
+1410
+],
+"kozep": [
+953,
+1261
+],
+"helyisegek": [
+{
+"nev": "Helyiség 1",
+"A": 17.99,
+"falak": [
+{
+"irany": 90,
+"hossz": 3.44
+}
+]
+},
+{
+"nev": "Helyiség 2",
+"A": 17.99,
+"falak": [
+{
+"irany": 90,
+"hossz": 2.15
+}
+]
+},
+{
+"nev": "Helyiség 3",
+"A": 6.99,
+"falak": []
+},
+{
+"nev": "Helyiség 4",
+"A": 6.61,
+"falak": [
+{
+"irany": 90,
+"hossz": 3.45
+}
+]
+},
+{
+"nev": "Helyiség 5",
+"A": 2.43,
+"falak": []
+},
+{
+"nev": "Helyiség 6",
+"A": 1.43,
+"falak": []
+}
+],
+"nyilasok": [
+{
+"irany": 90,
+"fajta": "ablak",
+"szel": 2.1,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 1
+},
+{
+"irany": 90,
+"fajta": "ablak",
+"szel": 2.1,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 3
+},
+{
+"irany": 90,
+"fajta": "ablak",
+"szel": 2.1,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 0
+}
+]
+},
+{
+"n": 13,
+"epulet": 5,
+"A": 35.54,
+"doboz": [
+643,
+1417,
+791,
+1614
+],
+"kozep": [
+717,
+1517
+],
+"helyisegek": [
+{
+"nev": "Helyiség 1",
+"A": 18.08,
+"falak": [
+{
+"irany": 90,
+"hossz": 3.32
+},
+{
+"irany": 180,
+"hossz": 5.27
+},
+{
+"irany": 270,
+"hossz": 3.45
+}
+]
+},
+{
+"nev": "Helyiség 2",
+"A": 6.61,
+"falak": [
+{
+"irany": 270,
+"hossz": 3.45
+}
+]
+},
+{
+"nev": "Helyiség 3",
+"A": 3.8,
+"falak": []
+},
+{
+"nev": "Helyiség 4",
+"A": 3.8,
+"falak": []
+},
+{
+"nev": "Helyiség 5",
+"A": 3.25,
+"falak": []
+}
+],
+"nyilasok": [
+{
+"irany": 270,
+"fajta": "ablak",
+"szel": 2.1,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 0
+},
+{
+"irany": 270,
+"fajta": "ablak",
+"szel": 2.1,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 1
+},
+{
+"irany": 90,
+"fajta": "erkelyajto",
+"szel": 0.9,
+"mag": 2.4,
+"pm": null,
+"helyiseg": 0
+}
+]
+},
+{
+"n": 14,
+"epulet": 5,
+"A": 35.54,
+"doboz": [
+878,
+1417,
+1026,
+1614
+],
+"kozep": [
+953,
+1517
+],
+"helyisegek": [
+{
+"nev": "Helyiség 1",
+"A": 18.08,
+"falak": [
+{
+"irany": 90,
+"hossz": 3.45
+},
+{
+"irany": 180,
+"hossz": 5.27
+},
+{
+"irany": 270,
+"hossz": 3.32
+}
+]
+},
+{
+"nev": "Helyiség 2",
+"A": 6.61,
+"falak": [
+{
+"irany": 90,
+"hossz": 3.45
+}
+]
+},
+{
+"nev": "Helyiség 3",
+"A": 3.8,
+"falak": []
+},
+{
+"nev": "Helyiség 4",
+"A": 3.8,
+"falak": []
+},
+{
+"nev": "Helyiség 5",
+"A": 3.25,
+"falak": []
+}
+],
+"nyilasok": [
+{
+"irany": 90,
+"fajta": "ablak",
+"szel": 2.1,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 0
+},
+{
+"irany": 90,
+"fajta": "ablak",
+"szel": 2.1,
+"mag": 1.5,
+"pm": 0.9,
+"helyiseg": 1
+},
+{
+"irany": 270,
+"fajta": "erkelyajto",
+"szel": 0.9,
+"mag": 2.4,
+"pm": null,
+"helyiseg": 0
+}
+]
+}
+]
+}

@@ -1,23 +1,19 @@
 import { useState } from 'preact/hooks';
 import { Mezo, Szoveg, Valaszto } from '../ui';
-import type { Projekt } from '../modell';
+import type { Tanusito } from '../modell';
+import { JOG_TIPUSOK, jogBont, jogOsszerak, szamFormaOk, jogosult } from '../profil';
 
-type Modosit = (fn: (p: Projekt) => void) => void;
-
-/** Névjegyzéki szám: „TÉ 11-0296” vagy „11-0296” (területi kód – sorszám). */
-const SZAM_MINTA = /^(?:TÉ\s*)?(\d{2}-\d{4,5})$/i;
 
 /**
- * Tanúsító adatai. A kamarai névjegyzéket automatikusan nem kérdezzük le: a MÉK keresője csak űrlapos HTML,
+ * Tanúsítói profil szerkesztése. A kamarai névjegyzéket automatikusan nem kérdezzük le: a MÉK keresője csak űrlapos HTML,
  * az MMK oldala tiltja az automatizált lekérést. A felület a névjegyzék keresőjét nyitja meg, és rögzíti
  * az ellenőrzés eredményét (dátum, állapot, lejárat).
  */
-export function TanusitoSzakasz({ p, modosit }: { p: Projekt; modosit: Modosit }) {
-  const t = p.tanusito;
-  const [mentve, setMentve] = useState<string | null>(null);
-  const mt = (fn: (x: Projekt['tanusito']) => void) => modosit((q) => { fn(q.tanusito); });
-  const szamOk = !t.jogosultsag || SZAM_MINTA.test(t.jogosultsag.trim());
-  const szam = t.jogosultsag.trim().match(SZAM_MINTA)?.[1] ?? '';
+export function TanusitoSzakasz({ t, valt }: { t: Tanusito; valt: (fn: (x: Tanusito) => void) => void }) {
+  const mt = valt;
+  const jb = jogBont(t.jogosultsag);
+  const szamOk = !jb.szam || szamFormaOk(jb.szam);
+  const szam = jb.szam;
   const cim = t.cim ?? { iranyitoszam: '', telepules: '', kozterulet: '', kozteruletJelleg: '', hazszam: '' };
   const mc = (k: keyof typeof cim, v: string) => mt((x) => { x.cim = { ...cim, ...x.cim, [k]: v }; });
   const kereso = t.kamara === 'MMK'
@@ -28,13 +24,14 @@ export function TanusitoSzakasz({ p, modosit }: { p: Projekt; modosit: Modosit }
 
   return (
     <section class="szakasz">
-      <h2>Tanúsító</h2>
-      <p class="halk">A tanúsítvány és az e-tanúsítás XML tanúsítói blokkja ebből készül. Az épületenergetikai tanúsítói (TÉ) jogosultságot a Magyar Építész Kamara vagy a Magyar Mérnöki Kamara névjegyzéke tartja nyilván.</p>
+      <h2>Tanúsító adatai</h2>
+      <p class="halk">A profilhoz kötött adatok minden projektedbe és az e-tanúsítás XML tanúsítói blokkjába kerülnek. Az épületenergetikai tanúsítói (TÉ) és szakértői (SZÉS6) jogosultságot a Magyar Építész Kamara vagy a Magyar Mérnöki Kamara névjegyzéke tartja nyilván. Szám nélkül legfeljebb 1 projekt hozható létre, és nincs XML / PDF dokumentálás.</p>
       <div class="racs">
         <Mezo cim="Név"><Szoveg ertek={t.nev} valt={(v) => mt((x) => { x.nev = v; delete x.ellenorzes; })} /></Mezo>
         <Mezo cim="Kamara"><Valaszto ertek={t.kamara ?? 'MEK'} valt={(v) => mt((x) => { x.kamara = v; delete x.ellenorzes; })} opciok={[{ ertek: 'MEK', nev: 'Magyar Építész Kamara' }, { ertek: 'MMK', nev: 'Magyar Mérnöki Kamara' }]} /></Mezo>
-        <Mezo cim="Névjegyzéki szám (TÉ)" sugo={szamOk ? 'Formátum: TÉ 11-0296' : 'Várt formátum: TÉ 00-0000'}>
-          <Szoveg ertek={t.jogosultsag} hely="TÉ 00-0000" valt={(v) => mt((x) => { x.jogosultsag = v; delete x.ellenorzes; })} />
+        <Mezo cim="Jogosultság"><Valaszto ertek={jb.tipus} valt={(v) => mt((x) => { x.jogosultsag = jogOsszerak(v, jogBont(x.jogosultsag).szam); delete x.ellenorzes; })} opciok={JOG_TIPUSOK} /></Mezo>
+        <Mezo rovid cim="Névjegyzéki szám" sugo={szamOk ? (szam ? undefined : 'nincs megadva') : 'Formátum: 11-0296'}>
+          <Szoveg ertek={szam} hely="00-0000" valt={(v) => mt((x) => { x.jogosultsag = jogOsszerak(jogBont(x.jogosultsag).tipus, v); delete x.ellenorzes; })} />
         </Mezo>
         <Mezo cim="E-mail"><Szoveg ertek={t.email} valt={(v) => mt((x) => { x.email = v; })} /></Mezo>
         <Mezo cim="Telefon"><Szoveg ertek={t.telefon} valt={(v) => mt((x) => { x.telefon = v; })} /></Mezo>
@@ -59,10 +56,6 @@ export function TanusitoSzakasz({ p, modosit }: { p: Projekt; modosit: Modosit }
         </div>
       </div>
 
-      <div class="gombsor" style="margin-top:12px">
-        <button class="gomb" disabled={!t.nev} onClick={() => { try { localStorage.setItem('ekm-tanusito', JSON.stringify(t)); setMentve('Megjegyeztem: az új projektek ezekkel az adatokkal indulnak ebben a böngészőben.'); } catch { setMentve('A böngésző nem engedi a tárolást.'); } }}>Adataim megjegyzése új projektekhez</button>
-        {mentve && <span class="halkabb" role="status">{mentve}</span>}
-      </div>
     </section>
   );
 }
@@ -78,5 +71,22 @@ function ElLenorzesRogzites({ onRogzit }: { onRogzit: (aktiv: boolean, lejarat: 
       <button class="gomb" onClick={() => { onRogzit(false, lejarat.trim()); setNyitva(false); }}>Nem aktív / nem található</button>
       <button class="gomb halk-gomb semleges" onClick={() => setNyitva(false)}>Mégse</button>
     </span>
+  );
+}
+
+/** A projektbe a profilból kerülő tanúsítói adatok rövid összefoglalója. */
+export function TanusitoOsszegzes({ t, szerkeszt }: { t: Tanusito | null; szerkeszt: () => void }) {
+  return (
+    <section class="szakasz">
+      <h2>Tanúsító</h2>
+      <div class="kartya" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div>
+          {t?.nev ? <strong>{t.nev}</strong> : <span class="jel rossz">Nincs tanúsítói profil</span>}
+          <div class="halkabb">{t?.jogosultsag || 'kamarai szám nélkül'}{t?.kamara ? ` · ${t.kamara === 'MMK' ? 'Magyar Mérnöki Kamara' : 'Magyar Építész Kamara'}` : ''}{t?.ellenorzes ? ` · névjegyzékben ${t.ellenorzes.aktiv ? 'aktív' : 'nem aktív'} (${new Date(t.ellenorzes.datum).toLocaleDateString('hu-HU')})` : ''}</div>
+          {!jogosult(t) && <div class="halkabb" style="color:var(--figyel)">Szám nélkül: legfeljebb 1 projekt, XML és PDF dokumentálás nélkül.</div>}
+        </div>
+        <button class="gomb" onClick={szerkeszt}>Tanúsítói profil szerkesztése</button>
+      </div>
+    </section>
   );
 }

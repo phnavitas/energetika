@@ -5,6 +5,7 @@ import { Mezo, Szam, Szoveg, Valaszto, sz } from '../ui';
 import { HOHID_SABLONOK, sablon, alapParameterek, type Parameter } from '../hohid/katalogus';
 import { hohidSzamolHatter, ujHohid, projektParameterek, javasoltHossz, ajanlott, type HohidSzamitas } from '../hohid/projekt';
 import { geometriaRajz, izotermRajz } from '../hohid/rajz';
+import { useProfil, ZAR_SZOVEG } from '../profil';
 
 type Modosit = (f: (q: Projekt) => void) => void;
 
@@ -19,6 +20,7 @@ function letolt(nev: string, adat: Blob) {
 }
 
 export function HohidakLepes({ p, modosit }: { p: Projekt; modosit: Modosit }) {
+  const pr = useProfil();
   const hidak = p.hohidak ?? [];
   const [aktiv, setAktiv] = useState<string | null>(hidak[0]?.id ?? null);
   const [katalog, setKatalog] = useState(!hidak.length);
@@ -33,6 +35,7 @@ export function HohidakLepes({ p, modosit }: { p: Projekt; modosit: Modosit }) {
     setAktiv(x.id); setKatalog(false);
   }
   async function pdf(lista: HohidUI[]) {
+    if (!pr.jogosult) return;
     const { hohidPdf } = await import('../hohid/pdf');
     const b = await hohidPdf(p, lista);
     letolt(`hohid_${(p.meta.nev || 'projekt').replace(/[^\p{L}\d]+/gu, '_')}.pdf`, new Blob([b as BlobPart], { type: 'application/pdf' }));
@@ -87,7 +90,7 @@ export function HohidakLepes({ p, modosit }: { p: Projekt; modosit: Modosit }) {
         <p class="halkabb" style="margin-top:8px">A katalógus csomópontjai a svájci BFE Wärmebrückenkatalog (2002) táblázataival validáltak (erkélylemez, attika, lapostető, előtető, belső szigetelésű födém- és falcsatlakozás: ±0,04 W/mK-en belül).</p>
         <div class="gombsor" style="margin-top:12px">
           <button class="gomb fo" onClick={() => setKatalog(!katalog)}>{katalog ? 'Katalógus bezárása' : 'Új hőhíd a katalógusból'}</button>
-          {hidak.some((x) => x.eredmeny) && <button class="gomb" onClick={() => void pdf(hidak.filter((x) => x.eredmeny))}>Összes hőhíd PDF-ben</button>}
+          {hidak.some((x) => x.eredmeny) && <button class="gomb" disabled={!pr.jogosult} title={pr.jogosult ? undefined : ZAR_SZOVEG} onClick={() => void pdf(hidak.filter((x) => x.eredmeny))}>Összes hőhíd PDF-ben</button>}
         </div>
         {katalog && (
           <div class="hh-katalogus">
@@ -201,10 +204,15 @@ function Szerkeszto({ p, h, modosit, pdf }: { p: Projekt; h: HohidUI; modosit: M
       </div>
       <div class="gombsor" style="margin-top:10px">
         <button class="gomb" disabled={!sz2} onClick={() => iRef.current?.toBlob((b) => b && letolt(`${h.nev}_izoterma.png`, b))}>Izotermás ábra (PNG)</button>
-        <button class="gomb" disabled={!e} onClick={pdf}>Hőhíd-jegyzőkönyv (PDF)</button>
+        <HohidPdfGomb e={!!e} pdf={pdf} />
       </div>
       {s.csoport === 'labazat' && <p class="halkabb" style="margin-top:6px">Talajmodell (MSZ EN ISO 10211): λtalaj = 2,0 W/mK, a modell az épületen belül B'/2, kívül és lefelé 2,5·B' kiterjedésű; az ábra a csomópont környezetét mutatja. Ψ = L2D − Ufal·hfal − U0·B'/2, ahol U0 a padló MSZ EN ISO 13370 szerinti alapértéke (peremszigetelés nélkül – azt a 2D modell tartalmazza, ezért a padlónál ne adj meg külön peremszigetelést).</p>}
       <p class="halkabb" style="margin-top:6px">Ψ: Rsi = 0,13, Rse = 0,04 m²K/W, adiabatikus vágósíkok (MSZ EN ISO 10211). Az izotermás ábra Rsi = 0,25 m²K/W-mal (felületi hőmérséklet-vizsgálat) készül; 1 °C-onkénti izotermák, a piros pont a legalacsonyabb belső felületi hőmérséklet.</p>
     </section>
   );
+}
+
+function HohidPdfGomb({ e, pdf }: { e: boolean; pdf: () => void }) {
+  const pr = useProfil();
+  return <button class="gomb" disabled={!e || !pr.jogosult} title={pr.jogosult ? undefined : ZAR_SZOVEG} onClick={pdf}>{pr.jogosult ? '' : '🔒 '}Hőhíd-jegyzőkönyv (PDF)</button>;
 }

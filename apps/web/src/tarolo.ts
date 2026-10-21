@@ -6,7 +6,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Anyag, Sraffozas } from './katalogus';
 import { hibaSzoveg, MAG_VERZIO, type Felhasznalo, type Iroda, type Szerep, type Tag, type Meghivo, type Osszesito, type ProjektSor, type BetoltottProjekt, type MentesEredmeny, type ForrasTipus, type IrodaiAnyag, type KonyvtarRetegrend, type KonyvtarNyilaszaro, type IrodaiSzett } from './tarolo-tipusok';
 export * from './tarolo-tipusok';
-import type { Gepeszet, NyilaszaroTipus, Projekt, Retegrend } from './modell';
+import type { Gepeszet, NyilaszaroTipus, Projekt, Retegrend, Tanusito } from './modell';
 
 const URL_ = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const KULCS = import.meta.env.VITE_SUPABASE_KEY as string | undefined;
@@ -40,8 +40,8 @@ export async function belepesJelszoval(email: string, jelszo: string) {
   if (error) dob(error);
 }
 /** Igaz, ha azonnal be is lépett (nincs e-mail megerősítés), hamis, ha megerősítő levelet küldött. */
-export async function regisztracio(email: string, jelszo: string): Promise<boolean> {
-  const { data, error } = await kell().auth.signUp({ email: email.trim(), password: jelszo, options: { emailRedirectTo: location.origin + location.pathname } });
+export async function regisztracio(email: string, jelszo: string, profil?: { nev: string; kamara: string; jogosultsag: string }): Promise<boolean> {
+  const { data, error } = await kell().auth.signUp({ email: email.trim(), password: jelszo, options: { emailRedirectTo: location.origin + location.pathname, data: profil ? { tanusito_nev: profil.nev, kamara: profil.kamara, jogosultsag: profil.jogosultsag } : undefined } });
   if (error) dob(error);
   return !!data.session;
 }
@@ -233,4 +233,27 @@ export async function szettMent(irodaId: string, nev: string, leiras: string, g:
 export async function szettTorol(id: string) {
   const { error } = await kell().from('gepeszeti_szett').delete().eq('id', id);
   if (error) dob(error);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Tanúsítói profil
+
+export async function profilBetolt(): Promise<Tanusito | null> {
+  const { data, error } = await kell().from('tanusito_profil').select('nev, kamara, jogosultsag, email, telefon, cim, ellenorzes').maybeSingle();
+  if (error) dob(error);
+  if (!data) return null;
+  return { nev: data.nev, kamara: data.kamara, jogosultsag: data.jogosultsag ?? '', email: data.email ?? '', telefon: data.telefon ?? '', cim: data.cim ?? undefined, ellenorzes: data.ellenorzes ?? undefined };
+}
+export async function profilMent(t: Tanusito) {
+  const { error } = await kell().from('tanusito_profil').upsert({
+    nev: t.nev.trim(), kamara: t.kamara ?? 'MEK', jogosultsag: t.jogosultsag.trim() || null, email: t.email || null, telefon: t.telefon || null,
+    cim: t.cim ?? null, ellenorzes: t.ellenorzes ?? null, modositva: new Date().toISOString(),
+  });
+  if (error) dob(error);
+}
+/** A felhasználó által létrehozott projektek száma (a szám nélküli korláthoz). */
+export async function sajatProjektSzam(f: Felhasznalo): Promise<number> {
+  const { count, error } = await kell().from('projekt').select('id', { count: 'exact', head: true }).eq('letrehozta', f.id);
+  if (error) dob(error);
+  return count ?? 0;
 }
