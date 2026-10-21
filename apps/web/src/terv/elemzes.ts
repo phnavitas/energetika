@@ -6,7 +6,7 @@ import { lapKinyer, type Lap } from './kinyeres';
 import { alaprajzElemez, type AlaprajzEredmeny, type TervHelyiseg } from './alaprajz';
 import { raszterEpit, type Raszter } from './raszter';
 import { kotaEllenoriz } from './kota';
-import { meretaranyKotabol, automatikusHelyisegek } from './autohelyiseg';
+import { meretaranyKotabol, automatikusHelyisegek, lakasCsoportok, arnyalatHatarok, type SzurkeKep } from './autohelyiseg';
 import { nyilasFeliratok, nyilasokHozzarendel, type TervNyilas } from './nyilaszarok';
 import { retegrendBlokkok, szerepBecsles, retegekEpit, szintekKeres, type TervRetegrend, type SzerepBecsles, type TervRetegUI, type SzintEredmeny } from './metszet';
 import { ujId } from '../modell';
@@ -18,6 +18,8 @@ export interface TervLap {
   lap: Lap;
   /** Előnézeti kép (JPEG dataURL) és mérete pixelben. */
   kep: string; kepSzel: number; kepMag: number;
+  /** A renderelt lap szürkeárnyalatos, kicsinyített képe (a színezett lakásfoltok felismeréséhez). */
+  szurke?: SzurkeKep;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -32,6 +34,28 @@ async function pdfjsBetolt(): Promise<PdfJs> {
     return pdfjs;
   })();
   return pdfjsBetoltve;
+}
+
+/**
+ * A vászon szürkeárnyalatos, kicsinyített (≈ 600 px széles) másolata blokkátlagolással és 3×3-as simítással – a
+ * mintázattal (pontraszterrel) kitöltött színezés így egyenletes szürke lesz. ptPx: 1 pt hány képpont.
+ */
+function szurkeKep(c: HTMLCanvasElement, scale: number): SzurkeKep | undefined {
+  try {
+    const W = c.width, H = c.height; const px = c.getContext('2d')!.getImageData(0, 0, W, H).data;
+    const B = Math.max(1, Math.ceil(W / 600));
+    const w = Math.ceil(W / B), h = Math.ceil(H / B);
+    const osszeg = new Float64Array(w * h), db = new Uint32Array(w * h);
+    for (let y = 0; y < H; y++) { const by = (y / B) | 0; for (let x = 0; x < W; x++) { const k = (y * W + x) * 4; const i = by * w + ((x / B) | 0); osszeg[i] += 0.299 * px[k]! + 0.587 * px[k + 1]! + 0.114 * px[k + 2]!; db[i]++; } }
+    const atl = new Float64Array(w * h); for (let i = 0; i < w * h; i++) atl[i] = db[i] ? osszeg[i]! / db[i]! : 255;
+    const adat = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let s = 0, n = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue; s += atl[yy * w + xx]!; n++; }
+      adat[y * w + x] = Math.round(s / n);
+    }
+    return { w, h, ptPx: scale / B, adat };
+  } catch { return undefined; }
 }
 
 export function lapSzerep(lap: Lap): { szerep: TervLap['szerep']; cim: string } {
@@ -60,7 +84,7 @@ export async function pdfLapok(f: File, kepSzel = 2000): Promise<TervLap[]> {
     const ctx = c.getContext('2d')!; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
     await page.render({ canvasContext: ctx, viewport: vp, canvas: c }).promise;
     const { szerep, cim } = lapSzerep(lap);
-    ki.push({ fajl: f.name, oldal: n, szerep, cim, lap, kep: c.toDataURL('image/jpeg', 0.82), kepSzel: c.width, kepMag: c.height });
+    ki.push({ fajl: f.name, oldal: n, szerep, cim, lap, kep: c.toDataURL('image/jpeg', 0.82), kepSzel: c.width, kepMag: c.height, szurke: szurkeKep(c, scale) });
     page.cleanup();
   }
   await doc.destroy();
@@ -77,23 +101,34 @@ export interface AlaprajzFeldolgozas {
   auto?: boolean;
 }
 
-export function alaprajzFeldolgoz(lap: Lap, meretarany?: number): AlaprajzFeldolgozas {
+export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: SzurkeKep): AlaprajzFeldolgozas {
   const e = alaprajzElemez(lap);
   if (meretarany && meretarany > 0) { e.meretarany = meretarany; e.mPerPt = (25.4 / 72) / 1000 * meretarany; }
   // lépték nélküli lap (pl. kicsinyített típusalaprajz): a méretláncokból becsülve
-  if (!e.mPerPt) { const M = meretaranyKotabol(lap.szovegek); if (M) { e.meretarany = M; e.mPerPt = (25.4 / 72) / 1000 * M; e.figyelmeztetesek = e.figyelmeztetesek.filter((x) => !/méretarányt nem találtam/.test(x)); e.figyelmeztetesek.push(`A lépték a méretláncokból becsülve: M = 1:${M}. Ellenőrizd, szükség esetén add meg kézzel.`); } }
+  if (!e.mPerPt) { const M = meretaranyKotabol(lap.szovegek, lap.utvonalak); if (M) { e.meretarany = M; e.mPerPt = (25.4 / 72) / 1000 * M; e.figyelmeztetesek = e.figyelmeztetesek.filter((x) => !/méretarányt nem találtam/.test(x)); e.figyelmeztetesek.push(`A lépték a méretláncokból becsülve: M = 1:${M}. Ellenőrizd, szükség esetén add meg kézzel.`); } }
   let magHelyisegek = e.helyisegek.filter((h) => h.forras === 'pecset' && !h.kulter);
   // pecsét nélküli (egyszerűsített) alaprajz: a falakkal körbezárt terek a helyiségek
   const auto = !magHelyisegek.length && !!e.mPerPt;
+  if (auto && szurke && !szurke.hatar) szurke = { ...szurke, hatar: arnyalatHatarok(szurke) };
   if (auto) {
-    magHelyisegek = automatikusHelyisegek(lap, e.mPerPt!);
+    magHelyisegek = automatikusHelyisegek(lap, e.mPerPt!, szurke);
     e.helyisegek = magHelyisegek;
     if (magHelyisegek.length) e.figyelmeztetesek = e.figyelmeztetesek.filter((x) => !/Helyiséget nem találtam/.test(x));
     if (magHelyisegek.length) e.figyelmeztetesek.push(`Helyiségpecsét nincs a lapon: ${magHelyisegek.length} zárt teret ismertem fel helyiségként (Helyiség 1, 2, …). Jelöld ki a lakás helyiségeit, és nevezd át őket a Helyiségek lépésben.`);
   }
   if (!e.mPerPt || !magHelyisegek.length) return { e, magHelyisegek, r: null, nyilasok: [] };
-  const r = raszterEpit(lap, e.mPerPt, magHelyisegek.map((h) => h.mutato ?? h), auto ? { px: 0.04, resZaras: 3.0, vastagVonalFal: 0.05 } : {});
+  const r = raszterEpit(lap, e.mPerPt, magHelyisegek.map((h) => h.mutato ?? h), auto ? { px: 0.04, resZaras: 3.0, vastagVonalFal: 0.05, ...(szurke ? { szinKep: szurke } : {}) } : {});
   kotaEllenoriz(r, lap.szovegek);
+  // pecsét nélküli típusalaprajz: lakás = egy szürkével színezett, összefüggő terület helyiségei (az x-szel áthúzott aknák nélkül)
+  if (auto && szurke) {
+    const l = lakasCsoportok(r, magHelyisegek, lap, szurke);
+    if (l.egysegek.length) {
+      e.egysegek = l.egysegek; e.egysegInfo = l.info;
+      // a helyiségként külön fel nem ismert lakásrészek (előtér, fürdő) – raszterindex nélkül, csak területtel
+      e.helyisegek = [...e.helyisegek, ...l.kiegeszito];
+      e.figyelmeztetesek.push(`${l.egysegek.length} lakást ismertem fel a szürke színezésből (egy lakás = egy összefüggő színezett terület, az x-szel áthúzott aknák nélkül). Válaszd ki a lakást a táblázatban.`);
+    }
+  }
   const nyilasok = nyilasokHozzarendel(nyilasFeliratok(lap.szovegek), r, magHelyisegek.map((h) => h.nev), auto);
   return { e, magHelyisegek, r, nyilasok, auto };
 }

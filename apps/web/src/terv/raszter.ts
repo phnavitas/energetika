@@ -18,6 +18,8 @@ export interface RaszterBeallitas {
   resZaras?: number;
   /** Egyszerűsített rajzhoz: a legalább ekkora (m) vonalvastagságú sötét vonalak is falak (vastag vonallal rajzolt fal). */
   vastagVonalFal?: number;
+  /** A renderelt lap szürkeképe: a színezett (lakás-) foltok határa is elválasztja a tereket (pl. ajtó a lépcsőház felé). */
+  szinKep?: { w: number; h: number; ptPx: number; adat: Uint8Array; hatar?: [number, number, number] };
 }
 
 export interface FalSzakasz {
@@ -393,7 +395,8 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
         for (let x = Math.max(0, Math.floor(ax)); x <= Math.min(w - 1, Math.ceil(bx) - 1); x++) if (!fal[y * w + x]) nyilas[y * w + x] = 1;
     }
   }
-  if (b.resZaras) resZar(fal, nyilas, w, h, Math.round(b.resZaras / px), Math.round(0.6 / px), falKomponensek(fal, w, h));
+  if (b.szinKep) szinHatar(fal, w, h, b.szinKep.hatar ?? [150, 230, 252], (x, y) => { const k = b.szinKep!; const ix = Math.round((x0 + (x + 0.5) / ptPx) * k.ptPx), iy = Math.round((y0 + (y + 0.5) / ptPx) * k.ptPx); return ix >= 0 && iy >= 0 && ix < k.w && iy < k.h ? k.adat[iy * k.w + ix]! : 255; });
+  if (b.resZaras) resZar(fal, nyilas, w, h, Math.round(b.resZaras / px), Math.round(0.6 / px), falKomponensek(fal, w, h), Math.max(2, Math.round(0.25 / px)));
   const gat = new Uint8Array(w * h);
   for (let i = 0; i < w * h; i++) gat[i] = fal[i] || nyilas[i] ? 1 : 0;
   // helyiségek: a pecsétekből indított versengő elárasztás a (hajszálrésekre kissé tágított) gáton belül
@@ -509,7 +512,7 @@ function falKomponensek(fal: Uint8Array, w: number, h: number): Int32Array {
   return komp;
 }
 
-function resZar(fal: Uint8Array, nyilas: Uint8Array, w: number, h: number, maxRes: number, maxSav: number, komp: Int32Array) {
+function resZar(fal: Uint8Array, nyilas: Uint8Array, w: number, h: number, maxRes: number, maxSav: number, komp: Int32Array, minFut = 5) {
   for (const fuggo of [false, true]) {
     const W = fuggo ? h : w, H = fuggo ? w : h;
     const idx = (a: number, b: number) => (fuggo ? a * w + b : b * w + a);
@@ -521,7 +524,11 @@ function resZar(fal: Uint8Array, nyilas: Uint8Array, w: number, h: number, maxRe
         const k0 = a; while (a < W && !fal[idx(a, b)]) a++;
         const k1 = a; // [k0, k1) szabad
         if (k0 === 0 || k1 >= W || k1 - k0 > maxRes) continue;
-        if (!fal[idx(k0 - 1, b)] || !fal[idx(k0 - 2 < 0 ? 0 : k0 - 2, b)] || !fal[idx(k1, b)] || !fal[idx(Math.min(W - 1, k1 + 1), b)]) continue;
+        // a rés két oldalán a fal a rés irányában is folytatódik (egy vonalba eső falszakaszok); a keresztező vékony
+        // válaszfal (néhány pixel) nem horgony – különben a sűrűn tagolt előtér, fürdő „lezáródna”
+        let bal = 0; while (bal < minFut && k0 - 1 - bal >= 0 && fal[idx(k0 - 1 - bal, b)]) bal++;
+        let jobb = 0; while (jobb < minFut && k1 + jobb < W && fal[idx(k1 + jobb, b)]) jobb++;
+        if (bal < minFut || jobb < minFut) continue;
         // csak egy alaprajzon belül (a rés két oldala azonos falhálózat) – két szomszédos rajz közti köz nem nyílás
         if (komp[idx(k0 - 1, b)] !== komp[idx(k1, b)]) continue;
         const kulcs = `${k0}|${k1}`; (jelolt.get(kulcs) ?? jelolt.set(kulcs, []).get(kulcs)!).push(b);
@@ -539,4 +546,32 @@ function resZar(fal: Uint8Array, nyilas: Uint8Array, w: number, h: number, maxRe
       }
     }
   }
+}
+
+/**
+ * Színhatár mint fal: a cellák árnyalatosztálya (sötétszürke ≤ 230, világosszürke ≤ 251, fehér); a vonalak, feliratok
+ * (sötét képpontok) cellái a szomszédos osztályt veszik át. Ahol két szomszédos cella osztálya eltér, ott fal van.
+ */
+function szinHatar(fal: Uint8Array, w: number, h: number, hatar: [number, number, number], szurke: (x: number, y: number) => number) {
+  const osztaly = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x; if (fal[i]) continue;
+    const g = szurke(x, y);
+    osztaly[i] = g < hatar[0] ? 0 : g <= hatar[1] ? 1 : g < hatar[2] ? 2 : 3;
+  }
+  for (let it = 0; it < 4; it++) {
+    const uj = osztaly.slice();
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x; if (osztaly[i] || fal[i]) continue;
+      for (const n of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i - w, i + w]) if (n >= 0 && n < w * h && osztaly[n]) { uj[i] = osztaly[n]!; break; }
+    }
+    osztaly.set(uj);
+  }
+  const jelol: number[] = [];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x; const a = osztaly[i]!; if (!a || fal[i]) continue;
+    const jobb = x < w - 1 ? osztaly[i + 1]! : 0, le = y < h - 1 ? osztaly[i + w]! : 0;
+    if ((jobb && jobb !== a && !fal[i + 1]) || (le && le !== a && !fal[i + w])) jelol.push(i);
+  }
+  for (const i of jelol) fal[i] = 1;
 }

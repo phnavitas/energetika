@@ -6,6 +6,9 @@ import { anyag } from '../katalogus';
 import { pecsetKinyer, type PecsetAdat } from '../terv/pecset';
 import panelUrl from '../mintak/tipusalaprajz_panel.pdf?url';
 import blokkosUrl from '../mintak/tipusalaprajz_blokkos.pdf?url';
+import panelSzurkeUrl from '../mintak/tipusalaprajz_panel_szurke.png?url';
+import blokkosSzurkeUrl from '../mintak/tipusalaprajz_blokkos_szurke.png?url';
+import type { SzurkeKep } from '../terv/autohelyiseg';
 import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, eszakJavitas, eszakJavitasMent, type TervLap } from '../terv/elemzes';
 import { egtaj } from '../terv/alaprajz';
 import { tervAtvesz, type AtvettNyilas } from '../terv/atvetel';
@@ -45,7 +48,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const [tetoAt, setTetoAt] = useState(true);
   const [mintaFajta, setMintaFajta] = useState<'panel' | 'blokkos' | null>(null);
 
-  async function betolt(fajlok: FileList | File[] | null, alaprajzOldal?: number) {
+  async function betolt(fajlok: FileList | File[] | null, alaprajzOldal?: number, szurkeFelulir?: SzurkeKep) {
     if (!fajlok?.length) return;
     setHiba(null); setKesz(null);
     const uj: TervLap[] = [];
@@ -53,7 +56,10 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
       for (const f of Array.from(fajlok)) {
         if (!/\.pdf$/i.test(f.name) && f.type !== 'application/pdf') { setHiba(`${f.name}: csak PDF tervlap olvasható be.`); continue; }
         setFolyamat(`${f.name} feldolgozása…`);
-        uj.push(...await pdfLapok(f));
+        const ll = await pdfLapok(f);
+        // beépített mintalap: a színezés a pdf.js-ben színátmenetként jelenik meg – az előre elkészített, egyszínű árnyalatkép
+        if (szurkeFelulir && alaprajzOldal !== undefined) for (const l of ll) if (l.oldal === alaprajzOldal) l.szurke = szurkeFelulir;
+        uj.push(...ll);
       }
     } catch (e) { setHiba(`A PDF nem olvasható: ${(e as Error).message}`); }
     setFolyamat(null);
@@ -71,14 +77,15 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     setFolyamat('Mintalap betöltése…');
     try {
       const b = await (await fetch(url)).blob();
-      await betolt([new File([b], fajta === 'panel' ? 'Típusalaprajzok – panel.pdf' : 'Típusalaprajzok – blokkos.pdf', { type: 'application/pdf' })], 2);
+      const sz = await szurkeBetolt(fajta === 'panel' ? panelSzurkeUrl : blokkosSzurkeUrl, 2);
+      await betolt([new File([b], fajta === 'panel' ? 'Típusalaprajzok – panel.pdf' : 'Típusalaprajzok – blokkos.pdf', { type: 'application/pdf' })], 2, sz);
       setPadloAt(false); setTetoAt(false); setMintaFajta(fajta);
     } catch (e) { setFolyamat(null); setHiba(`A mintalap nem tölthető be: ${(e as Error).message}`); }
   }
 
   const aLap = aIdx >= 0 ? lapok[aIdx] : undefined;
   const mLap = mIdx >= 0 ? lapok[mIdx] : undefined;
-  const al = useMemo(() => (aLap ? alaprajzFeldolgoz(aLap.lap, meretarany) : null), [aLap, meretarany]);
+  const al = useMemo(() => (aLap ? alaprajzFeldolgoz(aLap.lap, meretarany, aLap.szurke) : null), [aLap, meretarany]);
   const me = useMemo(() => (mLap ? metszetFeldolgoz(mLap.lap) : null), [mLap]);
   const pecset = useMemo<PecsetAdat | null>(() => { const l = aLap ?? mLap; if (!l) return null; const d = pecsetKinyer(l.lap.szovegek); return Object.keys(d).length ? d : null; }, [aLap, mLap]);
 
@@ -91,7 +98,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     // ha van helyiségpecsét, a csak a jegyzékben szereplő sorok (párjuk nincs a rajzon) alapból nem kerülnek át
     const vanPecset = al.e.helyisegek.some((h) => h.forras === 'pecset');
     // automatikusan felismert helyiségek (típusalaprajz): alapból egy sincs kijelölve – a lakás helyiségeire kattintva
-    setKizartH(new Set(al.auto ? al.e.helyisegek.map((_h, i) => i) : vanPecset ? al.e.helyisegek.map((h, i) => (h.forras === 'jegyzek' ? i : -1)).filter((i) => i >= 0) : []));
+    // típusalaprajz: ha a színezésből lakások jöttek, a lakáshoz nem tartozó terek (lépcsőház, folyosó, akna) kimaradnak
+    setKizartH(new Set(al.auto ? al.e.helyisegek.map((h, i) => (al.e.egysegek.length && h.egyseg ? -1 : i)).filter((i) => i >= 0) : vanPecset ? al.e.helyisegek.map((h, i) => (h.forras === 'jegyzek' ? i : -1)).filter((i) => i >= 0) : []));
     setKat({}); setKizartNy(new Set());
   }, [al]);
   useEffect(() => {
@@ -407,4 +415,16 @@ function pecsetAtvesz(q: Projekt, d: PecsetAdat) {
   if (d.hrsz) q.meta.hrsz = d.hrsz;
   if (d.cim) { q.meta.irsz = d.cim.irsz; q.meta.telepules = d.cim.telepules; q.meta.kozterulet = d.cim.kozterulet; q.meta.kozteruletJelleg = d.cim.jelleg || q.meta.kozteruletJelleg; q.meta.hazszam = d.cim.hazszam; }
   else if (d.helyszin && !q.meta.telepules) q.meta.telepules = d.helyszin;
+}
+
+/** Előre elkészített árnyalatkép (PNG) betöltése szürkeképként; ptPx: 1 pt hány képpont. */
+async function szurkeBetolt(url: string, ptPx: number): Promise<SzurkeKep | undefined> {
+  try {
+    const img = new Image(); img.src = url; await img.decode();
+    const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+    const x = c.getContext('2d')!; x.drawImage(img, 0, 0);
+    const d = x.getImageData(0, 0, c.width, c.height).data; const adat = new Uint8Array(c.width * c.height);
+    for (let i = 0; i < adat.length; i++) adat[i] = d[i * 4]!;
+    return { w: c.width, h: c.height, ptPx, adat };
+  } catch { return undefined; }
 }
