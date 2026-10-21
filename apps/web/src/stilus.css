@@ -412,3 +412,5 @@ details.osszecsukhato[open] > summary { margin-bottom: 4px; }
 .minta-panel { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 150px; }
 .gomb.aktiv-gomb { border-color: var(--hideg); box-shadow: inset 0 0 0 1px var(--hideg); }
 @media (max-width: 1100px) { .minta-keret { grid-template-columns: minmax(0, 1fr); } .minta-panel { position: static; } }
+
+.gomb.kis-gomb { min-height: 26px; padding: 2px 7px; font-size: 12px; }

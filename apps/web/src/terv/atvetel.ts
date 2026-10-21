@@ -44,6 +44,8 @@ export interface TervAtvetel {
   alapFalSablon?: string;
   /** Forrás a megjegyzésekhez (fájlnév). */
   forras?: string;
+  /** Az alaprajz által ábrázolt szintek (pl. ['1', '2'] – azonos 1. és 2. emelet): a helyiségek szintenként, a falak, nyílászárók szintszámszorosan. */
+  szintek?: string[];
 }
 
 const kerek = (x: number, n = 2) => Math.round(x * 10 ** n) / 10 ** n;
@@ -89,7 +91,9 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
     for (const h of p.hohidak ?? []) delete h.padloId;
   }
   const retegAlairas = (r: Pick<Retegrend, 'szerep' | 'retegek'>) => JSON.stringify([r.szerep, r.retegek.map((l) => [l.anyagId ?? l.nev ?? '', l.dCm, l.lambda ?? null, l.R ?? null, l.legreteg ?? null])]);
-  p.meta.szintek = a.szintszam;
+  const szintek = a.szintek?.length ? a.szintek : [''];
+  const n = szintek.length;
+  p.meta.szintek = a.csere ? Math.max(a.szintszam, n) : Math.max(p.meta.szintek ?? 1, a.szintszam);
 
   // rétegrendek
   const rrId: Record<string, string> = {};
@@ -132,13 +136,16 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
   const helyIdk: string[] = [];
   // egyszintes beolvasás: alapból az alaprajz szintje a legalsó és a legfelső is; közbenső lakásnál kikapcsolható
   const legfelso = a.tetoAt !== false, foldszint = a.padloAt !== false;
-  for (const h of a.helyisegek) {
-    const id = ujId(); helyIdk.push(id);
+  const szintCimke = (sz: string) => (sz === 'P' ? 'pince' : sz === 'F' ? 'fszt.' : sz === 'T' ? 'tetőtér' : `${sz}. em.`);
+  for (const [si, sz] of szintek.entries()) for (const h of a.helyisegek) {
+    const id = ujId(); if (si === 0) helyIdk.push(id);
+    // a szintenként ismétlődő kód („A.1.L.1.”) a többi szinten a szint számával
+    const kod = h.kod && n > 1 && sz ? h.kod.replace(new RegExp(`^([A-ZÁÉ]{1,2}\\.)${szintek[0]}(\\.)`), (_m, a: string, b: string) => `${a}${sz}${b}`) : h.kod;
     const hz: Helyiseg = {
-      id, nev: h.kod ? `${h.nev} (${h.kod})` : h.nev, kategoria: h.kategoria, A: kerek(h.A), h: a.belmagassag,
+      id, nev: (kod ? `${h.nev} (${kod})` : h.nev) + (n > 1 && kod === h.kod && sz ? ` – ${szintCimke(sz)}` : ''), kategoria: h.kategoria, A: kerek(h.A), h: a.belmagassag,
       hsz: {
         kulsoFalak: falRid ? h.falak.filter((f) => f.hossz >= 0.3).map((f) => ({ id: ujId(), retegrendId: falRid, hossz: kerek(f.hossz) })) : [],
-        padlas: legfelso && !!padlas, padlo: foldszint && !!padlok.length, szomszedok: [],
+        padlas: legfelso && si === n - 1 && !!padlas, padlo: foldszint && si === 0 && !!padlok.length, szomszedok: [],
       },
     };
     p.helyisegek.push(hz);
@@ -153,7 +160,7 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
     const hossz = kerek(a.helyisegek.filter(burok).reduce((s, h) => s + h.falak.filter((f) => f.irany === ir).reduce((q, f) => q + f.hossz, 0), 0));
     if (hossz < 0.2) continue;
     const t = egtaj(ir, a.eszakSzog);
-    const f: Felulet = { id: ujId(), nev: `Homlokzati fal – ${t}`, fajta: 'opak', retegrendId: falRid, hatar: 'kulso', tajolas: t, hajlasszog: 90, meret: { hossz, magassag: a.belmagassag }, A: kerek(hossz * a.belmagassag), chi: 0.2 };
+    const f: Felulet = { id: ujId(), nev: `Homlokzati fal – ${t}`, fajta: 'opak', retegrendId: falRid, hatar: 'kulso', tajolas: t, hajlasszog: 90, meret: { hossz: kerek(hossz * n), magassag: a.belmagassag }, A: kerek(hossz * n * a.belmagassag), chi: 0.2 };
     p.feluletek.push(f); falFel[ir] = f.id;
   }
 
@@ -163,14 +170,19 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
   const belsoFal = a.retegrendek.find((x) => x.becsles.szerep === 'fal' && /teherhordó|belső/i.test(x.rr.cim));
   for (const [fele, hossz] of futetlen) {
     const b = /garázs|garazs/i.test(fele) ? 'garazs' : 'futetlen_helyiseg';
-    p.feluletek.push({ id: ujId(), nev: `Fal – ${fele} felé`, fajta: 'opak', retegrendId: (belsoFal && rrId[belsoFal.rr.kod]) ?? falRid, hatar: b, hajlasszog: 90, tajolas: null, meret: { hossz: kerek(hossz), magassag: a.belmagassag }, A: kerek(hossz * a.belmagassag), chi: 0.1 });
+    p.feluletek.push({ id: ujId(), nev: `Fal – ${fele} felé`, fajta: 'opak', retegrendId: (belsoFal && rrId[belsoFal.rr.kod]) ?? falRid, hatar: b, hajlasszog: 90, tajolas: null, meret: { hossz: kerek(hossz * n), magassag: a.belmagassag }, A: kerek(hossz * n * a.belmagassag), chi: 0.1 });
   }
 
   // talajon fekvő padló(k) – burkolat szerint a megfelelő padló-rétegrendre; a kerület a terület arányában oszlik meg
   const futott = a.helyisegek.filter((h) => h.kategoria !== 'gyengen_kapcsolt');
   const Aossz = futott.reduce((s, h) => s + h.A, 0);
   const Possz = a.helyisegek.filter(burok).reduce((s, h) => s + h.falak.reduce((q, f) => q + f.hossz, 0), 0);
-  if (foldszint && padlok.length && Aossz > 0) {
+  const pinceFodem = a.retegrendek.find((x) => x.becsles.szerep === 'pincefodem' && x.becsles.kovetelmenyKod === 'also_zarofodem' && !x.becsles.kihagy);
+  if (foldszint && pinceFodem && Aossz > 0) {
+    const garazs = /garázs|garazs/i.test(pinceFodem.rr.cim);
+    p.feluletek.push({ id: ujId(), nev: `Födém – fűtetlen ${garazs ? 'garázs' : 'pince'} felett`, fajta: 'opak', retegrendId: rrId[pinceFodem.rr.kod], hatar: garazs ? 'melygarazs' : 'pince', A: kerek(Aossz), tajolas: null, hajlasszog: 0, chi: 0.1 });
+    uz.push(`A legalsó fűtött szint padlója a(z) ${pinceFodem.rr.kod} „${pinceFodem.rr.cim}” födém (fűtetlen ${garazs ? 'mélygarázs' : 'pince'} felett, b-tényezővel).`);
+  } else if (foldszint && padlok.length && Aossz > 0) {
     const elsoReteg = (x: AtvettRetegrend) => x.retegek.find((l) => !l.kimarad)?.forras.toLowerCase() ?? '';
     // fűtött helyiség alá nem kerül a garázs / tároló padlója; a vizes helyiség a „vizes” padlót kapja
     const futottPadlok = padlok.filter((x) => !/garázs|garazs|tároló|pince/i.test(x.rr.cim)) .length ? padlok.filter((x) => !/garázs|garazs|tároló|pince/i.test(x.rr.cim)) : padlok;
@@ -217,12 +229,13 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
     const t: Tajolas = egtaj(ny.irany, a.eszakSzog);
     p.feluletek.push({
       id: ujId(), nev: `${h ? h.nev : ''} – ${tipus.nev.split(' – ')[0]}`, helyisegId: helyIdk[ny.helyiseg], fajta: 'nyilaszaro', nyilaszaroId: tipus.id,
-      hatar: 'kulso', darab: db, tajolas: t, hajlasszog: 90, szuloId: falFel[ny.irany],
+      hatar: 'kulso', darab: db * n, tajolas: t, hajlasszog: 90, szuloId: falFel[ny.irany],
     });
   }
   const nyilasNelkul = a.nyilasok.filter((ny) => (!a.helyisegek[ny.helyiseg] || burok(a.helyisegek[ny.helyiseg]!)) && !falFel[ny.irany]).length;
   if (nyilasNelkul) uz.push(`${nyilasNelkul} nyílászáróhoz nem tartozik homlokzati fal azonos irányban – a falból nem vonódik le, a Határolás lépésben rendeld falhoz.`);
   // azonos falfelületek, padlók összevonása (ismételt, mellé olvasott beolvasásnál is egy felület tájolásonként)
+  if (n > 1) uz.push(`${n} azonos szint (${szintek.map(szintCimke).join(', ')}): a helyiségek szintenként, a homlokzati falak és nyílászárók ${n}-szeresen kerültek át.`);
   const ossze = feluletekOsszevon(p, (f) => f.fajta !== 'nyilaszaro');
   if (ossze) uz.push(`${ossze} azonos felület összevonva (azonos szerkezet, határ és tájolás).`);
   return { uzenetek: uz };

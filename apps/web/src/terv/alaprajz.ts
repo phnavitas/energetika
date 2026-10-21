@@ -54,8 +54,14 @@ export const szamErtek = (s: string): number => Number(s.replace(/\s/g, '').repl
 
 const TERULET = /^(\d{1,4}[,.]\d{1,2})\s*m\s*(²|2)?$/;
 const KOD = /^[A-ZÁÉ]{0,3}\.?\s?\d{0,3}[.\-/]?\s?\d{1,3}[a-z]?$/;
+/** Többtagú, pontokkal tagolt helyiség-/lakáskód: „A.F.L.4.”, „A.1.K.”, „B.F.L.1.3”, „L01.02”. */
+export const KOD_TAGOLT = /^[A-ZÁÉ0-9]{1,4}(?:\.[A-ZÁÉ0-9]{1,4}){1,5}\.?$/;
+/** Helyiségkód-e a szöveg (egyszerű „1.02”, „L01” vagy tagolt „A.F.L.4.”). */
+export const kodE = (t: string) => (KOD.test(t) && /\d/.test(t)) || tagoltKod(t);
+/** Tagolt kód: legalább három tag, vagy van benne számjegy (az „AKM. WC” rövidítés + név nem kód). */
+export const tagoltKod = (t: string) => { const k = t.replace(/\s/g, ''); const tg = k.split('.').filter(Boolean); return KOD_TAGOLT.test(k) && (/\d/.test(k) || tg.length >= 3 || tg.every((x) => x.length === 1)); };
 const BURKOLAT = /kerámia|keramia|parketta|parketa|laminált|lam\.|térkő|terko|beton|csempe|járólap|greslap|gres|pvc|linóleum|szőnyeg|padlószőnyeg|műgyanta|kő\b|kőlap|fa\s?burkolat|deszka|vinyl|vinil|esztrich|kavics|aszfalt|gumi|burkolat|kulé/i;
-const KULTER = /terasz|erkély|erkely|loggia|kocsibeálló|kocsibeallo|járda|tornác|tornac|előkert|udvar|árkád|lépcsőfeljáró|kerti/i;
+const KULTER = /terasz|erkély|erkely|loggia|kocsibeálló|kocsibeallo|járda|tornác|tornac|előkert|udvar|árkád|lépcsőfeljáró|kerti|bejáró|bejaro|kukatároló|kukataroló|hulladéktároló|szemetes/i;
 
 const kozep = (t: Szoveg) => t.x + t.szel / 2;
 const vizszintes = (t: Szoveg) => Math.abs(t.szog) < 2;
@@ -97,13 +103,13 @@ export function pecsetek(sz: Szoveg[]): TervHelyiseg[] {
       // másik pecsét / méretszám (a magyar méretszám tizedesvesszős; a pontos „1.01” helyiségkód lehet)
       if (TERULET.test(ts) || /^\d+,\d+$/.test(ts) || /^\d{4,}$/.test(ts)) break;
       sorok.unshift(t); akt = t;
-      if (KOD.test(ts) && /\d/.test(ts)) break;
+      if (kodE(ts)) break;
     }
     if (!sorok.length) continue;
     const szovegek = sorok.map((t) => szovegJavit(t.s));
     let kod: string | undefined; let burkolat: string | undefined; const nevResz: string[] = [];
     for (const t of szovegek) {
-      if (!kod && KOD.test(t) && /\d/.test(t)) kod = t.replace(/\s/g, '');
+      if (!kod && kodE(t)) kod = t.replace(/\s/g, '');
       else if (!burkolat && BURKOLAT.test(t) && nevResz.length) burkolat = t;
       else nevResz.push(t);
     }
@@ -127,8 +133,24 @@ export function nagybetuJavit(s: string): string {
 
 /** Az egység (lakás) kódja a helyiségkódból: „L01.02” → „L01”, „1.02” → „1”. */
 export function egysegKod(kod: string): string | undefined {
-  const m = /^(.*?\d+)[.\-/]\s?\d{1,3}[a-z]?$/.exec(kod.replace(/\s/g, ''));
+  const k = kod.replace(/\s/g, '');
+  // ponttal záruló tagolt kód: maga a lakás / egység kódja („A.F.L.4.” → „A.F.L.4”, „A.F.K.” → „A.F.K”)
+  if (tagoltKod(k) && k.endsWith('.')) return k.slice(0, -1);
+  const m = /^(.*?\d+)[.\-/]\s?\d{1,3}[a-z]?$/.exec(k);
   return m ? m[1]!.replace(/[.\-/]$/, '') : undefined;
+}
+
+/** Tagolt egységkód olvasható neve: „A.F.L.4” → „A épület · földszint · 4. lakás”, „A.1.K” → „A épület · 1. emelet · közös terek”. */
+export function egysegNev(eg: string): string | undefined {
+  const t = eg.split('.').filter(Boolean);
+  if (t.length < 3) return undefined;
+  const li = t.findIndex((x, i) => i > 0 && /^(L|LAK|LK)$/i.test(x));
+  const ki = t.findIndex((x, i) => i > 0 && /^(K|KÖZ|KOZ)$/i.test(x));
+  if (li < 0 && ki < 0) return undefined;
+  const szintTag = t[(li >= 0 ? li : ki) - 1];
+  const szint = !szintTag || szintTag === t[0] ? '' : /^F(SZ)?$/i.test(szintTag) ? 'földszint' : /^(P|PI)$/i.test(szintTag) ? 'pince' : /^(T|TT)$/i.test(szintTag) ? 'tetőtér' : /^\d+$/.test(szintTag) ? `${Number(szintTag)}. emelet` : szintTag;
+  const resz = [`${t[0]} épület`, szint, li >= 0 ? `${t[li + 1] ?? ''}. lakás` : 'közös terek'].filter(Boolean);
+  return resz.join(' · ');
 }
 
 /** Helyiségjegyzék (táblázat) sorai: azonos magasságú szövegek, a sor végén terület. */
@@ -147,7 +169,7 @@ export function jegyzekSorok(sz: Szoveg[]): TervHelyiseg[] {
     if (!/^\d{1,4}[,.]\d{1,2}$/.test(utolso)) continue;
     // a kód az első egy-két elemből áll össze („L01.” + „01”)
     let kod = ''; let i = 0;
-    while (i < r.length - 1 && /^[A-ZÁÉ]{0,3}\.?\d{0,3}[.\-/]?\s?\d{0,3}\.?$/.test(r[i]!.s) && /\d/.test(r[i]!.s) && kod.length < 9) { kod += r[i]!.s.replace(/\s/g, ''); i++; }
+    while (i < r.length - 1 && ((/^[A-ZÁÉ]{0,3}\.?\d{0,3}[.\-/]?\s?\d{0,3}\.?$/.test(r[i]!.s) && /\d/.test(r[i]!.s)) || tagoltKod(r[i]!.s)) && kod.length < 16) { kod += r[i]!.s.replace(/\s/g, ''); i++; }
     const kozepso = r.slice(i, -1).map((t) => t.s);
     if (!kozepso.length || !kod) continue;
     let burkolat: string | undefined; const nevResz: string[] = [];
@@ -299,7 +321,9 @@ export function alaprajzElemez(lap: Lap): AlaprajzEredmeny {
   // a jegyzék sorát a pecséthez kötjük: azonos kód (írásmódtól függetlenül), vagy azonos terület és hasonló név
   const kodN = (k?: string) => (k ?? '').toLowerCase().replace(/[^a-z0-9]/g, '').replace(/(\D)0+(\d)/g, '$1$2');
   const nevN = (n: string) => n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z]/g, '');
-  const parja = (j: TervHelyiseg) => pec.find((h) => (j.kod && h.kod && kodN(h.kod) === kodN(j.kod)))
+  const kodSzam = new Map<string, number>();
+  for (const h of pec) if (h.kod) kodSzam.set(kodN(h.kod), (kodSzam.get(kodN(h.kod)) ?? 0) + 1);
+  const parja = (j: TervHelyiseg) => pec.find((h) => j.kod && h.kod && kodN(h.kod) === kodN(j.kod) && (kodSzam.get(kodN(h.kod)) === 1 || (!h.jegyzekA && Math.abs(h.A - j.A) < 0.011)))
     ?? pec.find((h) => !h.jegyzekA && Math.abs(h.A - j.A) < 0.011 && (nevN(h.nev).includes(nevN(j.nev)) || nevN(j.nev).includes(nevN(h.nev))) && (!h.egyseg || !j.egyseg || kodN(h.egyseg) === kodN(j.egyseg)));
   let csakJegyzek = 0;
   for (const j of jegy) {
@@ -333,11 +357,27 @@ export function alaprajzElemez(lap: Lap): AlaprajzEredmeny {
     const cx = hsAll.reduce((s2, h) => s2 + h.x, 0) / Math.max(1, hsAll.length), cy = hsAll.reduce((s2, h) => s2 + h.y, 0) / Math.max(1, hsAll.length);
     const nev = lakasCimkek.find((c) => szam && Number(c.szam) === Number(szam))?.nev
       ?? [...lakasCimkek].sort((a, b) => Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy))[0]?.nev;
-    egysegInfo[eg] = { epulet, nev: nev && nev !== eg ? nev : undefined, db: hsAll.length, A: Math.round(hsAll.reduce((s2, h) => s2 + h.A, 0) * 100) / 100 };
+    const tagoltNev = egysegNev(eg);
+    egysegInfo[eg] = { epulet, nev: tagoltNev ?? (nev && nev !== eg ? nev : undefined), db: hsAll.length, A: Math.round(hsAll.reduce((s2, h) => s2 + h.A, 0) * 100) / 100 };
   }
   // az északjelet a feliratmezőn és a jelmagyarázaton kívül keressük: a helyiségjegyzék sorai és a nagy szövegtömbök körül nem
   const eszak = eszakjelKeres(lap);
   if (!eszak) figy.push('Északjelet nem találtam – add meg kézzel az észak irányát.');
   else if (eszak.bizonytalan) figy.push('Az északjel irányát az alakjából becsültem: ellenőrizd az előnézeten, szükség esetén fordítsd meg.');
   return { meretarany: M, mPerPt: M ? (25.4 / 72) / 1000 * M : null, helyisegek, egysegek, egysegInfo, eszak, figyelmeztetesek: figy };
+}
+
+/** A lap címéből a szintek: „Pince alaprajz” → [P], „1. és 2. emeleti alaprajz” → [1, 2], „Földszint” → [F]. */
+export const SZINT_NEV: Record<string, string> = { P: 'Pince', F: 'Földszint', T: 'Tetőtér' };
+export const szintNev = (k: string) => SZINT_NEV[k] ?? `${k}. emelet`;
+export function szintekCimbol(cim: string): string[] {
+  const c = cim.toLowerCase();
+  if (/pince|alagsor|mélygarázs/.test(c)) return ['P'];
+  if (/földszint|fszt|földsz/.test(c)) return ['F'];
+  if (/tetőtér|tetoter/.test(c)) return ['T'];
+  const tart = /(\d+)\s*\.?\s*[-–]\s*(\d+)\s*\.?\s*emelet/.exec(c);
+  if (tart) { const a = Number(tart[1]), b = Number(tart[2]); return Array.from({ length: Math.max(0, b - a) + 1 }, (_, i) => String(a + i)); }
+  const tobb = [...c.matchAll(/(\d+)\s*\.(?=[^\d]*(?:és|,|emelet))/g)].map((m) => m[1]!);
+  if (tobb.length && /emelet/.test(c)) return [...new Set(tobb)];
+  return [];
 }

@@ -20,7 +20,9 @@ export interface TervNyilas {
   fajta: 'ablak' | 'erkelyajto' | 'bejarati_ajto' | 'garazskapu' | 'belso_ajto';
 }
 
-const SZAM = /^\d{2,3}$/;
+/** Nyílásméret cm-ben; a „+30” toldás (redőnytok, tokszélesítés) a magasság mellett – a nyílásméret az első szám. */
+const SZAM = /^\d{2,3}(?:\s*\+\s*\d{1,3})?$/;
+const szamCm = (s: string) => Number(s.trim().split('+')[0]);
 /** Méterben írt nyílásméret (kapuknál gyakori: „2,65” / „2,40”). */
 const SZAM_M = /^\d,\d{2}$/;
 const mSzam = (s: string) => Number(s.trim().replace(',', '.'));
@@ -41,7 +43,7 @@ function geom(t: Szoveg) {
 export interface NyilasFelirat { szel: number; mag: number; pm: number | null; x: number; y: number; /** A fal iránya a lapon: vízszintes / függőleges. */ fal: 'v' | 'f'; /** Méterben írt, kapuméretű feliratpár: csak garázs jellegű helyiségben, falnyíláshoz kötve fogadjuk el. */ kapuJelolt?: boolean }
 
 export function nyilasFeliratok(sz: Szoveg[]): NyilasFelirat[] {
-  const szamok = sz.filter((t) => SZAM.test(t.s.trim()) && Number(t.s) >= 30 && Number(t.s) <= 600);
+  const szamok = sz.filter((t) => SZAM.test(t.s.trim()) && szamCm(t.s) >= 30 && szamCm(t.s) <= 600);
   const pmek = sz.map((t) => ({ t, m: PM.exec(szovegJavit(t.s)) })).filter((x) => x.m);
   // „pm” és a szám külön szövegelemben
   for (const t of sz) {
@@ -81,7 +83,7 @@ export function nyilasFeliratok(sz: Szoveg[]): NyilasFelirat[] {
     }
     if (pm) pmHasznalt.add(pm.t);
     hasznalt.add(a); hasznalt.add(legjobb.b);
-    let szel = Number(felso.s) / 100, mag = Number(also.s) / 100;
+    let szel = szamCm(felso.s) / 100, mag = szamCm(also.s) / 100;
     // ajtó felcserélt sorrendben („240 / 90”): mellvéd nélkül, ajtómagasságú felső és ajtószélességű alsó szám
     if (!pm && szel >= 1.9 && mag <= 1.2) [szel, mag] = [mag, szel];
     ki.push({ szel, mag, pm: pm ? pmErtek(pm.m![1]!, pm.m![2]) : null, x, y, fal: Math.abs(ga.fel[0]) >= Math.abs(ga.fel[1]) ? 'v' : 'f' });

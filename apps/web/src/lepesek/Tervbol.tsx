@@ -6,7 +6,7 @@ import { anyag } from '../katalogus';
 import { pecsetKinyer, type PecsetAdat } from '../terv/pecset';
 import type { SzurkeKep } from '../terv/autohelyiseg';
 import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, eszakJavitas, eszakJavitasMent, type TervLap } from '../terv/elemzes';
-import { egtaj } from '../terv/alaprajz';
+import { egtaj, szintekCimbol, szintNev } from '../terv/alaprajz';
 import { tervAtvesz, type AtvettNyilas } from '../terv/atvetel';
 import { MintaLakasok } from './MintaLakasok';
 
@@ -44,6 +44,9 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const [padloAt, setPadloAt] = useState(true);
   const [tetoAt, setTetoAt] = useState(true);
   const [mintaFajta, setMintaFajta] = useState<'panel' | 'blokkos' | null>(null);
+  /** Lapindex → az alaprajz által ábrázolt szintek (alapból a lap címéből). */
+  const [szintKi, setSzintKi] = useState<Record<number, string[]>>({});
+  const [atvett, setAtvett] = useState<Set<number>>(new Set());
 
   async function betolt(fajlok: FileList | File[] | null, alaprajzOldal?: number, szurkeFelulir?: SzurkeKep) {
     if (!fajlok?.length) return;
@@ -74,6 +77,17 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   }
 
   const aLap = aIdx >= 0 ? lapok[aIdx] : undefined;
+  const lapSzintek = (i: number) => szintKi[i] ?? szintekCimbol(lapok[i]?.cim ?? '');
+  const alaprajzLapok = lapok.map((l, i) => ({ l, i })).filter(({ l }) => l.szerep === 'alaprajz');
+  const SZINT_SOR = ['P', 'F', '1', '2', '3', '4', '5', 'T'];
+  // a fűtött szintek (a pince nélkül) közül a legalsót ábrázoló lapnál padló, a legfelsőnél padlásfödém / tető
+  useEffect(() => {
+    if (aIdx < 0) return;
+    const futott = [...new Set(alaprajzLapok.flatMap(({ i }) => lapSzintek(i)).filter((x) => x !== 'P'))].sort((a, b) => SZINT_SOR.indexOf(a) - SZINT_SOR.indexOf(b));
+    const sajat = lapSzintek(aIdx);
+    if (!futott.length || !sajat.length) return;
+    setPadloAt(sajat.includes(futott[0]!)); setTetoAt(sajat.includes(futott.at(-1)!));
+  }, [aIdx, lapok.length, JSON.stringify(szintKi)]);
   const mLap = mIdx >= 0 ? lapok[mIdx] : undefined;
   const al = useMemo(() => (aLap ? alaprajzFeldolgoz(aLap.lap, meretarany, aLap.szurke) : null), [aLap, meretarany]);
   const me = useMemo(() => (mLap ? metszetFeldolgoz(mLap.lap) : null), [mLap]);
@@ -84,7 +98,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     if (!al) return;
     const e = al.e.eszak;
     setEszak(e ? norm(e.szog + eszakJavitas(e.alairas)) : 0);
-    setEgysegek(new Set(al.e.egysegek.slice(0, 1)));
+    setEgysegek(new Set(al.e.egysegek));
     // ha van helyiségpecsét, a csak a jegyzékben szereplő sorok (párjuk nincs a rajzon) alapból nem kerülnek át
     const vanPecset = al.e.helyisegek.some((h) => h.forras === 'pecset');
     // automatikusan felismert helyiségek (típusalaprajz): alapból egy sincs kijelölve – a lakás helyiségeire kattintva
@@ -136,11 +150,15 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
         nyilasok: nyilasok.filter(({ k }) => !kizartNy.has(k)).map(({ n, hi }): AtvettNyilas => ({ fajta: n.fajta as AtvettNyilas['fajta'], szel: n.szel, mag: n.mag, pm: n.pm, helyiseg: index.get(hi)!, irany: n.irany! })),
         eszakSzog: eszakSz, belmagassag: bm ?? 2.7, szintszam: szintszam ?? 1, csere, padloAt, tetoAt, ...(mintaFajta === 'blokkos' ? { alapFalSablon: 'fal_blokk_kohosalak' } : {}),
         forras: [aLap?.fajl, mLap?.fajl].filter(Boolean).join(', '),
+        szintek: lapSzintek(aIdx),
       }).uzenetek;
     });
     if (pecset && pecsetBe) modosit((q) => pecsetAtvesz(q, pecset));
     if (al.e.eszak) eszakJavitasMent(al.e.eszak.alairas, eszakSz - al.e.eszak.szog);
     setKesz(uzenetek);
+    setAtvett((x) => new Set([...x, aIdx]));
+    // a következő alaprajz alapból a meglévők mellé kerül
+    setCsere(false);
   }
 
   const vb = al?.r ? [al.r.x0, al.r.y0, al.r.w * al.r.px / al.r.mPerPt, al.r.h * al.r.px / al.r.mPerPt] : aLap ? [0, 0, aLap.lap.szel, aLap.lap.mag] : [0, 0, 1, 1];
@@ -180,6 +198,28 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             </label>
           </div>
         )}
+        {alaprajzLapok.length > 0 && (
+          <div style="margin-top:16px">
+            <span class="halkabb">Alaprajzok és szintek – egy alaprajz több azonos szintet is ábrázolhat (pl. 1. és 2. emelet); a helyiségek szintenként, a falak és nyílászárók a szintek számával szorozva kerülnek át</span>
+            <table class="tabla" style="margin-top:4px">
+              <tbody>
+                {alaprajzLapok.map(({ l, i }) => (
+                  <tr style={i === aIdx ? 'background:var(--kijelolt)' : ''}>
+                    <td><button class="link-gomb" onClick={() => { setAIdx(i); setMeretarany(undefined); }}>{l.cim || l.fajl}</button></td>
+                    <td>
+                      <span class="gombsor" style="gap:4px">
+                        {SZINT_SOR.map((k) => { const be = lapSzintek(i).includes(k); return (
+                          <button class={`gomb kis-gomb${be ? ' fo' : ''}`} title={szintNev(k)} onClick={() => setSzintKi({ ...szintKi, [i]: be ? lapSzintek(i).filter((x) => x !== k) : [...lapSzintek(i), k].sort((a, b) => SZINT_SOR.indexOf(a) - SZINT_SOR.indexOf(b)) })}>{k === 'P' ? 'Pince' : k === 'F' ? 'Fszt.' : k === 'T' ? 'Tt.' : `${k}.`}</button>
+                        ); })}
+                      </span>
+                    </td>
+                    <td class="halkabb" style="white-space:nowrap">{atvett.has(i) ? <span class="jel jo">átvéve</span> : i === aIdx ? 'megnyitva' : '–'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       {mintaFajta && <MintaLakasok fajta={mintaFajta} modosit={modosit} ugrik={ugrik} />}
@@ -201,7 +241,13 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
               {ej && <small class="halkabb">{ej.forras === 'betu' ? 'Az „É” / „N” betűs északjelből.' : eszakJavitas(ej.alairas) !== 0 ? 'Ismert északjel: a korábban rögzített iránnyal. Ellenőrizd az előnézeten (piros nyíl).' : 'Az északjel alakjából – ellenőrizd az előnézeten (piros nyíl), a javítást a program ehhez a jelhez megjegyzi.'}</small>}
             </div>
             {al.e.egysegek.length > 1 && (
-              <div class="mezo szeles"><span>Lakások / egységek (a helyiségszámozás szerint)</span>
+              <div class="mezo szeles"><span>Lakások / egységek (a helyiségszámozás szerint)
+                  <span class="gombsor" style="display:inline-flex;gap:4px;margin-left:8px">
+                    <button class="gomb halk-gomb semleges" onClick={() => setEgysegek(new Set(al.e.egysegek))}>Mind</button>
+                    {[...new Set(al.e.egysegek.map((eg) => al.e.egysegInfo[eg]?.epulet).filter((x): x is string => !!x))].map((ep) => <button class="gomb halk-gomb semleges" onClick={() => setEgysegek(new Set(al.e.egysegek.filter((eg) => al.e.egysegInfo[eg]?.epulet === ep)))}>{ep} épület</button>)}
+                    <button class="gomb halk-gomb semleges" onClick={() => setEgysegek(new Set())}>Egyik sem</button>
+                  </span>
+                </span>
                 <table class="tabla" style="max-width:640px">
                   <tbody>
                     {al.e.egysegek.map((eg) => { const inf = al.e.egysegInfo[eg]!; return (
@@ -377,7 +423,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             <label><input type="radio" name="atvetelMod" checked={!csere} onChange={() => setCsere(false)} /> <strong>Hozzáadás</strong> – a meglévők mellé olvassa be (pl. másik szint, másik lakás); az azonos rétegrendek, nyílászáró-típusok nem duplikálódnak, az azonos tájolású falfelületek összegződnek</label>
           </fieldset>
           <div class="gombsor" style="gap:18px;margin-bottom:10px">
-            <label><input type="checkbox" checked={padloAt} onChange={(e) => setPadloAt((e.target as HTMLInputElement).checked)} /> Talajon fekvő padló (földszinti lakás, szint)</label>
+            <label><input type="checkbox" checked={padloAt} onChange={(e) => setPadloAt((e.target as HTMLInputElement).checked)} /> Legalsó padló (talajon fekvő, ill. fűtetlen pince / garázs feletti födém)</label>
             <label><input type="checkbox" checked={tetoAt} onChange={(e) => setTetoAt((e.target as HTMLInputElement).checked)} /> Padlásfödém / tető (legfelső szint)</label>
           </div>
           <div class="gombsor">

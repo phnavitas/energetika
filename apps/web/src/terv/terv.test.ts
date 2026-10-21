@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Lap, Szoveg, Utvonal } from './kinyeres';
-import { alaprajzElemez, egtaj, eszakjelKeres, pecsetek, jegyzekSorok, szovegJavit } from './alaprajz';
+import { alaprajzElemez, egtaj, eszakjelKeres, pecsetek, jegyzekSorok, szovegJavit, egysegKod, egysegNev, szintekCimbol, kodE } from './alaprajz';
 import { raszterEpit } from './raszter';
 import { nyilasFeliratok, nyilasokHozzarendel } from './nyilaszarok';
 import { retegrendBlokkok, szerepBecsles, retegekEpit, szintekKeres } from './metszet';
@@ -111,5 +111,36 @@ describe('tervbeolvasás – metszet', () => {
     expect(s.szintszam).toBe(1);
     expect(s.belmagassag).toEqual([2.66]);
     expect(s.terepszint).toBe(-0.05);
+  });
+});
+
+describe('tervbeolvasás – tagolt kódok, szintek', () => {
+  it('lakás- és közös egység a tagolt kódból', () => {
+    expect(egysegKod('A.F.L.4.')).toBe('A.F.L.4');
+    expect(egysegKod('B.1.K.')).toBe('B.1.K');
+    expect(egysegKod('L01.02')).toBe('L01');
+    expect(egysegNev('A.F.L.4')).toBe('A épület · földszint · 4. lakás');
+    expect(egysegNev('B.1.K')).toBe('B épület · 1. emelet · közös terek');
+    expect(kodE('AKM. WC')).toBe(false);
+    expect(kodE('P.K.')).toBe(true);
+  });
+  it('szintek a lap címéből', () => {
+    expect(szintekCimbol('1. és 2. emeleti alaprajz')).toEqual(['1', '2']);
+    expect(szintekCimbol('Földszint alaprajz')).toEqual(['F']);
+    expect(szintekCimbol('Pince alaprajz')).toEqual(['P']);
+  });
+  it('egy szövegben a kód és a cím, külön oszlopban a vastagság és a mértékegység', () => {
+    const sor = (y: number, v: string, e: string, l: string) => [t(v, 100, y, 5.4), t(e, 114, y, 5.4), t(l, 128, y, 5.4)];
+    const b = retegrendBlokkok([
+      t('RF11 homlokzati fal - tégla vékonyvakolat', 86, 100, 10.8),
+      ...sor(112, '0,3', 'cm', 'szilikonos vékonyvakolat'), ...sor(118, '10+8', 'cm', 'grafitos EPS hőszigetelés'), ...sor(124, '30', 'cm', 'blokktégla falazat POROTHERM 30'), ...sor(130, '1,5', 'cm', 'belső vakolat'),
+      t('glettelés, festés', 128, 136, 5.4),
+    ]);
+    expect(b.map((x) => x.kod)).toEqual(['RF11']);
+    expect(b[0]!.retegek.map((r) => r.dCm)).toEqual([0.3, 18, 30, 1.5]);
+    const r = retegekEpit(b[0]!, szerepBecsles(b[0]!, b), () => 'x');
+    // kívülről befelé sorolt fal → belülről kifelé
+    expect(r[0]!.anyagId).toBe('meszcement_vakolat');
+    expect(r.at(-1)!.anyagId).toBe('nemesvakolat');
   });
 });

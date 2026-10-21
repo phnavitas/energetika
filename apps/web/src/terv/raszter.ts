@@ -119,6 +119,15 @@ function tagit(m: Uint8Array, w: number, h: number, r: number): Uint8Array {
   return k;
 }
 
+/** Négyzetes szűkítés r pixellel (a tágítás duálisa). */
+function szukit(m: Uint8Array, w: number, h: number, r: number): Uint8Array {
+  const neg = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) neg[i] = m[i] ? 0 : 1;
+  const t = tagit(neg, w, h, r);
+  for (let i = 0; i < w * h; i++) t[i] = t[i] ? 0 : 1;
+  return t;
+}
+
 /** Többforrású szélességi elárasztás: a szabad (szabad[i] = 1) cellákat a legközelebbi címke kapja. */
 function araszt(cimke: Int32Array, szabad: Uint8Array, w: number, h: number) {
   let sor: number[] = [];
@@ -239,9 +248,45 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       darabok.push(u.bbox);
     }
   }
+  let sraffMod = false; let sraffMaszk: Uint8Array | null = null;
+  // kitöltés nélkül, csak sraffozással rajzolt falak (pl. ArchiCAD PDF-export: a falréteg mintázata vékony ferde vonalak,
+  // a falsík vonala külön szakasz): a sűrű, rövid, ferde vékony vonalak mezője a fal. Csak akkor, ha a kitöltésekből
+  // alig van fal – a kitöltött falas rajzon a sraffozás amúgy is a falon belül van.
+  {
+    const sr = new Uint8Array(w * h); let db = 0;
+    for (const u of lap.utvonalak) {
+      if (u.muvelet !== 'stroke' || u.vastagsag > 0.35 || feher(u.vonalSzin)) continue;
+      if (u.bbox[2] < x0 || u.bbox[0] > x1 || u.bbox[3] < y0 || u.bbox[1] > y1) continue;
+      for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) {
+        const dx = p[i + 2]! - p[i]!, dy = p[i + 3]! - p[i + 1]!; const l = Math.hypot(dx, dy) * mPerPt;
+        if (l < 0.02 || l > 0.8) continue;
+        const sz = ((Math.atan2(dy, dx) * 180 / Math.PI) % 180 + 180) % 180;
+        if (!((sz > 20 && sz < 70) || (sz > 110 && sz < 160))) continue;
+        const [ax, ay] = tr(p[i]!, p[i + 1]!), [bx, by] = tr(p[i + 2]!, p[i + 3]!);
+        const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) * 2));
+        for (let k = 0; k <= n; k++) { const x = Math.round(ax + (bx - ax) * k / n), y = Math.round(ay + (by - ay) * k / n); if (x >= 0 && y >= 0 && x < w && y < h) sr[y * w + x] = 1; }
+        db++;
+      }
+    }
+    if (db > 200) {
+      // zárás (a sraffvonalak közének kitöltése, ~10 cm), majd nyitás (a magányos ferde vonal – méretjel, mutató – kiesik)
+      const r = Math.max(1, Math.round(0.05 / px));
+      const zart = szukit(tagit(sr, w, h, r), w, h, r);
+      const tiszta = tagit(szukit(zart, w, h, 1), w, h, 1);
+      let falPx = 0, srPx = 0;
+      for (let i = 0; i < w * h; i++) { if (fal[i]) falPx++; if (tiszta[i]) srPx++; }
+      if (srPx > 1.5 * falPx) {
+        for (let i = 0; i < w * h; i++) if (tiszta[i]) fal[i] = 1;
+        darabok.push([x0, y0, x1, y1]);
+        sraffMod = true; sraffMaszk = tiszta;
+      }
+    }
+  }
   // sraffozott fehér kitöltés (falazat, hőszigetelés metszeti mintázattal): a befoglalójában legalább 3 rövid, ferde
   // vonal – a bútor kitöltése nem sraffozott. Ezek a színes rétegekkel egyenrangú falrétegek.
   const reteg = new Uint8Array(w * h);
+  // a sraffozott falréteg rétegzett fal: a nyílások közti rövid falpillér sem „bútor”
+  if (sraffMaszk) for (let i = 0; i < w * h; i++) if (sraffMaszk[i]) reteg[i] = 1;
   {
     const SR = 8; const sraffIdx = new Map<number, [number, number, number, number][]>();
     for (const u of lap.utvonalak) {
@@ -396,7 +441,10 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
     }
   }
   if (b.szinKep) szinHatar(fal, w, h, b.szinKep.hatar ?? [150, 230, 252], (x, y) => { const k = b.szinKep!; const ix = Math.round((x0 + (x + 0.5) / ptPx) * k.ptPx), iy = Math.round((y0 + (y + 0.5) / ptPx) * k.ptPx); return ix >= 0 && iy >= 0 && ix < k.w && iy < k.h ? k.adat[iy * k.w + ix]! : 255; });
-  if (b.resZaras) resZar(fal, nyilas, w, h, Math.round(b.resZaras / px), Math.round(0.6 / px), falKomponensek(fal, w, h), Math.max(2, Math.round(0.25 / px)));
+  // sraffozott falaknál a nyílások (ablak, ajtó) rajzeleme nem kitöltés – a falsávban lévő réseket zárjuk (≤ 2,7 m)
+  const resM = b.resZaras ?? (sraffMod ? 2.7 : 0);
+  // (sraffozott falnál a nyílások közti falpillér gyakran különálló folt – ott nem kell azonos falhálózat)
+  if (resM) resZar(fal, nyilas, w, h, Math.round(resM / px), Math.round(0.6 / px), sraffMod && !b.resZaras ? new Int32Array(w * h).fill(1) : falKomponensek(fal, w, h), Math.max(2, Math.round(0.25 / px)));
   const gat = new Uint8Array(w * h);
   for (let i = 0; i < w * h; i++) gat[i] = fal[i] || nyilas[i] ? 1 : 0;
   // helyiségek: a pecsétekből indított versengő elárasztás a (hajszálrésekre kissé tágított) gáton belül
@@ -416,6 +464,13 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
     if (legjobb >= 0) helyCimke[legjobb] = 2 + k;
   });
   araszt(helyCimke, szabadKicsi, w, h);
+  if (sraffMod) {
+    // a rács széléig kifutó „helyiség” (pl. a pecsétje a külső térben van: fedett bejáró, kukatároló) a külső tér része
+    const kifut = new Set<number>();
+    for (let x = 0; x < w; x++) for (const y of [0, h - 1]) if (helyCimke[y * w + x]! >= 2) kifut.add(helyCimke[y * w + x]!);
+    for (let y = 0; y < h; y++) for (const x of [0, w - 1]) if (helyCimke[y * w + x]! >= 2) kifut.add(helyCimke[y * w + x]!);
+    if (kifut.size) for (let i = 0; i < w * h; i++) if (kifut.has(helyCimke[i]!)) helyCimke[i] = 0;
+  }
   const szabad = gat.map((v) => 1 - v) as Uint8Array;
   // külső tér: ami a rács széléhez kapcsolódik, vagy nagyobb összefüggő szabad terület, és nem helyiség
   const kulsoMag = new Int32Array(w * h);
@@ -433,7 +488,8 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       const q = komp[k]!, x = q % w;
       for (const n of [x > 0 ? q - 1 : -1, x < w - 1 ? q + 1 : -1, q - w, q + w]) if (n >= 0 && n < w * h && nemHely[n] && !latott[n] && !kulsoMag[n]) { latott[n] = 1; komp.push(n); }
     }
-    if (komp.length * px * px >= 3) for (const q of komp) kulsoMag[q] = 1;
+    // (sraffozott falas rajzon a mag nélküli belső tér – közlekedő, akna – nem külső tér)
+    if (komp.length * px * px >= 3 && !sraffMod) for (const q of komp) kulsoMag[q] = 1;
   }
   // visszanövesztés a falsíkig (a hajszálrés-tágítás miatt)
   for (let i = 0; i < w * h; i++) if (kulsoMag[i] && !helyCimke[i]) helyCimke[i] = 1;
