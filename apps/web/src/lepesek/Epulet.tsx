@@ -4,8 +4,6 @@ import { Mezo, Szoveg, Szam, Valaszto, sz } from '../ui';
 import { ujId, type Projekt } from '../modell';
 import { tipologiaRetegrend, SZIG_VALASZTEK, type SzigBeallitas } from '../tipologiaRetegek';
 import { anyag } from '../katalogus';
-import { FotokSzakasz } from './Fotok';
-import { TanusitoSzakasz } from './Tanusito';
 
 type Modosit = (fn: (p: Projekt) => void) => void;
 
@@ -50,11 +48,11 @@ export function EpuletLepes({ p, modosit }: { p: Projekt; modosit: Modosit }) {
         <div class="racs">
           <Mezo cim="Megnevezés" szeles><Szoveg ertek={m.nev} valt={(v) => modosit((q) => { q.meta.nev = v; })} /></Mezo>
           <Mezo cim="Megrendelő"><Szoveg ertek={m.megrendelo} valt={(v) => modosit((q) => { q.meta.megrendelo = v; })} /></Mezo>
-          <Mezo cim="Irányítószám"><Szoveg ertek={m.irsz} valt={(v) => modosit((q) => { q.meta.irsz = v; })} /></Mezo>
+          <Mezo rovid cim="Irányítószám"><Szoveg ertek={m.irsz} valt={(v) => modosit((q) => { q.meta.irsz = v; })} /></Mezo>
           <Mezo cim="Település"><Szoveg ertek={m.telepules} valt={(v) => modosit((q) => { q.meta.telepules = v; })} /></Mezo>
           <Mezo cim="Közterület"><Szoveg ertek={m.kozterulet} valt={(v) => modosit((q) => { q.meta.kozterulet = v; })} /></Mezo>
-          <Mezo cim="Házszám"><Szoveg ertek={m.hazszam} valt={(v) => modosit((q) => { q.meta.hazszam = v; })} /></Mezo>
-          <Mezo cim="Helyrajzi szám"><Szoveg ertek={m.hrsz} valt={(v) => modosit((q) => { q.meta.hrsz = v; })} /></Mezo>
+          <Mezo rovid cim="Házszám"><Szoveg ertek={m.hazszam} valt={(v) => modosit((q) => { q.meta.hazszam = v; })} /></Mezo>
+          <Mezo rovid cim="Helyrajzi szám"><Szoveg ertek={m.hrsz} valt={(v) => modosit((q) => { q.meta.hrsz = v; })} /></Mezo>
         </div>
       </section>
 
@@ -77,10 +75,8 @@ export function EpuletLepes({ p, modosit }: { p: Projekt; modosit: Modosit }) {
         </div>
       </section>
 
-      <TanusitoSzakasz p={p} modosit={modosit} />
-
-      <section class="szakasz">
-        <h2>Meglévő épület: tipikus szerkezetek</h2>
+      <details class="szakasz osszecsukhato" open={m.kovetelmenySzint !== 'kozel_nulla'}>
+        <summary><h2>Meglévő épület: tipikus szerkezetek</h2>{m.kovetelmenySzint === 'kozel_nulla' && <span class="halkabb">új épületnél nem szükséges – kattints a megnyitáshoz</span>}</summary>
         <p class="halk">Az építés éve alapján javasolt szerkezetek, amelyeket a rétegrendeknél és a nyílászáróknál tovább szerkeszthetsz. Panelházakra a rendelet 2. függelékének 4.6. táblázata, a többi épületcsoportra a magyar TABULA lakóépület-tipológia (BME, 2014) a forrás.</p>
         <div class="racs">
           <Mezo cim="Épületcsoport">
@@ -109,8 +105,7 @@ export function EpuletLepes({ p, modosit }: { p: Projekt; modosit: Modosit }) {
             <button class="gomb fo" onClick={betolt}>Homlokzati fal felvétele</button>
           </div>
         )}
-      </section>
-      <FotokSzakasz p={p} modosit={modosit} />
+      </details>
     </>
   );
 }

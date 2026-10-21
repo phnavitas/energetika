@@ -71,7 +71,7 @@ button, input, select { font: inherit; color: inherit; }
 .lepesek .allapot { grid-column: 2; font-size: 12px; color: var(--tus-3); font-weight: 400; }
 .oldalsav-lab { margin-top: auto; display: flex; flex-direction: column; gap: 6px; }
 
-.munka { padding: 32px 40px 80px; max-width: 1040px; width: 100%; }
+.munka { padding: 28px 40px 64px; max-width: 1240px; width: 100%; min-width: 0; }
 .munka > header .gombsor { flex-wrap: nowrap; flex-shrink: 0; }
 .munka > header { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 24px; }
 .munka > header p { max-width: 62ch; margin-top: 6px; }
@@ -89,8 +89,11 @@ button, input, select { font: inherit; color: inherit; }
 .jel.jo { color: var(--megfelel); } .jel.rossz { color: var(--hiba); } .jel.figy { color: var(--figyel); }
 
 /* ---- Űrlap ---------------------------------------------------------------------------------- */
-.racs { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px 16px; }
+.racs { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 12px 14px; }
+.racs > * { grid-column: span 2; }
 .racs .szeles { grid-column: 1 / -1; }
+/* rövid tartalmú mezők (szám, egység, irányítószám, házszám) egy oszlopot foglalnak */
+.racs > .mezo.rovid, .racs > .mezo:has(> input.szammezo), .racs > .mezo:has(> .egyseg) { grid-column: span 1; }
 .mezo { display: flex; flex-direction: column; gap: 4px; }
 .mezo > span { font-size: 13px; color: var(--tus-2); }
 .mezo small { font-size: 12px; color: var(--tus-3); }
@@ -101,7 +104,8 @@ input[type="text"], input[type="number"], select {
 input.szammezo { text-align: right; }
 input:hover, select:hover { border-color: var(--tus-3); }
 .egyseg { display: flex; align-items: center; gap: 6px; }
-.egyseg input.szammezo { flex: 1; min-width: 56px; }
+.egyseg input.szammezo { flex: 1 1 auto; min-width: 52px; max-width: 14ch; }
+.mezo > input.szammezo { max-width: 16ch; }
 .egyseg em { font-style: normal; font-size: 13px; color: var(--tus-3); white-space: nowrap; }
 .jelolo { display: flex; gap: 8px; align-items: center; font-size: 14px; }
 
@@ -128,6 +132,10 @@ input:hover, select:hover { border-color: var(--tus-3); }
 .tabla td.szam, .tabla th.szam { text-align: right; white-space: nowrap; }
 .tabla tfoot td { font-weight: 600; border-bottom: 0; padding-top: 10px; }
 .tabla input, .tabla select { min-height: 32px; padding: 5px 7px; }
+.tabla select { max-width: 20ch; }
+.tabla input.szammezo { max-width: 10ch; }
+.tabla .egyseg input.szammezo { max-width: 10ch; }
+.tabla-gorgeto { overflow-x: auto; }
 
 /* ---- Lista panel (rétegrendek, felületek) -------------------------------------------------- */
 .ketoszlop { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 24px; align-items: start; }
@@ -353,3 +361,37 @@ input:disabled { color: var(--tus-3); }
   .hh-gorgeto { overflow: visible; }
 }
 @media (max-width: 620px) { .hohid-fo { grid-template-columns: 1fr; } }
+
+/* ---- Folyamat: fázisok, készültség, lapalj ------------------------------------------------- */
+.lepesek .fazis { font-size: 11px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--tus-3); padding: 8px 10px 0; }
+.lepesek .fazis:first-child { padding-top: 0; }
+.lepesek button { padding: 4px 10px; line-height: 1.35; }
+.oldalsav { gap: 16px; }
+.lepesek .opc { font-size: 11px; color: var(--tus-3); font-weight: 400; }
+.lepesek .szam.k-kesz { color: var(--megfelel); }
+.lepesek .szam.k-hiany { color: var(--hiba); }
+.lepesek .szam.k-figy { color: var(--figyel); }
+.lap-lab { display: flex; justify-content: space-between; gap: 12px; margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--vonal); }
+
+/* Magyarázatok: egy sor, kattintásra teljes */
+.munka .szakasz > p.halk, .munka > header p { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.munka p.tobb { cursor: pointer; }
+.munka p.tobb::before { content: 'ⓘ '; color: var(--hideg); }
+.munka p.tobb:hover { color: var(--tus); }
+.munka p.nyitva { -webkit-line-clamp: unset; display: block; }
+.szakasz > p.halk { margin-bottom: 12px; }
+
+/* Összecsukható szakasz */
+details.osszecsukhato > summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+details.osszecsukhato > summary::-webkit-details-marker { display: none; }
+details.osszecsukhato > summary h2::before { content: '▸ '; color: var(--tus-3); }
+details.osszecsukhato[open] > summary h2::before { content: '▾ '; }
+details.osszecsukhato[open] > summary { margin-bottom: 4px; }
+
+/* Tömör hőhíd-katalógus */
+.hh-katalogus { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 12px; }
+.hh-katalogus > button { text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 4px; padding: 8px; }
+.hh-katalogus canvas { height: 100px !important; width: 100% !important; object-fit: contain; }
+.hh-katalogus strong { font-size: 13px; line-height: 1.25; }
+.hh-katalogus .halkabb { font-size: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+@media (max-width: 760px) { .lepesek .fazis { display: none; } .lap-lab .gomb { flex: 1; justify-content: center; } }

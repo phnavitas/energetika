@@ -1,9 +1,9 @@
 import type { ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
 
-export function Mezo(p: { cim: string; sugo?: string; szeles?: boolean; children: ComponentChildren }) {
+export function Mezo(p: { cim: string; sugo?: string; szeles?: boolean; rovid?: boolean; children: ComponentChildren }) {
   return (
-    <label class={`mezo${p.szeles ? ' szeles' : ''}`}>
+    <label class={`mezo${p.szeles ? ' szeles' : ''}${p.rovid ? ' rovid' : ''}`}>
       <span>{p.cim}</span>
       {p.children}
       {p.sugo && <small>{p.sugo}</small>}

@@ -90,9 +90,9 @@ export function HohidakLepes({ p, modosit }: { p: Projekt; modosit: Modosit }) {
           {hidak.some((x) => x.eredmeny) && <button class="gomb" onClick={() => void pdf(hidak.filter((x) => x.eredmeny))}>Összes hőhíd PDF-ben</button>}
         </div>
         {katalog && (
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-top:14px">
+          <div class="hh-katalogus">
             {HOHID_SABLONOK.map((s) => (
-              <button class="kartya" style="text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:6px;padding:10px" onClick={() => uj(s.kod)}>
+              <button class="kartya" title={s.leiras} onClick={() => uj(s.kod)}>
                 <Ikon kod={s.kod} />
                 <strong>{s.nev}{aj.has(s.kod) && <span class="jel jo" style="margin-left:6px;font-size:11px">ajánlott</span>}</strong>
                 <span class="halkabb">{s.leiras}</span>

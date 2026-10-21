@@ -6,6 +6,8 @@ import { Mezo, Szoveg, sz, kov } from '../ui';
 import type { Atalakitas, Geometria, Projekt } from '../modell';
 import { jegyzokonyvPdf, base64 } from '../jegyzokonyv';
 import { sulyozo } from '@mag/index';
+import { TanusitoSzakasz } from './Tanusito';
+import { FotokSzakasz } from './Fotok';
 
 type Modosit = (fn: (p: Projekt) => void) => void;
 const MIN: Record<string, string> = { kivalo: 'kiváló', jo: 'jó', kozepes: 'közepes', gyenge: 'gyenge', rossz: 'rossz' };
@@ -34,10 +36,19 @@ async function letolt(nev: string, tartalom: string | Uint8Array, tipus: string)
   return null;
 }
 
-export function EredmenyLepes({ p, e, g, atal, hibak, modosit, rogzit }: { p: Projekt; e: EpuletEredmeny | null; g: Geometria; atal: Atalakitas; hibak: string[]; modosit: Modosit; rogzit?: () => Promise<string> }) {
+export function EredmenyLepes({ p, e, g, atal, hibak, modosit, rogzit, resz = 'eredmeny' }: { resz?: 'eredmeny' | 'tanusitvany'; p: Projekt; e: EpuletEredmeny | null; g: Geometria; atal: Atalakitas; hibak: string[]; modosit: Modosit; rogzit?: () => Promise<string> }) {
   const [pdfFut, setPdfFut] = useState(false);
   const [xmlHiba, setXmlHiba] = useState<string | null>(null);
   const [rogzitve, setRogzitve] = useState<string | null>(null);
+  if (resz === 'tanusitvany') {
+    return (
+      <>
+        <TanusitoSzakasz p={p} modosit={modosit} />
+        <FotokSzakasz p={p} modosit={modosit} />
+        {e ? TANUSITVANY() : <section class="szakasz"><h2>Tanúsítvány</h2><div class="hiba-doboz">A kiadáshoz előbb a számításnak hiánytalannak kell lennie – lásd az Eredmény lépést.</div></section>}
+      </>
+    );
+  }
   if (!e) {
     return (
       <section class="szakasz">
@@ -75,6 +86,28 @@ export function EredmenyLepes({ p, e, g, atal, hibak, modosit, rogzit }: { p: Pr
       setPdfFut(false);
       setXmlHiba(err instanceof XmlKodHianyzik ? err.message : `Hiba: ${(err as Error).message}`);
     }
+  }
+
+  function TANUSITVANY() {
+    return (
+      <section class="szakasz">
+        <h2>Tanúsítvány</h2>
+        <p class="halk">A feltöltési fájlhoz a tanúsító adatai, a fotók és a számítási jegyzőkönyv kell; a jegyzőkönyvet a program elkészíti és az XML-be is beágyazza. Az XML jelenleg előnézet: a szerkezete egy elfogadott WinWatt-exportot követ, a Lechner XSD-vel még nem ellenőrzött.</p>
+        <p style="margin-bottom:12px">{p.tanusito.nev ? <>Tanúsító: <strong>{p.tanusito.nev}</strong>, {p.tanusito.jogosultsag || 'névjegyzéki szám hiányzik'}{p.tanusito.ellenorzes ? <span class={`jel ${p.tanusito.ellenorzes.aktiv ? 'jo' : 'rossz'}`} style="margin-left:8px">{p.tanusito.ellenorzes.aktiv ? 'névjegyzékben aktív' : 'nem aktív'} ({new Date(p.tanusito.ellenorzes.datum).toLocaleDateString('hu-HU')})</span> : <span class="halkabb"> – névjegyzékben nem ellenőrzött</span>}</> : <span class="jel rossz">A tanúsító adatai hiányoznak – fent adhatók meg.</span>}</p>
+        <div class="gombsor">
+          <button class="gomb fo" disabled={pdfFut} onClick={xml}>XML előnézet letöltése</button>
+          <button class="gomb" disabled={pdfFut} onClick={async () => {
+            setXmlHiba(null); setPdfFut(true);
+            try { const b = await jegyzokonyvPdf(p, e!, atal); setXmlHiba(await letolt(`${(p.meta.nev || 'projekt').replace(/[^\p{L}\p{N} _-]/gu, '')}-jegyzokonyv.pdf`, b, 'application/pdf')); }
+            catch (err) { setXmlHiba(`A jegyzőkönyv nem készült el: ${(err as Error).message}`); }
+            finally { setPdfFut(false); }
+          }}>{pdfFut ? 'Jegyzőkönyv készül…' : 'Számítási jegyzőkönyv (PDF)'}</button>
+          <button class="gomb" onClick={() => letolt(`${(p.meta.nev || 'projekt').replace(/[^\p{L}\p{N} _-]/gu, '')}.json`, JSON.stringify(p, null, 1), 'application/json').then(setXmlHiba)}>Projekt mentése fájlba</button>
+        </div>
+        {xmlHiba && <div class="hiba-doboz" style="margin-top:12px">{xmlHiba}</div>}
+        {rogzitve && <div class="siker-doboz" style="margin-top:12px">{rogzitve}</div>}
+      </section>
+    );
   }
 
   return (
@@ -149,23 +182,6 @@ export function EredmenyLepes({ p, e, g, atal, hibak, modosit, rogzit }: { p: Pr
         </section>
       )}
 
-      <section class="szakasz">
-        <h2>Tanúsítvány</h2>
-        <p class="halk">A feltöltési fájlhoz a tanúsító adatai, a fotók és a számítási jegyzőkönyv kell; a jegyzőkönyvet a program elkészíti és az XML-be is beágyazza. Az XML jelenleg előnézet: a szerkezete egy elfogadott WinWatt-exportot követ, a Lechner XSD-vel még nem ellenőrzött.</p>
-        <p style="margin-bottom:12px">{p.tanusito.nev ? <>Tanúsító: <strong>{p.tanusito.nev}</strong>, {p.tanusito.jogosultsag || 'névjegyzéki szám hiányzik'}{p.tanusito.ellenorzes ? <span class={`jel ${p.tanusito.ellenorzes.aktiv ? 'jo' : 'rossz'}`} style="margin-left:8px">{p.tanusito.ellenorzes.aktiv ? 'névjegyzékben aktív' : 'nem aktív'} ({new Date(p.tanusito.ellenorzes.datum).toLocaleDateString('hu-HU')})</span> : <span class="halkabb"> – névjegyzékben nem ellenőrzött</span>}</> : <span class="jel rossz">A tanúsító adatai hiányoznak – az Épület lépésben adhatók meg.</span>}</p>
-        <div class="gombsor">
-          <button class="gomb fo" disabled={pdfFut} onClick={xml}>XML előnézet letöltése</button>
-          <button class="gomb" disabled={pdfFut} onClick={async () => {
-            setXmlHiba(null); setPdfFut(true);
-            try { const b = await jegyzokonyvPdf(p, e, atal); setXmlHiba(await letolt(`${(p.meta.nev || 'projekt').replace(/[^\p{L}\p{N} _-]/gu, '')}-jegyzokonyv.pdf`, b, 'application/pdf')); }
-            catch (err) { setXmlHiba(`A jegyzőkönyv nem készült el: ${(err as Error).message}`); }
-            finally { setPdfFut(false); }
-          }}>{pdfFut ? 'Jegyzőkönyv készül…' : 'Számítási jegyzőkönyv (PDF)'}</button>
-          <button class="gomb" onClick={() => letolt(`${(p.meta.nev || 'projekt').replace(/[^\p{L}\p{N} _-]/gu, '')}.json`, JSON.stringify(p, null, 1), 'application/json').then(setXmlHiba)}>Projekt mentése fájlba</button>
-        </div>
-        {xmlHiba && <div class="hiba-doboz" style="margin-top:12px">{xmlHiba}</div>}
-        {rogzitve && <div class="siker-doboz" style="margin-top:12px">{rogzitve}</div>}
-      </section>
     </>
   );
 }

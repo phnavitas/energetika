@@ -40,22 +40,24 @@ function betolt(): Projekt {
 interface Kapcsolat { id: string; irodaId: string; verzio: number; modositva: string; piszkos: boolean; }
 type MentesAllapot = { a: 'mentve' } | { a: 'varakozik' } | { a: 'mentes' } | { a: 'hiba'; uzenet: string } | { a: 'utkozes' } | { a: 'torolve' };
 
-type LepesKod = 'epulet' | 'terv' | 'helyisegek' | 'retegrendek' | 'nyilaszarok' | 'hatarolas' | 'hohidak' | 'hoszukseglet' | 'gepeszet' | 'villamossag' | 'eredmeny' | 'alternativ' | 'felujitas';
+type LepesKod = 'epulet' | 'terv' | 'helyisegek' | 'retegrendek' | 'nyilaszarok' | 'hatarolas' | 'hohidak' | 'hoszukseglet' | 'gepeszet' | 'villamossag' | 'eredmeny' | 'alternativ' | 'felujitas' | 'tanusitvany';
+type Fazis = 'Adatfelvétel' | 'Szerkezetek' | 'Gépészet' | 'Értékelés és tanúsítvány';
 type Nezet = LepesKod | 'projektek' | 'konyvtar' | 'iroda';
-const LEPESEK: { kod: LepesKod; nev: string; leiras: string }[] = [
-  { kod: 'epulet', nev: 'Épület', leiras: 'Alapadatok, rendeltetés, követelményszint és meglévő épületnél a tipikus szerkezetek.' },
-  { kod: 'terv', nev: 'Tervből', leiras: 'Alaprajz és metszet PDF-ből: helyiségek, tájolás, rétegrendek, szintek, külső falak és nyílászárók felismerése, ellenőrzés után átvétel.' },
-  { kod: 'helyisegek', nev: 'Helyiségek', leiras: 'A helyiségekből adódik a hasznos alapterület és a fűtött térfogat; később ebből készül a helyiségenkénti hőveszteség-számítás is.' },
-  { kod: 'retegrendek', nev: 'Rétegrendek', leiras: 'Építsd fel a szerkezeteket rétegenként. A metszet és az U-érték minden módosításra frissül.' },
-  { kod: 'nyilaszarok', nev: 'Nyílászárók', leiras: 'Ablak- és ajtótípusok összetevőkből vagy teljesítménynyilatkozat szerinti Uw-ből.' },
-  { kod: 'hatarolas', nev: 'Határolás', leiras: 'Melyik szerkezet mekkora felületen, milyen tájolással és milyen tér felé határol.' },
-  { kod: 'hohidak', nev: 'Hőhidak', leiras: 'Katalógus-csomópontok kétdimenziós hőhíd-számítása (MSZ EN ISO 10211): Ψ, felületi hőmérséklet, izotermás ábra; a Ψ·l átvihető a számításba.' },
-  { kod: 'hoszukseglet', nev: 'Hőszükséglet', leiras: 'Helyiségenkénti tervezési hőszükséglet (MSZ EN 12831) a hőleadók és a hőtermelő méretezéséhez.' },
-  { kod: 'gepeszet', nev: 'Gépészet', leiras: 'Fűtési és melegvíz-rendszer a leggyakoribb beállításokkal, ErP adatlappal pontosítható.' },
-  { kod: 'villamossag', nev: 'Villamosság', leiras: 'Beépített világítás a rendelet módszerével (lakóépületnél tájékoztató), napelemek, egyéb villamos fogyasztók és az éves villamos mérleg.' },
-  { kod: 'eredmeny', nev: 'Eredmény', leiras: 'Besorolás, követelmények, havi mérleg, és a tanúsítvány előkészítése.' },
-  { kod: 'alternativ', nev: 'Alternatív rendszerek', leiras: 'Az alternatív energiaellátási rendszerek vizsgálata (9/2023 ÉKM 5. §, 4. melléklet): műszaki-környezeti és gazdasági alkalmasság.' },
-  { kod: 'felujitas', nev: 'Felújítás', leiras: 'Felújítási intézkedések költsége, megtakarítása, megtérülése és hatása a besorolásra.' },
+const LEPESEK: { kod: LepesKod; nev: string; leiras: string; fazis: Fazis; opcionalis?: boolean }[] = [
+  { kod: 'epulet', nev: 'Épület', leiras: 'Alapadatok, rendeltetés, követelményszint és meglévő épületnél a tipikus szerkezetek.', fazis: 'Adatfelvétel' },
+  { kod: 'terv', nev: 'Tervből', leiras: 'Alaprajz és metszet PDF-ből: helyiségek, tájolás, rétegrendek, szintek, külső falak és nyílászárók felismerése, ellenőrzés után átvétel.', fazis: 'Adatfelvétel', opcionalis: true },
+  { kod: 'helyisegek', nev: 'Helyiségek', leiras: 'A helyiségekből adódik a hasznos alapterület és a fűtött térfogat; később ebből készül a helyiségenkénti hőveszteség-számítás is.', fazis: 'Szerkezetek' },
+  { kod: 'retegrendek', nev: 'Rétegrendek', leiras: 'Építsd fel a szerkezeteket rétegenként. A metszet és az U-érték minden módosításra frissül.', fazis: 'Szerkezetek' },
+  { kod: 'nyilaszarok', nev: 'Nyílászárók', leiras: 'Ablak- és ajtótípusok összetevőkből vagy teljesítménynyilatkozat szerinti Uw-ből.', fazis: 'Szerkezetek' },
+  { kod: 'hatarolas', nev: 'Határolás', leiras: 'Melyik szerkezet mekkora felületen, milyen tájolással és milyen tér felé határol.', fazis: 'Szerkezetek' },
+  { kod: 'hohidak', nev: 'Hőhidak', leiras: 'Katalógus-csomópontok kétdimenziós hőhíd-számítása (MSZ EN ISO 10211): Ψ, felületi hőmérséklet, izotermás ábra; a Ψ·l átvihető a számításba.', fazis: 'Szerkezetek', opcionalis: true },
+  { kod: 'hoszukseglet', nev: 'Hőszükséglet', leiras: 'Helyiségenkénti tervezési hőszükséglet (MSZ EN 12831) a hőleadók és a hőtermelő méretezéséhez.', fazis: 'Gépészet', opcionalis: true },
+  { kod: 'gepeszet', nev: 'Gépészet', leiras: 'Fűtési és melegvíz-rendszer a leggyakoribb beállításokkal, ErP adatlappal pontosítható.', fazis: 'Gépészet' },
+  { kod: 'villamossag', nev: 'Villamosság', leiras: 'Beépített világítás a rendelet módszerével (lakóépületnél tájékoztató), napelemek, egyéb villamos fogyasztók és az éves villamos mérleg.', fazis: 'Gépészet', opcionalis: true },
+  { kod: 'eredmeny', nev: 'Eredmény', leiras: 'Besorolás, követelmények, havi mérleg és energiafelhasználás.', fazis: 'Értékelés és tanúsítvány' },
+  { kod: 'alternativ', nev: 'Alternatív rendszerek', leiras: 'Az alternatív energiaellátási rendszerek vizsgálata (9/2023 ÉKM 5. §, 4. melléklet): műszaki-környezeti és gazdasági alkalmasság.', fazis: 'Értékelés és tanúsítvány', opcionalis: true },
+  { kod: 'felujitas', nev: 'Felújítás', leiras: 'Felújítási intézkedések költsége, megtakarítása, megtérülése és hatása a besorolásra.', fazis: 'Értékelés és tanúsítvány', opcionalis: true },
+  { kod: 'tanusitvany', nev: 'Tanúsítvány', leiras: 'A tanúsító adatai, fotók, a feltöltési XML és a számítási jegyzőkönyv.', fazis: 'Értékelés és tanúsítvány' },
 ];
 const EGYEB_NEZET: Record<'projektek' | 'konyvtar' | 'iroda', { nev: string; leiras: string }> = {
   projektek: { nev: 'Projektek', leiras: 'Az iroda mentett projektjei. A megnyitott projekt minden módosítása automatikusan mentődik.' },
@@ -140,6 +142,18 @@ function App() {
   };
 
   // A böngésző tárhelye ~5 MB: ha a fotókkal nem fér el, a helyi vázlat fotók nélkül marad (a fiókba mentés és a projektfájl tartalmazza őket).
+  // Magyarázó szövegek: egy sorra rövidítve, kattintásra nyílnak (részletezés csak kérésre).
+  useEffect(() => {
+    for (const el of document.querySelectorAll<HTMLElement>('.munka .szakasz > p.halk, .munka > header p')) {
+      if (el.classList.contains('nyitva')) continue;
+      el.classList.toggle('tobb', el.scrollHeight > el.clientHeight + 2);
+    }
+  });
+  useEffect(() => {
+    const kat = (ev: MouseEvent) => { const el = (ev.target as HTMLElement).closest?.('p.tobb'); if (el) el.classList.toggle('nyitva'); };
+    document.addEventListener('click', kat);
+    return () => document.removeEventListener('click', kat);
+  }, []);
   useEffect(() => { if (!ir(KULCS, JSON.stringify(p)) && p.fotok?.length) ir(KULCS, JSON.stringify({ ...p, fotok: [] })); }, [p]);
 
   projektAnyagokBeallit(p.anyagok);
@@ -279,7 +293,26 @@ function App() {
     eredmeny: e ? `${e.besorolas.energetikai} osztály` : 'hiányos adatok',
     alternativ: p.alternativ ? 'vizsgálva' : 'nincs vizsgálat',
     felujitas: p.felujitas ? `${p.felujitas.intezkedesek.filter((m) => m.aktiv).length} intézkedés` : 'nincs elemzés',
+    tanusitvany: p.tanusito.nev ? p.tanusito.nev : 'tanúsító hiányzik',
   };
+  /** Lépésenkénti készültség: kesz / hiany (kötelező, de hiányos) / figy (kész, de nem felel meg) / null (opcionális, nincs mit jelezni). */
+  const kesz: Record<LepesKod, 'kesz' | 'hiany' | 'figy' | null> = {
+    epulet: p.meta.nev && p.meta.telepules ? 'kesz' : 'hiany',
+    terv: null,
+    helyisegek: atal.geometria.AN > 0 ? 'kesz' : 'hiany',
+    retegrendek: p.retegrendek.length ? 'kesz' : 'hiany',
+    nyilaszarok: p.nyilaszarok.length ? 'kesz' : 'hiany',
+    hatarolas: p.feluletek.length ? 'kesz' : 'hiany',
+    hohidak: p.hohidak?.length ? 'kesz' : null,
+    hoszukseglet: hszOsszeg !== null ? 'kesz' : null,
+    gepeszet: e ? 'kesz' : 'hiany',
+    villamossag: p.gepeszet.napelem.length || p.gepeszet.villamos?.fogyasztok.length ? 'kesz' : null,
+    eredmeny: !e ? 'hiany' : e.kovetelmeny.qmMegfelel && e.kovetelmeny.EnrenMegfelel && e.kovetelmeny.ECO2Megfelel !== false && !e.szerkezetek.some((x) => x.megfelel === false) ? 'kesz' : 'figy',
+    alternativ: p.alternativ ? 'kesz' : null,
+    felujitas: p.felujitas ? 'kesz' : null,
+    tanusitvany: p.tanusito.nev && p.tanusito.jogosultsag && e ? 'kesz' : 'hiany',
+  };
+  const KESZ_JEL = { kesz: '✓', hiany: '!', figy: '!' } as const;
   const lepesIdx = LEPESEK.findIndex((l) => l.kod === nezet);
   const fej = lepesIdx >= 0 ? LEPESEK[lepesIdx]! : EGYEB_NEZET[nezet as keyof typeof EGYEB_NEZET];
 
@@ -326,12 +359,16 @@ function App() {
           )}
           <ol class="lepesek">
             {LEPESEK.map((l, n) => (
-              <li>
-                <button aria-current={l.kod === nezet ? 'step' : undefined} onClick={() => setNezet(l.kod)}>
-                  <span class="szam">{n + 1}</span><span>{l.nev}</span>
-                  <span class="allapot">{allapot[l.kod]}</span>
-                </button>
-              </li>
+              <>
+                {(n === 0 || LEPESEK[n - 1]!.fazis !== l.fazis) && <li class="fazis" aria-hidden="true">{l.fazis}</li>}
+                <li>
+                  <button aria-current={l.kod === nezet ? 'step' : undefined} onClick={() => setNezet(l.kod)} title={l.opcionalis ? 'Opcionális lépés' : undefined}>
+                    <span class={`szam${kesz[l.kod] ? ` k-${kesz[l.kod]}` : ''}`}>{kesz[l.kod] ? KESZ_JEL[kesz[l.kod]!] : n + 1}</span>
+                    <span>{l.nev}</span>
+                    <span class="allapot">{l.opcionalis && !kesz[l.kod] ? `opcionális · ${allapot[l.kod]}` : allapot[l.kod]}</span>
+                  </button>
+                </li>
+              </>
             ))}
           </ol>
           {tavoli && (
@@ -416,6 +453,13 @@ function App() {
           {nezet === 'eredmeny' && <EredmenyLepes p={p} e={e} g={atal.geometria} atal={atal} hibak={hibak} modosit={modosit} rogzit={aktivKapcsolat ? rogzit : undefined} />}
           {nezet === 'alternativ' && <AlternativLepes p={p} modosit={modosit} />}
           {nezet === 'felujitas' && <FelujitasLepes p={p} modosit={modosit} />}
+          {nezet === 'tanusitvany' && <EredmenyLepes resz="tanusitvany" p={p} e={e} g={atal.geometria} atal={atal} hibak={hibak} modosit={modosit} rogzit={aktivKapcsolat ? rogzit : undefined} />}
+          {lepesIdx >= 0 && (
+            <footer class="lap-lab">
+              {lepesIdx > 0 ? <button class="gomb" onClick={() => { setNezet(LEPESEK[lepesIdx - 1]!.kod); window.scrollTo(0, 0); }}>← {LEPESEK[lepesIdx - 1]!.nev}</button> : <span />}
+              {lepesIdx < LEPESEK.length - 1 && <button class="gomb fo" onClick={() => { setNezet(LEPESEK[lepesIdx + 1]!.kod); window.scrollTo(0, 0); }}>Tovább: {LEPESEK[lepesIdx + 1]!.nev} →</button>}
+            </footer>
+          )}
           {nezet === 'projektek' && iroda && <ProjektekNezet iroda={iroda} aktivId={aktivKapcsolat?.id ?? null} megnyit={projektMegnyit} ujProjekt={ujTavoliProjekt} frissitKulcs={projektLista} />}
           {nezet === 'konyvtar' && tavoliAllapot && <KonyvtarNezet p={p} modosit={modosit} ugrik={setNezet} />}
           {nezet === 'iroda' && iroda && felh && irodak && (

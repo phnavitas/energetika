@@ -38,11 +38,11 @@ export function TanusitoSzakasz({ p, modosit }: { p: Projekt; modosit: Modosit }
         </Mezo>
         <Mezo cim="E-mail"><Szoveg ertek={t.email} valt={(v) => mt((x) => { x.email = v; })} /></Mezo>
         <Mezo cim="Telefon"><Szoveg ertek={t.telefon} valt={(v) => mt((x) => { x.telefon = v; })} /></Mezo>
-        <Mezo cim="Irányítószám"><Szoveg ertek={cim.iranyitoszam} valt={(v) => mc('iranyitoszam', v)} /></Mezo>
+        <Mezo rovid cim="Irányítószám"><Szoveg ertek={cim.iranyitoszam} valt={(v) => mc('iranyitoszam', v)} /></Mezo>
         <Mezo cim="Település"><Szoveg ertek={cim.telepules} valt={(v) => mc('telepules', v)} /></Mezo>
         <Mezo cim="Közterület"><Szoveg ertek={cim.kozterulet} valt={(v) => mc('kozterulet', v)} /></Mezo>
-        <Mezo cim="Jelleg"><Szoveg ertek={cim.kozteruletJelleg} hely="utca" valt={(v) => mc('kozteruletJelleg', v)} /></Mezo>
-        <Mezo cim="Házszám"><Szoveg ertek={cim.hazszam} valt={(v) => mc('hazszam', v)} /></Mezo>
+        <Mezo rovid cim="Jelleg"><Szoveg ertek={cim.kozteruletJelleg} hely="utca" valt={(v) => mc('kozteruletJelleg', v)} /></Mezo>
+        <Mezo rovid cim="Házszám"><Szoveg ertek={cim.hazszam} valt={(v) => mc('hazszam', v)} /></Mezo>
       </div>
 
       <div class="kartya" style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
