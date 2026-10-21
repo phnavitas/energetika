@@ -5,9 +5,9 @@ import { kategoriaJavaslat } from './Helyisegek';
 import { anyag } from '../katalogus';
 import { pecsetKinyer, type PecsetAdat } from '../terv/pecset';
 import type { SzurkeKep } from '../terv/autohelyiseg';
-import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, eszakJavitas, eszakJavitasMent, type TervLap } from '../terv/elemzes';
+import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, eszakJavitas, eszakJavitasMent, type TervLap, type AlaprajzFeldolgozas } from '../terv/elemzes';
 import { egtaj, szintekCimbol, szintNev } from '../terv/alaprajz';
-import { tervAtvesz, type AtvettNyilas } from '../terv/atvetel';
+import { tervAtvesz, type AtvettNyilas, type AtvettHelyiseg } from '../terv/atvetel';
 import { MintaLakasok } from './MintaLakasok';
 
 type Modosit = (f: (q: Projekt) => void) => void;
@@ -21,6 +21,39 @@ const FAJTA_NEV = { ablak: 'Ablak', erkelyajto: 'Erkélyajtó', bejarati_ajto: '
 const IRANY_SZIN: Record<number, string> = { 0: '#C2410C', 90: '#2E6DB4', 180: '#15803D', 270: '#A21CAF' };
 const IRANY_NEV: Record<number, string> = { 0: 'lapon fent', 90: 'lapon jobbra', 180: 'lapon lent', 270: 'lapon balra' };
 const norm = (d: number) => ((Math.round(d * 10) / 10) % 360 + 360) % 360;
+
+/** Egy alaprajz kijelölései: átvett egységek, kizárt helyiségek, besorolás-felülírás, kizárt nyílások. */
+interface Kijeloles { egysegek: Set<string>; kizartH: Set<number>; kat: Record<number, HelyisegKategoria>; kizartNy: Set<number> }
+
+/** Alapértelmezett kijelölés a felismerésből (minden egység; a csak jegyzékben szereplő sorok nélkül). */
+function alapKijeloles(al: AlaprajzFeldolgozas): Kijeloles {
+  const vanPecset = al.e.helyisegek.some((h) => h.forras === 'pecset');
+  const kizartH = new Set(al.auto ? al.e.helyisegek.map((h, i) => (al.e.egysegek.length && h.egyseg ? -1 : i)).filter((i) => i >= 0) : vanPecset ? al.e.helyisegek.map((h, i) => (h.forras === 'jegyzek' ? i : -1)).filter((i) => i >= 0) : []);
+  return { egysegek: new Set(al.e.egysegek), kizartH, kat: {}, kizartNy: new Set() };
+}
+
+/** Egy alaprajz átvehető helyiségei (külső falakkal) és nyílászárói a kijelölés szerint. */
+function atvetelReszek(al: AlaprajzFeldolgozas, k: Kijeloles): { helyisegek: AtvettHelyiseg[]; nyilasok: AtvettNyilas[] } {
+  const hs = al.e.helyisegek;
+  const egysegben = (i: number) => !al.e.egysegek.length || !hs[i]!.egyseg || k.egysegek.has(hs[i]!.egyseg!);
+  const valasztott = hs.map((h, i) => egysegben(i) && !h.kulter && !k.kizartH.has(i));
+  const kategoria = (i: number): HelyisegKategoria => k.kat[i] ?? kategoriaJavaslat(hs[i]!.nev) ?? 'kondicionalt';
+  const ri = (i: number) => al.magHelyisegek.indexOf(hs[i]!);
+  const falak = (i: number) => { const x = ri(i); return !al.r || x < 0 ? [] : al.r.helyisegek[x]!.szakaszok.filter((s) => s.tul === 'kulso' && s.hossz >= 0.3); };
+  const kiv = hs.map((h, i) => ({ h, i })).filter(({ i }) => valasztott[i]);
+  const index = new Map(kiv.map(({ i }, j) => [i, j]));
+  const helyisegek = kiv.map(({ h, i }) => ({
+    kod: h.kod, nev: h.nev, burkolat: h.burkolat, A: h.A, kategoria: kategoria(i), falak: falak(i).map((f) => ({ irany: f.irany, hossz: f.hossz })),
+    // fal fűtetlen (gyengén kapcsolt) helyiség felé, pl. garázs
+    futetlenFalak: (() => { const x = ri(i); if (!al.r || x < 0) return []; return al.r.helyisegek[x]!.szakaszok.filter((s) => typeof s.tul === 'number' && s.hossz >= 0.3).flatMap((s) => {
+      const mi = hs.indexOf(al.magHelyisegek[s.tul as number]!); return mi >= 0 && valasztott[mi] && kategoria(mi) === 'gyengen_kapcsolt' && kategoria(i) !== 'gyengen_kapcsolt' ? [{ hossz: s.hossz, fele: hs[mi]!.nev }] : []; }); })(),
+  }));
+  const nyilasok = al.nyilasok.map((n, kk) => ({ n, kk })).filter(({ n }) => n.kulso && n.helyiseg !== null && n.irany !== null)
+    .map(({ n, kk }) => ({ n, kk, hi: hs.indexOf(al.magHelyisegek[n.helyiseg!]!) }))
+    .filter(({ hi, kk }) => hi >= 0 && valasztott[hi] && !k.kizartNy.has(kk))
+    .map(({ n, hi }): AtvettNyilas => ({ fajta: n.fajta as AtvettNyilas['fajta'], szel: n.szel, mag: n.mag, pm: n.pm, helyiseg: index.get(hi)!, irany: n.irany! }));
+  return { helyisegek, nyilasok };
+}
 
 export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modosit; ugrik: (n: 'helyisegek' | 'hatarolas' | 'retegrendek') => void }) {
   const [lapok, setLapok] = useState<TervLap[]>([]);
@@ -47,6 +80,11 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   /** Lapindex → az alaprajz által ábrázolt szintek (alapból a lap címéből). */
   const [szintKi, setSzintKi] = useState<Record<number, string[]>>({});
   const [atvett, setAtvett] = useState<Set<number>>(new Set());
+  /** Lapindex → a háttérben elkészült alaprajz-feldolgozás (vagy hibaüzenet). */
+  const [elemzesek, setElemzesek] = useState<Record<number, AlaprajzFeldolgozas | string>>({});
+  /** Lapindex → kimarad-e az „Összes átvétele” műveletből (alapból a pince kimarad). */
+  const [kihagyLap, setKihagyLap] = useState<Record<number, boolean>>({});
+  const [osszesFut, setOsszesFut] = useState(false);
 
   async function betolt(fajlok: FileList | File[] | null, alaprajzOldal?: number, szurkeFelulir?: SzurkeKep) {
     if (!fajlok?.length) return;
@@ -67,18 +105,20 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     const osszes = [...lapok, ...uj];
     setLapok(osszes);
     if (alaprajzOldal !== undefined) { const i = osszes.findIndex((l, k) => k >= lapok.length && l.oldal === alaprajzOldal); if (i >= 0) setAIdx(i); }
-    else if (aIdx < 0) setAIdx(osszes.findIndex((l) => l.szerep === 'alaprajz'));
+    else if (aIdx < 0) { const nemPince = osszes.findIndex((l) => l.szerep === 'alaprajz' && !szintekCimbol(l.cim).includes('P')); setAIdx(nemPince >= 0 ? nemPince : osszes.findIndex((l) => l.szerep === 'alaprajz')); }
     if (mIdx < 0) setMIdx(osszes.findIndex((l) => l.szerep === 'metszet'));
   }
 
   /** Beépített típusalaprajz-mintalap (panel / blokkos): előre feldolgozott lakásadatok, kattintásos lakásválasztás. */
   function mintalap(fajta: 'panel' | 'blokkos') {
-    setLapok([]); setAIdx(-1); setMIdx(-1); setKesz(null); setHiba(null); setMintaFajta(fajta);
+    setLapok([]); setAIdx(-1); setMIdx(-1); setKesz(null); setHiba(null); setMintaFajta(fajta); setElemzesek({}); setAtvett(new Set());
   }
 
   const aLap = aIdx >= 0 ? lapok[aIdx] : undefined;
   const lapSzintek = (i: number) => szintKi[i] ?? szintekCimbol(lapok[i]?.cim ?? '');
   const alaprajzLapok = lapok.map((l, i) => ({ l, i })).filter(({ l }) => l.szerep === 'alaprajz');
+  /** Kimarad-e a lap az „Összes átvétele” műveletből (alapból a pince). */
+  const kimarad = (i: number) => kihagyLap[i] ?? lapSzintek(i).includes('P');
   const SZINT_SOR = ['P', 'F', '1', '2', '3', '4', '5', 'T'];
   // a fűtött szintek (a pince nélkül) közül a legalsót ábrázoló lapnál padló, a legfelsőnél padlásfödém / tető
   useEffect(() => {
@@ -89,7 +129,20 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     setPadloAt(sajat.includes(futott[0]!)); setTetoAt(sajat.includes(futott.at(-1)!));
   }, [aIdx, lapok.length, JSON.stringify(szintKi)]);
   const mLap = mIdx >= 0 ? lapok[mIdx] : undefined;
-  const al = useMemo(() => (aLap ? alaprajzFeldolgoz(aLap.lap, meretarany, aLap.szurke) : null), [aLap, meretarany]);
+  // háttérfeldolgozás: a feltöltött alaprajzok egymás után (a felület két lap között frissül)
+  useEffect(() => {
+    const kov = lapok.findIndex((l, i) => l.szerep === 'alaprajz' && elemzesek[i] === undefined);
+    if (kov < 0) return;
+    const t = window.setTimeout(() => {
+      let ered: AlaprajzFeldolgozas | string;
+      try { ered = alaprajzFeldolgoz(lapok[kov]!.lap, undefined, lapok[kov]!.szurke); } catch (e) { ered = (e as Error).message; }
+      setElemzesek((x) => ({ ...x, [kov]: ered }));
+    }, 40);
+    return () => window.clearTimeout(t);
+  }, [lapok, elemzesek]);
+  const keszElemzes = aIdx >= 0 && typeof elemzesek[aIdx] === 'object' ? elemzesek[aIdx] as AlaprajzFeldolgozas : null;
+  const kezi = useMemo(() => (aLap && meretarany ? alaprajzFeldolgoz(aLap.lap, meretarany, aLap.szurke) : null), [aLap, meretarany]);
+  const al = kezi ?? keszElemzes;
   const me = useMemo(() => (mLap ? metszetFeldolgoz(mLap.lap) : null), [mLap]);
   const pecset = useMemo<PecsetAdat | null>(() => { const l = aLap ?? mLap; if (!l) return null; const d = pecsetKinyer(l.lap.szovegek); return Object.keys(d).length ? d : null; }, [aLap, mLap]);
 
@@ -98,13 +151,10 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     if (!al) return;
     const e = al.e.eszak;
     setEszak(e ? norm(e.szog + eszakJavitas(e.alairas)) : 0);
-    setEgysegek(new Set(al.e.egysegek));
-    // ha van helyiségpecsét, a csak a jegyzékben szereplő sorok (párjuk nincs a rajzon) alapból nem kerülnek át
-    const vanPecset = al.e.helyisegek.some((h) => h.forras === 'pecset');
-    // automatikusan felismert helyiségek (típusalaprajz): alapból egy sincs kijelölve – a lakás helyiségeire kattintva
-    // típusalaprajz: ha a színezésből lakások jöttek, a lakáshoz nem tartozó terek (lépcsőház, folyosó, akna) kimaradnak
-    setKizartH(new Set(al.auto ? al.e.helyisegek.map((h, i) => (al.e.egysegek.length && h.egyseg ? -1 : i)).filter((i) => i >= 0) : vanPecset ? al.e.helyisegek.map((h, i) => (h.forras === 'jegyzek' ? i : -1)).filter((i) => i >= 0) : []));
-    setKat({}); setKizartNy(new Set());
+    // ha van helyiségpecsét, a csak a jegyzékben szereplő sorok (párjuk nincs a rajzon) alapból nem kerülnek át;
+    // típusalaprajznál a lakáshoz nem tartozó terek (lépcsőház, folyosó, akna) kimaradnak
+    const k = alapKijeloles(al);
+    setEgysegek(k.egysegek); setKizartH(k.kizartH); setKat({}); setKizartNy(new Set());
   }, [al]);
   useEffect(() => {
     if (!me) return;
@@ -134,31 +184,52 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     db: nyilasok.filter(({ n, k }) => n.irany === ir && !kizartNy.has(k)).length,
   }));
 
+  /** Közös átvétel: egy alaprajz a megadott kijelöléssel, szintekkel, padló/tető beállítással. */
+  function egyAtvetel(q: Projekt, a: AlaprajzFeldolgozas, k: Kijeloles, o: { csere: boolean; padloAt: boolean; tetoAt: boolean; eszak: number; szintek: string[]; fajl?: string }): string[] {
+    const blokkok = (me?.blokkok ?? []).filter((b) => rrKi[b.rr.kod]);
+    const { helyisegek: hs, nyilasok: ny } = atvetelReszek(a, k);
+    return tervAtvesz(q, {
+      helyisegek: hs, retegrendek: blokkok, nyilasok: ny,
+      eszakSzog: o.eszak, belmagassag: bm ?? 2.7, szintszam: szintszam ?? 1, csere: o.csere, padloAt: o.padloAt, tetoAt: o.tetoAt,
+      ...(mintaFajta === 'blokkos' ? { alapFalSablon: 'fal_blokk_kohosalak' } : {}),
+      forras: [o.fajl, mLap?.fajl].filter(Boolean).join(', '), szintek: o.szintek,
+    }).uzenetek;
+  }
+
   function atvesz() {
     if (!al) return;
-    const kivalasztott = helyisegek.map((h, i) => ({ h, i })).filter(({ i }) => valasztott[i]);
-    const index = new Map(kivalasztott.map(({ i }, j) => [i, j]));
-    const blokkok = (me?.blokkok ?? []).filter((b) => rrKi[b.rr.kod]);
     let uzenetek: string[] = [];
-    modosit((q) => {
-      uzenetek = tervAtvesz(q, {
-        helyisegek: kivalasztott.map(({ h, i }) => ({ kod: h.kod, nev: h.nev, burkolat: h.burkolat, A: h.A, kategoria: kategoria(i), falak: falak(i).map((f) => ({ irany: f.irany, hossz: f.hossz })),
-          // fal fűtetlen (gyengén kapcsolt) helyiség felé, pl. garázs
-          futetlenFalak: (() => { const ri = raszterIdx(i); if (!al.r || ri < 0) return []; return al.r.helyisegek[ri]!.szakaszok.filter((s) => typeof s.tul === 'number' && s.hossz >= 0.3).flatMap((s) => {
-            const mi = helyisegek.indexOf(al.magHelyisegek[s.tul as number]!); return mi >= 0 && valasztott[mi] && kategoria(mi) === 'gyengen_kapcsolt' && kategoria(i) !== 'gyengen_kapcsolt' ? [{ hossz: s.hossz, fele: helyisegek[mi]!.nev }] : []; }); })() })),
-        retegrendek: blokkok,
-        nyilasok: nyilasok.filter(({ k }) => !kizartNy.has(k)).map(({ n, hi }): AtvettNyilas => ({ fajta: n.fajta as AtvettNyilas['fajta'], szel: n.szel, mag: n.mag, pm: n.pm, helyiseg: index.get(hi)!, irany: n.irany! })),
-        eszakSzog: eszakSz, belmagassag: bm ?? 2.7, szintszam: szintszam ?? 1, csere, padloAt, tetoAt, ...(mintaFajta === 'blokkos' ? { alapFalSablon: 'fal_blokk_kohosalak' } : {}),
-        forras: [aLap?.fajl, mLap?.fajl].filter(Boolean).join(', '),
-        szintek: lapSzintek(aIdx),
-      }).uzenetek;
-    });
+    modosit((q) => { uzenetek = egyAtvetel(q, al, { egysegek, kizartH, kat, kizartNy }, { csere, padloAt, tetoAt, eszak: eszakSz, szintek: lapSzintek(aIdx), fajl: aLap?.fajl }); });
     if (pecset && pecsetBe) modosit((q) => pecsetAtvesz(q, pecset));
     if (al.e.eszak) eszakJavitasMent(al.e.eszak.alairas, eszakSz - al.e.eszak.szog);
     setKesz(uzenetek);
     setAtvett((x) => new Set([...x, aIdx]));
     // a következő alaprajz alapból a meglévők mellé kerül
     setCsere(false);
+  }
+
+  /** Minden feldolgozott, átvételre jelölt alaprajz egy lépésben, szintsorrendben (az első a választott módon, a többi hozzáadva). */
+  function osszesAtvesz() {
+    const sor = alaprajzLapok.filter(({ i }) => !kimarad(i) && typeof elemzesek[i] === 'object')
+      .sort((x, y) => SZINT_SOR.indexOf(lapSzintek(x.i)[0] ?? 'F') - SZINT_SOR.indexOf(lapSzintek(y.i)[0] ?? 'F'));
+    if (!sor.length) return;
+    setOsszesFut(true);
+    const futott = [...new Set(sor.flatMap(({ i }) => lapSzintek(i)).filter((x) => x !== 'P'))].sort((a, b) => SZINT_SOR.indexOf(a) - SZINT_SOR.indexOf(b));
+    const uz: string[] = [];
+    modosit((q) => {
+      sor.forEach(({ l, i }, n) => {
+        const a = elemzesek[i] as AlaprajzFeldolgozas;
+        // a megnyitott lapnál a kézi kijelölés, a többinél az alapértelmezett
+        const k = i === aIdx ? { egysegek, kizartH, kat, kizartNy } : alapKijeloles(a);
+        const sz = lapSzintek(i);
+        const e = a.e.eszak ? norm(a.e.eszak.szog + eszakJavitas(a.e.eszak.alairas)) : eszakSz;
+        const u = egyAtvetel(q, a, k, { csere: n === 0 ? csere : false, padloAt: !!futott.length && sz.includes(futott[0]!), tetoAt: !!futott.length && sz.includes(futott.at(-1)!), eszak: i === aIdx ? eszakSz : e, szintek: sz, fajl: l.fajl });
+        uz.push(`${l.cim || l.fajl}: ${atvetelReszek(a, k).helyisegek.length} helyiség${sz.length > 1 ? ` × ${sz.length} szint` : ''}`, ...u.filter((x) => !/azonos felület összevonva/.test(x)));
+      });
+    });
+    if (pecset && pecsetBe) modosit((q) => pecsetAtvesz(q, pecset));
+    setAtvett((x) => new Set([...x, ...sor.map(({ i }) => i)]));
+    setKesz([...new Set(uz)]); setCsere(false); setOsszesFut(false);
   }
 
   const vb = al?.r ? [al.r.x0, al.r.y0, al.r.w * al.r.px / al.r.mPerPt, al.r.h * al.r.px / al.r.mPerPt] : aLap ? [0, 0, aLap.lap.szel, aLap.lap.mag] : [0, 0, 1, 1];
@@ -178,7 +249,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
           <button class={`gomb${mintaFajta === 'panel' ? ' aktiv-gomb' : ''}`} onClick={() => mintalap('panel')}>Panel típusalaprajzok</button>
           <button class={`gomb${mintaFajta === 'blokkos' ? ' aktiv-gomb' : ''}`} onClick={() => mintalap('blokkos')}>Blokkos típusalaprajzok</button>
           <label class="gomb fo" style="cursor:pointer">PDF tervlapok kiválasztása<input type="file" accept="application/pdf,.pdf" multiple style="display:none" onChange={(e) => { const t = e.target as HTMLInputElement; setMintaFajta(null); void betolt(t.files).then(() => { t.value = ''; }); }} /></label>
-          {lapok.length > 0 && <button class="gomb halk-gomb semleges" onClick={() => { setLapok([]); setAIdx(-1); setMIdx(-1); setKesz(null); }}>Lapok törlése</button>}
+          {lapok.length > 0 && <button class="gomb halk-gomb semleges" onClick={() => { setLapok([]); setAIdx(-1); setMIdx(-1); setKesz(null); setElemzesek({}); setAtvett(new Set()); }}>Lapok törlése</button>}
           {folyamat && <span class="halk" role="status">{folyamat}</span>}
         </div>
         {hiba && <div class="hiba-doboz" style="margin-top:12px">{hiba}</div>}
@@ -190,7 +261,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                 {lapok.map((l, i) => <option value={i}>{l.fajl} · {l.oldal}. oldal{l.cim ? ` · ${l.cim}` : ''}</option>)}
               </select>
             </label>
-            <label class="mezo"><span>Metszet</span>
+            <label class="mezo"><span>Metszet{me && <small class="jel jo" style="margin-left:8px">feldolgozva · {me.blokkok.length} rétegrend · {me.szintek.szintszam} szint</small>}</span>
               <select value={mIdx} onChange={(e) => setMIdx(Number((e.target as HTMLSelectElement).value))}>
                 <option value={-1}>– nincs –</option>
                 {lapok.map((l, i) => <option value={i}>{l.fajl} · {l.oldal}. oldal{l.cim ? ` · ${l.cim}` : ''}</option>)}
@@ -213,14 +284,31 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                         ); })}
                       </span>
                     </td>
-                    <td class="halkabb" style="white-space:nowrap">{atvett.has(i) ? <span class="jel jo">átvéve</span> : i === aIdx ? 'megnyitva' : '–'}</td>
+                    <td class="halkabb" style="white-space:nowrap">{(() => {
+                      const el = elemzesek[i];
+                      if (el === undefined) return <span class="jel figy">feldolgozás…</span>;
+                      if (typeof el === 'string') return <span class="jel rossz" title={el}>hiba</span>;
+                      const hsz = el.e.helyisegek.filter((h) => h.forras === 'pecset' && !h.kulter).length;
+                      const lak = el.e.egysegek.length;
+                      return <span class="jel jo">feldolgozva · {hsz} helyiség{lak ? ` · ${lak} egység` : ''}</span>;
+                    })()}</td>
+                    <td class="halkabb" style="white-space:nowrap">{atvett.has(i) ? <span class="jel jo">átvéve</span> : <label class="jelolo" style="font-size:12px"><input type="checkbox" checked={!kimarad(i)} onChange={(e) => setKihagyLap({ ...kihagyLap, [i]: !(e.target as HTMLInputElement).checked })} /> átvételre</label>}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            <div class="gombsor" style="margin-top:8px">
+              <button class="gomb fo" disabled={osszesFut || alaprajzLapok.some(({ i }) => elemzesek[i] === undefined) || !alaprajzLapok.some(({ i }) => !kimarad(i) && !atvett.has(i))} onClick={osszesAtvesz}>
+                {alaprajzLapok.some(({ i }) => elemzesek[i] === undefined) ? `Feldolgozás… (${alaprajzLapok.filter(({ i }) => elemzesek[i] !== undefined).length} / ${alaprajzLapok.length})` : `Összes kijelölt alaprajz átvétele (${alaprajzLapok.filter(({ i }) => !kimarad(i)).length} lap)`}
+              </button>
+              <span class="halkabb">{csere && !atvett.size ? 'A projekt meglévő helyiségei, felületei és nyílászárói helyére kerülnek (Felülírás – lent módosítható).' : 'A meglévők mellé kerülnek.'} A megnyitott lapnál a kézi kijelölés, a többinél az összes egység és helyiség.</span>
+            </div>
           </div>
         )}
       </section>
+
+      {aLap && !al && elemzesek[aIdx] === undefined && <section class="szakasz"><p class="halk" role="status">A(z) „{aLap.cim || aLap.fajl}” alaprajz feldolgozása folyamatban…</p></section>}
+      {aLap && typeof elemzesek[aIdx] === 'string' && <section class="szakasz"><div class="hiba-doboz">A(z) „{aLap.cim || aLap.fajl}” alaprajz nem dolgozható fel: {elemzesek[aIdx] as string}</div></section>}
 
       {mintaFajta && <MintaLakasok fajta={mintaFajta} modosit={modosit} ugrik={ugrik} />}
 
