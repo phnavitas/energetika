@@ -84,6 +84,7 @@ export function HohidakLepes({ p, modosit }: { p: Projekt; modosit: Modosit }) {
             ); })}</tbody>
           </table></div>
         )}
+        <p class="halkabb" style="margin-top:8px">A katalógus csomópontjai a svájci BFE Wärmebrückenkatalog (2002) táblázataival validáltak (erkélylemez, attika, lapostető, előtető, belső szigetelésű födém- és falcsatlakozás: ±0,04 W/mK-en belül).</p>
         <div class="gombsor" style="margin-top:12px">
           <button class="gomb fo" onClick={() => setKatalog(!katalog)}>{katalog ? 'Katalógus bezárása' : 'Új hőhíd a katalógusból'}</button>
           {hidak.some((x) => x.eredmeny) && <button class="gomb" onClick={() => void pdf(hidak.filter((x) => x.eredmeny))}>Összes hőhíd PDF-ben</button>}

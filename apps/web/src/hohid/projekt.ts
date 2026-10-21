@@ -112,6 +112,20 @@ export function javasoltHossz(p: Projekt, s: HohidSablon): { hossz: number; leir
     const P = p.feluletek.filter((f) => f.fajta === 'opak' && f.hatar === 'kulso' && p.retegrendek.find((r) => r.id === f.retegrendId)?.szerep === 'fal').reduce((a, f) => a + (f.meret?.hossz ?? (f.A ?? 0) / h), 0) / szint;
     return P > 0 ? { hossz: round(P, 2), leiras: 'a homlokzati falak hossza egy szintre' } : null;
   }
+  if (s.kod === 'ablak_szemoldok' || s.kod === 'redonytok') {
+    let L = 0;
+    for (const f of p.feluletek) {
+      if (f.fajta !== 'nyilaszaro' || f.hatar !== 'kulso') continue;
+      const n = p.nyilaszarok.find((x) => x.id === f.nyilaszaroId); if (!n) continue;
+      if (s.kod === 'redonytok' && !/redony|redőny/i.test(n.arnyekolo?.kod ?? '')) continue;
+      L += n.szelesseg * (f.darab ?? 1);
+    }
+    return L > 0 ? { hossz: round(L, 2), leiras: s.kod === 'redonytok' ? 'a redőnyös nyílászárók szélességének összege' : 'a külső nyílászárók szélességének összege' } : null;
+  }
+  if (s.kod === 'fodem_belso_szig' && szint > 1) {
+    const P = p.feluletek.filter((f) => f.fajta === 'opak' && f.hatar === 'kulso' && p.retegrendek.find((r) => r.id === f.retegrendId)?.szerep === 'fal').reduce((a, f) => a + (f.meret?.hossz ?? (f.A ?? 0) / h), 0) / szint;
+    return P > 0 ? { hossz: round(P * (szint - 1), 2), leiras: `a homlokzat kerülete × ${szint - 1} közbenső födém` } : null;
+  }
   if (s.kod === 'ablak_kava') {
     let L = 0;
     for (const f of p.feluletek) { if (f.fajta !== 'nyilaszaro' || f.hatar !== 'kulso') continue; const n = p.nyilaszarok.find((x) => x.id === f.nyilaszaroId); if (n) L += 2 * (n.szelesseg + n.magassag) * (f.darab ?? 1); }
@@ -133,6 +147,8 @@ export function ajanlott(p: Projekt): Set<string> {
   if (p.retegrendek.some((r) => r.szerep === 'belso')) a.add('t_csatlakozas');
   if (p.feluletek.some((f) => f.fajta === 'padlo')) { a.add('labazat_lemez'); a.add('labazat_savalap'); }
   if (p.retegrendek.some((r) => r.szerep === 'teto')) a.add('lapos_teto_attika');
+  if (p.feluletek.some((f) => f.fajta === 'nyilaszaro')) a.add('ablak_szemoldok');
+  if (p.nyilaszarok.some((n) => /redony|redőny/i.test(n.arnyekolo?.kod ?? ''))) a.add('redonytok');
   return a;
 }
 

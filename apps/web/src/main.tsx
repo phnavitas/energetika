@@ -11,6 +11,7 @@ import { RetegrendekLepes } from './lepesek/Retegrendek';
 import { NyilaszarokLepes } from './lepesek/Nyilaszarok';
 import { HatarolasLepes } from './lepesek/Hatarolas';
 import { GepeszetLepes } from './lepesek/Gepeszet';
+import { VillamossagLepes } from './lepesek/Villamossag';
 import { EredmenyLepes } from './lepesek/Eredmeny';
 import { HoszuksegletLepes } from './lepesek/Hoszukseglet';
 import { HohidakLepes } from './lepesek/Hohidak';
@@ -39,7 +40,7 @@ function betolt(): Projekt {
 interface Kapcsolat { id: string; irodaId: string; verzio: number; modositva: string; piszkos: boolean; }
 type MentesAllapot = { a: 'mentve' } | { a: 'varakozik' } | { a: 'mentes' } | { a: 'hiba'; uzenet: string } | { a: 'utkozes' } | { a: 'torolve' };
 
-type LepesKod = 'epulet' | 'terv' | 'helyisegek' | 'retegrendek' | 'nyilaszarok' | 'hatarolas' | 'hohidak' | 'hoszukseglet' | 'gepeszet' | 'eredmeny' | 'alternativ' | 'felujitas';
+type LepesKod = 'epulet' | 'terv' | 'helyisegek' | 'retegrendek' | 'nyilaszarok' | 'hatarolas' | 'hohidak' | 'hoszukseglet' | 'gepeszet' | 'villamossag' | 'eredmeny' | 'alternativ' | 'felujitas';
 type Nezet = LepesKod | 'projektek' | 'konyvtar' | 'iroda';
 const LEPESEK: { kod: LepesKod; nev: string; leiras: string }[] = [
   { kod: 'epulet', nev: 'Épület', leiras: 'Alapadatok, rendeltetés, követelményszint és meglévő épületnél a tipikus szerkezetek.' },
@@ -51,6 +52,7 @@ const LEPESEK: { kod: LepesKod; nev: string; leiras: string }[] = [
   { kod: 'hohidak', nev: 'Hőhidak', leiras: 'Katalógus-csomópontok kétdimenziós hőhíd-számítása (MSZ EN ISO 10211): Ψ, felületi hőmérséklet, izotermás ábra; a Ψ·l átvihető a számításba.' },
   { kod: 'hoszukseglet', nev: 'Hőszükséglet', leiras: 'Helyiségenkénti tervezési hőszükséglet (MSZ EN 12831) a hőleadók és a hőtermelő méretezéséhez.' },
   { kod: 'gepeszet', nev: 'Gépészet', leiras: 'Fűtési és melegvíz-rendszer a leggyakoribb beállításokkal, ErP adatlappal pontosítható.' },
+  { kod: 'villamossag', nev: 'Villamosság', leiras: 'Beépített világítás a rendelet módszerével (lakóépületnél tájékoztató), napelemek, egyéb villamos fogyasztók és az éves villamos mérleg.' },
   { kod: 'eredmeny', nev: 'Eredmény', leiras: 'Besorolás, követelmények, havi mérleg, és a tanúsítvány előkészítése.' },
   { kod: 'alternativ', nev: 'Alternatív rendszerek', leiras: 'Az alternatív energiaellátási rendszerek vizsgálata (9/2023 ÉKM 5. §, 4. melléklet): műszaki-környezeti és gazdasági alkalmasság.' },
   { kod: 'felujitas', nev: 'Felújítás', leiras: 'Felújítási intézkedések költsége, megtakarítása, megtérülése és hatása a besorolásra.' },
@@ -273,6 +275,7 @@ function App() {
     hohidak: p.hohidak?.length ? `${p.hohidak.length} csomópont${p.hohidMod === 'psi' ? ', Ψ-mód' : ''}` : (p.hohidMod === 'psi' ? 'Ψ-mód' : 'χ-tényezővel'),
     hoszukseglet: hszOsszeg !== null ? `${sz(hszOsszeg / 1000, 1)} kW` : '–',
     gepeszet: e ? 'kiválasztva' : '–',
+    villamossag: p.gepeszet.napelem.length ? `${sz(p.gepeszet.napelem.reduce((a, n) => a + n.kWp, 0), 1)} kWp napelem` : `${p.gepeszet.villamos?.fogyasztok.length ?? 0} fogyasztó`,
     eredmeny: e ? `${e.besorolas.energetikai} osztály` : 'hiányos adatok',
     alternativ: p.alternativ ? 'vizsgálva' : 'nincs vizsgálat',
     felujitas: p.felujitas ? `${p.felujitas.intezkedesek.filter((m) => m.aktiv).length} intézkedés` : 'nincs elemzés',
@@ -409,6 +412,7 @@ function App() {
           {nezet === 'hohidak' && <HohidakLepes p={p} modosit={modosit} />}
           {nezet === 'hoszukseglet' && <HoszuksegletLepes p={p} modosit={modosit} />}
           {nezet === 'gepeszet' && <GepeszetLepes p={p} modosit={modosit} eredmeny={e} />}
+          {nezet === 'villamossag' && <VillamossagLepes p={p} modosit={modosit} eredmeny={e} />}
           {nezet === 'eredmeny' && <EredmenyLepes p={p} e={e} g={atal.geometria} atal={atal} hibak={hibak} modosit={modosit} rogzit={aktivKapcsolat ? rogzit : undefined} />}
           {nezet === 'alternativ' && <AlternativLepes p={p} modosit={modosit} />}
           {nezet === 'felujitas' && <FelujitasLepes p={p} modosit={modosit} />}

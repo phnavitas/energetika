@@ -10,6 +10,8 @@
   "build": {
     "command": "cd apps/web && npm ci && npm run build"
   },
+  // havonta egyszer (1-jén 3:17 UTC) a távhőszolgáltatói súlyozó tényezők frissítése
+  "triggers": { "crons": ["17 3 1 * *"] },
   "assets": {
     "directory": "./apps/web/dist",
     "binding": "ASSETS",

@@ -14,6 +14,10 @@ export interface RaszterBeallitas {
   ajtoZar?: number;
   /** A legszélesebb áthidalt nyílás (m) – két egy vonalba eső falszakasz között. */
   maxNyilas?: number;
+  /** Egyszerűsített rajzhoz (típusalaprajz-mintalap): a falsávban lévő, legfeljebb ekkora (m) rések rajzelem nélkül is lezáródnak. */
+  resZaras?: number;
+  /** Egyszerűsített rajzhoz: a legalább ekkora (m) vonalvastagságú sötét vonalak is falak (vastag vonallal rajzolt fal). */
+  vastagVonalFal?: number;
 }
 
 export interface FalSzakasz {
@@ -214,6 +218,25 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
     poliRajzol(fal, w, h, u.pontok, tr); stilusRajzol(u, false);
     darabok.push(u.bbox);
   }
+  if (b.vastagVonalFal) {
+    // vastag (fal-) vonalak: a vonalvastagságnyi sávot rajzoljuk ki
+    for (const u of lap.utvonalak) {
+      if (u.muvelet !== 'stroke' || u.vastagsag * mPerPt < b.vastagVonalFal || feher(u.vonalSzin)) continue;
+      // a lapkeret, rajzkeret hosszú vonalai nem falak
+      if (Math.max(u.bbox[2] - u.bbox[0], u.bbox[3] - u.bbox[1]) * mPerPt > 18) continue;
+      if (u.bbox[2] < x0 || u.bbox[0] > x1 || u.bbox[3] < y0 || u.bbox[1] > y1) continue;
+      const r = Math.max(0.5, u.vastagsag * ptPx / 2);
+      for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) {
+        const [ax, ay] = tr(p[i]!, p[i + 1]!), [bx, by] = tr(p[i + 2]!, p[i + 3]!);
+        const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) * 2));
+        for (let k = 0; k <= n; k++) {
+          const cx = ax + (bx - ax) * k / n, cy = ay + (by - ay) * k / n;
+          for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) if (x >= 0 && y >= 0 && x < w && y < h && Math.abs(x + 0.5 - cx) <= r + 0.5 && Math.abs(y + 0.5 - cy) <= r + 0.5) fal[y * w + x] = 1;
+        }
+      }
+      darabok.push(u.bbox);
+    }
+  }
   // sraffozott fehér kitöltés (falazat, hőszigetelés metszeti mintázattal): a befoglalójában legalább 3 rövid, ferde
   // vonal – a bútor kitöltése nem sraffozott. Ezek a színes rétegekkel egyenrangú falrétegek.
   const reteg = new Uint8Array(w * h);
@@ -370,6 +393,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
         for (let x = Math.max(0, Math.floor(ax)); x <= Math.min(w - 1, Math.ceil(bx) - 1); x++) if (!fal[y * w + x]) nyilas[y * w + x] = 1;
     }
   }
+  if (b.resZaras) resZar(fal, nyilas, w, h, Math.round(b.resZaras / px), Math.round(0.6 / px), falKomponensek(fal, w, h));
   const gat = new Uint8Array(w * h);
   for (let i = 0; i < w * h; i++) gat[i] = fal[i] || nyilas[i] ? 1 : 0;
   // helyiségek: a pecsétekből indított versengő elárasztás a (hajszálrésekre kissé tágított) gáton belül
@@ -461,4 +485,58 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
         .filter((s) => s.hossz >= 0.1).sort((a, b) => b.hossz - a.hossz),
     })),
   };
+}
+
+/**
+ * Falsávon belüli rések zárása rajzelem nélkül: soronként (ill. oszloponként) a két falpixel közti, legfeljebb `maxRes`
+ * hosszú rés jelölt; az azonos végpontú jelöltek egymás alatti sávja csak akkor zár, ha legfeljebb `maxSav` vastag
+ * (falvastagságnyi) – a két fal közti helyiség (széles sáv) így nem záródik le.
+ */
+/** A falpixelek 8-szomszédos összefüggő komponensei (külön alaprajzok egy lapon). */
+function falKomponensek(fal: Uint8Array, w: number, h: number): Int32Array {
+  const komp = new Int32Array(w * h); let id = 0;
+  for (let i = 0; i < w * h; i++) {
+    if (!fal[i] || komp[i]) continue;
+    id++; const sor = [i]; komp[i] = id;
+    for (let k = 0; k < sor.length; k++) {
+      const q = sor[k]!, x = q % w, y = (q / w) | 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const n = ny * w + nx; if (fal[n] && !komp[n]) { komp[n] = id; sor.push(n); }
+      }
+    }
+  }
+  return komp;
+}
+
+function resZar(fal: Uint8Array, nyilas: Uint8Array, w: number, h: number, maxRes: number, maxSav: number, komp: Int32Array) {
+  for (const fuggo of [false, true]) {
+    const W = fuggo ? h : w, H = fuggo ? w : h;
+    const idx = (a: number, b: number) => (fuggo ? a * w + b : b * w + a);
+    const jelolt = new Map<string, number[]>();
+    for (let b = 0; b < H; b++) {
+      let a = 0;
+      while (a < W) {
+        if (fal[idx(a, b)]) { a++; continue; }
+        const k0 = a; while (a < W && !fal[idx(a, b)]) a++;
+        const k1 = a; // [k0, k1) szabad
+        if (k0 === 0 || k1 >= W || k1 - k0 > maxRes) continue;
+        if (!fal[idx(k0 - 1, b)] || !fal[idx(k0 - 2 < 0 ? 0 : k0 - 2, b)] || !fal[idx(k1, b)] || !fal[idx(Math.min(W - 1, k1 + 1), b)]) continue;
+        // csak egy alaprajzon belül (a rés két oldala azonos falhálózat) – két szomszédos rajz közti köz nem nyílás
+        if (komp[idx(k0 - 1, b)] !== komp[idx(k1, b)]) continue;
+        const kulcs = `${k0}|${k1}`; (jelolt.get(kulcs) ?? jelolt.set(kulcs, []).get(kulcs)!).push(b);
+      }
+    }
+    for (const [kulcs, sorok] of jelolt) {
+      const [k0, k1] = kulcs.split('|').map(Number) as [number, number];
+      sorok.sort((p, q) => p - q);
+      let i = 0;
+      while (i < sorok.length) {
+        let j = i; while (j + 1 < sorok.length && sorok[j + 1] === sorok[j]! + 1) j++;
+        const vastag = j - i + 1;
+        if (vastag <= maxSav && vastag >= 2) for (let b = sorok[i]!; b <= sorok[j]!; b++) for (let a = k0; a < k1; a++) nyilas[idx(a, b)] = 1;
+        i = j + 1;
+      }
+    }
+  }
 }

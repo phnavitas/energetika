@@ -6,6 +6,7 @@ import { lapKinyer, type Lap } from './kinyeres';
 import { alaprajzElemez, type AlaprajzEredmeny, type TervHelyiseg } from './alaprajz';
 import { raszterEpit, type Raszter } from './raszter';
 import { kotaEllenoriz } from './kota';
+import { meretaranyKotabol, automatikusHelyisegek } from './autohelyiseg';
 import { nyilasFeliratok, nyilasokHozzarendel, type TervNyilas } from './nyilaszarok';
 import { retegrendBlokkok, szerepBecsles, retegekEpit, szintekKeres, type TervRetegrend, type SzerepBecsles, type TervRetegUI, type SzintEredmeny } from './metszet';
 import { ujId } from '../modell';
@@ -40,6 +41,8 @@ export function lapSzerep(lap: Lap): { szerep: TervLap['szerep']; cim: string } 
   if (/alaprajz/i.test(cim)) return { szerep: 'alaprajz', cim };
   if (/rétegrend/i.test(sz) && /[±+]\d,\d{2}/.test(sz)) return { szerep: 'metszet', cim: cim || 'Metszet' };
   if (/\d+[,.]\d{2}\s*m(²|2)/.test(sz)) return { szerep: 'alaprajz', cim: cim || 'Alaprajz' };
+  // típusalaprajz-lap pecsét nélkül: sok nyílásfelirat („pm 90”, „P 90”) és „…típusok” felirat
+  if (/típusok\s*:|típusalaprajz/i.test(sz) || lap.szovegek.filter((t) => /^(pm|p)\s*\d{2,3}\b/i.test(t.s.trim())).length >= 5) return { szerep: 'alaprajz', cim: cim || (/(\S+típusok)/i.exec(sz)?.[1] ?? 'Típusalaprajz') };
   return { szerep: 'egyeb', cim: cim || 'Egyéb lap' };
 }
 
@@ -70,17 +73,29 @@ export interface AlaprajzFeldolgozas {
   magHelyisegek: TervHelyiseg[];
   r: Raszter | null;
   nyilasok: TervNyilas[];
+  /** Pecsét nélküli lap: a helyiségek automatikusan felismert zárt terek. */
+  auto?: boolean;
 }
 
 export function alaprajzFeldolgoz(lap: Lap, meretarany?: number): AlaprajzFeldolgozas {
   const e = alaprajzElemez(lap);
   if (meretarany && meretarany > 0) { e.meretarany = meretarany; e.mPerPt = (25.4 / 72) / 1000 * meretarany; }
-  const magHelyisegek = e.helyisegek.filter((h) => h.forras === 'pecset' && !h.kulter);
+  // lépték nélküli lap (pl. kicsinyített típusalaprajz): a méretláncokból becsülve
+  if (!e.mPerPt) { const M = meretaranyKotabol(lap.szovegek); if (M) { e.meretarany = M; e.mPerPt = (25.4 / 72) / 1000 * M; e.figyelmeztetesek = e.figyelmeztetesek.filter((x) => !/méretarányt nem találtam/.test(x)); e.figyelmeztetesek.push(`A lépték a méretláncokból becsülve: M = 1:${M}. Ellenőrizd, szükség esetén add meg kézzel.`); } }
+  let magHelyisegek = e.helyisegek.filter((h) => h.forras === 'pecset' && !h.kulter);
+  // pecsét nélküli (egyszerűsített) alaprajz: a falakkal körbezárt terek a helyiségek
+  const auto = !magHelyisegek.length && !!e.mPerPt;
+  if (auto) {
+    magHelyisegek = automatikusHelyisegek(lap, e.mPerPt!);
+    e.helyisegek = magHelyisegek;
+    if (magHelyisegek.length) e.figyelmeztetesek = e.figyelmeztetesek.filter((x) => !/Helyiséget nem találtam/.test(x));
+    if (magHelyisegek.length) e.figyelmeztetesek.push(`Helyiségpecsét nincs a lapon: ${magHelyisegek.length} zárt teret ismertem fel helyiségként (Helyiség 1, 2, …). Jelöld ki a lakás helyiségeit, és nevezd át őket a Helyiségek lépésben.`);
+  }
   if (!e.mPerPt || !magHelyisegek.length) return { e, magHelyisegek, r: null, nyilasok: [] };
-  const r = raszterEpit(lap, e.mPerPt, magHelyisegek.map((h) => h.mutato ?? h));
+  const r = raszterEpit(lap, e.mPerPt, magHelyisegek.map((h) => h.mutato ?? h), auto ? { px: 0.04, resZaras: 3.0, vastagVonalFal: 0.05 } : {});
   kotaEllenoriz(r, lap.szovegek);
-  const nyilasok = nyilasokHozzarendel(nyilasFeliratok(lap.szovegek), r, magHelyisegek.map((h) => h.nev));
-  return { e, magHelyisegek, r, nyilasok };
+  const nyilasok = nyilasokHozzarendel(nyilasFeliratok(lap.szovegek), r, magHelyisegek.map((h) => h.nev), auto);
+  return { e, magHelyisegek, r, nyilasok, auto };
 }
 
 export interface MetszetFeldolgozas {

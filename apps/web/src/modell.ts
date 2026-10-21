@@ -144,7 +144,22 @@ export interface NapelemUI {
   pvgis?: pvgis.PvgisEredmeny;
 }
 export interface HutesUI extends HutesSablon { id: string; nev: string; szettKod?: string }
-export interface Gepeszet { futes: FutesAlrendszerUI[]; hmv: HmvUI; szellozes: SzellozesUI | null; napelem: NapelemUI[]; hutes?: HutesUI[] }
+export interface Gepeszet {
+  futes: FutesAlrendszerUI[]; hmv: HmvUI; szellozes: SzellozesUI | null; napelem: NapelemUI[]; hutes?: HutesUI[];
+  /** Távhőszolgáltató által közzétett súlyozó tényezők (9/2023 ÉKM 8. § (1)); hiányában a 7. melléklet alapértéke. */
+  tavho?: TavhoSulyozo;
+  /** Villamos fogyasztók tájékoztató összesítése (a lakóépületi számítás része nem: világítás, háztartási gépek stb.). */
+  villamos?: VillamosUI;
+}
+
+export interface TavhoSulyozo { szolgaltato: string; rendszer?: string; fnren: number; fren: number; fCO2: number; adatEv?: number; forras?: string; frissitve?: string }
+
+export interface VillamosFogyaszto { id: string; nev: string; kategoria: string; teljesitmenyW: number; oraNap: number; napEv: number; darab: number }
+export interface VillamosUI {
+  /** Világítás: rendelet szerinti egyszerűsített számítás vagy tételes. */
+  vilagitasBeall?: { fenyforras?: string; lampatest?: string; ffe?: string; MV?: number; tNappal?: number; tEjjel?: number; standby?: boolean };
+  fogyasztok: VillamosFogyaszto[];
+}
 
 export interface Projekt {
   verzio: 2;
@@ -509,11 +524,11 @@ export function atalakit(p: Projekt): Atalakitas {
       const pv = n.pvgis!;
       return { ...alap, reszletes: { Wev: pv.ossz.E_y, forras: `PVGIS 5.3, ${pv.meteo.sugarzasDb ?? 'n. a.'} ${pv.meteo.evTol ?? ''}–${pv.meteo.evIg ?? ''}, lekérve ${pv.lekerve.slice(0, 10)}` } };
     }),
+    ...(gp.tavho ? { sulyozo: { tavho: { megnevezes: `Távhő – ${gp.tavho.szolgaltato}${gp.tavho.rendszer ? `, ${gp.tavho.rendszer}` : ''}`, fnren: gp.tavho.fnren, fren: gp.tavho.fren, ftot: gp.tavho.fnren + gp.tavho.fren, fCO2: gp.tavho.fCO2 } } } : {}),
   };
   return { bemenet, hibak, geometria: g };
 }
 
-/** Talajon fekvő padló egyenértékű hőátbocsátási tényezője (MSZ EN ISO 13370, 4.20–4.33). */
 /** Az összevonható (azonos) felületek kulcsa; null: nem vonható össze. */
 export function feluletKulcs(f: Felulet): string | null {
   if (f.fajta === 'opak') return ['o', f.retegrendId, f.hatar, f.tajolas ?? '-', f.hajlasszog ?? '-', f.chiKod ?? f.chi ?? '-', f.chiPsi ? 1 : 0].join('|');
@@ -581,6 +596,7 @@ export function padloPsi(p: Projekt, f: Felulet): { psi: number; hohid?: HohidUI
   return { psi: f.padlo?.psiPF ?? 0 };
 }
 
+/** Talajon fekvő padló egyenértékű hőátbocsátási tényezője (MSZ EN ISO 13370, 4.20–4.33). */
 export function padloUT(r: Retegrend, f: Felulet, p?: Projekt): number {
   const e = retegrendSzamitas(r);
   const Rp = e.retegR.reduce((s, x) => s + x, 0);

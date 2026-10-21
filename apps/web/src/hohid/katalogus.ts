@@ -301,37 +301,210 @@ HOHID_SABLONOK.push(
     },
   },
   {
-    kod: 'lapos_teto_attika', nev: 'Lapostető – külső fal (attika)', csoport: 'teto',
+    kod: 'lapos_teto_attika', nev: 'Lapostető – külső fal (attikával vagy anélkül)', csoport: 'teto',
     leiras: 'Vasbeton födémes, felül hőszigetelt lapostető csatlakozása a külső falhoz, a fal fölé nyúló attikával; az attika körbeszigetelve (függőleges metszet).',
     parameterek: [...falParam(),
       { kulcs: 'dF', nev: 'Tetőfödém vastagsága', egyseg: 'm', alap: 0.20, min: 0.1, max: 0.4, lepes: 0.01, csoport: 'Tető' },
       { kulcs: 'lamF', nev: 'Tetőfödém λ (vasbeton)', egyseg: 'W/mK', alap: 2.3, min: 0.1, max: 2.6, lepes: 0.05, csoport: 'Tető' },
       { kulcs: 'dR', nev: 'Tető hőszigetelése', egyseg: 'm', alap: 0.25, min: 0, max: 0.6, lepes: 0.01, csoport: 'Tető' },
       { kulcs: 'lamR', nev: 'Tető hőszigetelés λ', egyseg: 'W/mK', alap: 0.036, min: 0.015, max: 0.2, lepes: 0.001, csoport: 'Tető' },
-      { kulcs: 'hAt', nev: 'Attika magassága a födém fölött', egyseg: 'm', alap: 0.6, min: 0, max: 1.5, lepes: 0.01, csoport: 'Attika' },
+      { kulcs: 'hAt', nev: 'Attika magassága a födém fölött (0: nincs attika)', egyseg: 'm', alap: 0.6, min: 0, max: 1.5, lepes: 0.01, csoport: 'Attika' },
       { kulcs: 'lamAt', nev: 'Attikafal λ', egyseg: 'W/mK', alap: 2.3, min: 0.05, max: 2.6, lepes: 0.05, csoport: 'Attika' },
       { kulcs: 'dAt', nev: 'Attika belső oldali hőszigetelése', egyseg: 'm', alap: 0.08, min: 0, max: 0.3, lepes: 0.01, csoport: 'Attika' },
       { kulcs: 'dTop', nev: 'Attika tetején a hőszigetelés', egyseg: 'm', alap: 0.05, min: 0, max: 0.2, lepes: 0.01, csoport: 'Attika' },
       karimaParam(1.2)],
     epit: (p) => {
-      const t = p.di! + p.dw! + p.dv!, H = Math.max(p.L!, 0.8), Lx = Math.max(p.L!, t + p.dAt! + 0.6), m = 0.05;
-      const yT = -p.dF!, yAt = yT - Math.max(p.hAt!, p.dR!), yTop = yAt - p.dTop!;
-      const xa = p.di! + p.dw!;
+      const t = p.di! + p.dw! + p.dv!, H = Math.max(p.L!, 0.8), m = 0.05;
+      const xa = p.di! + p.dw!, Lx = Math.max(p.L!, t + p.dAt! + 0.6);
+      const yT = -p.dF!;
+      const attika = p.hAt! > p.dR! + 0.01;
+      const yAt = yT - (attika ? p.hAt! : p.dR!);
+      const yTop = attika ? yAt - p.dTop! : yAt;
       const el: Teglalap[] = [
         { x0: -m, y0: yTop - m, x1: Lx, y1: H, anyag: 'kulso' },
         { x0: t, y0: 0, x1: Lx, y1: H, anyag: 'belso' },
-        { x0: 0, y0: yTop, x1: xa + (p.hAt! > p.dR! ? p.dAt! : 0), y1: yAt, anyag: 'szig' },
+        // homlokzati hőszigetelés az attika tetejéig, ill. attika nélkül a tetőszigetelés felső síkjáig
         { x0: 0, y0: yAt, x1: p.di!, y1: H, anyag: 'szig' },
         { x0: p.di!, y0: 0, x1: xa, y1: H, anyag: 'fal' },
-        { x0: p.di!, y0: yAt, x1: xa, y1: 0, anyag: 'attika' },
         { x0: xa, y0: 0, x1: t, y1: H, anyag: 'vak' },
-        { x0: xa, y0: yT, x1: Lx, y1: 0, anyag: 'fodem' },
-        ...(p.dR! > 0 ? [{ x0: xa, y0: yT - p.dR!, x1: Lx, y1: yT, anyag: 'tszig' }] : []),
-        ...(p.dAt! > 0 && p.hAt! > p.dR! ? [{ x0: xa, y0: yAt, x1: xa + p.dAt!, y1: yT - p.dR!, anyag: 'tszig' }] : []),
+        // a födém (koszorú) a falon a hőszigetelésig fekszik fel
+        { x0: p.di!, y0: yT, x1: Lx, y1: 0, anyag: 'fodem' },
+        ...(attika ? [
+          { x0: p.di!, y0: yAt, x1: xa, y1: yT, anyag: 'attika' },
+          ...(p.dTop! > 0 ? [{ x0: 0, y0: yTop, x1: xa + p.dAt!, y1: yAt, anyag: 'szig' }] : []),
+          ...(p.dAt! > 0 ? [{ x0: xa, y0: yAt, x1: xa + p.dAt!, y1: yT - p.dR!, anyag: 'tszig' }] : []),
+          ...(p.dR! > 0 ? [{ x0: xa, y0: yT - p.dR!, x1: Lx, y1: yT, anyag: 'tszig' }] : []),
+        ] : [
+          // attika nélkül a tetőszigetelés a falkorona fölött a homlokzati szigetelésig fut
+          ...(p.dR! > 0 ? [{ x0: p.di!, y0: yT - p.dR!, x1: Lx, y1: yT, anyag: 'tszig' }] : []),
+        ]),
       ];
       const Uw = falU(p), Ur = U1D([[p.dF!, p.lamF!], [p.dR!, p.lamR!]]);
-      return { geometria: { x0: -m, y0: yTop - m, x1: Lx, y1: H, elemek: el, anyagok: { ...anyagokFal(p), attika: A('Attika / koszorú', p.lamAt!, SZ.vb), fodem: A('Tetőfödém', p.lamF!, SZ.fodem), tszig: A('Tető hőszigetelés', p.lamR!, SZ.szig) } },
+      return { geometria: { x0: -m, y0: yTop - m, x1: Lx, y1: H, elemek: el, anyagok: { ...anyagokFal(p), attika: A('Attika', p.lamAt!, SZ.vb), fodem: A('Tetőfödém', p.lamF!, SZ.fodem), tszig: A('Tető hőszigetelés', p.lamR!, SZ.szig) } },
         karimak: [{ nev: 'Külső fal', U: Uw, lKulso: H + p.dF! + p.dR!, lBelso: H }, { nev: 'Lapostető', U: Ur, lKulso: Lx, lBelso: Lx - t }], meretek: [] };
+    },
+  },
+);
+
+// ---------------------------------------------------------------------------------------------
+// Belső oldali hőszigetelés, előtető, nyílászáró-szemöldök, redőnytok (BFE Wärmebrückenkatalog 2002 csoportjai szerint)
+
+const belsoFalParam = (csoport = 'Külső fal (belső oldali hőszigeteléssel)'): Parameter[] => [
+  { kulcs: 'dw', nev: 'Falazat / vasbeton vastagsága', egyseg: 'm', alap: 0.30, min: 0.1, max: 0.6, lepes: 0.01, csoport },
+  { kulcs: 'lamW', nev: 'Falazat λ', egyseg: 'W/mK', alap: 0.44, min: 0.05, max: 2.6, lepes: 0.01, csoport },
+  { kulcs: 'di', nev: 'Belső hőszigetelés vastagsága', egyseg: 'm', alap: 0.08, min: 0.01, max: 0.3, lepes: 0.01, csoport },
+  { kulcs: 'lamI', nev: 'Belső hőszigetelés λ', egyseg: 'W/mK', alap: 0.04, min: 0.015, max: 0.2, lepes: 0.001, csoport },
+];
+const GK = 0.0125, GK_L = 0.25;
+const belsoFalU = (p: Record<string, number>) => U1D([[p.dw!, p.lamW!], [p.di!, p.lamI!], [GK, GK_L]]);
+const belsoFalAnyag = (p: Record<string, number>) => ({ fal: A('Falazat', p.lamW!, SZ.fal), szig: A('Belső hőszigetelés', p.lamI!, SZ.szig), gk: A('Gipszkarton', GK_L, SZ.gipsz) });
+
+HOHID_SABLONOK.push(
+  {
+    kod: 'fodem_belso_szig', nev: 'Közbenső födém – belső oldali hőszigetelésű külső fal', csoport: 'fodem',
+    leiras: 'A födém a falra fekszik fel és megszakítja a belső oldali hőszigetelést (függőleges metszet); homlokzati födémszigeteléssel csökkenthető. Ψ ≈ 0,6–0,9 W/mK (BFE 2.1-I1).',
+    parameterek: [...belsoFalParam(),
+      { kulcs: 'dS', nev: 'Födém vastagsága', egyseg: 'm', alap: 0.20, min: 0.1, max: 0.4, lepes: 0.01, csoport: 'Födém' },
+      { kulcs: 'lamS', nev: 'Födém λ (vasbeton)', egyseg: 'W/mK', alap: 2.3, min: 0.5, max: 2.6, lepes: 0.05, csoport: 'Födém' },
+      { kulcs: 'dSt', nev: 'Födém homlokzati (falsíkbeli) hőszigetelése', egyseg: 'm', alap: 0, min: 0, max: 0.1, lepes: 0.01, csoport: 'Födém' },
+      { kulcs: 'lF', nev: 'Hőszigetelés visszafordítása a födém alá / fölé', egyseg: 'm', alap: 0, min: 0, max: 1.0, lepes: 0.05, csoport: 'Födém' },
+      { kulcs: 'dTs', nev: 'Lépéshang-szigetelés (úsztatott padló)', egyseg: 'm', alap: 0.02, min: 0, max: 0.1, lepes: 0.005, csoport: 'Födém' },
+      { kulcs: 'dEs', nev: 'Esztrich vastagsága', egyseg: 'm', alap: 0.06, min: 0, max: 0.12, lepes: 0.005, csoport: 'Födém' },
+      karimaParam(1.2)],
+    epit: (p) => {
+      const H = Math.max(p.L!, 0.8), Lx = 1.2, m = 0.05, xw = p.dw!, xi = xw + p.di!, xg = xi + GK;
+      // y lefelé nő: a födém [0, dS], fölötte (y < 0) az úsztatott padló: lépéshang-szigetelés, esztrich
+      const el: Teglalap[] = [
+        { x0: -m, y0: -H, x1: xg + Lx, y1: H + p.dS!, anyag: 'kulso' },
+        { x0: xg, y0: -H, x1: xg + Lx, y1: H + p.dS!, anyag: 'belso' },
+        { x0: 0, y0: -H, x1: xw, y1: H + p.dS!, anyag: 'fal' },
+        { x0: xw, y0: -H, x1: xi, y1: H + p.dS!, anyag: 'szig' },
+        { x0: xi, y0: -H, x1: xg, y1: H + p.dS!, anyag: 'gk' },
+        { x0: p.dSt!, y0: 0, x1: xg + Lx, y1: p.dS!, anyag: 'fodem' },
+        ...(p.dSt! > 0 ? [{ x0: 0, y0: 0, x1: p.dSt!, y1: p.dS!, anyag: 'szig' }] : []),
+        // visszafordított (flanking) hőszigetelés a födém alsó és felső síkján
+        ...(p.dTs! > 0 ? [{ x0: xg, y0: -p.dTs!, x1: xg + Lx, y1: 0, anyag: 'tsz' }] : []),
+        ...(p.dEs! > 0 ? [{ x0: xg, y0: -p.dTs! - p.dEs!, x1: xg + Lx, y1: -p.dTs!, anyag: 'esztrich' }] : []),
+        ...(p.lF! > 0 ? [{ x0: xi, y0: p.dS!, x1: xi + p.lF!, y1: p.dS! + p.di!, anyag: 'szig' }] : []),
+      ];
+      const Uw = belsoFalU(p);
+      return { geometria: { x0: -m, y0: -H, x1: xg + Lx, y1: H + p.dS!, elemek: el, anyagok: { ...belsoFalAnyag(p), fodem: A('Födém', p.lamS!, SZ.vb), tsz: A('Lépéshang-szigetelés', 0.04, SZ.szig), esztrich: A('Esztrich', 1.4, SZ.esztrich) } },
+        karimak: [{ nev: 'Külső fal', U: Uw, lKulso: 2 * H + p.dS!, lBelso: 2 * H }], meretek: [] };
+    },
+  },
+  {
+    kod: 't_belso_szig', nev: 'Belső fal csatlakozása belső oldali hőszigetelésű külső falhoz', csoport: 'csatlakozas',
+    leiras: 'A belső (teherhordó) fal megszakítja a külső fal belső oldali hőszigetelését (vízszintes metszet). Ψ ≈ 0,1–0,25 W/mK (BFE 2.3-I1).',
+    parameterek: [...belsoFalParam(),
+      { kulcs: 'dI', nev: 'Belső fal vastagsága', egyseg: 'm', alap: 0.15, min: 0.06, max: 0.5, lepes: 0.01, csoport: 'Belső fal' },
+      { kulcs: 'lamB', nev: 'Belső fal λ', egyseg: 'W/mK', alap: 0.44, min: 0.05, max: 2.6, lepes: 0.01, csoport: 'Belső fal' },
+      { kulcs: 'lF', nev: 'Hőszigetelés visszafordítása a belső falon', egyseg: 'm', alap: 0, min: 0, max: 1.0, lepes: 0.05, csoport: 'Belső fal' },
+      karimaParam(1.2)],
+    epit: (p) => {
+      const L = Math.max(p.L!, 0.6), Li = 1.0, m = 0.05, h = p.dI! / 2, xw = p.dw!, xi = xw + p.di!, xg = xi + GK;
+      const el: Teglalap[] = [
+        { x0: -m, y0: -L, x1: xg + Li, y1: L, anyag: 'belso' },
+        { x0: -m, y0: -L, x1: 0, y1: L, anyag: 'kulso' },
+        { x0: 0, y0: -L, x1: xw, y1: L, anyag: 'fal' },
+        { x0: xw, y0: -L, x1: xi, y1: L, anyag: 'szig' },
+        { x0: xi, y0: -L, x1: xg, y1: L, anyag: 'gk' },
+        { x0: xw, y0: -h, x1: xg + Li, y1: h, anyag: 'bfal' },
+        ...(p.lF! > 0 ? [{ x0: xi, y0: -h - p.di!, x1: xi + p.lF!, y1: -h, anyag: 'szig' }, { x0: xi, y0: h, x1: xi + p.lF!, y1: h + p.di!, anyag: 'szig' }] : []),
+      ];
+      const Uw = belsoFalU(p);
+      return { geometria: { x0: -m, y0: -L, x1: xg + Li, y1: L, elemek: el, anyagok: { ...belsoFalAnyag(p), bfal: A('Belső fal', p.lamB!, SZ.fal) } },
+        karimak: [{ nev: 'Külső fal', U: Uw, lKulso: 2 * L, lBelso: 2 * L - p.dI! }], meretek: [] };
+    },
+  },
+  {
+    kod: 'lapos_teto_eloteto', nev: 'Lapostető kinyúló előtetővel (párkánylemez)', csoport: 'teto',
+    leiras: 'A tetőfödém vasbeton lemeze a homlokzat elé kinyúlik (előtető, párkány); a kinyúló rész hőszigeteletlen vagy körbeszigetelt (függőleges metszet). Ψ ≈ 0,4–0,6 W/mK szigeteletlenül (BFE 1.2-A1).',
+    parameterek: [...falParam(),
+      { kulcs: 'dF', nev: 'Tetőfödém vastagsága', egyseg: 'm', alap: 0.20, min: 0.1, max: 0.4, lepes: 0.01, csoport: 'Tető' },
+      { kulcs: 'lamF', nev: 'Tetőfödém λ (vasbeton)', egyseg: 'W/mK', alap: 2.3, min: 0.1, max: 2.6, lepes: 0.05, csoport: 'Tető' },
+      { kulcs: 'dR', nev: 'Tető hőszigetelése', egyseg: 'm', alap: 0.20, min: 0, max: 0.6, lepes: 0.01, csoport: 'Tető' },
+      { kulcs: 'lamR', nev: 'Tető hőszigetelés λ', egyseg: 'W/mK', alap: 0.036, min: 0.015, max: 0.2, lepes: 0.001, csoport: 'Tető' },
+      { kulcs: 'Lb', nev: 'Előtető kinyúlása', egyseg: 'm', alap: 1.0, min: 0.2, max: 2.5, lepes: 0.05, csoport: 'Előtető' },
+      { kulcs: 'dE', nev: 'Előtető körbeszigetelése (0: szigeteletlen)', egyseg: 'm', alap: 0, min: 0, max: 0.2, lepes: 0.01, csoport: 'Előtető' },
+      karimaParam(1.2)],
+    epit: (p) => {
+      const t = p.di! + p.dw! + p.dv!, H = Math.max(p.L!, 0.8), Lx = Math.max(p.L!, t + 0.6), m = 0.05, Lb = p.Lb!, dE = p.dE!;
+      const yT = -p.dF!, yR = yT - p.dR!;
+      const x0 = -Lb - dE - m;
+      const el: Teglalap[] = [
+        { x0, y0: yR - dE - m, x1: Lx, y1: H, anyag: 'kulso' },
+        { x0: t, y0: 0, x1: Lx, y1: H, anyag: 'belso' },
+        { x0: 0, y0: dE > 0 ? p.dF! * 0 : 0, x1: p.di!, y1: H, anyag: 'szig' },
+        { x0: p.di!, y0: 0, x1: p.di! + p.dw!, y1: H, anyag: 'fal' },
+        { x0: p.di! + p.dw!, y0: 0, x1: t, y1: H, anyag: 'vak' },
+        { x0: -Lb, y0: yT, x1: Lx, y1: 0, anyag: 'fodem' },
+        ...(p.dR! > 0 ? [{ x0: dE > 0 ? -Lb - dE : 0, y0: yR, x1: Lx, y1: yT, anyag: 'tszig' }] : []),
+        ...(dE > 0 ? [{ x0: -Lb - dE, y0: yT, x1: -Lb, y1: 0, anyag: 'tszig' }, { x0: -Lb - dE, y0: 0, x1: 0, y1: dE, anyag: 'szig' }] : []),
+      ];
+      const Uw = falU(p), Ur = U1D([[p.dF!, p.lamF!], [p.dR!, p.lamR!]]);
+      return { geometria: { x0, y0: yR - dE - m, x1: Lx, y1: H, elemek: el, anyagok: { ...anyagokFal(p), fodem: A('Tetőfödém', p.lamF!, SZ.fodem), tszig: A('Tető hőszigetelés', p.lamR!, SZ.szig) } },
+        karimak: [{ nev: 'Külső fal', U: Uw, lKulso: H + p.dF! + p.dR!, lBelso: H }, { nev: 'Lapostető', U: Ur, lKulso: Lx, lBelso: Lx - t }], meretek: [] };
+    },
+  },
+  {
+    kod: 'ablak_szemoldok', nev: 'Ablak szemöldöke vasbeton áthidalóval', csoport: 'nyilas',
+    leiras: 'A nyílászáró feletti áthidaló (vasbeton) és a tok csatlakozása függőleges metszetben; a szemöldök hőszigetelése a tok külső síkjáig (BFE 5.3 szerinti csomópont).',
+    parameterek: [...falParam(),
+      { kulcs: 'hA', nev: 'Áthidaló magassága', egyseg: 'm', alap: 0.25, min: 0.1, max: 0.5, lepes: 0.01, csoport: 'Áthidaló' },
+      { kulcs: 'lamA', nev: 'Áthidaló λ (vasbeton)', egyseg: 'W/mK', alap: 2.3, min: 0.1, max: 2.6, lepes: 0.05, csoport: 'Áthidaló' },
+      { kulcs: 'xf', nev: 'Tok külső síkja a fal külső síkjától', egyseg: 'm', alap: 0.15, min: 0, max: 0.5, lepes: 0.01, csoport: 'Nyílászáró' },
+      { kulcs: 'df', nev: 'Tok mélysége', egyseg: 'm', alap: 0.08, min: 0.05, max: 0.15, lepes: 0.005, csoport: 'Nyílászáró' },
+      { kulcs: 'bf', nev: 'Tok + szárny nézetszélessége', egyseg: 'm', alap: 0.12, min: 0.05, max: 0.25, lepes: 0.005, csoport: 'Nyílászáró' },
+      { kulcs: 'Uf', nev: 'Keret Uf', egyseg: 'W/m²K', alap: 1.1, min: 0.5, max: 3, lepes: 0.05, csoport: 'Nyílászáró' },
+      { kulcs: 'Ug', nev: 'Üvegezés Ug', egyseg: 'W/m²K', alap: 0.6, min: 0.4, max: 3, lepes: 0.05, csoport: 'Nyílászáró' },
+      { kulcs: 'dk', nev: 'Szemöldök-hőszigetelés vastagsága', egyseg: 'm', alap: 0.03, min: 0, max: 0.1, lepes: 0.005, csoport: 'Nyílászáró' },
+      karimaParam(1.0)],
+    epit: (p) => {
+      // az „ablak_kava” geometriája, a nyílás melletti falsávban áthidalóval
+      const k = sablon('ablak_kava')!.epit(p);
+      const hA = p.hA!;
+      const el = [...k.geometria.elemek, { x0: p.di!, y0: -hA, x1: p.di! + p.dw!, y1: 0, anyag: 'athidalo' }];
+      return { ...k, geometria: { ...k.geometria, elemek: el, anyagok: { ...k.geometria.anyagok, athidalo: A('Áthidaló', p.lamA!, SZ.vb) } } };
+    },
+  },
+  {
+    kod: 'redonytok', nev: 'Beépített redőnytok a nyílászáró felett', csoport: 'nyilas',
+    leiras: 'A falsíkba épített redőnytok (szellőző légtér) belső oldali hőszigeteléssel; a tok alatt a nyílászáró (függőleges metszet). A légtér külső levegőként számít (BFE 4.2 szerinti csomópont).',
+    parameterek: [...falParam(),
+      { kulcs: 'hR', nev: 'Redőnytok magassága', egyseg: 'm', alap: 0.25, min: 0.15, max: 0.4, lepes: 0.01, csoport: 'Redőnytok' },
+      { kulcs: 'mR', nev: 'Redőnytok mélysége (a fal külső síkjától)', egyseg: 'm', alap: 0.25, min: 0.1, max: 0.45, lepes: 0.01, csoport: 'Redőnytok' },
+      { kulcs: 'dRT', nev: 'Redőnytok hőszigetelése (belső és alsó oldal)', egyseg: 'm', alap: 0.03, min: 0, max: 0.1, lepes: 0.005, csoport: 'Redőnytok' },
+      { kulcs: 'lamRT', nev: 'Redőnytok hőszigetelés λ', egyseg: 'W/mK', alap: 0.035, min: 0.02, max: 0.1, lepes: 0.001, csoport: 'Redőnytok' },
+      { kulcs: 'df', nev: 'Tok mélysége', egyseg: 'm', alap: 0.08, min: 0.05, max: 0.15, lepes: 0.005, csoport: 'Nyílászáró' },
+      { kulcs: 'bf', nev: 'Tok + szárny nézetszélessége', egyseg: 'm', alap: 0.12, min: 0.05, max: 0.25, lepes: 0.005, csoport: 'Nyílászáró' },
+      { kulcs: 'Uf', nev: 'Keret Uf', egyseg: 'W/m²K', alap: 1.1, min: 0.5, max: 3, lepes: 0.05, csoport: 'Nyílászáró' },
+      { kulcs: 'Ug', nev: 'Üvegezés Ug', egyseg: 'W/m²K', alap: 0.6, min: 0.4, max: 3, lepes: 0.05, csoport: 'Nyílászáró' },
+      karimaParam(1.0)],
+    epit: (p) => {
+      const t = p.di! + p.dw! + p.dv!, Lw = Math.max(p.L!, 0.6), Lg = 0.6, m = 0.05;
+      const hR = p.hR!, mR = Math.min(p.mR!, t - 0.05), dRT = p.dRT!;
+      const df = p.df!, bf = p.bf!;
+      // a tok a redőnytok belső falához igazodik
+      const xf = Math.max(0, mR - df / 2 + dRT);
+      const lamF = df / Math.max(0.05, 1 / p.Uf! - 0.17), dg = 0.044, lamG = dg / Math.max(0.05, 1 / p.Ug! - 0.17);
+      const xg = xf + df / 2 - dg / 2;
+      // y lefelé: a fal a redőnytok fölött y < −hR, a tok és az ablak y > 0
+      const el: Teglalap[] = [
+        { x0: -m, y0: -hR - Lw, x1: xg, y1: bf + Lg, anyag: 'kulso' },
+        { x0: xg, y0: 0, x1: t + 0.3, y1: bf + Lg, anyag: 'belso' },
+        { x0: t, y0: -hR - Lw, x1: t + 0.3, y1: 0, anyag: 'belso' },
+        { x0: 0, y0: -hR - Lw, x1: p.di!, y1: -hR, anyag: 'szig' },
+        { x0: p.di!, y0: -hR - Lw, x1: p.di! + p.dw!, y1: -hR, anyag: 'fal' },
+        { x0: p.di! + p.dw!, y0: -hR - Lw, x1: t, y1: 0, anyag: 'vak' },
+        // a redőnytok teste: a belső fal (falazat) a tok mögött
+        { x0: mR, y0: -hR, x1: p.di! + p.dw!, y1: 0, anyag: 'fal' },
+        ...(dRT > 0 ? [{ x0: mR - dRT, y0: -hR, x1: mR, y1: 0, anyag: 'rszig' }, { x0: 0, y0: -dRT, x1: mR - dRT, y1: 0, anyag: 'rszig' }] : []),
+        { x0: xf, y0: 0, x1: xf + df, y1: bf, anyag: 'tok' },
+        { x0: xg, y0: bf, x1: xg + dg, y1: bf + Lg, anyag: 'uveg' },
+      ];
+      const Uw = falU(p);
+      return { geometria: { x0: -m, y0: -hR - Lw, x1: t + 0.3, y1: bf + Lg, elemek: el, anyagok: { ...anyagokFal(p), rszig: A('Redőnytok hőszigetelés', p.lamRT!, SZ.szig), tok: A('Tok (egyenértékű)', lamF, SZ.keret), uveg: A('Üvegezés (egyenértékű)', lamG, SZ.uveg) } },
+        karimak: [{ nev: 'Külső fal', U: Uw, lKulso: Lw + hR, lBelso: Lw + hR }, { nev: 'Keret', U: p.Uf!, lKulso: bf, lBelso: bf }, { nev: 'Üvegezés', U: p.Ug!, lKulso: Lg, lBelso: Lg }], meretek: [] };
     },
   },
 );

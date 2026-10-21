@@ -3,6 +3,9 @@ import type { Projekt, HelyisegKategoria } from '../modell';
 import { Szam, Valaszto, sz } from '../ui';
 import { kategoriaJavaslat } from './Helyisegek';
 import { anyag } from '../katalogus';
+import { pecsetKinyer, type PecsetAdat } from '../terv/pecset';
+import panelUrl from '../mintak/tipusalaprajz_panel.pdf?url';
+import blokkosUrl from '../mintak/tipusalaprajz_blokkos.pdf?url';
 import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, eszakJavitas, eszakJavitasMent, type TervLap } from '../terv/elemzes';
 import { egtaj } from '../terv/alaprajz';
 import { tervAtvesz, type AtvettNyilas } from '../terv/atvetel';
@@ -37,8 +40,12 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const [csere, setCsere] = useState(true);
   const [kesz, setKesz] = useState<string[] | null>(null);
   const [nagyit, setNagyit] = useState(true);
+  const [pecsetBe, setPecsetBe] = useState(true);
+  const [padloAt, setPadloAt] = useState(true);
+  const [tetoAt, setTetoAt] = useState(true);
+  const [mintaFajta, setMintaFajta] = useState<'panel' | 'blokkos' | null>(null);
 
-  async function betolt(fajlok: FileList | null) {
+  async function betolt(fajlok: FileList | File[] | null, alaprajzOldal?: number) {
     if (!fajlok?.length) return;
     setHiba(null); setKesz(null);
     const uj: TervLap[] = [];
@@ -53,14 +60,27 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     if (!uj.length) return;
     const osszes = [...lapok, ...uj];
     setLapok(osszes);
-    if (aIdx < 0) setAIdx(osszes.findIndex((l) => l.szerep === 'alaprajz'));
+    if (alaprajzOldal !== undefined) { const i = osszes.findIndex((l, k) => k >= lapok.length && l.oldal === alaprajzOldal); if (i >= 0) setAIdx(i); }
+    else if (aIdx < 0) setAIdx(osszes.findIndex((l) => l.szerep === 'alaprajz'));
     if (mIdx < 0) setMIdx(osszes.findIndex((l) => l.szerep === 'metszet'));
+  }
+
+  /** Beépített típusalaprajz-mintalap (panel / blokkos lakóépületek szekciói): a 2. oldal az alaprajzlap. */
+  async function mintalap(fajta: 'panel' | 'blokkos') {
+    const url = fajta === 'panel' ? panelUrl : blokkosUrl;
+    setFolyamat('Mintalap betöltése…');
+    try {
+      const b = await (await fetch(url)).blob();
+      await betolt([new File([b], fajta === 'panel' ? 'Típusalaprajzok – panel.pdf' : 'Típusalaprajzok – blokkos.pdf', { type: 'application/pdf' })], 2);
+      setPadloAt(false); setTetoAt(false); setMintaFajta(fajta);
+    } catch (e) { setFolyamat(null); setHiba(`A mintalap nem tölthető be: ${(e as Error).message}`); }
   }
 
   const aLap = aIdx >= 0 ? lapok[aIdx] : undefined;
   const mLap = mIdx >= 0 ? lapok[mIdx] : undefined;
   const al = useMemo(() => (aLap ? alaprajzFeldolgoz(aLap.lap, meretarany) : null), [aLap, meretarany]);
   const me = useMemo(() => (mLap ? metszetFeldolgoz(mLap.lap) : null), [mLap]);
+  const pecset = useMemo<PecsetAdat | null>(() => { const l = aLap ?? mLap; if (!l) return null; const d = pecsetKinyer(l.lap.szovegek); return Object.keys(d).length ? d : null; }, [aLap, mLap]);
 
   // alapértékek a felismerésből
   useEffect(() => {
@@ -70,7 +90,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     setEgysegek(new Set(al.e.egysegek.slice(0, 1)));
     // ha van helyiségpecsét, a csak a jegyzékben szereplő sorok (párjuk nincs a rajzon) alapból nem kerülnek át
     const vanPecset = al.e.helyisegek.some((h) => h.forras === 'pecset');
-    setKizartH(new Set(vanPecset ? al.e.helyisegek.map((h, i) => (h.forras === 'jegyzek' ? i : -1)).filter((i) => i >= 0) : []));
+    // automatikusan felismert helyiségek (típusalaprajz): alapból egy sincs kijelölve – a lakás helyiségeire kattintva
+    setKizartH(new Set(al.auto ? al.e.helyisegek.map((_h, i) => i) : vanPecset ? al.e.helyisegek.map((h, i) => (h.forras === 'jegyzek' ? i : -1)).filter((i) => i >= 0) : []));
     setKat({}); setKizartNy(new Set());
   }, [al]);
   useEffect(() => {
@@ -115,10 +136,11 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             const mi = helyisegek.indexOf(al.magHelyisegek[s.tul as number]!); return mi >= 0 && valasztott[mi] && kategoria(mi) === 'gyengen_kapcsolt' && kategoria(i) !== 'gyengen_kapcsolt' ? [{ hossz: s.hossz, fele: helyisegek[mi]!.nev }] : []; }); })() })),
         retegrendek: blokkok,
         nyilasok: nyilasok.filter(({ k }) => !kizartNy.has(k)).map(({ n, hi }): AtvettNyilas => ({ fajta: n.fajta as AtvettNyilas['fajta'], szel: n.szel, mag: n.mag, pm: n.pm, helyiseg: index.get(hi)!, irany: n.irany! })),
-        eszakSzog: eszakSz, belmagassag: bm ?? 2.7, szintszam: szintszam ?? 1, csere,
+        eszakSzog: eszakSz, belmagassag: bm ?? 2.7, szintszam: szintszam ?? 1, csere, padloAt, tetoAt, ...(mintaFajta === 'blokkos' ? { alapFalSablon: 'fal_blokk_kohosalak' } : {}),
         forras: [aLap?.fajl, mLap?.fajl].filter(Boolean).join(', '),
       }).uzenetek;
     });
+    if (pecset && pecsetBe) modosit((q) => pecsetAtvesz(q, pecset));
     if (al.e.eszak) eszakJavitasMent(al.e.eszak.alairas, eszakSz - al.e.eszak.szog);
     setKesz(uzenetek);
   }
@@ -137,6 +159,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
         <h2>Tervlapok</h2>
         <p class="halk">Tölts fel PDF tervlapokat (vektoros, rajzolóprogramból exportált – nem szkennelt). A program felismeri az alaprajzot és a metszetet, és kiolvassa a helyiségeket, az északjelet, a rétegrendeket, a szintmagasságokat, a külső falakat és a nyílászárókat. Átvétel előtt minden adat ellenőrizhető és javítható. A fájl nem kerül fel a szerverre: a feldolgozás a böngészőben történik.</p>
         <div class="gombsor">
+          <button class="gomb" onClick={() => void mintalap('panel')}>Panel típusalaprajzok</button>
+          <button class="gomb" onClick={() => void mintalap('blokkos')}>Blokkos típusalaprajzok</button>
           <label class="gomb fo" style="cursor:pointer">PDF tervlapok kiválasztása<input type="file" accept="application/pdf,.pdf" multiple style="display:none" onChange={(e) => { const t = e.target as HTMLInputElement; void betolt(t.files).then(() => { t.value = ''; }); }} /></label>
           {lapok.length > 0 && <button class="gomb halk-gomb semleges" onClick={() => { setLapok([]); setAIdx(-1); setMIdx(-1); setKesz(null); }}>Lapok törlése</button>}
           {folyamat && <span class="halk" role="status">{folyamat}</span>}
@@ -203,9 +227,12 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
               )))}
               {helyisegek.map((h, i) => {
                 const pt = h.mutato ?? h; const ki = !valasztott[i];
+                const valt = () => setKizartH((elozo) => { const s = new Set(elozo); if (s.has(i)) s.delete(i); else s.add(i); return s; });
                 return (
-                  <g opacity={ki ? 0.35 : 1}>
-                    <circle cx={pt.x} cy={pt.y} r={3} fill={ki ? '#888' : '#2E6DB4'} />
+                  <g opacity={ki ? 0.35 : 1} style="cursor:pointer" onClick={valt}>
+                    <title>{h.nev}{ki ? ' – kattintással kijelölöd' : ' – kattintással kiveszed'}</title>
+                    {al.auto && <circle cx={pt.x} cy={pt.y} r={7} fill="transparent" />}
+                    <circle cx={pt.x} cy={pt.y} r={al.auto ? 4 : 3} fill={ki ? '#888' : '#2E6DB4'} />
                     {h.mutato && <line x1={h.x} y1={h.y} x2={pt.x} y2={pt.y} stroke="#2E6DB4" stroke-width={0.6} stroke-dasharray="2 1" />}
                   </g>
                 );
@@ -325,6 +352,21 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
         </section>
       )}
 
+      {pecset && (
+        <section class="szakasz">
+          <h2>Rajzpecsét</h2>
+          <p class="halk">A tervlap szövegmezőjéből felismert adatok. Átvételkor a projekt neve, címe, helyrajzi száma és a megrendelő (építtető) kitöltődik.</p>
+          <table class="tabla" style="max-width:760px">
+            <tbody>
+              {([['Projekt', pecset.projekt], ['Terv neve', pecset.tervNev], ['Építés helyszíne', pecset.helyszin], ['Helyrajzi szám', pecset.hrsz], ['±0,00 szint', pecset.szint], ['Építtető', pecset.epitteto], ['Megrendelő', pecset.megrendelo], ['Tervező iroda', pecset.iroda], ['Felelős tervező', [pecset.tervezo, pecset.tervezoNy].filter(Boolean).join(', ')], ['Terv típusa', pecset.tervTipus], ['Dátum', pecset.datum], ['Lépték', pecset.leptek]] as const)
+                .filter(([, v]) => v).map(([k, v]) => <tr><td class="halkabb" style="width:180px">{k}</td><td>{v}</td></tr>)}
+              {pecset.cim && <tr><td class="halkabb">Cím bontva</td><td>{pecset.cim.irsz} · {pecset.cim.telepules} · {pecset.cim.kozterulet} {pecset.cim.jelleg} {pecset.cim.hazszam}</td></tr>}
+            </tbody>
+          </table>
+          <label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" checked={pecsetBe} onChange={(e) => setPecsetBe((e.target as HTMLInputElement).checked)} /> A projekt adataiba (név, cím, hrsz, megrendelő) átveszem</label>
+        </section>
+      )}
+
       {al && (
         <section class="szakasz">
           <h2>Átvétel</h2>
@@ -334,6 +376,10 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             <label><input type="radio" name="atvetelMod" checked={csere} onChange={() => setCsere(true)} /> <strong>Felülírás</strong> – az eddigi helyiségek, határoló felületek, nyílászárók és a korábban tervből átvett rétegrendek törlődnek, helyettük az újak kerülnek be</label>
             <label><input type="radio" name="atvetelMod" checked={!csere} onChange={() => setCsere(false)} /> <strong>Hozzáadás</strong> – a meglévők mellé olvassa be (pl. másik szint, másik lakás); az azonos rétegrendek, nyílászáró-típusok nem duplikálódnak, az azonos tájolású falfelületek összegződnek</label>
           </fieldset>
+          <div class="gombsor" style="gap:18px;margin-bottom:10px">
+            <label><input type="checkbox" checked={padloAt} onChange={(e) => setPadloAt((e.target as HTMLInputElement).checked)} /> Talajon fekvő padló (földszinti lakás, szint)</label>
+            <label><input type="checkbox" checked={tetoAt} onChange={(e) => setTetoAt((e.target as HTMLInputElement).checked)} /> Padlásfödém / tető (legfelső szint)</label>
+          </div>
           <div class="gombsor">
             <button class="gomb fo" disabled={!valasztott.some(Boolean)} onClick={atvesz}>Átvétel a projektbe</button>
           </div>
@@ -351,4 +397,14 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
       )}
     </>
   );
+}
+
+/** A rajzpecsét adatai a projekt alapadataiba. */
+function pecsetAtvesz(q: Projekt, d: PecsetAdat) {
+  const epulet = /"([A-Za-zÁÉ0-9]{1,3})"\s*épület/.exec(d.tervNev ?? '')?.[1];
+  if (d.projekt) q.meta.nev = `${d.projekt}${d.cim?.telepules ? ` – ${d.cim.telepules}` : ''}${epulet ? `, „${epulet}” épület` : ''}`;
+  const megr = d.epitteto ?? d.megrendelo; if (megr) q.meta.megrendelo = megr;
+  if (d.hrsz) q.meta.hrsz = d.hrsz;
+  if (d.cim) { q.meta.irsz = d.cim.irsz; q.meta.telepules = d.cim.telepules; q.meta.kozterulet = d.cim.kozterulet; q.meta.kozteruletJelleg = d.cim.jelleg || q.meta.kozteruletJelleg; q.meta.hazszam = d.cim.hazszam; }
+  else if (d.helyszin && !q.meta.telepules) q.meta.telepules = d.helyszin;
 }

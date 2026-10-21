@@ -1,7 +1,7 @@
 /**
  * Az épület komplex indikátorai – 1. függelék 14. fejezet; súlyozó tényezők: rendelet 7. melléklet.
  */
-import { SULYOZO, futoertekEgeshoArany, type Energiahordozo } from './tablak/sulyozo.js';
+import { SULYOZO, futoertekEgeshoArany, type Energiahordozo, type Sulyozo } from './tablak/sulyozo.js';
 import type { RendszerEredmeny, VegenergiaTetel } from './rendszerek.js';
 
 export interface CelIndikator {
@@ -31,8 +31,8 @@ export interface Indikatorok {
 
 const ures = (): CelIndikator => ({ nren: 0, ren: 0, tot: 0, CO2: 0 });
 
-function sulyoz(t: VegenergiaTetel): CelIndikator {
-  const f = SULYOZO[t.energiahordozo];
+function sulyoz(t: VegenergiaTetel, felul?: Partial<Record<Energiahordozo, Sulyozo>>): CelIndikator {
+  const f = felul?.[t.energiahordozo] ?? SULYOZO[t.energiahordozo];
   const Q = t.jelleg === 'ho' ? t.Q * futoertekEgeshoArany(t.energiahordozo) : t.Q;
   return { nren: Q * f.fnren, ren: Q * f.fren, tot: Q * f.ftot, CO2: (Q * f.fCO2) / 1000 };
 }
@@ -45,13 +45,13 @@ function hozzaad(a: CelIndikator, b: CelIndikator) {
  * @param exportPV helyben termelt napelemes villamos energia [kWh/év]; egyszerűsített módszerrel teljes egészében
  *   exportáltként számolandó (13.1), súlyozása 14.7: Wexp · (fsúly,exp − fsúly,term).
  */
-export function indikatorok(rendszerek: RendszerEredmeny[], AN: number, passzivSzolarisKWh = 0, exportPV = 0): Indikatorok {
+export function indikatorok(rendszerek: RendszerEredmeny[], AN: number, passzivSzolarisKWh = 0, exportPV = 0, felul?: Partial<Record<Energiahordozo, Sulyozo>>): Indikatorok {
   const celonkent = { futes: ures(), hmv: ures(), szellozes: ures(), hutes: ures(), vilagitas: ures(), export: ures() };
   const vegenergia: Partial<Record<Energiahordozo, number>> = {};
   let halozati = 0, korny = 0, helyben = 0;
   for (const r of rendszerek) {
     for (const t of r.tetelek) {
-      const s = sulyoz(t);
+      const s = sulyoz(t, felul);
       hozzaad(celonkent[r.cel], s);
       const Qfe = t.jelleg === 'ho' ? t.Q * futoertekEgeshoArany(t.energiahordozo) : t.Q;
       vegenergia[t.energiahordozo] = (vegenergia[t.energiahordozo] ?? 0) + Qfe;

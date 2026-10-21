@@ -4,6 +4,7 @@
 import { zonaHaviMerleg, type ZonaBemenet, type ZonaEredmeny, type NyilaszaroElem } from './energiamerleg.js';
 import { futesiRendszer, hmvRendszer, szellozesRendszer, hutesRendszer, szabalyozasiTenyezo, type FutesiAlrendszer, type HmvRendszer, type SzellozesRendszer, type HutesRendszer, type RendszerEredmeny } from './rendszerek.js';
 import { napelemTermeles } from './tablak/gepeszet.js';
+import type { Energiahordozo, Sulyozo } from './tablak/sulyozo.js';
 import { indikatorok, type Indikatorok } from './indikatorok.js';
 import {
   U_KOVETELMENYEK, qmMaxKozelNulla, qmMaxFelujitas, KOZEL_NULLA_LAKO, REFERENCIA_LAKO, EnrenMaxFelujitasLako,
@@ -35,6 +36,8 @@ export interface EpuletBemenet {
   napelem?: NapelemBemenet[];
   /** Referencia rendszer felülbírálásai (alapértelmezés: 5. melléklet szerint a tárgyi épületből levezetve). */
   referencia?: Partial<ReferenciaBeallitas>;
+  /** Súlyozó tényezők felülbírálása (8. § (1): a távhőszolgáltató által közzétett érték). Csak a tárgyi épületre. */
+  sulyozo?: Partial<Record<Energiahordozo, Sulyozo>>;
 }
 
 export interface NapelemBemenet {
@@ -179,7 +182,7 @@ export function epuletSzamitas(b: EpuletBemenet, opciok?: SzamitasiOpciok): Epul
   if (pvOssz > 20 && (b.napelem ?? []).some((n) => !n.reszletes)) fw.push({ kod: 'PV_20KWP', uzenet: `A napelemek összteljesítménye ${pvOssz.toFixed(1)} kWp; a 13.1. táblázat 20 kWp-ig alkalmazható, fölötte részletes módszer (13.2.2, pl. PVGIS) kell.`, forras: '1. függ. 13.2.1' });
   for (const n of b.napelem ?? []) if (n.reszletes) fw.push({ kod: 'PV_RESZLETES', uzenet: `„${n.nev}”: ${Math.round(n.reszletes.Wev)} kWh/év részletes módszerrel (${n.reszletes.forras}).`, forras: '1. függ. 13.2.2' });
   const passziv = zonak.reduce((s, z) => s + z.QsdHasznositott, 0);
-  const ind = indikatorok(rendszerek, b.AN, passziv, napelem.reduce((s, n) => s + n.W, 0));
+  const ind = indikatorok(rendszerek, b.AN, passziv, napelem.reduce((s, n) => s + n.W, 0), b.sulyozo);
 
   const aV = b.Alehulo / b.V;
   // Fajlagos hőveszteség-tényező: zónák V-vel súlyozva

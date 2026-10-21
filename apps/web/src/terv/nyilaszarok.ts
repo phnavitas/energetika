@@ -24,7 +24,9 @@ const SZAM = /^\d{2,3}$/;
 /** Méterben írt nyílásméret (kapuknál gyakori: „2,65” / „2,40”). */
 const SZAM_M = /^\d,\d{2}$/;
 const mSzam = (s: string) => Number(s.trim().replace(',', '.'));
-const PM = /^(?:pm|ph|mv|p\.m\.?|mellvéd|parapet)\s*[.:=]?\s*([+-]?\d{1,3}(?:[,.]\d{1,2})?)\s*(cm|m)?$/i;
+const PM = /^(?:pm|ph|mv|p\.m\.?|p|mellvéd|parapet)\s*[.:=]?\s*([+-]?\d{1,3}(?:[,.]\d{1,2})?)\s*(cm|m)?$/i;
+/** Egy szövegben, mellvéd elöl: „pm 90 240 175” (mellvéd, szélesség, magasság). */
+const PM_ELOL = /^(?:pm|p)\s*(\d{1,3})\s+(\d{2,3})\s+(\d{2,3})$/i;
 /** Egy szövegben: „90/150”, „90x150”, „90×150”, opcionálisan mellvéddel: „90/150 pm 90”. */
 const EGYBEN = /^(\d{2,3})\s*[\/x×*]\s*(\d{2,3})(?:\s*[,;]?\s*(?:pm|ph|mv|p\.m\.?|mellvéd)\s*[.:=]?\s*([+-]?\d{1,3}))?$/i;
 const pmErtek = (v: string, e?: string) => { const x = Number(v.replace(',', '.')); return e?.toLowerCase() === 'm' || (v.includes(',') || v.includes('.')) && x < 3 ? x : x / 100; };
@@ -79,7 +81,10 @@ export function nyilasFeliratok(sz: Szoveg[]): NyilasFelirat[] {
     }
     if (pm) pmHasznalt.add(pm.t);
     hasznalt.add(a); hasznalt.add(legjobb.b);
-    ki.push({ szel: Number(felso.s) / 100, mag: Number(also.s) / 100, pm: pm ? pmErtek(pm.m![1]!, pm.m![2]) : null, x, y, fal: Math.abs(ga.fel[0]) >= Math.abs(ga.fel[1]) ? 'v' : 'f' });
+    let szel = Number(felso.s) / 100, mag = Number(also.s) / 100;
+    // ajtó felcserélt sorrendben („240 / 90”): mellvéd nélkül, ajtómagasságú felső és ajtószélességű alsó szám
+    if (!pm && szel >= 1.9 && mag <= 1.2) [szel, mag] = [mag, szel];
+    ki.push({ szel, mag, pm: pm ? pmErtek(pm.m![1]!, pm.m![2]) : null, x, y, fal: Math.abs(ga.fel[0]) >= Math.abs(ga.fel[1]) ? 'v' : 'f' });
   }
   // méterben írt kapuméretek (szélesség ≥ 1,8 m, magasság 1,8–3,2 m) – a méretláncok számaitól a hozzárendelés választja el
   const mSzamok = sz.filter((t) => SZAM_M.test(t.s.trim()) && mSzam(t.s) >= 1.8 && mSzam(t.s) <= 6);
@@ -103,6 +108,12 @@ export function nyilasFeliratok(sz: Szoveg[]): NyilasFelirat[] {
     mHasznalt.add(a); mHasznalt.add(legjobb.b);
     ki.push({ szel: w, mag: h, pm: null, x: (ga.cx + gb.cx) / 2, y: (ga.cy + gb.cy) / 2, fal: Math.abs(ga.fel[0]) >= Math.abs(ga.fel[1]) ? 'v' : 'f', kapuJelolt: true });
   }
+  // egy szövegben, mellvéddel elöl: „pm 90 240 175”
+  for (const t of sz) {
+    const m = PM_ELOL.exec(szovegJavit(t.s)); if (!m) continue;
+    const g = geom(t);
+    ki.push({ szel: Number(m[2]) / 100, mag: Number(m[3]) / 100, pm: Number(m[1]) / 100, x: g.cx, y: g.cy, fal: Math.abs(g.dir[0]) >= Math.abs(g.dir[1]) ? 'v' : 'f' });
+  }
   // egy szövegben megadott méretek
   for (const t of sz) {
     const m = EGYBEN.exec(szovegJavit(t.s)); if (!m) continue;
@@ -122,7 +133,7 @@ export function nyilasFeliratok(sz: Szoveg[]): NyilasFelirat[] {
  * A feliratokat a raszter nyílásaihoz rendeli: a felirathoz legközelebbi áthidalt nyílás (≤ 1,3 m), majd a nyílás
  * előtti helyiségfal-szakasz adja a helyiséget és a homlokzat irányát; ha a szakasz túloldala külső tér, a nyílás külső.
  */
-export function nyilasokHozzarendel(feliratok: NyilasFelirat[], r: Raszter, nevek: string[] = []): TervNyilas[] {
+export function nyilasokHozzarendel(feliratok: NyilasFelirat[], r: Raszter, nevek: string[] = [], tipusLap = false): TervNyilas[] {
   const GARAZS = /gar[aá]zs|gépkocsi|gepkocsi|beálló|autó/i;
   const ptPx = r.mPerPt / r.px;
   const ki: TervNyilas[] = [];
@@ -198,7 +209,7 @@ export function nyilasokHozzarendel(feliratok: NyilasFelirat[], r: Raszter, neve
     // feliratozott mellvédű tervben a mellvéd nélküli, ajtómagasságnál alacsonyabb „nyílás” valójában méretlánc-részlet
     if (vanPm && f.pm === null && f.mag < 1.9) continue;
     const kapu = kulso && f.pm === null && f.mag >= 1.8 && (f.kapuJelolt || (garazsban && f.szel >= 1.8) || f.szel >= 2.2);
-    const fajta: TervNyilas['fajta'] = kapu ? 'garazskapu' : !kulso ? 'belso_ajto' : f.pm !== null && f.pm > 0.05 ? 'ablak' : f.pm !== null ? 'erkelyajto' : f.mag >= 1.9 ? 'bejarati_ajto' : 'ablak';
+    const fajta: TervNyilas['fajta'] = kapu ? 'garazskapu' : !kulso ? 'belso_ajto' : f.pm !== null && f.pm > 0.05 ? 'ablak' : f.pm !== null ? 'erkelyajto' : f.mag >= 1.9 ? (tipusLap ? 'erkelyajto' : 'bejarati_ajto') : 'ablak';
     ki.push({ ...f, helyiseg: p?.h ?? null, irany: p?.irany ?? null, kulso, fajta });
   }
   return ki;

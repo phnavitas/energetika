@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import { GEPESZETI_SZETTEK, FUTES_SZETTEK, HMV_SZETTEK, SZELLOZES_SZETTEK, HUTES_SZETTEK, hutes as HT, gepeszet as T, szabalyozasiTenyezo, type EpuletEredmeny, type FutesiHotermelo, type HmvHotermelo, type RendszerEredmeny } from '@mag/index';
 import { Mezo, Szam, Szoveg, Valaszto, sz } from '../ui';
@@ -6,7 +6,7 @@ import {
   ujId, futesSzettbol, hmvSzettbol, szellozesSzettbol, hutesSzettbol, erpFutes, erpHmv, szabalyozasErtek, szettNev,
   type Projekt, type Gepeszet, type FutesAlrendszerUI, type HmvUI, type SzellozesUI, type HutesUI,
 } from '../modell';
-import { NapelemSzakasz } from './Napelem';
+import { TAVHO_ALAP, tavhoLista, tavhoSulyozobol, type TavhoRendszer } from '../tavho';
 import * as C from '../gepeszetCimkek';
 import { useTavoli } from '../fiok';
 import { szettMent } from '../tarolo';
@@ -236,7 +236,8 @@ export function GepeszetLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: M
         </div>
       </section>
 
-      <NapelemSzakasz p={p} modosit={modosit} eredmeny={eredmeny} />
+      {(gp.futes.some((f) => f.hotermelo.tipus === 'tavho') || gp.hmv.hotermelo.tipus === 'tavho') && <TavhoSzakasz p={p} modosit={modosit} />}
+      <section class="szakasz"><p class="halkabb">A napelemek és a többi villamos fogyasztó a <strong>Villamosság</strong> lépésben található.</p></section>
     </>
   );
 }
@@ -580,5 +581,49 @@ function SzettMentes({ gp }: { gp: Gepeszet }) {
       <button type="button" class="gomb halk-gomb semleges" onClick={() => setNyitva(false)}>Mégse</button>
       {allapot && <span class="halkabb">{allapot}</span>}
     </form>
+  );
+}
+
+// =============================================================================================
+// Távhő: a szolgáltató által közzétett súlyozó tényezők (9/2023 ÉKM 8. § (1))
+
+function TavhoSzakasz({ p, modosit }: { p: Projekt; modosit: Modosit }) {
+  const t = p.gepeszet.tavho;
+  const [lista, setLista] = useState<TavhoRendszer[] | null>(null);
+  const [allapot, setAllapot] = useState<string>('');
+  const betolt = (friss: boolean) => { setAllapot('lekérés…'); void tavhoLista(friss).then((r) => { setLista(r.lista); setAllapot(r.online ? `online lista, lekérve ${r.lekerve?.slice(0, 10) ?? ''}${r.hibak?.length ? ` (${r.hibak.length} forrás nem elérhető)` : ''}` : 'beépített lista (2026. 02. 16.) – az online forrás nem elérhető'); }); };
+  useEffect(() => betolt(false), []);
+  const kulcs = (r: TavhoRendszer) => `${r.szolgaltato}|${r.rendszer}`;
+  const mt = (fn: (x: NonNullable<typeof t>) => void) => modosit((q) => { q.gepeszet.tavho ??= { szolgaltato: 'Egyéb szolgáltató', fnren: TAVHO_ALAP.fnren, fren: TAVHO_ALAP.fren, fCO2: TAVHO_ALAP.fCO2 }; fn(q.gepeszet.tavho); });
+  return (
+    <section class="szakasz">
+      <h2>Távhő – súlyozó tényezők</h2>
+      <p class="halk">A távhőszolgáltató évente (március 15-ig) közzéteszi a rendszerére számított nem megújuló és megújuló primerenergia-, valamint CO₂-tényezőt (9/2023 ÉKM 8. § (1), 8. melléklet). Ennek hiányában a 7. melléklet alapértéke érvényes: f<sub>nren</sub> = 1,38, f<sub>ren</sub> = 0, CO₂ = 374 g/kWh. A lista havonta frissül a szolgáltatói oldalakról; a többi szolgáltató értéke az <a href="https://www.e-epites.hu/e-tanusitas/tavho/nyilvanos/lekerdezes" target="_blank" rel="noopener">e-építés távhő-lekérdezőjében</a> található – ezt kézzel add meg.</p>
+      <div class="racs">
+        <Mezo cim="Szolgáltató, rendszer" szeles sugo={allapot}>
+          <select onChange={(e) => {
+            const v = (e.target as HTMLSelectElement).value;
+            if (v === '') { modosit((q) => { delete q.gepeszet.tavho; }); return; }
+            if (v === 'kezi') { mt((x) => { x.szolgaltato = 'Egyéb szolgáltató'; delete x.rendszer; delete x.forras; delete x.frissitve; }); return; }
+            const r = lista?.find((x) => kulcs(x) === v); if (r) modosit((q) => { q.gepeszet.tavho = tavhoSulyozobol(r); });
+          }}>
+            <option value="" selected={!t}>Alapérték (7. melléklet) – nincs szolgáltatói adat</option>
+            {(lista ?? []).map((r) => <option value={kulcs(r)} selected={!!t && `${t.szolgaltato}|${t.rendszer}` === kulcs(r)}>{r.telepules}: {r.rendszer} – nren {sz(r.fnren, 3)}, ren {sz(r.fren, 3)}, CO₂ {r.fCO2 === null ? '–' : sz(r.fCO2, 1)}</option>)}
+            <option value="kezi" selected={!!t && !(lista ?? []).some((r) => `${t.szolgaltato}|${t.rendszer}` === kulcs(r))}>Egyéb szolgáltató – kézi megadás</option>
+          </select>
+        </Mezo>
+        <div class="mezo"><span>Lista</span><button class="gomb" onClick={() => betolt(true)}>Frissítés most</button></div>
+      </div>
+      {t && (
+        <div class="racs" style="margin-top:10px">
+          <Mezo cim="Szolgáltató"><Szoveg ertek={t.szolgaltato} valt={(v) => mt((x) => { x.szolgaltato = v; })} /></Mezo>
+          <Mezo cim="Rendszer"><Szoveg ertek={t.rendszer ?? ''} valt={(v) => mt((x) => { x.rendszer = v || undefined; })} /></Mezo>
+          <Mezo cim="f nem megújuló (nren)"><Szam ertek={t.fnren} valt={(v) => mt((x) => { x.fnren = v; })} /></Mezo>
+          <Mezo cim="f megújuló (ren)"><Szam ertek={t.fren} valt={(v) => mt((x) => { x.fren = v; })} /></Mezo>
+          <Mezo cim="CO₂-tényező"><Szam ertek={t.fCO2} egyseg="g/kWh" valt={(v) => mt((x) => { x.fCO2 = v; })} /></Mezo>
+          <div class="mezo"><span>Forrás</span><small>{t.forras ? <a href={t.forras} target="_blank" rel="noopener">szolgáltatói közzététel</a> : 'kézi'}{t.adatEv ? ` · ${t.adatEv}. évi adatok` : ''}{t.frissitve ? ` · frissítve ${t.frissitve}` : ''}</small></div>
+        </div>
+      )}
+    </section>
   );
 }
