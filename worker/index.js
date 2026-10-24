@@ -5,6 +5,10 @@
  *   GET /api/geokod?q=<cím>                                          → OpenStreetMap Nominatim (1 találat, HU)
  *   GET /api/tavho                                                   → távhőszolgáltatók közzétett súlyozó tényezői
  *       (9/2023 ÉKM 8. § (1)); a szolgáltatói oldalakról olvasva, 30 napig gyorsítótárazva, havonta (cron) frissítve
+ *   GET /api/tavho/keres?telepules=&szolgaltato=                     → az e-építés (Lechner) távhőszolgáltatói nyilvántartása:
+ *       szolgáltatók, ellátott települések, évenkénti adatszolgáltatási PDF-ek (1 napig gyorsítótárazva)
+ *   GET /api/tavho/pdf?id=<n>                                        → egy adatszolgáltatási PDF (változatlan, 1 évig gyorsítótárazva);
+ *       a tényezőket a böngésző olvassa ki belőle (pdf.js)
  * Minden más kérés a statikus eszközökhöz megy.
  */
 const PVGIS = 'https://re.jrc.ec.europa.eu/api/v5_3/PVcalc';
@@ -31,6 +35,53 @@ export const TAVHO_FORRASOK = [
   { szolgaltato: 'Veolia – Dorog', telepules: 'Dorog', url: 'https://tavho.veolia.hu/dorog/epuletenergetika-dorog' },
 ];
 const TAVHO_KULCS = 'https://ekm-gyorsitotar.local/tavho/v1';
+const EEPITES = 'https://www.e-epites.hu/e-tanusitas/tavho/nyilvanos';
+const html2szoveg = (h) => h.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
+
+/** A lekérdező találati táblázata: soronként rövid név, részletek-azonosító, teljes név, székhely, legutóbbi dokumentum. */
+export function eepitesTalalatok(html) {
+  const tb = /<tbody>([\s\S]*?)<\/tbody>/.exec(html);
+  if (!tb) return [];
+  return tb[1].split(/<tr[^>]*>/).slice(1).map((sor) => {
+    const cellak = [...sor.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((m) => m[1]);
+    const r = /reszletek(?:;jsessionid=[^?"]*)?\?id=(\d+)"[^>]*>([^<]*)</.exec(sor);
+    const d = /download(?:;jsessionid=[^?"]*)?\?id=(\d+)/.exec(sor);
+    if (!r) return null;
+    return { id: Number(r[1]), rovidNev: html2szoveg(r[2]), teljesNev: html2szoveg(cellak[1] ?? ''), szekhely: html2szoveg(cellak[2] ?? ''), dokId: d ? Number(d[1]) : null };
+  }).filter(Boolean);
+}
+
+/** A részletek oldal: ellátott települések és az évenkénti nyilvános dokumentumok. */
+export function eepitesReszletek(html) {
+  const t = /Ellátott települések:\s*<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>/.exec(html);
+  const telepulesek = t ? html2szoveg(t[1]).split(/\s*,\s*/).filter(Boolean) : [];
+  const dokumentumok = [...html.matchAll(/<span>\s*(\d{4})\s*<\/span>\s*:\s*<a href="[^"]*download(?:;jsessionid=[^?"]*)?\?id=(\d+)"[^>]*>([^<]*)<\/a>/g)]
+    .map((m) => ({ ev: Number(m[1]), id: Number(m[2]), nev: html2szoveg(m[3]) }));
+  return { telepulesek, dokumentumok };
+}
+
+async function eepitesKeres(f, telepules, szolgaltato) {
+  // a lekérdezés munkamenethez kötött: az űrlap action-je hordozza a jsessionid-t
+  const g = await f(`${EEPITES}/lekerdezes`, { headers: { 'user-agent': UA, accept: 'text/html' } });
+  if (!g.ok) throw new Error(`e-építés: HTTP ${g.status}`);
+  const lap = await g.text();
+  const act = /<form[^>]*action="([^"]+)"/.exec(lap)?.[1];
+  if (!act) throw new Error('e-építés: a lekérdező űrlap nem található');
+  const suti = (g.headers.get('set-cookie') ?? '').split(/,(?=\s*\w+=)/).map((x) => x.split(';')[0].trim()).filter(Boolean).join('; ');
+  const v = await f(new URL(act, 'https://www.e-epites.hu').toString(), {
+    method: 'POST',
+    headers: { 'user-agent': UA, accept: 'text/html', 'content-type': 'application/x-www-form-urlencoded', ...(suti ? { cookie: suti } : {}) },
+    body: new URLSearchParams({ telepulesNev: telepules, szolgaltatoNev: szolgaltato }).toString(),
+  });
+  if (!v.ok) throw new Error(`e-építés: HTTP ${v.status}`);
+  const talalat = eepitesTalalatok(await v.text()).slice(0, 12);
+  const szolgaltatok = [];
+  for (const t of talalat) {
+    const r = await f(`${EEPITES}/reszletek?id=${t.id}`, { headers: { 'user-agent': UA, accept: 'text/html', ...(suti ? { cookie: suti } : {}) } });
+    szolgaltatok.push({ ...t, ...(r.ok ? eepitesReszletek(await r.text()) : { telepulesek: [], dokumentumok: [] }), reszletek: `${EEPITES}/reszletek?id=${t.id}` });
+  }
+  return { forras: `${EEPITES}/lekerdezes`, lekerve: new Date().toISOString(), szolgaltatok };
+}
 const szamHu = (s) => Number(String(s).replace(/\s/g, '').replace(',', '.'));
 
 /** A szolgáltatói oldal szövegéből a „ftávhő nren= / ren = / CO2=” hármasok, a rendszer nevével (a megelőző sor). */
@@ -110,6 +161,32 @@ export async function kezel(request, env, f = fetch, gyorsitotar = null) {
     const t = await v.json();
     if (!Array.isArray(t) || !t.length) return json({ hiba: 'A címet nem találtam.' }, 404);
     return json({ lat: Number(t[0].lat), lon: Number(t[0].lon), nev: t[0].display_name, forras: 'OpenStreetMap Nominatim' });
+  }
+
+  if (url.pathname === '/api/tavho/keres') {
+    const tel = (url.searchParams.get('telepules') ?? '').trim().slice(0, 100), szo = (url.searchParams.get('szolgaltato') ?? '').trim().slice(0, 100);
+    if (tel.length < 2 && szo.length < 2) return json({ hiba: 'Adj meg települést vagy szolgáltatónevet.' }, 400);
+    const kulcs = `https://ekm-gyorsitotar.local/tavho/keres/v1?t=${encodeURIComponent(tel.toLowerCase())}&s=${encodeURIComponent(szo.toLowerCase())}`;
+    const kesz = gyorsitotar && url.searchParams.get('friss') !== '1' ? await gyorsitotar.match(kulcs) : null;
+    if (kesz) return new Response(kesz.body, { headers: { 'content-type': 'application/json; charset=utf-8', 'x-gyorsitotar': '1' } });
+    let adat;
+    try { adat = await eepitesKeres(f, tel, szo); } catch (e) { return json({ hiba: e.message }, 502); }
+    const valasz = new Response(JSON.stringify(adat), { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=86400' } });
+    if (gyorsitotar) await gyorsitotar.put(kulcs, valasz.clone());
+    return valasz;
+  }
+
+  if (url.pathname === '/api/tavho/pdf') {
+    const id = url.searchParams.get('id') ?? '';
+    if (!/^\d{1,7}$/.test(id)) return json({ hiba: 'Érvénytelen dokumentum-azonosító.' }, 400);
+    const cel = `${EEPITES}/download?id=${id}`;
+    const kesz = gyorsitotar ? await gyorsitotar.match(cel) : null;
+    if (kesz) return new Response(kesz.body, { headers: { 'content-type': 'application/pdf', 'x-gyorsitotar': '1' } });
+    const v = await f(cel, { headers: { 'user-agent': UA, accept: 'application/pdf' } });
+    if (!v.ok || !/pdf/i.test(v.headers.get('content-type') ?? '')) return json({ hiba: `e-építés dokumentum: HTTP ${v.status}` }, 502);
+    const valasz = new Response(await v.arrayBuffer(), { headers: { 'content-type': 'application/pdf', 'cache-control': 'public, max-age=31536000, immutable' } });
+    if (gyorsitotar) await gyorsitotar.put(cel, valasz.clone());
+    return valasz;
   }
 
   if (url.pathname === '/api/tavho') {

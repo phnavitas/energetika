@@ -6,7 +6,7 @@ import {
   ujId, futesSzettbol, hmvSzettbol, szellozesSzettbol, hutesSzettbol, erpFutes, erpHmv, szabalyozasErtek, szettNev,
   type Projekt, type Gepeszet, type FutesAlrendszerUI, type HmvUI, type SzellozesUI, type HutesUI,
 } from '../modell';
-import { TAVHO_ALAP, tavhoLista, tavhoSulyozobol, type TavhoRendszer } from '../tavho';
+import { TAVHO_ALAP, tavhoLista, tavhoSulyozobol, eepitesKeres, eepitesPdf, legutobbiDok, EEPITES_DOK, type TavhoRendszer, type EepitesSzolgaltato } from '../tavho';
 import * as C from '../gepeszetCimkek';
 import { useTavoli } from '../fiok';
 import { szettMent } from '../tarolo';
@@ -598,6 +598,84 @@ function SzettMentes({ gp }: { gp: Gepeszet }) {
 // =============================================================================================
 // Távhő: a szolgáltató által közzétett súlyozó tényezők (9/2023 ÉKM 8. § (1))
 
+type EepitesTalalat = { sz: EepitesSzolgaltato; dok: { ev: number; id: number } | null; pdf?: Awaited<ReturnType<typeof eepitesPdf>>; hiba?: string };
+
+/** e-építés távhő-nyilvántartás: keresés település szerint, a legutóbbi adatszolgáltatás kiolvasása, újabb adat jelzése. */
+function EepitesKereso({ p, modosit }: { p: Projekt; modosit: Modosit }) {
+  const t = p.gepeszet.tavho;
+  const [tel, setTel] = useState(p.meta.telepules || '');
+  const [talalat, setTalalat] = useState<EepitesTalalat[] | null>(null);
+  const [allapot, setAllapot] = useState('');
+  const [ujabb, setUjabb] = useState<{ ev: number; id: number } | null>(null);
+  // „folyamatos frissítés”: a kiválasztott szolgáltató legutóbbi adatszolgáltatását összevetjük a projektben tárolttal
+  useEffect(() => {
+    if (!t?.eepites) { setUjabb(null); return; }
+    const e = t.eepites;
+    void eepitesKeres({ szolgaltato: t.szolgaltato.replace(/\s*–.*$/, '') }).then((l) => {
+      const sz = l.find((x) => x.id === e.szolgaltatoId); const d = sz && legutobbiDok(sz);
+      setUjabb(d && d.id !== e.dokId && d.ev >= e.dokEv ? d : null);
+    }).catch(() => setUjabb(null));
+  }, [t?.eepites?.dokId]);
+  async function keres() {
+    if (tel.trim().length < 2) return;
+    setAllapot('lekérdezés az e-építés nyilvántartásából…'); setTalalat(null);
+    try {
+      const l = await eepitesKeres({ telepules: tel.trim() });
+      const ki: EepitesTalalat[] = l.map((sz) => ({ sz, dok: legutobbiDok(sz) }));
+      setTalalat([...ki]);
+      setAllapot(l.length ? 'adatszolgáltatások kiolvasása…' : `„${tel}” településen nincs nyilvántartott távhőszolgáltató.`);
+      for (const x of ki) {
+        if (!x.dok) continue;
+        try { x.pdf = await eepitesPdf(x.dok.id); } catch (e) { x.hiba = (e as Error).message; }
+        setTalalat([...ki]);
+      }
+      if (l.length) setAllapot(`lekérve ${new Date().toLocaleDateString('hu-HU')}`);
+    } catch (e) { setAllapot((e as Error).message); }
+  }
+  const valaszt = (x: EepitesTalalat, r: { rendszer: string; telepules: string; fnren: number; fren: number; fCO2: number } | null) => modosit((q) => {
+    q.gepeszet.tavho = {
+      szolgaltato: x.sz.rovidNev, rendszer: r ? (r.telepules && !r.rendszer.includes(r.telepules) ? `${r.telepules}, ${r.rendszer}` : r.rendszer) : tel,
+      fnren: r?.fnren ?? q.gepeszet.tavho?.fnren ?? TAVHO_ALAP.fnren, fren: r?.fren ?? q.gepeszet.tavho?.fren ?? TAVHO_ALAP.fren, fCO2: r?.fCO2 ?? q.gepeszet.tavho?.fCO2 ?? TAVHO_ALAP.fCO2,
+      ...(x.pdf?.adatEv ? { adatEv: x.pdf.adatEv } : {}), forras: EEPITES_DOK(x.dok!.id), frissitve: new Date().toLocaleDateString('hu-HU'),
+      eepites: { szolgaltatoId: x.sz.id, dokId: x.dok!.id, dokEv: x.dok!.ev },
+    };
+  });
+  return (
+    <div class="kartya" style="margin:10px 0 14px;padding:10px 12px">
+      {ujabb && t && <div class="hiba-doboz" style="margin-bottom:8px">A(z) {t.szolgaltato} újabb adatszolgáltatást töltött fel ({ujabb.ev}). <a href={EEPITES_DOK(ujabb.id)} target="_blank" rel="noopener">Megnyitás</a> – keresd meg újra a települést és válaszd ki az új értéket.</div>}
+      <form class="gombsor" onSubmit={(e) => { e.preventDefault(); void keres(); }}>
+        <input type="text" value={tel} placeholder="Ellátott település" aria-label="Ellátott település" style="max-width:220px" onInput={(e) => setTel((e.target as HTMLInputElement).value)} />
+        <button class="gomb" type="submit">Keresés az e-építés nyilvántartásban</button>
+        {allapot && <span class="halkabb" role="status">{allapot}</span>}
+      </form>
+      {talalat?.map((x) => (
+        <div style="margin-top:10px">
+          <strong>{x.sz.rovidNev}</strong> <span class="halkabb">{x.sz.teljesNev} · ellátott: {x.sz.telepulesek.join(', ')}{x.dok ? <> · <a href={EEPITES_DOK(x.dok.id)} target="_blank" rel="noopener">{x.dok.ev}. évi adatszolgáltatás (PDF)</a></> : ' · nincs feltöltött dokumentum'}</span>
+          {x.hiba && <div class="halkabb" style="color:var(--rossz)">{x.hiba}</div>}
+          {x.dok && !x.pdf && !x.hiba && <div class="halkabb">kiolvasás…</div>}
+          {x.pdf?.szkennelt && (
+            <div class="halkabb" style="margin-top:4px">Szkennelt dokumentum – a tényezők nem olvashatók ki automatikusan. Nyisd meg a PDF-et, és <button class="link-gomb" onClick={() => valaszt(x, null)}>vedd fel ezzel a szolgáltatóval</button>, majd írd be az értékeket lent.</div>
+          )}
+          {x.pdf && !x.pdf.szkennelt && !x.pdf.sorok.length && <div class="halkabb">A dokumentumban nem találtam az űrlap szerinti táblázatot (régebbi formátum) – nyisd meg és add meg kézzel.</div>}
+          {x.pdf && x.pdf.sorok.length > 0 && (
+            <table class="tabla" style="margin-top:4px"><tbody>
+              {x.pdf.sorok.map((r) => (
+                <tr>
+                  <td>{r.telepules}{r.rendszer && r.rendszer !== r.telepules ? ` – ${r.rendszer}` : ''}</td>
+                  <td class="szam">nren {r.fnren === null ? '–' : sz(r.fnren, 3)}</td><td class="szam">ren {r.fren === null ? '–' : sz(r.fren, 3)}</td><td class="szam">CO₂ {r.fCO2 === null ? '–' : sz(r.fCO2, 1)}</td>
+                  <td>{!r.ellenorzott && <span class="jel rossz" title="nren + ren ≠ tot, vagy a CO₂ nem illik a nren-hez – a PDF-ben ellenőrizd">ellenőrizendő</span>}</td>
+                  <td>{r.fnren !== null && r.fren !== null && r.fCO2 !== null && <button class="gomb kis-gomb" onClick={() => valaszt(x, r as { rendszer: string; telepules: string; fnren: number; fren: number; fCO2: number })}>Kiválaszt</button>}</td>
+                </tr>
+              ))}
+            </tbody></table>
+          )}
+          {x.pdf?.adatEv && <div class="halkabb">{x.pdf.adatEv}. évi termelési adatok alapján</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function TavhoSzakasz({ p, modosit }: { p: Projekt; modosit: Modosit }) {
   const t = p.gepeszet.tavho;
   const [lista, setLista] = useState<TavhoRendszer[] | null>(null);
@@ -609,7 +687,8 @@ function TavhoSzakasz({ p, modosit }: { p: Projekt; modosit: Modosit }) {
   return (
     <section class="szakasz">
       <h2>Távhő – súlyozó tényezők</h2>
-      <p class="halk">A távhőszolgáltató évente (március 15-ig) közzéteszi a rendszerére számított nem megújuló és megújuló primerenergia-, valamint CO₂-tényezőt (9/2023 ÉKM 8. § (1), 8. melléklet). Ennek hiányában a 7. melléklet alapértéke érvényes: f<sub>nren</sub> = 1,38, f<sub>ren</sub> = 0, CO₂ = 374 g/kWh. A lista havonta frissül a szolgáltatói oldalakról; a többi szolgáltató értéke az <a href="https://www.e-epites.hu/e-tanusitas/tavho/nyilvanos/lekerdezes" target="_blank" rel="noopener">e-építés távhő-lekérdezőjében</a> található – ezt kézzel add meg.</p>
+      <p class="halk">A távhőszolgáltató évente (március 15-ig) közzéteszi a rendszerére számított nem megújuló és megújuló primerenergia-, valamint CO₂-tényezőt (9/2023 ÉKM 8. § (1), 8. melléklet). Ennek hiányában a 7. melléklet alapértéke érvényes: f<sub>nren</sub> = 1,38, f<sub>ren</sub> = 0, CO₂ = 374 g/kWh. Az értékek forrása a Lechner Tudásközpont <a href="https://www.e-epites.hu/e-tanusitas/tavho/nyilvanos/lekerdezes" target="_blank" rel="noopener">e-építés távhő-nyilvántartása</a>: a program lekérdezi a település szolgáltatóit és kiolvassa a legutóbbi adatszolgáltatásukat; szkennelt dokumentumnál az értéket kézzel kell beírni.</p>
+      <EepitesKereso p={p} modosit={modosit} />
       <div class="racs">
         <Mezo cim="Szolgáltató, rendszer" szeles sugo={allapot}>
           <select onChange={(e) => {

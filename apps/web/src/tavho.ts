@@ -5,7 +5,7 @@
  */
 import type { TavhoSulyozo } from './modell';
 
-export interface TavhoRendszer { szolgaltato: string; telepules: string; rendszer: string; fnren: number; fren: number; fCO2: number | null; adatEv?: number | null; forras: string; frissitve?: string | null }
+export interface TavhoRendszer { szolgaltato: string; telepules: string; rendszer: string; fnren: number; fren: number; fCO2: number | null; adatEv?: number | null; forras: string; frissitve?: string | null; eepites?: { szolgaltatoId: number; dokId: number; dokEv: number } }
 
 export const TAVHO_ALAP = { fnren: 1.38, fren: 0, fCO2: 374 } as const;
 
@@ -15,9 +15,10 @@ export const TAVHO_BEEPITETT: TavhoRendszer[] = [
   { szolgaltato: 'BAKONY-TÁVHŐ Kft.', telepules: 'Ajka', rendszer: 'Ajka', fnren: 0.149, fren: 0.547, fCO2: 30.369, adatEv: 2025, forras: 'https://tavho.veolia.hu/bakonytavho_kft/epuletek-energetikai-bakonytavho', frissitve: '2026.02.16' },
   { szolgaltato: 'NÁNÁSHŐ Kft.', telepules: 'Hajdúnánás', rendszer: 'Hajdúnánás', fnren: 1.143, fren: 0.006, fCO2: 305.955, adatEv: 2025, forras: 'https://tavho.veolia.hu/nanasho_kft/epuletek-energetikai-nanasho', frissitve: '2026.02.16' },
   { szolgaltato: 'Veolia – Dorog', telepules: 'Dorog', rendszer: 'Dorog (alapérték)', fnren: 1.38, fren: 0, fCO2: 374, forras: 'https://tavho.veolia.hu/dorog/epuletenergetika-dorog', frissitve: '2026.02.16' },
-  // A T-Szol Zrt. a tszol.hu-n nem tesz közzé 8. melléklet szerinti tényezőt (ellenőrizve: 2026.10.23) → 7. melléklet alapértéke.
-  // Hőforrás: Tatabánya Erőmű Kft. földgáz gázmotoros kapcsolt termelés; Baj: gázkazán. Szolgáltatói adat esetén kézzel felülírandó.
-  { szolgaltato: 'T-Szol Zrt.', telepules: 'Tatabánya', rendszer: 'Tatabánya (alapérték – nincs közzétett adat)', fnren: 1.38, fren: 0, fCO2: 374, forras: 'https://tszol.hu/szolgaltatas/tavhoszolgaltatas/futes/a-tavfutes-rendszere/', frissitve: '2026.10.23' },
+  // Baj (T-Szol, gázkazán): közzétett adat nélkül a 7. melléklet alapértéke.
+  // e-építés távhő-lekérdező (tanúsító által ellenőrizve, 2026.10.24)
+  // a T-Szol adatszolgáltatása szkennelt PDF (e-építés dok. 928, 2025): az értékeket a tanúsító olvasta ki
+  { szolgaltato: 'T-Szol Zrt.', telepules: 'Tatabánya', rendszer: 'Tatabánya', fnren: 0.251, fren: 0.831, fCO2: 55.789, forras: 'https://www.e-epites.hu/e-tanusitas/tavho/nyilvanos/download?id=928', frissitve: '2026.10.24', eepites: { szolgaltatoId: 36, dokId: 928, dokEv: 2025 } },
   { szolgaltato: 'T-Szol Zrt.', telepules: 'Baj', rendszer: 'Baj (alapérték – nincs közzétett adat)', fnren: 1.38, fren: 0, fCO2: 374, forras: 'https://tszol.hu/szolgaltatas/tavhoszolgaltatas/futes/a-tavfutes-rendszere/', frissitve: '2026.10.23' },
 ];
 
@@ -41,4 +42,35 @@ export async function tavhoLista(friss = false): Promise<{ lista: TavhoRendszer[
 export const tavhoSulyozobol = (r: TavhoRendszer): TavhoSulyozo => ({
   szolgaltato: r.szolgaltato, rendszer: r.rendszer, fnren: r.fnren, fren: r.fren, fCO2: r.fCO2 ?? TAVHO_ALAP.fCO2,
   ...(r.adatEv ? { adatEv: r.adatEv } : {}), forras: r.forras, ...(r.frissitve ? { frissitve: r.frissitve } : {}),
+  ...(r.eepites ? { eepites: r.eepites } : {}),
 });
+
+// ---------------------------------------------------------------------------------------------
+// e-építés (Lechner) távhőszolgáltatói nyilvántartás – a worker proxyn át, a PDF-et a böngésző olvassa ki
+
+export const EEPITES_DOK = (id: number) => `https://www.e-epites.hu/e-tanusitas/tavho/nyilvanos/download?id=${id}`;
+export interface EepitesSzolgaltato {
+  id: number; rovidNev: string; teljesNev: string; szekhely: string; dokId: number | null; reszletek: string;
+  telepulesek: string[]; dokumentumok: { ev: number; id: number; nev: string }[];
+}
+
+export async function eepitesKeres(p: { telepules?: string; szolgaltato?: string }, friss = false): Promise<EepitesSzolgaltato[]> {
+  const q = new URLSearchParams({ telepules: p.telepules ?? '', szolgaltato: p.szolgaltato ?? '', ...(friss ? { friss: '1' } : {}) });
+  let v: Response;
+  try { v = await fetch(`/api/tavho/keres?${q}`); } catch { throw new Error('Az e-építés lekérdezés nem érhető el (hálózati hiba).'); }
+  const ct = v.headers.get('content-type') ?? '';
+  if (!ct.includes('json')) throw new Error('Az e-építés lekérdezés csak a telepített (online) változatban érhető el.');
+  const j = await v.json() as { szolgaltatok?: EepitesSzolgaltato[]; hiba?: string };
+  if (!v.ok || !j.szolgaltatok) throw new Error(j.hiba ?? `HTTP ${v.status}`);
+  return j.szolgaltatok;
+}
+
+/** A legutóbbi (legmagasabb évű) adatszolgáltatás. */
+export const legutobbiDok = (s: EepitesSzolgaltato) => [...s.dokumentumok].sort((a, b) => b.ev - a.ev || b.id - a.id)[0] ?? (s.dokId ? { ev: 0, id: s.dokId, nev: '' } : null);
+
+export async function eepitesPdf(dokId: number) {
+  const v = await fetch(`/api/tavho/pdf?id=${dokId}`);
+  if (!v.ok || !(v.headers.get('content-type') ?? '').includes('pdf')) throw new Error(`A dokumentum nem tölthető le (HTTP ${v.status}).`);
+  const { tavhoPdfOlvas } = await import('./tavhoPdf');
+  return tavhoPdfOlvas(await v.arrayBuffer());
+}

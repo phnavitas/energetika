@@ -154,7 +154,11 @@ export interface Gepeszet {
   villamos?: VillamosUI;
 }
 
-export interface TavhoSulyozo { szolgaltato: string; rendszer?: string; fnren: number; fren: number; fCO2: number; adatEv?: number; forras?: string; frissitve?: string }
+export interface TavhoSulyozo {
+  szolgaltato: string; rendszer?: string; fnren: number; fren: number; fCO2: number; adatEv?: number; forras?: string; frissitve?: string;
+  /** e-építés távhő-nyilvántartás: a szolgáltató és az adatszolgáltatási PDF azonosítója (az újabb adatszolgáltatás jelzéséhez). */
+  eepites?: { szolgaltatoId: number; dokId: number; dokEv: number };
+}
 
 export interface VillamosFogyaszto { id: string; nev: string; kategoria: string; teljesitmenyW: number; oraNap: number; napEv: number; darab: number }
 export interface VillamosUI {

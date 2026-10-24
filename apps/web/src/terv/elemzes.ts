@@ -25,7 +25,7 @@ export interface TervLap {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type PdfJs = any;
 let pdfjsBetoltve: Promise<PdfJs> | null = null;
-async function pdfjsBetolt(): Promise<PdfJs> {
+export async function pdfjsBetolt(): Promise<PdfJs> {
   pdfjsBetoltve ??= (async () => {
     const pdfjs = await import('pdfjs-dist');
     // a munkaszálat a fő szálon futtatjuk (egyfájlos előnézetben és szigorú CSP mellett is működik)
