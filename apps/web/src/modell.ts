@@ -5,7 +5,7 @@
  */
 import {
   retegrendU, talajonFekvoPadlo, osztottAblak, kapcsoltLegretegR, kethejuNyilaszaroU, nyilaszaroU, nyilaszaroArnyekoloval, nyilaszaroSablon,
-  epuletfizika, kovetelmeny, klima, hoszukseglet, GEPESZETI_SZETTEK, FUTES_SZETTEK, HMV_SZETTEK, SZELLOZES_SZETTEK, HUTES_SZETTEK, szabalyozasiTenyezo, pvgis,
+  epuletfizika, kovetelmeny, klima, hoszukseglet, GEPESZETI_SZETTEK, FUTES_SZETTEK, HMV_SZETTEK, SZELLOZES_SZETTEK, HUTES_SZETTEK, szabalyozasiTenyezo, pvgis, profilok,
   type EpuletBemenet, type HataroloElem, type Reteg, type Hatar, type FutesiHotermelo, type HmvHotermelo,
   type FutesSablon, type HmvSablon, type HutesSablon, type SzellozesRendszer,
 } from '@mag/index';
@@ -159,7 +159,11 @@ export interface TavhoSulyozo { szolgaltato: string; rendszer?: string; fnren: n
 export interface VillamosFogyaszto { id: string; nev: string; kategoria: string; teljesitmenyW: number; oraNap: number; napEv: number; darab: number }
 export interface VillamosUI {
   /** Világítás: rendelet szerinti egyszerűsített számítás vagy tételes. */
-  vilagitasBeall?: { fenyforras?: string; lampatest?: string; ffe?: string; MV?: number; tNappal?: number; tEjjel?: number; standby?: boolean };
+  vilagitasBeall?: {
+    fenyforras?: string; lampatest?: string; ffe?: string; MV?: number; tNappal?: number; tEjjel?: number; standby?: boolean;
+    /** Egyéb rendeltetés (12.4–12.6. táblázat): szabályozás, üzemóra-típus, kihasználtság, vészvilágítás. */
+    szabalyozas?: profilok.FszabKod; vilTipus?: profilok.VilagitasTipus; kihaszn?: profilok.KihasznTipus; vesz?: boolean;
+  };
   fogyasztok: VillamosFogyaszto[];
 }
 
@@ -174,6 +178,14 @@ export interface Projekt {
     koordinata?: { lat: number; lon: number; forras?: string };
     kategoria: 'csaladi_haz' | 'egyeb_lakoepulet';
     kovetelmenySzint: 'kozel_nulla' | 'jelentos_felujitas' | 'meglevo'; epulettipus?: string; szintek: number;
+    /** Rendeltetés: lakó és szállás jellegű (alapérték) vagy egyéb – utóbbinál a használati profil (2. függ. 2.1.). */
+    rendeltetes?: 'lako' | 'egyeb';
+    profil?: string;
+    /** Egyéb rendeltetés HMV-igénye (2. függ. 2.2.): sor és a vonatkoztatási egységek száma (fő, ágy, dolgozó…). */
+    hmvTipus?: profilok.HmvTipus;
+    hmvEgyseg?: number;
+    /** Referencia hűtőgép típusa és teljesítménye (5. melléklet SEER-táblázat). */
+    refHutes?: { tipus: 'leg' | 'viz'; kW: number };
   };
   zona: { legzaras: Legzaras; elhelyezes: NyilasElhelyezes; szelnekKitett: boolean; hotarolo: keyof typeof epuletfizika.HOTAROLO_KEPESSEG; cmEffFajl?: number; futesProgramozhato: boolean };
   helyisegek: Helyiseg[];
@@ -469,7 +481,7 @@ export function atalakit(p: Projekt): Atalakitas {
         const r = p.retegrendek.find((x) => x.id === f.retegrendId);
         if (!r) { hibak.push(`„${f.nev}”: nincs rétegrend kiválasztva.`); continue; }
         const e = retegrendSzamitas(r);
-        elemek.push({ tipus: 'opak', nev: f.nev, A: feluletNettoA(p, f), U: e.U, chi: chiErvenyes(p, f), hatar: hatar(f.hatar), kovetelmenyKod: r.kovetelmenyKod });
+        elemek.push({ tipus: 'opak', nev: f.nev, A: feluletNettoA(p, f), U: e.U, chi: chiErvenyes(p, f), hatar: hatar(f.hatar), kovetelmenyKod: r.kovetelmenyKod, tajolas: f.tajolas ?? null });
       }
     } catch (err) {
       hibak.push(`„${f.nev}”: ${(err as Error).message}`);
@@ -504,21 +516,51 @@ export function atalakit(p: Projekt): Atalakitas {
     epszilonSzab: szabalyozasErtek(szabalyozas),
   }));
   const { szettKod: _h, ...hmvAlap } = gp.hmv;
-  const hmv = { ...structuredClone(hmvAlap), nev: 'HMV', Arszr: g.AN, AN: g.AN, qHMV: epuletfizika.HMV_LAKO[p.meta.kategoria] };
-  const VLT = epuletfizika.PROFIL_LAKO.nSzuks * g.V;
-  const szellozes = gp.szellozes ? [{ nev: 'Gépi szellőzés', V: VLT, uzemora: 8760 * gp.szellozes.uzemArany, ventilator: gp.szellozes.ventilator, segedKWh: gp.szellozes.segedKWh }] : [];
+  const egyeb = p.meta.rendeltetes === 'egyeb';
+  const pr = egyeb ? profilok.profil(p.meta.profil) ?? profilok.PROFILOK[1]! : null;
+  let qHMV: number = epuletfizika.HMV_LAKO[p.meta.kategoria];
+  if (pr) {
+    const t = profilok.HMV_EGYEB[p.meta.hmvTipus ?? pr.hmv];
+    if (!(p.meta.hmvEgyseg && p.meta.hmvEgyseg > 0)) hibak.push(`Egyéb rendeltetés: a HMV-igényhez add meg a(z) ${t.egyseg} számát (Épület lépés, 2. függ. 2.2.).`);
+    qHMV = g.AN > 0 ? (t.kWh * (p.meta.hmvEgyseg ?? 0) * pr.napEv) / g.AN : 0;
+  }
+  const hmv = { ...structuredClone(hmvAlap), nev: 'HMV', Arszr: g.AN, AN: g.AN, qHMV };
+  const haviOra = pr ? profilok.haviHasznalatiOrak(pr) : null;
+  const evesOra = haviOra ? haviOra.reduce((a, x) => a + x, 0) : 8760;
+  const VLT = pr ? pr.VLTfajl * g.AN : epuletfizika.PROFIL_LAKO.nSzuks * g.V;
+  const szellozes = gp.szellozes ? [{ nev: 'Gépi szellőzés', V: VLT, uzemora: pr ? evesOra : 8760 * gp.szellozes.uzemArany, ventilator: gp.szellozes.ventilator, segedKWh: gp.szellozes.segedKWh }] : [];
+  // beépített világítás (egyéb rendeltetés: 12.1, egyszerűsített módszer)
+  const vb = gp.villamos?.vilagitasBeall ?? {};
+  const vilagitas = pr ? [{
+    nev: 'Beépített világítás', A: g.AN, MV: pr.MV,
+    FH: profilok.FENYHASZNOSITAS[(vb.fenyforras ?? 'led') as keyof typeof profilok.FENYHASZNOSITAS] ?? 120,
+    etaVil: profilok.LAMPATEST_ETA[(vb.lampatest ?? 'led') as keyof typeof profilok.LAMPATEST_ETA] ?? 0.5,
+    Ffe: profilok.FFE[(vb.ffe ?? 'nem') as keyof typeof profilok.FFE] ?? 1,
+    Fkihaszn: profilok.FKIHASZN[vb.kihaszn ?? pr.kihaszn].F, szabalyozas: vb.szabalyozas ?? 'kezi' as profilok.FszabKod,
+    tnappal: profilok.UZEMORA[vb.vilTipus ?? pr.vilTipus].tnappal, tejjel: profilok.UZEMORA[vb.vilTipus ?? pr.vilTipus].tejjel,
+    Fnappal: profilok.fnappal(uvegezesiAranyP(p)), vesz: !!vb.vesz, standby: !!vb.standby,
+  }] : [];
 
   const nf = epuletfizika.nfilt({ legzaras: p.zona.legzaras, elhelyezes: p.zona.elhelyezes, szelnekKitett: p.zona.szelnekKitett, szintek: p.meta.szintek <= 2 ? '1-2' : p.meta.szintek <= 6 ? '3-6' : '7-' });
   const bemenet: EpuletBemenet = {
-    nev: p.meta.nev, rendeltetes: 'lakoepulet', AN: g.AN, V: g.V, Alehulo: g.Alehulo,
+    nev: p.meta.nev, rendeltetes: egyeb ? 'egyeb' : 'lakoepulet', AN: g.AN, V: g.V, Alehulo: g.Alehulo,
     kovetelmenySzint: p.meta.kovetelmenySzint,
     zonak: [{
-      nev: 'F1', AN: g.AN, V: g.V, thetaF: 20, thetaH: 26, nSzuks: epuletfizika.PROFIL_LAKO.nSzuks, nfilt: nf, qb: epuletfizika.PROFIL_LAKO.qb,
+      nev: 'F1', AN: g.AN, V: g.V, thetaF: pr?.thetaF ?? 20, thetaH: pr?.thetaH ?? 26,
+      nSzuks: pr ? (g.V > 0 ? VLT / g.V : 0) : epuletfizika.PROFIL_LAKO.nSzuks, nfilt: nf, qb: pr?.qb ?? epuletfizika.PROFIL_LAKO.qb,
+      ...(pr && haviOra ? { rendeltetes: 'egyeb' as const, termSzellozesHavi: haviOra.map((h, i) => h / klima.HONAP_ORAK[i]!) } : {}),
       CmEffFajl: p.zona.cmEffFajl ?? epuletfizika.HOTAROLO_KEPESSEG[p.zona.hotarolo].ertek,
       futesProgramozhato: p.zona.futesProgramozhato, elemek,
-      gepiSzellozes: gp.szellozes ? { etaR: gp.szellozes.etaR, uzemArany: gp.szellozes.uzemArany } : undefined,
+      gepiSzellozes: gp.szellozes ? { etaR: gp.szellozes.etaR, uzemArany: gp.szellozes.uzemArany, ...(pr ? { hasznalatiIdoben: true } : {}) } : undefined,
     }],
     futes, hmv: [hmv], szellozes,
+    ...(pr ? {
+      vilagitas,
+      referencia: {
+        nfilt: epuletfizika.nfilt({ legzaras: 'jo', elhelyezes: p.zona.elhelyezes }),
+        ...(p.meta.refHutes ? { hutesSEER: profilok.referenciaSEER(p.meta.refHutes.tipus, p.meta.refHutes.kW) } : {}),
+      },
+    } : {}),
     hutes: (gp.hutes ?? []).map(({ id: _i, szettKod: _s, ...h }) => ({ ...structuredClone(h), zona: 'F1' })),
     napelem: gp.napelem.map((n) => {
       const alap = { nev: n.nev, kWp: n.kWp, tajolas: n.tajolas, hajlasszog: n.hajlasszog };
@@ -529,6 +571,15 @@ export function atalakit(p: Projekt): Atalakitas {
     ...(gp.tavho ? { sulyozo: { tavho: { megnevezes: `Távhő – ${gp.tavho.szolgaltato}${gp.tavho.rendszer ? `, ${gp.tavho.rendszer}` : ''}`, fnren: gp.tavho.fnren, fren: gp.tavho.fren, ftot: gp.tavho.fnren + gp.tavho.fren, fCO2: gp.tavho.fCO2 } } } : {}),
   };
   return { bemenet, hibak, geometria: g };
+}
+
+/** Homlokzati üvegezési arány: függőleges külső nyílászárók / homlokzati falak bruttó felülete (12.7. táblázat). */
+export function uvegezesiAranyP(p: Projekt): number | null {
+  const falak = p.feluletek.filter((f) => f.fajta === 'opak' && f.hatar === 'kulso' && (f.hajlasszog ?? 90) === 90 && p.retegrendek.find((r) => r.id === f.retegrendId)?.szerep === 'fal');
+  const Afal = falak.reduce((a, f) => a + (f.A ?? 0), 0);
+  if (Afal <= 0) return null;
+  const Any = p.feluletek.filter((f) => f.fajta === 'nyilaszaro' && f.hatar === 'kulso' && (f.hajlasszog ?? 90) === 90).reduce((a, f) => { const n = p.nyilaszarok.find((x) => x.id === f.nyilaszaroId); return a + (n ? n.szelesseg * n.magassag * (f.darab ?? 1) : 0); }, 0);
+  return Any / Afal;
 }
 
 /** Az összevonható (azonos) felületek kulcsa; null: nem vonható össze. */

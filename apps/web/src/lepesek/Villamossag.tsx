@@ -2,7 +2,7 @@
  * Villamosság: beépített világítás (9/2023 ÉKM 1. függ. 12.1, lakóépületnél tájékoztató – az energiamérlegbe nem számítható be),
  * napelemek (13.2), egyéb villamos fogyasztók tételesen, és az éves villamos mérleg (tájékoztató önellátási arány).
  */
-import type { EpuletEredmeny } from '@mag/index';
+import { profilok, type EpuletEredmeny } from '@mag/index';
 import { Mezo, Szam, Szoveg, Valaszto, sz } from '../ui';
 import { ujId, type Projekt, type VillamosUI, type VillamosFogyaszto } from '../modell';
 import { NapelemSzakasz } from './Napelem';
@@ -68,9 +68,14 @@ export function VillamossagLepes({ p, modosit, eredmeny }: { p: Projekt; modosit
   const AN = eredmeny?.indikatorok.AN ?? p.helyisegek.reduce((a, h) => a + h.A, 0);
   const arany = uvegezesiArany(p);
   const Fn = fnappal(arany);
-  const vk = vilagitasKWh(vil, AN, Fn);
+  const egyeb = p.meta.rendeltetes === 'egyeb';
+  const pr = egyeb ? profilok.profil(p.meta.profil) ?? profilok.PROFILOK[1]! : null;
+  const vilR = eredmeny?.rendszerek.find((r) => r.cel === 'vilagitas');
+  const vk = egyeb ? { P: vilR?.reszletek.P ?? 0, W: vilR?.reszletek.W ?? 0 } : vilagitasKWh(vil, AN, Fn);
+  const vb = p.gepeszet.villamos?.vilagitasBeall ?? {};
+  const mvb = (fn: (b: NonNullable<VillamosUI['vilagitasBeall']>) => void) => mv((x) => { x.vilagitasBeall ??= {}; fn(x.vilagitasBeall); });
   const fogy = v.fogyasztok.reduce((a, f) => a + fogyasztoKWh(f), 0);
-  const gepeszetW = eredmeny?.indikatorok.vegenergia.villamos ?? 0;
+  const gepeszetW = (eredmeny?.indikatorok.vegenergia.villamos ?? 0) - (egyeb ? vk.W : 0);
   const pv = eredmeny?.napelem.reduce((a, n) => a + n.W, 0) ?? 0;
   const ossz = gepeszetW + vk.W + fogy;
   const ff = (id: string, fn: (f: VillamosFogyaszto) => void) => mv((x) => { const f = x.fogyasztok.find((y) => y.id === id); if (f) fn(f); });
@@ -79,6 +84,28 @@ export function VillamossagLepes({ p, modosit, eredmeny }: { p: Projekt; modosit
     <>
       <section class="szakasz">
         <h2>Beépített világítás</h2>
+        {egyeb && pr ? (<>
+        <p class="halk">Egyéb rendeltetésnél a beépített világítás energiafelhasználása <strong>beszámít</strong> az összesített energetikai jellemzőbe (1. függ. 12.1, egyszerűsített módszer). A referenciaépületben nem dimmelhető LED, parabolatükrös lámpatest és kézi kapcsolás szerepel (5. melléklet).</p>
+        <div class="racs">
+          <Mezo cim="Fényforrás" sugo="12.1. táblázat"><Valaszto ertek={vb.fenyforras ?? 'led'} valt={(x) => mvb((b) => { b.fenyforras = x; })} opciok={FENYFORRAS.map((x) => ({ ertek: x.kod, nev: `${x.nev} (${x.FH} lm/W)` }))} /></Mezo>
+          <Mezo cim="Lámpatest" sugo="12.2. táblázat"><Valaszto ertek={vb.lampatest ?? 'led'} valt={(x) => mvb((b) => { b.lampatest = x; })} opciok={LAMPATEST.map((x) => ({ ertek: x.kod, nev: `${x.nev} (η = ${String(x.eta).replace('.', ',')})` }))} /></Mezo>
+          <Mezo cim="Fényerő-szabályozhatóság" sugo="12.3. táblázat"><Valaszto ertek={vb.ffe ?? 'nem'} valt={(x) => mvb((b) => { b.ffe = x; })} opciok={FFE.map((x) => ({ ertek: x.kod, nev: `${x.nev} (Ffe = ${String(x.Ffe).replace('.', ',')})` }))} /></Mezo>
+          <Mezo cim="Kapcsolás, szabályozás" sugo="12.5. táblázat"><Valaszto ertek={vb.szabalyozas ?? 'kezi'} valt={(x) => mvb((b) => { b.szabalyozas = x as profilok.FszabKod; })} opciok={Object.entries(profilok.FSZAB).map(([k, x]) => ({ ertek: k, nev: x.nev }))} /></Mezo>
+          <Mezo cim="Üzemórák – épülettípus" sugo="12.6. táblázat"><Valaszto ertek={vb.vilTipus ?? pr.vilTipus} valt={(x) => mvb((b) => { b.vilTipus = x as profilok.VilagitasTipus; })} opciok={Object.entries(profilok.UZEMORA).map(([k, x]) => ({ ertek: k, nev: `${x.nev} (${x.tnappal} + ${x.tejjel} h/év)` }))} /></Mezo>
+          <Mezo cim="Kihasználtsági mutató" sugo="12.4. táblázat"><Valaszto ertek={vb.kihaszn ?? pr.kihaszn} valt={(x) => mvb((b) => { b.kihaszn = x as profilok.KihasznTipus; })} opciok={Object.entries(profilok.FKIHASZN).map(([k, x]) => ({ ertek: k, nev: `${x.nev} (${String(x.F).replace('.', ',')})` }))} /></Mezo>
+          <div class="mezo"><span>Megvilágítás MV</span><small>{pr.MV} lx – {pr.nev} (2. függ. 2.1.)</small></div>
+          <div class="mezo"><span>Vész- és készenléti fogyasztás</span>
+            <label><input type="checkbox" checked={!!vb.vesz} onChange={(e) => mvb((b) => { b.vesz = (e.target as HTMLInputElement).checked; })} /> vészvilágítás (1 kWh/m²év)</label>
+            <label><input type="checkbox" checked={!!vb.standby} onChange={(e) => mvb((b) => { b.standby = (e.target as HTMLInputElement).checked; })} /> vezérlés stand-by (1,5 kWh/m²év)</label>
+          </div>
+        </div>
+        <table class="tabla" style="max-width:640px;margin-top:12px"><tbody>
+          <tr><td>Homlokzati üvegezési arány → Fnappal (12.7)</td><td class="szam">{arany === null ? '–' : `${sz(arany * 100, 0)}%`} → {sz(Fn, 2)}</td></tr>
+          <tr><td>Fajlagos névleges teljesítmény P = MV / (FH · η) (12.2)</td><td class="szam">{sz(vk.P, 2)} W/m²</td></tr>
+          <tr><td>Szabályozási tényező Fszab (12.5)</td><td class="szam">{sz(vilR?.reszletek.Fszab ?? 0, 3)}</td></tr>
+          <tr><td><strong>Világítás éves villamosenergia-igénye (12.1) – beszámít</strong></td><td class="szam"><strong>{eredmeny ? `${sz(vk.W, 0)} kWh/év` : 'számítás után'}</strong></td></tr>
+        </tbody></table>
+        </>) : (<>
         <p class="halk">9/2023 ÉKM 1. függelék 12. fejezet: lakóépületnél a beépített világítás energiafelhasználása <strong>nem számítható be</strong> az energiamérlegbe (a tanúsítvány indikátoraiba sem). Az alábbi számítás a rendelet 12.1 egyszerűsített módszerével készül, tájékoztatásul – a villamos mérleghez és a napelem méretezéséhez. Lakóépületre a rendelet nem ad megvilágítási és üzemóra-értéket (2.1., 12.6. táblázat), ezek tervezői feltételezések.</p>
         <div class="racs">
           <Mezo cim="Fényforrás" sugo="12.1. táblázat"><Valaszto ertek={vil.fenyforras} valt={(x) => mvil((b) => { b.fenyforras = x; })} opciok={FENYFORRAS.map((x) => ({ ertek: x.kod, nev: `${x.nev} (${x.FH} lm/W)` }))} /></Mezo>
@@ -95,6 +122,7 @@ export function VillamossagLepes({ p, modosit, eredmeny }: { p: Projekt; modosit
           <tr><td>Nettó alapterület</td><td class="szam">{sz(AN, 1)} m²</td></tr>
           <tr><td><strong>Világítás éves villamosenergia-igénye (12.1, tájékoztató)</strong></td><td class="szam"><strong>{sz(vk.W, 0)} kWh/év</strong></td></tr>
         </tbody></table>
+        </>)}
       </section>
 
       <NapelemSzakasz p={p} modosit={modosit} eredmeny={eredmeny} />
@@ -134,7 +162,7 @@ export function VillamossagLepes({ p, modosit, eredmeny }: { p: Projekt; modosit
         <h2>Éves villamos mérleg (tájékoztató)</h2>
         <table class="tabla" style="max-width:640px"><tbody>
           <tr><td>Épületgépészet (fűtés, HMV, szellőzés, hűtés, segédenergia) – a tanúsítvány része</td><td class="szam">{sz(gepeszetW, 0)} kWh/év</td></tr>
-          <tr><td>Beépített világítás (12.1, tájékoztató)</td><td class="szam">{sz(vk.W, 0)} kWh/év</td></tr>
+          <tr><td>Beépített világítás (12.1{egyeb ? ', a tanúsítvány része' : ', tájékoztató'})</td><td class="szam">{sz(vk.W, 0)} kWh/év</td></tr>
           <tr><td>Egyéb fogyasztók</td><td class="szam">{sz(fogy, 0)} kWh/év</td></tr>
           <tr><td><strong>Villamosenergia-igény összesen</strong></td><td class="szam"><strong>{sz(ossz, 0)} kWh/év</strong></td></tr>
           <tr><td>Napelemes termelés (13.2)</td><td class="szam">{sz(pv, 0)} kWh/év</td></tr>

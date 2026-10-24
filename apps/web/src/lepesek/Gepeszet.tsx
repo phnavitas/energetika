@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
-import { GEPESZETI_SZETTEK, FUTES_SZETTEK, HMV_SZETTEK, SZELLOZES_SZETTEK, HUTES_SZETTEK, hutes as HT, gepeszet as T, szabalyozasiTenyezo, type EpuletEredmeny, type FutesiHotermelo, type HmvHotermelo, type RendszerEredmeny } from '@mag/index';
+import { GEPESZETI_SZETTEK, FUTES_SZETTEK, HMV_SZETTEK, SZELLOZES_SZETTEK, HUTES_SZETTEK, hutes as HT, profilok, gepeszet as T, szabalyozasiTenyezo, type EpuletEredmeny, type FutesiHotermelo, type HmvHotermelo, type RendszerEredmeny } from '@mag/index';
 import { Mezo, Szam, Szoveg, Valaszto, sz } from '../ui';
 import {
   ujId, futesSzettbol, hmvSzettbol, szellozesSzettbol, hutesSzettbol, erpFutes, erpHmv, szabalyozasErtek, szettNev,
@@ -197,7 +197,7 @@ export function GepeszetLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: M
 
       <section class="szakasz">
         <h2>Használati melegvíz</h2>
-        <p class="halk">A nettó HMV igény lakóépületre kötelezően {p.meta.kategoria === 'csaladi_haz' ? 25 : 30} kWh/m²a (2. függ. 2.2. táblázat).</p>
+        <p class="halk">{p.meta.rendeltetes === 'egyeb' ? 'A nettó HMV igény az Épület lépésben megadott rendeltetés és létszám (fő, ágy, dolgozó…) alapján (2. függ. 2.2. táblázat).' : `A nettó HMV igény lakóépületre kötelezően ${p.meta.kategoria === 'csaladi_haz' ? 25 : 30} kWh/m²a (2. függ. 2.2. táblázat).`}</p>
         <HmvKartya h={gp.hmv} r={hmvEredm} m={(fn) => mg((g) => fn(g.hmv))} szett={hmvSzett} />
       </section>
 
@@ -225,6 +225,17 @@ export function GepeszetLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: M
               torol={() => mg((g) => { g.hutes!.splice(i, 1); if (g.hutes!.length === 1) delete g.hutes![0]!.lefedes; })} />
           ))}
         </div>
+        {p.meta.rendeltetes === 'egyeb' && !!gp.hutes?.length && (() => {
+          const rh = p.meta.refHutes ?? { tipus: 'leg' as const, kW: 100 };
+          return (
+            <div class="racs" style="margin-top:12px">
+              <Mezo cim="Referencia hűtőgép (5. melléklet)" sugo={`SEER ${sz(profilok.referenciaSEER(rh.tipus, rh.kW), 2)} – a referenciaépületben 6/12 °C fan-coil`}>
+                <Valaszto ertek={rh.tipus} valt={(v) => modosit((q) => { q.meta.refHutes = { ...rh, tipus: v as 'leg' | 'viz' }; })} opciok={[{ ertek: 'leg', nev: 'Léghűtéses komfort folyadékhűtő' }, { ertek: 'viz', nev: 'Vízhűtéses komfort folyadékhűtő' }]} />
+              </Mezo>
+              <Mezo rovid cim="Hűtőteljesítmény"><Szam ertek={rh.kW} egyseg="kW" valt={(v) => modosit((q) => { q.meta.refHutes = { ...rh, kW: Math.max(0, v) }; })} /></Mezo>
+            </div>
+          );
+        })()}
         <div style="margin-top:12px">
           <SzettRacs cimke={gp.hutes?.length ? 'További hűtési rendszer' : 'Hűtés hozzáadása szettből'} lista={HUTES_SZETTEK} valaszt={(kod) => mg((g) => {
             const uj = hutesSzettbol(kod);

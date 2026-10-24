@@ -73,7 +73,7 @@ export function Belepes({ helyi }: { helyi: () => void }) {
       <form class="belepes kartya" onSubmit={kuld}>
         <div>
           <h1>Energetikai számítás</h1>
-          <p class="halk" style="margin-top:6px">9/2023 ÉKM, lakóépület. Lépj be az irodád projektjeihez és könyvtárához.</p>
+          <p class="halk" style="margin-top:6px">9/2023 ÉKM, lakó- és egyéb rendeltetésű épületek. Lépj be az irodád projektjeihez és könyvtárához.</p>
         </div>
         <div class="fulek" role="tablist">
           {([['belepes', 'Belépés'], ['regisztracio', 'Új fiók'], ['link', 'Belépési link']] as const).map(([k, n]) => (

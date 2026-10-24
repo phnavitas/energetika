@@ -3,7 +3,7 @@
  * ez kerül base64-ben. A pdfmake csak a jegyzőkönyv készítésekor töltődik be.
  */
 import type { Content, TableCell, TDocumentDefinitions } from 'pdfmake/interfaces';
-import { kovetelmeny, sulyozo, klima, epuletfizika, hoszukseglet as H, type EpuletEredmeny, type RendszerEredmeny, type NyilaszaroElem } from '@mag/index';
+import { kovetelmeny, sulyozo, klima, epuletfizika, profilok, hoszukseglet as H, type EpuletEredmeny, type RendszerEredmeny, type NyilaszaroElem } from '@mag/index';
 import {
   retegrendSzamitas, nyilaszaroAdatok, nyilaszaroGeometria, FOTO_KATEGORIAK, kovetelmenyNev, szabalyozasErtek, hoszuksegletBemenet,
   SZEREP_NEV, type Atalakitas, type Projekt, chiErvenyes } from './modell';
@@ -116,8 +116,8 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
         stack: [
           { text: `${besor.energetikai} – a követelmény ${f(besor.energetikaiSzazalek, 1)}%-a`, fontSize: 13, bold: true, margin: [0, 0, 0, 6] },
           tabla(['Mutató', 'Számított', 'Követelmény', 'Referencia', ''], [
-            ['Összesített energetikai jellemző Ep [kWh/m²a]', f(ind.fajlagos.EnrenFajl), f(k.EnrenMax), f(kovetelmeny.REFERENCIA_LAKO.EnrenFajl), megfelel(k.EnrenMegfelel)],
-            ['Fajlagos CO₂-kibocsátás [kg/m²a]', f(ind.fajlagos.ECO2Fajl), f(k.ECO2Max), f(kovetelmeny.REFERENCIA_LAKO.ECO2Fajl), megfelel(k.ECO2Megfelel)],
+            ['Összesített energetikai jellemző Ep [kWh/m²a]', f(ind.fajlagos.EnrenFajl), f(k.EnrenMax), f(e.referenciaEpulet.teljes ? e.referenciaEpulet.EnrenFajl : kovetelmeny.REFERENCIA_LAKO.EnrenFajl), megfelel(k.EnrenMegfelel)],
+            ['Fajlagos CO₂-kibocsátás [kg/m²a]', f(ind.fajlagos.ECO2Fajl), f(k.ECO2Max), f(e.referenciaEpulet.teljes ? e.referenciaEpulet.ECO2Fajl : kovetelmeny.REFERENCIA_LAKO.ECO2Fajl), megfelel(k.ECO2Megfelel)],
             ['Fajlagos hőveszteség-tényező q [W/m³K] (3.4.)', f(e.qm, 3), f(k.qmMax, 3), '–', megfelel(k.qmMegfelel)],
             ['Nyári hővédelmi mutató (3.5.)', e.nyariHovedelem.mutato === null ? 'nem kell' : f(e.nyariHovedelem.mutato, 3), f(kovetelmeny.NYARI_HOVEDELEM.megengedettAtlag, 2), '–', megfelel(e.nyariHovedelem.megfelel)],
             ['Szerkezetek elemi követelménye (2.4.)', `${e.szerkezetek.filter((s) => s.megfelel === false).length} hibás`, '0', '–', megfelel(e.szerkezetek.every((s) => s.megfelel !== false))],
@@ -221,7 +221,7 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
     const HszellF = zr.havi[0]?.Hszell ?? 0;
     tartalom.push(cim('Zóna alapadatai', 2));
     tartalom.push(adatsor([
-      ['Zóna', `${z.nev} – lakóépület, θF = ${z.thetaF} °C, θH = ${z.thetaH} °C`],
+      ['Zóna', `${z.nev} – ${p.meta.rendeltetes === 'egyeb' ? `egyéb rendeltetés: ${profilok.profil(p.meta.profil)?.nev ?? ''} (2. függ. 2.1.)` : 'lakóépület'}, θF = ${z.thetaF} °C, θH = ${z.thetaH} °C`],
       ['AN, V', `${f(z.AN)} m², ${f(z.V)} m³`],
       ['Légcsere', `nszüks = ${f(z.nSzuks)} 1/h, nfilt = ${f(z.nfilt)} 1/h${z.gepiSzellozes ? `, gépi szellőzés ηr = ${f(z.gepiSzellozes.etaR * 100, 0)}%` : ''}: Hszell = ${f(HszellF, 1)} W/K (6.10${z.gepiSzellozes ? ', 6.13–6.16' : ''})`],
       ['Belső hőnyereség', `qb = ${f(z.qb, 1)} W/m² (6.26)`],
@@ -322,6 +322,20 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
       f(r.tetelek.reduce((s2, t) => s2 + t.Q, 0), 0),
     ]), ['*', 55, 30, 40, 35, 35, 60], [1, 2, 3, 4, 5, 6]));
     tartalom.push(megj('QH,vég = QH,net · cH · εH,szab · εH,száll · εH, ahol εH = 1/SEER és egyszerűsített módszernél εH,száll = 1. Passzív talajhőcserélőnél 1 kWh segédenergia 10 kWh nettó hűtési igényt fedez (11.1.2).'));
+  }
+  const vilR = e.rendszerek.find((r) => r.cel === 'vilagitas');
+  if (vilR) {
+    tartalom.push(cim('Beépített világítás (12.1–12.2 képlet)', 2));
+    tartalom.push(adatsor(reszlet(vilR, [['P', 'Fajlagos névleges teljesítmény P [W/m²]', 2], ['Fszab', 'Szabályozási tényező Fszab (12.5.)', 3], ['wFajl', 'Fajlagos energiaigény [kWh/m²a]', 2], ['W', 'Éves villamos energia WV [kWh/a]', 0]])));
+    tartalom.push(megj('WV = (Ffe · P · Fszab · (tnappal · Fnappal + téjjel) / 1000 + wvész + wstandby) · A; P = MV / (FH · ηvil). Lakóépületnél nem számítható be.'));
+  }
+  if (e.referenciaEpulet.teljes) {
+    tartalom.push(cim('Referenciaépület (5. melléklet)', 2));
+    tartalom.push(adatsor([
+      ['Határolók', 'azonos geometria; U = 1. melléklet 1.1. elemi követelmény, talajon fekvő padló UT = 0,3, fűtésre g = 0,55, üvegezési arány tájolásonként ≤ 50% (tetőn ≤ 30%)'],
+      ['Rendszerek', 'kondenzációs gázkazán 55/45 °C, radiátor, termosztatikus szelep; HMV gázkazán indirekt tárolóval; gépi szellőzésnél 50% hővisszanyerés; hűtésnél 6/12 °C fan-coil, referencia SEER; világítás: nem dimmelhető LED, parabolatükrös lámpatest, kézi kapcsolás'],
+      ['Enren,REF / ECO2,REF', `${f(e.referenciaEpulet.EnrenFajl)} kWh/m²a / ${f(e.referenciaEpulet.ECO2Fajl)} kg/m²a`],
+    ], 120));
   }
   if (e.napelem.length) {
     tartalom.push(cim('Napelem (exportáltként elszámolva, 14.7)', 2));

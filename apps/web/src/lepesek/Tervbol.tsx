@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import type { Projekt, HelyisegKategoria } from '../modell';
+import { ujId as ujIdT, type Projekt, type HelyisegKategoria } from '../modell';
+const sz2 = (x: number) => x.toLocaleString('hu-HU', { maximumFractionDigits: 1 });
 import { Szam, Valaszto, sz } from '../ui';
 import { kategoriaJavaslat } from './Helyisegek';
 import { anyag } from '../katalogus';
@@ -219,6 +220,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     setOsszesFut(true);
     const futott = [...new Set(sor.flatMap(({ i }) => lapSzintek(i)).filter((x) => x !== 'P'))].sort((a, b) => SZINT_SOR.indexOf(a) - SZINT_SOR.indexOf(b));
     const uz: string[] = [];
+    const szintA = new Map<string, number>();
     modosit((q) => {
       sor.forEach(({ l, i }, n) => {
         const a = elemzesek[i] as AlaprajzFeldolgozas;
@@ -228,6 +230,26 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
         const e = a.e.eszak ? norm(a.e.eszak.szog + eszakJavitas(a.e.eszak.alairas)) : eszakSz;
         const u = egyAtvetel(q, a, k, { csere: n === 0 ? csere : false, padloAt: !!futott.length && sz.includes(futott[0]!), tetoAt: !!futott.length && sz.includes(futott.at(-1)!), eszak: i === aIdx ? eszakSz : e, szintek: sz, fajl: l.fajl });
         uz.push(`${l.cim || l.fajl}: ${atvetelReszek(a, k).helyisegek.length} helyiség${sz.length > 1 ? ` × ${sz.length} szint` : ''}`, ...u.filter((x) => !/azonos felület összevonva/.test(x)));
+        for (const s0 of sz) if (s0 !== 'P') szintA.set(s0, (szintA.get(s0) ?? 0) + atvetelReszek(a, k).helyisegek.filter((h) => h.kategoria !== 'gyengen_kapcsolt').reduce((t, h) => t + h.A, 0));
+      });
+      // szintkülönbségek: ami egy szinten túlnyúlik a felette lévőn, annak a teteje lapostető; ami az alatta lévőn, annak az alja konzol/árkád feletti födém
+      const sorrend = futott.filter((x) => szintA.has(x));
+      const rr = (kod: string) => q.retegrendek.find((r) => r.tervbol && r.kovetelmenyKod === kod);
+      const lapos = rr('lapostető'), arkad = rr('arkadfodem');
+      sorrend.forEach((s0, j) => {
+        const A = szintA.get(s0)!;
+        const fol = j < sorrend.length - 1 ? szintA.get(sorrend[j + 1]!)! : null;
+        const ala = j > 0 ? szintA.get(sorrend[j - 1]!)! : null;
+        if (fol !== null && A - fol > 1) {
+          const dA = Math.round((A - fol) * 100) / 100;
+          q.feluletek.push({ id: ujIdT(), nev: `Lapostető – ${szintNev(s0)} felett (felső szinten túlnyúló rész)`, fajta: 'opak', retegrendId: lapos?.id, hatar: 'kulso', A: dA, tajolas: null, hajlasszog: 0, chi: 0.1 });
+          uz.push(`${szintNev(s0)}: ${sz2(dA)} m² nyúlik túl a felette lévő szinten → lapostető${lapos ? ` (${lapos.nev})` : ' – a metszeten nincs lapostető-rétegrend, a Határolás lépésben válassz'}. A terület a helyiségek nettó alapterületének különbsége – a tényleges tetőfelülettel ellenőrizd.`);
+        }
+        if (ala !== null && A - ala > 1) {
+          const dA = Math.round((A - ala) * 100) / 100;
+          q.feluletek.push({ id: ujIdT(), nev: `Födém – ${szintNev(s0)} alatt, külső levegő felett (konzol, árkád)`, fajta: 'opak', retegrendId: arkad?.id, hatar: 'kulso', A: dA, tajolas: null, hajlasszog: 0, chi: 0.1 });
+          uz.push(`${szintNev(s0)}: ${sz2(dA)} m² nyúlik túl az alatta lévő szinten → árkád / konzol feletti födém${arkad ? ` (${arkad.nev})` : ' – a metszeten nincs ilyen rétegrend, a Határolás lépésben válassz'}.`);
+        }
       });
     });
     if (pecset && pecsetBe) modosit((q) => pecsetAtvesz(q, pecset));

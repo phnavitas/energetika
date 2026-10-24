@@ -4,6 +4,7 @@
 import { HONAP_ORAK, KULSO_HOMERSEKLET_HAVI, KULSO_HOMERSEKLET_EVES, sugarzasiHozam, type Tajolas, type Hajlasszog } from './tablak/klima.js';
 import { bErtek, type BTenyezoKod, HASZNOSITAS, F_UVEGEZES_BEESESI, B_EJJEL, HOTAROLO_KEPESSEG, sigmaFLako } from './tablak/epuletfizika.js';
 import type { Figyelmeztetes } from './interpolacio.js';
+import { sigmaFEgyeb } from './tablak/profilok.js';
 
 export type Hatar = { tipus: 'kulso' } | { tipus: 'futetlen'; b: BTenyezoKod } | { tipus: 'futetlen_b'; bTel: number; bNyar: number };
 
@@ -18,6 +19,8 @@ export interface OpakElem {
   hatar: Hatar;
   /** 1. melléklet 1.1. követelmény sorkódja (pl. 'homlokzati_fal'). */
   kovetelmenyKod?: string;
+  /** Homlokzati falnál a tájolás (a referenciaépület üvegezési arányához). */
+  tajolas?: Tajolas | null;
 }
 
 export interface NyilaszaroElem {
@@ -35,6 +38,8 @@ export interface NyilaszaroElem {
   Au?: number;
   keretarany?: number;
   gn: number;
+  /** Fűtési módban eltérő g (referenciaépület: 0,55 – 5. melléklet); alapérték gn. */
+  gnFutes?: number;
   /** Hűtési módban a társított napvédő gárny,H (2. függ. 4.5.); fűtésnél 1. */
   garnyH?: number;
   /** Külső akadályok összesített árnyékoltsági tényezője havonta (Fh·Fv·Ff), alapérték 1. */
@@ -86,6 +91,10 @@ export interface ZonaBemenet {
   nEjjel?: number;
   /** Lakóépület: a természetes szellőzés a használati idő teljes hányadában (Δtterm/Δt = 1). */
   termSzellozesIdoarany?: number;
+  /** Havonta eltérő használati időarány (pl. oktatás: júl.–aug. 0) – felülírja a termSzellozesIdoarany-t. */
+  termSzellozesHavi?: readonly number[];
+  /** Rendeltetés: a szakaszos fűtés σF-je (2. függ. 2.5.) ettől függ; alapérték lakó. */
+  rendeltetes?: 'lako' | 'egyeb';
   /** Gépi szellőzés hővisszanyeréssel, állandó térfogatárammal, külső levegő beszívásával (6.12, 6.13–6.16).
    * A friss levegő térfogatárama lakóépületnél kötelezően nszüks·V (2. függ. 2.1.). Hűtési módban a hővisszanyerés
    * nem vehető figyelembe (6.15, egyszerűsített módszer). */
@@ -94,6 +103,8 @@ export interface ZonaBemenet {
     etaR: number;
     /** A gépi szellőzés üzemidejének aránya a fűtési időszakban (tLT/t); a többi időben természetes szellőzés (6.14). */
     uzemArany?: number;
+    /** Egyéb rendeltetés: a gépi szellőzés a használati időben üzemel (havonta a használati időarány). */
+    hasznalatiIdoben?: boolean;
   };
   elemek: HataroloElem[];
 }
@@ -157,22 +168,23 @@ export function zonaHaviMerleg(z: ZonaBemenet, opciok?: { QsdFelulbiralas?: read
   if (z.CmEff === undefined && z.CmEffFajl === undefined) {
     fw.push({ kod: 'HOTAROLO_ALAPERTEK', uzenet: 'Hőtároló képesség nincs megadva; közepesen nehéz épület (190 kJ/m²K) alapértéket használtunk.', forras: '1. függ. 6.5. táblázat' });
   }
-  const termArany = z.termSzellozesIdoarany ?? 1;
+  const termHavi = (m: number) => z.termSzellozesHavi?.[m] ?? z.termSzellozesIdoarany ?? 1;
 
   // Állandó tagok
   let HtrT = 0;
   for (const e of z.elemek) {
     if (e.tipus === 'talaj') HtrT += e.A * e.UT + e.P * e.psiPF + (e.pinceFal ? e.pinceFal.z * e.P * e.pinceFal.UTpf : 0);
   }
-  const HszellTerm = 0.35 * (z.nSzuks * termArany + z.nfilt) * z.V; // 6.10
-  let HszellF = HszellTerm;
-  if (z.gepiSzellozes) {
+  const HszellTermHavi = (m: number) => 0.35 * (z.nSzuks * termHavi(m) + z.nfilt) * z.V; // 6.10
+  const HszellFHavi = (m: number) => {
+    if (!z.gepiSzellozes) return HszellTermHavi(m);
     const g = z.gepiSzellozes;
     if (!(g.etaR >= 0 && g.etaR < 1)) throw new Error('A hővisszanyerő hatásfoka 0 és 1 közé essen.');
-    const ar = Math.min(Math.max(g.uzemArany ?? 1, 0), 1);
-    // 6.13–6.16 és 6.19: gépi üzemben (1 − ηr), üzemszünetben természetes szellőzés
-    HszellF = 0.35 * (z.nSzuks * z.V * (ar * (1 - g.etaR) + (1 - ar) * termArany) + z.nfilt * z.V);
-  }
+    const t = termHavi(m);
+    const ar = g.hasznalatiIdoben ? t : Math.min(Math.max(g.uzemArany ?? 1, 0), 1);
+    // 6.13–6.16 és 6.19: gépi üzemben (1 − ηr), a használati idő többi részében természetes szellőzés
+    return 0.35 * (z.nSzuks * z.V * (ar * (1 - g.etaR) + Math.max(0, t - ar)) + z.nfilt * z.V);
+  };
 
   const havi: HaviEredmeny[] = [];
   for (let m = 0; m < 12; m++) {
@@ -194,9 +206,8 @@ export function zonaHaviMerleg(z: ZonaBemenet, opciok?: { QsdFelulbiralas?: read
           const Gs = sugarzasiHozam(e.tajolas, e.hajlasszog, m);
           const F = e.Farny?.[m] ?? 1;
           const Au = uvegFelulet(e);
-          const g = F_UVEGEZES_BEESESI * e.gn;
-          Qsd += Au * g * 1 * F * Gs;
-          QsdH += Au * g * (e.garnyH ?? 1) * F * Gs;
+          Qsd += Au * F_UVEGEZES_BEESESI * (e.gnFutes ?? e.gn) * 1 * F * Gs;
+          QsdH += Au * F_UVEGEZES_BEESESI * e.gn * (e.garnyH ?? 1) * F * Gs;
         }
       } else if (e.tipus === 'vonal') {
         const H = e.l * e.psi;
@@ -209,10 +220,11 @@ export function zonaHaviMerleg(z: ZonaBemenet, opciok?: { QsdFelulbiralas?: read
     if (opciok?.QsdFelulbiralas) { Qsd = opciok.QsdFelulbiralas[m]!; }
 
     // Fűtés
+    const HszellF = HszellFHavi(m);
     const Qtr = ((HtrD + HtrX) * (z.thetaF - thetaE) + HtrT * (z.thetaF - KULSO_HOMERSEKLET_EVES)) * dt / 1000; // 6.7
     const Qszell = HszellF * (z.thetaF - thetaE) * dt / 1000; // 6.20
     const tau = CmEff / 3.6 / (HtrD + HtrX + HtrT + HszellF); // 6.34
-    const sigma = sigmaFLako(!!z.futesProgramozhato, tau);
+    const sigma = z.rendeltetes === 'egyeb' ? sigmaFEgyeb(!!z.futesProgramozhato, tau) : sigmaFLako(!!z.futesProgramozhato, tau);
     const Qveszt = sigma * (Qtr + Qszell); // 6.33
     const Qb = z.AN * z.qb * dt / 1000; // 6.26
     const Qnyer = Qsd + Qb; // 6.29
@@ -224,7 +236,7 @@ export function zonaHaviMerleg(z: ZonaBemenet, opciok?: { QsdFelulbiralas?: read
 
     // Hűtés (nyári b, nyári éjszakai szellőztetés máj–szept, társított napvédő)
     const nyar = m >= 4 && m <= 8;
-    const HszellH = HszellTerm + (nyar && z.nEjjel ? 0.35 * B_EJJEL * (7 / 24) * z.nEjjel * z.V : 0); // 6.11
+    const HszellH = HszellTermHavi(m) + (nyar && z.nEjjel ? 0.35 * B_EJJEL * (7 / 24) * z.nEjjel * z.V : 0); // 6.11
     const Qlead = (((HtrD_H + HtrX_H) * (z.thetaH - thetaE) + HtrT * (z.thetaH - KULSO_HOMERSEKLET_EVES)) + HszellH * (z.thetaH - thetaE)) * dt / 1000;
     const Qterh = QsdH + Qb;
     const gammaH = Qterh / Qlead;

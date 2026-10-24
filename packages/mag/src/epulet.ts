@@ -1,8 +1,9 @@
 /**
  * Teljes épület számítása, követelmények és besorolás – 1. függ. 3. fejezet lépései szerint.
  */
-import { zonaHaviMerleg, type ZonaBemenet, type ZonaEredmeny, type NyilaszaroElem } from './energiamerleg.js';
-import { futesiRendszer, hmvRendszer, szellozesRendszer, hutesRendszer, szabalyozasiTenyezo, type FutesiAlrendszer, type HmvRendszer, type SzellozesRendszer, type HutesRendszer, type RendszerEredmeny } from './rendszerek.js';
+import { zonaHaviMerleg, type ZonaBemenet, type ZonaEredmeny, type NyilaszaroElem, type OpakElem, type HataroloElem } from './energiamerleg.js';
+import { futesiRendszer, hmvRendszer, szellozesRendszer, hutesRendszer, vilagitasRendszer, szabalyozasiTenyezo, type FutesiAlrendszer, type HmvRendszer, type SzellozesRendszer, type HutesRendszer, type VilagitasBemenet, type RendszerEredmeny } from './rendszerek.js';
+import { FENYHASZNOSITAS, LAMPATEST_ETA, FFE } from './tablak/profilok.js';
 import { napelemTermeles } from './tablak/gepeszet.js';
 import type { Energiahordozo, Sulyozo } from './tablak/sulyozo.js';
 import { indikatorok, type Indikatorok } from './indikatorok.js';
@@ -17,7 +18,8 @@ export type KovetelmenySzint = 'kozel_nulla' | 'jelentos_felujitas' | 'meglevo';
 
 export interface EpuletBemenet {
   nev: string;
-  rendeltetes: 'lakoepulet';
+  /** 'lakoepulet': lakó és szállás jellegű; 'egyeb': egyéb rendeltetés – referenciaépülettel (2. melléklet 2.3, 5. melléklet), világítással. */
+  rendeltetes: 'lakoepulet' | 'egyeb';
   /** Hasznos alapterület (176/2008 szerint) [m²]. */
   AN: number;
   /** Fűtött térfogat belméretekkel [m³]. */
@@ -34,6 +36,8 @@ export interface EpuletBemenet {
   hutes?: (HutesRendszer & { zona?: string })[];
   /** Napelemek – exportáltként elszámolva (13.1, 14.7). */
   napelem?: NapelemBemenet[];
+  /** Beépített világítás (12.1) – csak egyéb rendeltetésnél számít be. */
+  vilagitas?: VilagitasBemenet[];
   /** Referencia rendszer felülbírálásai (alapértelmezés: 5. melléklet szerint a tárgyi épületből levezetve). */
   referencia?: Partial<ReferenciaBeallitas>;
   /** Súlyozó tényezők felülbírálása (8. § (1): a távhőszolgáltató által közzétett érték). Csak a tárgyi épületre. */
@@ -51,6 +55,10 @@ export interface ReferenciaBeallitas {
   futesElosztasHely: 'belul' | 'kivul';
   hmvElosztasHely: 'belul' | 'kivul';
   holeadokTobbMint10: boolean;
+  /** Egyéb rendeltetés: a referenciaépület tömítetlenségi légcseréje (jó légzárású nyílászárók, 2. függ. 2.4.). */
+  nfilt?: number;
+  /** Egyéb rendeltetés: a referencia hűtőgép SEER-je (5. melléklet: léghűtéses komfort folyadékhűtő < 400 kW: 3,8). */
+  hutesSEER?: number;
 }
 
 export interface SzerkezetErtekeles {
@@ -62,6 +70,8 @@ export interface SzerkezetErtekeles {
   minosites: Minosites | null;
   A: number;
 }
+
+export interface RendszerMinosites { Enren: number; EnrenRef: number; szazalek: number; minosites: Minosites }
 
 export interface EpuletEredmeny {
   zonak: ZonaEredmeny[];
@@ -84,8 +94,11 @@ export interface EpuletEredmeny {
   nyariHovedelem: { erintettFelulet: number; arany: number; mutato: number | null; megfelel: boolean };
   szerkezetek: SzerkezetErtekeles[];
   /** 4. melléklet 2.9: azonos geometriájú és határolású épület a referencia épülettechnikai rendszerrel (természetes szellőzéssel). */
-  referenciaEpulet: { Enren: number; EnrenFajl: number; ECO2Fajl: number };
-  rendszerErtekeles: { futes: { Enren: number; EnrenRef: number; szazalek: number; minosites: Minosites } | null; hmv: { Enren: number; EnrenRef: number; szazalek: number; minosites: Minosites } | null };
+  referenciaEpulet: { Enren: number; EnrenFajl: number; ECO2Fajl: number; /** egyéb rendeltetésnél a teljes 5. melléklet szerinti referenciaépület */ teljes?: boolean; rendszerek?: RendszerEredmeny[]; zonak?: ZonaEredmeny[] };
+  rendszerErtekeles: {
+    futes: RendszerMinosites | null; hmv: RendszerMinosites | null;
+    hutes?: RendszerMinosites | null; vilagitas?: RendszerMinosites | null;
+  };
   figyelmeztetesek: Figyelmeztetes[];
 }
 
@@ -125,6 +138,62 @@ function referenciaRendszerek(b: EpuletBemenet, zonaQ: Map<string, number>): Ren
     cirkSzivattyu: 'EEI_023',
   });
   return [futes, hmv];
+}
+
+const UMAX = (kod: string | undefined) => (kod ? U_KOVETELMENYEK.find((x) => x.kod === kod)?.Umax : undefined);
+const TETO_KODOK = new Set(['lapostető', 'futott_tetoter']);
+
+/**
+ * 5. melléklet – egyéb rendeltetésű referenciaépület zónája: azonos geometria, határolás, tájolás és használat;
+ * a határolók U-értéke az 1. melléklet 1.1. elemi követelménye (a csatlakozási hőhidak a tárgyi épület szerint),
+ * talajon fekvő padló UT = 0,3; fűtésre g = 0,55 (hűtésre a tárgyi épület g-je és árnyékolása);
+ * üvegezési arány tájolásonként legfeljebb 50% (60°-nál kisebb hajlásnál 30%); programozható fűtés;
+ * jó légzárású nyílászárók; gépi szellőzésnél 50% hővisszanyerés.
+ */
+function referenciaZona(z: ZonaBemenet, nfilt: number, fw: Figyelmeztetes[]): ZonaBemenet {
+  const elemek: HataroloElem[] = z.elemek.map((e) => {
+    if (e.tipus === 'opak') { const U = UMAX(e.kovetelmenyKod); return U !== undefined ? { ...e, U } : { ...e }; }
+    if (e.tipus === 'nyilaszaro') {
+      const U = UMAX(e.kovetelmenyKod) ?? e.U;
+      const { UFutes: _u, ...r } = e;
+      return { ...r, U, gnFutes: 0.55 };
+    }
+    if (e.tipus === 'talaj') {
+      const U = UMAX(e.kovetelmenyKod) ?? 0.3;
+      return { ...e, UT: U, ...(e.pinceFal ? { pinceFal: { ...e.pinceFal, UTpf: 0.3 } } : {}) };
+    }
+    return { ...e };
+  });
+  // üvegezési arány korlátja – homlokzati falak tájolásonként, tetők összesen
+  const kulso = (e: HataroloElem) => 'hatar' in e && e.hatar.tipus === 'kulso';
+  const ablakok = elemek.filter((e): e is NyilaszaroElem => e.tipus === 'nyilaszaro' && kulso(e));
+  const csoportok = new Map<string, { ny: NyilaszaroElem[]; fal: OpakElem[]; max: number }>();
+  // ha a homlokzati falak tájolása nincs megadva, a korlát a teljes homlokzatra vonatkozik
+  const tajolasNelkul = elemek.some((e) => e.tipus === 'opak' && kulso(e) && e.kovetelmenyKod === 'homlokzati_fal' && !e.tajolas);
+  const falKulcs = (t: string | null | undefined) => (tajolasNelkul ? 'fal|összes' : `fal|${t ?? '-'}`);
+  for (const n of ablakok) {
+    const k = n.hajlasszog < 60 ? 'teto' : falKulcs(n.tajolas);
+    const c = csoportok.get(k) ?? { ny: [], fal: [], max: n.hajlasszog < 60 ? 0.3 : 0.5 };
+    c.ny.push(n); csoportok.set(k, c);
+  }
+  for (const e of elemek) {
+    if (e.tipus !== 'opak' || !kulso(e)) continue;
+    if (TETO_KODOK.has(e.kovetelmenyKod ?? '')) csoportok.get('teto')?.fal.push(e);
+    else if (e.kovetelmenyKod === 'homlokzati_fal') csoportok.get(falKulcs(e.tajolas))?.fal.push(e);
+  }
+  for (const [k, c] of csoportok) {
+    const An = c.ny.reduce((s, n) => s + n.A, 0), Af = c.fal.reduce((s, f) => s + f.A, 0);
+    if (An <= 0 || An / (An + Af) <= c.max) continue;
+    if (Af <= 0) { fw.push({ kod: 'REF_UVEGARANY', uzenet: `Referenciaépület: a(z) ${k === 'teto' ? 'tető' : k.split('|')[1] + ' homlokzat'} üvegezési aránya nem korlátozható – nincs azonos tájolású opak felület megadva.`, forras: '9/2023 ÉKM 5. melléklet' }); continue; }
+    const kf = (c.max * (An + Af)) / An, dA = An - c.max * (An + Af);
+    for (const n of c.ny) { n.A *= kf; if (n.Au !== undefined) n.Au *= kf; }
+    for (const f of c.fal) f.A += dA * (f.A / Af);
+  }
+  const { gepiSzellozes, ...zz } = z;
+  return {
+    ...zz, elemek, nfilt, futesProgramozhato: true,
+    ...(gepiSzellozes ? { gepiSzellozes: { ...gepiSzellozes, etaR: 0.5 } } : {}),
+  };
 }
 
 function nyariHovedelem(zonak: ZonaBemenet[], AN: number) {
@@ -174,6 +243,10 @@ export function epuletSzamitas(b: EpuletBemenet, opciok?: SzamitasiOpciok): Epul
     if (!z) throw new Error(`Ismeretlen zóna a hűtési rendszerben: ${h.zona}`);
     rendszerek.push(hutesRendszer(z.QHnetEv, h));
   }
+  const egyeb = b.rendeltetes === 'egyeb';
+  if (egyeb) for (const v of b.vilagitas ?? []) rendszerek.push(vilagitasRendszer(v));
+  else if (b.vilagitas?.length) fw.push({ kod: 'VILAGITAS_LAKO', uzenet: 'Lakó és szállás jellegű épületnél a beépített világítás nem számítható be az energiamérlegbe.', forras: '1. függ. 12. fejezet' });
+  if (egyeb && !(b.vilagitas ?? []).length) fw.push({ kod: 'VILAGITAS_HIANYZIK', uzenet: 'Egyéb rendeltetésű épület: a beépített világítás energiaigénye kötelező része a számításnak – add meg a Villamosság lépésben.', forras: '1. függ. 3.1, 12. fejezet' });
   rendszerek.forEach((r) => fw.push(...r.figyelmeztetesek));
 
   const napelem = (b.napelem ?? []).map((n) => ({ nev: n.nev, W: n.reszletes ? n.reszletes.Wev : napelemTermeles(n.kWp, n.tajolas, n.hajlasszog), modszer: n.reszletes ? 'reszletes' as const : 'tabla' as const }));
@@ -189,8 +262,29 @@ export function epuletSzamitas(b: EpuletBemenet, opciok?: SzamitasiOpciok): Epul
   const qm = zonak.reduce((s, z, i) => s + z.q * b.zonak[i]!.V, 0) / b.zonak.reduce((s, z) => s + z.V, 0);
   const qFnet = zonak.reduce((s, z) => s + z.QFnetEv, 0) / b.AN;
 
-  const kn = { EnrenMax: KOZEL_NULLA_LAKO.EnrenFajlMax, ECO2Max: KOZEL_NULLA_LAKO.ECO2FajlMax, qmMax: qmMaxKozelNulla(aV) };
-  const jf = { EnrenMax: EnrenMaxFelujitasLako(aV), qmMax: qmMaxFelujitas(aV) };
+  // Egyéb rendeltetés: 5. melléklet szerinti referenciaépület és referencia épülettechnikai rendszer
+  let refTeljes: { ind: Indikatorok; rendszerek: RendszerEredmeny[]; zonak: ZonaEredmeny[] } | null = null;
+  if (egyeb) {
+    const rzonak = b.zonak.map((z) => referenciaZona(z, b.referencia?.nfilt ?? 0.06, fw));
+    const rz = rzonak.map((z) => zonaHaviMerleg(hutottZonak.has(z.nev) ? { ...z, hutott: true } : z));
+    const rQ = new Map(rz.map((z) => [z.nev, z.QFnetEv]));
+    const rr: RendszerEredmeny[] = [...referenciaRendszerek(b, rQ)];
+    // gépi szellőzés: azonos légmennyiség, üzemidő és segédenergia
+    for (const s of b.szellozes ?? []) rr.push(szellozesRendszer(s));
+    // hűtés: a tárgyi épületben hűtött zónákban, 6/12 °C fan-coil, referencia SEER
+    for (const h of b.hutes ?? []) {
+      const z = rz.find((x) => x.nev === (h.zona ?? b.zonak[0]?.nev));
+      if (z) rr.push(hutesRendszer(z.QHnetEv, { nev: 'Referencia hűtés', gep: { tipus: 'seer', SEER: b.referencia?.hutesSEER ?? 3.8, energiahordozo: 'villamos' }, cH: 'fancoil_6_12', szab: 'viz_6_12', lefedes: h.lefedes, segedKWh: h.segedKWh }));
+    }
+    // világítás: üvegburás parabolatükrös lámpatest, nem dimmelhető LED, kézi be- és kikapcsolás
+    for (const v of b.vilagitas ?? []) rr.push(vilagitasRendszer({ ...v, nev: 'Referencia világítás', FH: FENYHASZNOSITAS.led, etaVil: LAMPATEST_ETA.parabola, Ffe: FFE.nem, szabalyozas: 'kezi' }));
+    refTeljes = { ind: indikatorok(rr, b.AN), rendszerek: rr, zonak: rz };
+  }
+  const Eref = refTeljes?.ind.fajlagos.EnrenFajl ?? 0, Cref = refTeljes?.ind.fajlagos.ECO2Fajl ?? 0;
+  const kn = egyeb
+    ? { EnrenMax: 0.8 * Eref, ECO2Max: 0.8 * Cref, qmMax: qmMaxKozelNulla(aV) } // 2. melléklet 2.3, 3.3
+    : { EnrenMax: KOZEL_NULLA_LAKO.EnrenFajlMax, ECO2Max: KOZEL_NULLA_LAKO.ECO2FajlMax, qmMax: qmMaxKozelNulla(aV) };
+  const jf = { EnrenMax: egyeb ? Eref : EnrenMaxFelujitasLako(aV), qmMax: qmMaxFelujitas(aV) }; // 3. melléklet 2.4
   const E = ind.fajlagos.EnrenFajl, C = ind.fajlagos.ECO2Fajl;
   const knTeljesul = E <= kn.EnrenMax && C <= kn.ECO2Max && qm <= kn.qmMax;
   const jfTeljesul = E <= jf.EnrenMax && qm <= jf.qmMax;
@@ -231,6 +325,7 @@ export function epuletSzamitas(b: EpuletBemenet, opciok?: SzamitasiOpciok): Epul
   const refEpInd = refZonaQ === zonaQ ? refInd : indikatorok(referenciaRendszerek(b, refZonaQ), b.AN);
   const fE = ind.celonkent.futes.nren, fR = refInd.celonkent.futes.nren;
   const hE = ind.celonkent.hmv.nren, hR = refInd.celonkent.hmv.nren;
+  const rm = (tipus: 'hutes' | 'vilagitas', E0: number, R0: number): RendszerMinosites | null => (R0 > 0 ? { Enren: E0, EnrenRef: R0, szazalek: (E0 / R0) * 100, minosites: rendszerMinosites(tipus, (E0 / R0) * 100) } : null);
 
   return {
     zonak, rendszerek, napelem, indikatorok: ind, aV, qm, qFnet,
@@ -244,10 +339,16 @@ export function epuletSzamitas(b: EpuletBemenet, opciok?: SzamitasiOpciok): Epul
     besorolas: { energetikai: besorolas(energSzaz), energetikaiSzazalek: energSzaz, CO2: besorolas(co2Szaz), CO2Szazalek: co2Szaz },
     nyariHovedelem: nyariHovedelem(b.zonak, b.AN),
     szerkezetek,
-    referenciaEpulet: { Enren: refEpInd.osszes.nren, EnrenFajl: refEpInd.fajlagos.EnrenFajl, ECO2Fajl: refEpInd.fajlagos.ECO2Fajl },
+    referenciaEpulet: refTeljes
+      ? { Enren: refTeljes.ind.osszes.nren, EnrenFajl: Eref, ECO2Fajl: Cref, teljes: true, rendszerek: refTeljes.rendszerek, zonak: refTeljes.zonak }
+      : { Enren: refEpInd.osszes.nren, EnrenFajl: refEpInd.fajlagos.EnrenFajl, ECO2Fajl: refEpInd.fajlagos.ECO2Fajl },
     rendszerErtekeles: {
       futes: fR > 0 ? { Enren: fE, EnrenRef: fR, szazalek: (fE / fR) * 100, minosites: rendszerMinosites('futes', (fE / fR) * 100) } : null,
       hmv: hR > 0 ? { Enren: hE, EnrenRef: hR, szazalek: (hE / hR) * 100, minosites: rendszerMinosites('hmv', (hE / hR) * 100) } : null,
+      ...(refTeljes ? {
+        hutes: rm('hutes', ind.celonkent.hutes.nren, refTeljes.ind.celonkent.hutes.nren),
+        vilagitas: rm('vilagitas', ind.celonkent.vilagitas.nren, refTeljes.ind.celonkent.vilagitas.nren),
+      } : {}),
     },
     figyelmeztetesek: fw,
   };

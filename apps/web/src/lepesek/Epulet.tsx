@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks';
-import { panel, epuletfizika, tipologia as TP } from '@mag/index';
+import { panel, epuletfizika, profilok, tipologia as TP } from '@mag/index';
 import { Mezo, Szoveg, Szam, Valaszto, sz } from '../ui';
 import { ujId, type Projekt } from '../modell';
 import { tipologiaRetegrend, SZIG_VALASZTEK, type SzigBeallitas } from '../tipologiaRetegek';
@@ -24,6 +24,8 @@ export function EpuletLepes({ p, modosit }: { p: Projekt; modosit: Modosit }) {
   const [kieg, setKieg] = useState<number>(0);
   const tipusok = panel.PANEL_TIPUSOK.filter((t) => m.epitesiEv >= t.gyartasKezdete - 1 && m.epitesiEv <= (t.gyartasVege ?? 1995) + 1);
   const valasztott = panel.PANEL_TIPUSOK.find((t) => t.id === panelId);
+  const egyeb = m.rendeltetes === 'egyeb';
+  const pr = egyeb ? profilok.profil(m.profil) ?? profilok.PROFILOK[1]! : null;
 
   function betolt() {
     if (!valasztott) return;
@@ -58,11 +60,24 @@ export function EpuletLepes({ p, modosit }: { p: Projekt; modosit: Modosit }) {
 
       <section class="szakasz">
         <h2>Rendeltetés és követelmény</h2>
-        <p class="halk">Lakóépületre a referenciaérték rögzített (95 kWh/m²a, 25 kg/m²a); a HMV nettó igényt a rendeltetés határozza meg.</p>
+        <p class="halk">{egyeb
+          ? 'Egyéb rendeltetésnél a követelmény az 5. melléklet szerinti referenciaépületből adódik (azonos geometria, követelményszintű szerkezetek, referencia rendszerek); a beépített világítás beszámít. A használati profil a 2. függelék 2.1. táblázatának ajánlott értékei.'
+          : 'Lakóépületre a referenciaérték rögzített (95 kWh/m²a, 25 kg/m²a); a HMV nettó igényt a rendeltetés határozza meg; a világítás nem számít be.'}</p>
         <div class="racs">
-          <Mezo cim="Épülettípus" sugo={`HMV nettó igény: ${epuletfizika.HMV_LAKO[m.kategoria]} kWh/m²a (2. függ. 2.2.)`}>
-            <Valaszto ertek={m.kategoria} valt={(v) => modosit((q) => { q.meta.kategoria = v; })} opciok={[{ ertek: 'csaladi_haz', nev: 'Családi ház' }, { ertek: 'egyeb_lakoepulet', nev: 'Egyéb lakóépület (társasház, lakás)' }]} />
+          <Mezo cim="Rendeltetés">
+            <Valaszto ertek={egyeb ? 'egyeb' : m.kategoria} valt={(v) => modosit((q) => {
+              if (v === 'egyeb') { q.meta.rendeltetes = 'egyeb'; q.meta.profil ??= 'nagy_iroda'; }
+              else { q.meta.rendeltetes = 'lako'; q.meta.kategoria = v as typeof m.kategoria; }
+            })} opciok={[{ ertek: 'csaladi_haz', nev: 'Lakóépület – családi ház' }, { ertek: 'egyeb_lakoepulet', nev: 'Lakóépület – társasház, lakás, szállás jellegű' }, { ertek: 'egyeb', nev: 'Egyéb rendeltetés (iroda, oktatás, kereskedelem…)' }]} />
           </Mezo>
+          {!egyeb && <div class="mezo"><span>HMV nettó igény</span><small>{epuletfizika.HMV_LAKO[m.kategoria]} kWh/m²a (2. függ. 2.2., kötelező)</small></div>}
+          {egyeb && pr && (
+            <Mezo cim="Használati profil" szeles sugo={`${pr.napiH} h/nap · ${pr.napEv} nap/év · θF ${pr.thetaF} / θH ${pr.thetaH} °C · ${sz(pr.VLTfajl, 1)} m³/m²h · ${pr.MV} lx · qb ${pr.qb} W/m²`}>
+              <select value={pr.kod} onChange={(e) => { const v = (e.target as HTMLSelectElement).value; modosit((q) => { q.meta.profil = v; delete q.meta.hmvTipus; }); }}>
+                {profilok.PROFILOK.map((x) => <option value={x.kod}>{x.nev}</option>)}
+              </select>
+            </Mezo>
+          )}
           <Mezo cim="Követelményszint">
             <Valaszto ertek={m.kovetelmenySzint} valt={(v) => modosit((q) => { q.meta.kovetelmenySzint = v; })} opciok={[
               { ertek: 'kozel_nulla', nev: 'Új épület – közel nulla (2. melléklet)' },
@@ -70,6 +85,17 @@ export function EpuletLepes({ p, modosit }: { p: Projekt; modosit: Modosit }) {
               { ertek: 'meglevo', nev: 'Meglévő épület tanúsítása' },
             ]} />
           </Mezo>
+          {egyeb && pr && (() => {
+            const ht = m.hmvTipus ?? pr.hmv; const t = profilok.HMV_EGYEB[ht];
+            return (<>
+              <Mezo cim="HMV-igény (2. függ. 2.2.)">
+                <select value={ht} onChange={(e) => { const v = (e.target as HTMLSelectElement).value as profilok.HmvTipus; modosit((q) => { q.meta.hmvTipus = v; }); }}>
+                  {Object.entries(profilok.HMV_EGYEB).map(([k, x]) => <option value={k}>{x.nev} – {sz(x.kWh, 1)} kWh/{x.egyseg}/nap</option>)}
+                </select>
+              </Mezo>
+              <Mezo rovid cim={`${t.egyseg.charAt(0).toUpperCase()}${t.egyseg.slice(1)} száma`} sugo={`${pr.napEv} használati nappal`}><Szam ertek={m.hmvEgyseg ?? 0} valt={(v) => modosit((q) => { q.meta.hmvEgyseg = Math.max(0, Math.round(v)); })} lepes={1} min={0} /></Mezo>
+            </>);
+          })()}
           <Mezo cim="Építés éve"><Szam ertek={m.epitesiEv} valt={(v) => modosit((q) => { q.meta.epitesiEv = Math.round(v); })} lepes={1} /></Mezo>
           <Mezo cim="Szintek száma"><Szam ertek={m.szintek} valt={(v) => modosit((q) => { q.meta.szintek = Math.max(1, Math.round(v)); })} lepes={1} min={1} /></Mezo>
         </div>

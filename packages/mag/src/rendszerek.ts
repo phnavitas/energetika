@@ -6,6 +6,8 @@ import { interpolal, type Figyelmeztetes, type TablazatOszlop } from './interpol
 import type { Energiahordozo } from './tablak/sulyozo.js';
 import * as T from './tablak/gepeszet.js';
 import * as H from './tablak/hutes.js';
+import type * as Prof from './tablak/profilok.js';
+import { fszab as P_fszab } from './tablak/profilok.js';
 
 export interface VegenergiaTetel {
   /** Energiahordozó a súlyozó tényezőhöz (7. melléklet). */
@@ -19,7 +21,7 @@ export interface VegenergiaTetel {
 
 export interface RendszerEredmeny {
   nev: string;
-  cel: 'futes' | 'hmv' | 'szellozes' | 'hutes';
+  cel: 'futes' | 'hmv' | 'szellozes' | 'hutes' | 'vilagitas';
   tetelek: VegenergiaTetel[];
   reszletek: Record<string, number>;
   figyelmeztetesek: Figyelmeztetes[];
@@ -383,4 +385,39 @@ export function hutesRendszer(QHnet: number, r: HutesRendszer): RendszerEredmeny
   if ((r.segedKWh ?? 0) > 0) tetelek.push({ energiahordozo: 'villamos', Q: r.segedKWh!, jelleg: 'seged', megnevezes: 'Hűtés – egyéb villamos segédenergia' });
   if (Q <= 0) fw.push({ kod: 'HUTES_NINCS_IGENY', uzenet: `„${r.nev}”: a zóna nettó hűtési igénye 0, a hűtés nem okoz energiafogyasztást.`, forras: H.HUTES_FORRAS });
   return { nev: r.nev, cel: 'hutes', tetelek, figyelmeztetesek: fw, reszletek: { QHnet: Q, cH, eSzab, eSzall, epsH, SEER } };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Beépített világítás (1. függelék 12.1, egyszerűsített módszer) – lakóépületnél nem számítható be.
+
+export interface VilagitasBemenet {
+  nev: string;
+  /** A zóna nettó alapterülete [m²]. */
+  A: number;
+  /** Előírt megvilágítás [lx] (2. függ. 2.1.). */
+  MV: number;
+  /** Fényhasznosítás [lm/W] (12.1.) és lámpatest-hatásfok (12.2.). */
+  FH: number;
+  etaVil: number;
+  /** Fényerő-szabályozhatóság (12.3.). */
+  Ffe: number;
+  /** Kihasználtsági mutató (12.4.) és a szabályozás típusa (12.5.). */
+  Fkihaszn: number;
+  szabalyozas: Prof.FszabKod;
+  /** Üzemórák (12.6.) és természetes megvilágítás (12.7.). */
+  tnappal: number; tejjel: number; Fnappal: number;
+  vesz: boolean; standby: boolean;
+}
+
+/** 12.1–12.2: WV = (Ffe · P · Fszab · (tnappal · Fnappal + téjjel) / 1000 + wvész + wstandby) · A; P = MV / (FH · ηvil). */
+export function vilagitasRendszer(v: VilagitasBemenet): RendszerEredmeny {
+  const P = v.MV / (v.FH * v.etaVil);
+  const Fszab = P_fszab(v.szabalyozas, v.Fkihaszn);
+  const W = (v.Ffe * P * Fszab * (v.tnappal * v.Fnappal + v.tejjel) / 1000 + (v.vesz ? 1 : 0) + (v.standby ? 1.5 : 0)) * v.A;
+  return {
+    nev: v.nev, cel: 'vilagitas',
+    tetelek: W > 0 ? [{ energiahordozo: 'villamos', Q: W, jelleg: 'seged', megnevezes: 'Beépített világítás' }] : [],
+    reszletek: { P, Fszab, W, wFajl: v.A > 0 ? W / v.A : 0 },
+    figyelmeztetesek: [],
+  };
 }

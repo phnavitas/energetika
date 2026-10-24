@@ -17,3 +17,4 @@ export * as pvgis from './pvgis.js';
 export * as hutes from './tablak/hutes.js';
 export * as tipologia from './tablak/tipologia.js';
 export * as szerkezetSablon from './tablak/szerkezet_sablonok.js';
+export * as profilok from './tablak/profilok.js';

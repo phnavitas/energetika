@@ -69,6 +69,7 @@ export function EredmenyLepes({ p, e, g, atal, hibak, modosit, rogzit, resz = 'e
   async function xml() {
     setXmlHiba(null);
     if (!pr.jogosult) { setXmlHiba(ZAR_SZOVEG); return; }
+    if (p.meta.rendeltetes === 'egyeb') { setXmlHiba('Egyéb (nem lakó) rendeltetésű épület e-tanúsítás XML-je még nem készíthető: a rendeltetés és épületkategória XSD-kódjait a Lechner-féle sémából még nem ellenőriztük. A számítási jegyzőkönyv (PDF) elkészíthető.'); return; }
     try {
       setPdfFut(true);
       const pdf = base64(await jegyzokonyvPdf(p, e!, atal));
@@ -131,6 +132,7 @@ export function EredmenyLepes({ p, e, g, atal, hibak, modosit, rogzit, resz = 'e
           <tbody>
             {sor('Fajlagos hőveszteség-tényező q [W/m³K]', sz(e.qm, 3), sz(k.qmMax, 3), k.qmMegfelel)}
             {sor('Összesített energetikai jellemző [kWh/m²a]', sz(ind.fajlagos.EnrenFajl, 2), sz(k.EnrenMax, 2), k.EnrenMegfelel)}
+            {e.referenciaEpulet.teljes && <tr><td colSpan={4} class="halkabb">Egyéb rendeltetés: a követelmény az 5. melléklet szerinti referenciaépületből adódik – E<sub>nren,REF</sub> = {sz(e.referenciaEpulet.EnrenFajl, 2)} kWh/m²a, E<sub>CO2,REF</sub> = {sz(e.referenciaEpulet.ECO2Fajl, 2)} kg/m²a; közel nulla: 80%-a (2. melléklet 2.3, 3.3), jelentős felújítás: 100%-a (3. melléklet 2.4).</td></tr>}
             {sor('Fajlagos CO₂-kibocsátás [kg/m²a]', sz(ind.fajlagos.ECO2Fajl, 2), k.ECO2Max !== null ? sz(k.ECO2Max, 2) : '–', k.ECO2Megfelel)}
             {sor('Nyári hővédelem (mutató)', e.nyariHovedelem.mutato === null ? 'nem kell vizsgálni' : sz(e.nyariHovedelem.mutato, 3), e.nyariHovedelem.mutato === null ? `üvegezés ≤ 8% AN` : '0,300', e.nyariHovedelem.megfelel)}
           </tbody>
@@ -152,7 +154,8 @@ export function EredmenyLepes({ p, e, g, atal, hibak, modosit, rogzit, resz = 'e
               <tr><td>Fűtés</td><td class="szam">{sz(ind.celonkent.futes.nren / ind.AN)}</td><td class="szam">{sz(ind.celonkent.futes.ren / ind.AN)}</td><td class="szam">{sz(ind.celonkent.futes.CO2 / ind.AN)}</td><td>{e.rendszerErtekeles.futes ? `${MIN[e.rendszerErtekeles.futes.minosites]} (${sz(e.rendszerErtekeles.futes.szazalek, 1)}%)` : '–'}</td></tr>
               <tr><td>Használati melegvíz</td><td class="szam">{sz(ind.celonkent.hmv.nren / ind.AN)}</td><td class="szam">{sz(ind.celonkent.hmv.ren / ind.AN)}</td><td class="szam">{sz(ind.celonkent.hmv.CO2 / ind.AN)}</td><td>{e.rendszerErtekeles.hmv ? `${MIN[e.rendszerErtekeles.hmv.minosites]} (${sz(e.rendszerErtekeles.hmv.szazalek, 1)}%)` : '–'}</td></tr>
               {ind.celonkent.szellozes.tot !== 0 && <tr><td>Gépi szellőzés</td><td class="szam">{sz(ind.celonkent.szellozes.nren / ind.AN)}</td><td class="szam">{sz(ind.celonkent.szellozes.ren / ind.AN)}</td><td class="szam">{sz(ind.celonkent.szellozes.CO2 / ind.AN)}</td><td>–</td></tr>}
-              {ind.celonkent.hutes.tot !== 0 && <tr><td>Hűtés</td><td class="szam">{sz(ind.celonkent.hutes.nren / ind.AN)}</td><td class="szam">{sz(ind.celonkent.hutes.ren / ind.AN)}</td><td class="szam">{sz(ind.celonkent.hutes.CO2 / ind.AN)}</td><td>–</td></tr>}
+              {ind.celonkent.hutes.tot !== 0 && <tr><td>Hűtés</td><td class="szam">{sz(ind.celonkent.hutes.nren / ind.AN)}</td><td class="szam">{sz(ind.celonkent.hutes.ren / ind.AN)}</td><td class="szam">{sz(ind.celonkent.hutes.CO2 / ind.AN)}</td><td>{e.rendszerErtekeles.hutes ? `${MIN[e.rendszerErtekeles.hutes.minosites]} (${sz(e.rendszerErtekeles.hutes.szazalek, 1)}%)` : '–'}</td></tr>}
+              {ind.celonkent.vilagitas.tot !== 0 && <tr><td>Beépített világítás</td><td class="szam">{sz(ind.celonkent.vilagitas.nren / ind.AN)}</td><td class="szam">{sz(ind.celonkent.vilagitas.ren / ind.AN)}</td><td class="szam">{sz(ind.celonkent.vilagitas.CO2 / ind.AN)}</td><td>{e.rendszerErtekeles.vilagitas ? `${MIN[e.rendszerErtekeles.vilagitas.minosites]} (${sz(e.rendszerErtekeles.vilagitas.szazalek, 1)}%)` : '–'}</td></tr>}
               {ind.celonkent.export.tot !== 0 && <tr><td>Napelem – exportált energia (levonás)</td><td class="szam">−{sz(ind.celonkent.export.nren / ind.AN)}</td><td class="szam">−{sz(ind.celonkent.export.ren / ind.AN)}</td><td class="szam">−{sz(ind.celonkent.export.CO2 / ind.AN)}</td><td>–</td></tr>}
             </tbody>
             <tfoot><tr><td>Összesen [kWh/m²a, kg/m²a]</td><td class="szam">{sz(ind.fajlagos.EnrenFajl)}</td><td class="szam">{sz(ind.fajlagos.ErenFajl)}</td><td class="szam">{sz(ind.fajlagos.ECO2Fajl)}</td><td /></tr></tfoot>

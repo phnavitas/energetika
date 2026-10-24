@@ -376,7 +376,7 @@ function App() {
         <nav class="oldalsav" aria-label="Lépések">
           <div class="cim-blokk">
             <h1>Energetikai számítás</h1>
-            <p>9/2023 ÉKM, lakóépület</p>
+            <p>9/2023 ÉKM, {p.meta.rendeltetes === 'egyeb' ? 'egyéb rendeltetés' : 'lakóépület'}</p>
           </div>
           {tavoli && (
             <button class={`projekt-gomb${nezet === 'projektek' ? ' aktiv' : ''}`} onClick={() => setNezet('projektek')}>

@@ -15,6 +15,10 @@ export const TAVHO_BEEPITETT: TavhoRendszer[] = [
   { szolgaltato: 'BAKONY-TÁVHŐ Kft.', telepules: 'Ajka', rendszer: 'Ajka', fnren: 0.149, fren: 0.547, fCO2: 30.369, adatEv: 2025, forras: 'https://tavho.veolia.hu/bakonytavho_kft/epuletek-energetikai-bakonytavho', frissitve: '2026.02.16' },
   { szolgaltato: 'NÁNÁSHŐ Kft.', telepules: 'Hajdúnánás', rendszer: 'Hajdúnánás', fnren: 1.143, fren: 0.006, fCO2: 305.955, adatEv: 2025, forras: 'https://tavho.veolia.hu/nanasho_kft/epuletek-energetikai-nanasho', frissitve: '2026.02.16' },
   { szolgaltato: 'Veolia – Dorog', telepules: 'Dorog', rendszer: 'Dorog (alapérték)', fnren: 1.38, fren: 0, fCO2: 374, forras: 'https://tavho.veolia.hu/dorog/epuletenergetika-dorog', frissitve: '2026.02.16' },
+  // A T-Szol Zrt. a tszol.hu-n nem tesz közzé 8. melléklet szerinti tényezőt (ellenőrizve: 2026.10.23) → 7. melléklet alapértéke.
+  // Hőforrás: Tatabánya Erőmű Kft. földgáz gázmotoros kapcsolt termelés; Baj: gázkazán. Szolgáltatói adat esetén kézzel felülírandó.
+  { szolgaltato: 'T-Szol Zrt.', telepules: 'Tatabánya', rendszer: 'Tatabánya (alapérték – nincs közzétett adat)', fnren: 1.38, fren: 0, fCO2: 374, forras: 'https://tszol.hu/szolgaltatas/tavhoszolgaltatas/futes/a-tavfutes-rendszere/', frissitve: '2026.10.23' },
+  { szolgaltato: 'T-Szol Zrt.', telepules: 'Baj', rendszer: 'Baj (alapérték – nincs közzétett adat)', fnren: 1.38, fren: 0, fCO2: 374, forras: 'https://tszol.hu/szolgaltatas/tavhoszolgaltatas/futes/a-tavfutes-rendszere/', frissitve: '2026.10.23' },
 ];
 
 /** Az online (havonta frissülő) lista; hiba esetén a beépített. */
@@ -24,7 +28,11 @@ export async function tavhoLista(friss = false): Promise<{ lista: TavhoRendszer[
     if (!v.ok) throw new Error(String(v.status));
     const j = await v.json() as { lekerve: string; rendszerek: TavhoRendszer[]; hibak: string[] };
     if (!j.rendszerek?.length) throw new Error('üres');
-    return { lista: j.rendszerek.map((r) => ({ ...r, rendszer: r.rendszer || r.telepules })), online: true, lekerve: j.lekerve, hibak: j.hibak };
+    const online = j.rendszerek.map((r) => ({ ...r, rendszer: r.rendszer || r.telepules }));
+    // az online forrásban nem szereplő szolgáltatók beépített sorai megmaradnak
+    const vanOnline = new Set(online.map((r) => r.szolgaltato));
+    const lista = [...online, ...TAVHO_BEEPITETT.filter((r) => !vanOnline.has(r.szolgaltato))].sort((a, b) => a.telepules.localeCompare(b.telepules, 'hu'));
+    return { lista, online: true, lekerve: j.lekerve, hibak: j.hibak };
   } catch {
     return { lista: TAVHO_BEEPITETT, online: false };
   }
