@@ -15,11 +15,10 @@ export const TAVHO_BEEPITETT: TavhoRendszer[] = [
   { szolgaltato: 'BAKONY-TÁVHŐ Kft.', telepules: 'Ajka', rendszer: 'Ajka', fnren: 0.149, fren: 0.547, fCO2: 30.369, adatEv: 2025, forras: 'https://tavho.veolia.hu/bakonytavho_kft/epuletek-energetikai-bakonytavho', frissitve: '2026.02.16' },
   { szolgaltato: 'NÁNÁSHŐ Kft.', telepules: 'Hajdúnánás', rendszer: 'Hajdúnánás', fnren: 1.143, fren: 0.006, fCO2: 305.955, adatEv: 2025, forras: 'https://tavho.veolia.hu/nanasho_kft/epuletek-energetikai-nanasho', frissitve: '2026.02.16' },
   { szolgaltato: 'Veolia – Dorog', telepules: 'Dorog', rendszer: 'Dorog (alapérték)', fnren: 1.38, fren: 0, fCO2: 374, forras: 'https://tavho.veolia.hu/dorog/epuletenergetika-dorog', frissitve: '2026.02.16' },
-  // Baj (T-Szol, gázkazán): közzétett adat nélkül a 7. melléklet alapértéke.
   // e-építés távhő-lekérdező (tanúsító által ellenőrizve, 2026.10.24)
-  // a T-Szol adatszolgáltatása szkennelt PDF (e-építés dok. 928, 2025): az értékeket a tanúsító olvasta ki
-  { szolgaltato: 'T-Szol Zrt.', telepules: 'Tatabánya', rendszer: 'Tatabánya', fnren: 0.251, fren: 0.831, fCO2: 55.789, forras: 'https://www.e-epites.hu/e-tanusitas/tavho/nyilvanos/download?id=928', frissitve: '2026.10.24', eepites: { szolgaltatoId: 36, dokId: 928, dokEv: 2025 } },
-  { szolgaltato: 'T-Szol Zrt.', telepules: 'Baj', rendszer: 'Baj (alapérték – nincs közzétett adat)', fnren: 1.38, fren: 0, fCO2: 374, forras: 'https://tszol.hu/szolgaltatas/tavhoszolgaltatas/futes/a-tavfutes-rendszere/', frissitve: '2026.10.23' },
+  // a T-Szol adatszolgáltatása szkennelt PDF (e-építés dok. 928, kelt 2025.03.31, 2024. évi termelési adatok) – kézzel kiolvasva
+  { szolgaltato: 'T-Szol Zrt.', telepules: 'Tatabánya', rendszer: 'Tatabányai távhőrendszer', fnren: 0.251, adatEv: 2024, fren: 0.831, fCO2: 55.789, forras: 'https://www.e-epites.hu/e-tanusitas/tavho/nyilvanos/download?id=928', frissitve: '2026.10.24', eepites: { szolgaltatoId: 36, dokId: 928, dokEv: 2025 } },
+  { szolgaltato: 'T-Szol Zrt.', telepules: 'Baj', rendszer: 'Baji távhőrendszer', fnren: 1.374, fren: 0.004, fCO2: 368.938, adatEv: 2024, forras: 'https://www.e-epites.hu/e-tanusitas/tavho/nyilvanos/download?id=928', frissitve: '2026.10.24', eepites: { szolgaltatoId: 36, dokId: 928, dokEv: 2025 } },
 ];
 
 /** Az online (havonta frissülő) lista; hiba esetén a beépített. */
