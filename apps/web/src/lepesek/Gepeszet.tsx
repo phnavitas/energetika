@@ -626,11 +626,17 @@ function EepitesKereso({ p, modosit }: { p: Projekt; modosit: Modosit }) {
       setAllapot(l.length ? 'adatszolgáltatások kiolvasása…' : `„${tel}” településen nincs nyilvántartott távhőszolgáltató.`);
       for (const x of ki) {
         if (!x.dok) continue;
-        try { x.pdf = await eepitesPdf(x.dok.id); } catch (e) { x.hiba = (e as Error).message; }
+        try { x.pdf = await eepitesPdf(x.dok.id, (m) => setAllapot(`${x.sz.rovidNev}: ${m}`)); } catch (e) { x.hiba = (e as Error).message; }
         setTalalat([...ki]);
       }
       if (l.length) setAllapot(`lekérve ${new Date().toLocaleDateString('hu-HU')}`);
     } catch (e) { setAllapot((e as Error).message); }
+  }
+  async function ocrUjra(x: EepitesTalalat) {
+    if (!x.dok || !talalat) return;
+    const ki = [...talalat];
+    try { x.pdf = await eepitesPdf(x.dok.id, (m) => setAllapot(`${x.sz.rovidNev}: ${m}`), true); setAllapot('szövegfelismerés kész'); } catch (e) { x.hiba = (e as Error).message; }
+    setTalalat([...ki]);
   }
   const valaszt = (x: EepitesTalalat, r: { rendszer: string; telepules: string; fnren: number; fren: number; fCO2: number } | null) => modosit((q) => {
     q.gepeszet.tavho = {
@@ -653,17 +659,19 @@ function EepitesKereso({ p, modosit }: { p: Projekt; modosit: Modosit }) {
           <strong>{x.sz.rovidNev}</strong> <span class="halkabb">{x.sz.teljesNev} · ellátott: {x.sz.telepulesek.join(', ')}{x.dok ? <> · <a href={EEPITES_DOK(x.dok.id)} target="_blank" rel="noopener">{x.dok.ev}. évi adatszolgáltatás (PDF)</a></> : ' · nincs feltöltött dokumentum'}</span>
           {x.hiba && <div class="halkabb" style="color:var(--rossz)">{x.hiba}</div>}
           {x.dok && !x.pdf && !x.hiba && <div class="halkabb">kiolvasás…</div>}
-          {x.pdf?.szkennelt && (
-            <div class="halkabb" style="margin-top:4px">Szkennelt dokumentum – a tényezők nem olvashatók ki automatikusan. Nyisd meg a PDF-et, és <button class="link-gomb" onClick={() => valaszt(x, null)}>vedd fel ezzel a szolgáltatóval</button>, majd írd be az értékeket lent.</div>
+          {x.pdf?.forras === 'kezi' && x.pdf.sorok.length > 0 && <div class="halkabb">Szkennelt dokumentum – az értékeket kézzel olvastuk ki (beépített lista). <button class="link-gomb" onClick={() => void ocrUjra(x)}>Összevetés szövegfelismeréssel</button></div>}
+          {x.pdf?.forras === 'ocr' && x.pdf.sorok.length > 0 && <div class="halkabb" style="color:var(--figyel)">Szkennelt dokumentum – az értékek szövegfelismeréssel (OCR) kiolvasva: kiválasztás előtt vesd össze a PDF-fel.</div>}
+          {x.pdf?.elavult && <div class="halkabb" style="color:var(--figyel)">{x.pdf.elavult} <button class="link-gomb" onClick={() => valaszt(x, null)}>Felvétel ezzel a szolgáltatóval (alapérték)</button></div>}
+          {x.pdf && !x.pdf.elavult && !x.pdf.sorok.length && (
+            <div class="halkabb" style="margin-top:4px">A dokumentumból nem sikerült kiolvasni a tényezőtáblázatot{x.pdf.szkennelt ? ' (szkennelt)' : ' (régebbi formátum)'}. Nyisd meg a PDF-et, <button class="link-gomb" onClick={() => valaszt(x, null)}>vedd fel ezzel a szolgáltatóval</button>, és írd be az értékeket lent.</div>
           )}
-          {x.pdf && !x.pdf.szkennelt && !x.pdf.sorok.length && <div class="halkabb">A dokumentumban nem találtam az űrlap szerinti táblázatot (régebbi formátum) – nyisd meg és add meg kézzel.</div>}
           {x.pdf && x.pdf.sorok.length > 0 && (
             <table class="tabla" style="margin-top:4px"><tbody>
               {x.pdf.sorok.map((r) => (
                 <tr>
                   <td>{r.telepules}{r.rendszer && r.rendszer !== r.telepules ? ` – ${r.rendszer}` : ''}</td>
                   <td class="szam">nren {r.fnren === null ? '–' : sz(r.fnren, 3)}</td><td class="szam">ren {r.fren === null ? '–' : sz(r.fren, 3)}</td><td class="szam">CO₂ {r.fCO2 === null ? '–' : sz(r.fCO2, 1)}</td>
-                  <td>{!r.ellenorzott && <span class="jel rossz" title="nren + ren ≠ tot, vagy a CO₂ nem illik a nren-hez – a PDF-ben ellenőrizd">ellenőrizendő</span>}</td>
+                  <td>{!r.ellenorzott && <span class="jel rossz" title={r.megjegyzes ?? 'nren + ren ≠ tot, vagy a CO₂ nem illik a nren-hez – a PDF-ben ellenőrizd'}>ellenőrizendő</span>}</td>
                   <td>{r.fnren !== null && r.fren !== null && r.fCO2 !== null && <button class="gomb kis-gomb" onClick={() => valaszt(x, r as { rendszer: string; telepules: string; fnren: number; fren: number; fCO2: number })}>Kiválaszt</button>}</td>
                 </tr>
               ))}

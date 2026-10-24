@@ -5,8 +5,18 @@
  * tartományban – ami ezen elbukik, „ellenőrizendő”. Szkennelt (szöveg nélküli) PDF-ből nem olvasható ki adat.
  */
 export interface TavhoPdfTetel { szoveg: string; x: number; y: number; w: number; h: number }
-export interface TavhoPdfSor { telepules: string; rendszer: string; fnren: number | null; fren: number | null; ftot: number | null; fCO2: number | null; ellenorzott: boolean }
-export interface TavhoPdfEredmeny { adatEv: number | null; sorok: TavhoPdfSor[]; szkennelt: boolean }
+export interface TavhoPdfSor { telepules: string; rendszer: string; fnren: number | null; fren: number | null; ftot: number | null; fCO2: number | null; ellenorzott: boolean; megjegyzes?: string }
+export interface TavhoPdfEredmeny {
+  adatEv: number | null; sorok: TavhoPdfSor[]; szkennelt: boolean;
+  /** Az értékek forrása: a PDF szövege, kézi kiolvasás (szkennelt, beépített lista) vagy szövegfelismerés. */
+  forras?: 'szoveg' | 'kezi' | 'ocr';
+  /** Régi (7/2006 TNM) adatszolgáltatás – 9/2023 ÉKM szerinti tényező nincs. */
+  elavult?: string;
+}
+/** nren + ren = tot (±0,005) és a CO₂ a nren-hez illő tartományban. */
+export const tavhoSorRendben = (s: { fnren: number | null; fren: number | null; ftot: number | null; fCO2: number | null }) =>
+  s.fnren !== null && s.fren !== null && s.ftot !== null && s.fCO2 !== null
+  && Math.abs(s.fnren + s.fren - s.ftot) < 0.005 && s.fCO2 <= 450 * s.fnren + 50 && s.fCO2 >= 150 * s.fnren - 40;
 
 const szamT = (s: string) => { const t = s.replace(/\s+/g, '').replace(',', '.'); return /^\d+(\.\d+)?$/.test(t) ? Number(t) : null; };
 const tisztit = (s: string) => s.replace(/\s+/g, ' ').replace(/^[,\s]+|[,\s]+$/g, '');
