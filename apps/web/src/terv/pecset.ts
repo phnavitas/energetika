@@ -14,21 +14,21 @@ export interface PecsetAdat {
 }
 
 const CIMKEK: [keyof PecsetAdat, RegExp, 'alatta' | 'mellette'][] = [
-  ['projekt', /^(projekt|projekt neve|beruházás|tárgy)$/, 'alatta'],
-  ['helyszin', /^(építés helyszíne|helyszín|építési hely|építés helye)$/, 'alatta'],
+  ['projekt', /^(projekt|projekt neve|beruházás|tárgy|munka megnevezése|épület megnevezése|létesítmény|építmény)$/, 'alatta'],
+  ['helyszin', /^(építés helyszíne|építkezés helyszíne|építési helyszín|helyszín|építési hely|építés helye|cím, hrsz|helyszín, hrsz)$/, 'alatta'],
   ['hrsz', /^(helyrajzi szám|hrsz\.?)$/, 'alatta'],
   ['szint', /^(épület )?±0,00 szintje$/, 'alatta'],
   ['epitteto', /^építtető$/, 'alatta'],
   ['megrendelo', /^megrendelő$/, 'alatta'],
   ['iroda', /^(fővállalkozó tervező|generáltervező|tervező iroda|tervező cég)$/, 'alatta'],
   ['tervezo', /^(felelős építész tervező|vezető tervező|felelős tervező)$/, 'mellette'],
-  ['tervTipus', /^terv típusa$/, 'alatta'],
-  ['tervNev', /^(terv neve|rajz neve|tervlap neve)$/, 'alatta'],
+  ['tervTipus', /^terv ?típusa?$/, 'alatta'],
+  ['tervNev', /^(terv neve|rajz neve|tervlap neve|rajz|rajz megnevezése|tervlap)$/, 'alatta'],
   ['datum', /^dátum$/, 'alatta'],
   ['leptek', /^(lépték|méretarány)$/, 'alatta'],
 ];
 const norm = (s: string) => szovegJavit(s).trim().toLowerCase().replace(/[:.]$/, '').replace(/\s+/g, ' ');
-const MINDEN_CIMKE = /^(projekt|építés helyszíne|helyrajzi szám|(épület )?±0,00 szintje|építtető|megrendelő|fővállalkozó tervező|generáltervező|tervezők|terv típusa|terv neve|fájlnév|tervlap mérete|lépték|oldalszám|azonosító szám|dátum|revíziótörténet|cím|tel|telefon|email|e-mail|kelte|hatálya|étdr iratazonosító|név és engedély szám)$/;
+const MINDEN_CIMKE = /^(munka megnevezése|épület megnevezése|építkezés helyszíne|építési helyszín|megjegyzések?|rajz|terv típus|generáltervező|építész tervező|felelős tervező|vezető tervező|építész|ellenőrizte|tervlapkód.*|projekt|építés helyszíne|helyrajzi szám|(épület )?±0,00 szintje|építtető|megrendelő|fővállalkozó tervező|generáltervező|tervezők|terv típusa|terv neve|fájlnév|tervlap mérete|lépték|oldalszám|azonosító szám|dátum|revíziótörténet|cím|tel|telefon|email|e-mail|kelte|hatálya|étdr iratazonosító|név és engedély szám)$/;
 const JELLEG: Record<string, string> = { 'u': 'utca', 'u.': 'utca', 'utca': 'utca', 'út': 'út', 'krt': 'körút', 'krt.': 'körút', 'körút': 'körút', 'tér': 'tér', 'köz': 'köz', 'sor': 'sor', 'sétány': 'sétány', 'dűlő': 'dűlő', 'lakótelep': 'lakótelep', 'ltp': 'lakótelep', 'ltp.': 'lakótelep', 'fasor': 'fasor', 'park': 'park', 'tere': 'tér', 'liget': 'liget', 'rakpart': 'rakpart' };
 
 /** „2831 Tarján, Kenderesi u. 33.” → részek. */
@@ -53,14 +53,23 @@ export function pecsetKinyer(szovegek: Szoveg[]): PecsetAdat {
       let ertek: Szoveg[] = [];
       if (hol === 'alatta') {
         // a címke alatt, balra igazítva (± 6 pt), legfeljebb ~4 sornyira; a következő címkéig
-        const alatta = vizszintes.filter((t) => t !== l && Math.abs(t.x - l.x) < 6 && t.y > l.y + l.meret * 0.3 && t.y < l.y + Math.max(30, l.meret * 5)).sort((a, b) => a.y - b.y);
+        const alatta = vizszintes.filter((t) => t !== l && t.meret >= 3 && Math.abs(t.x - l.x) < 6 && t.y > l.y + l.meret * 0.3 && t.y < l.y + Math.max(30, l.meret * 5)).sort((a, b) => a.y - b.y);
         const elso = alatta.findIndex((t) => cimkeE(t));
         ertek = (elso < 0 ? alatta : alatta.slice(0, elso)).slice(0, 1);
         // azonos sorban folytatódó szöveg (pl. „Földszinti alaprajz - "A"” + „épület”)
         if (ertek[0]) { const e0 = ertek[0]; ertek.push(...vizszintes.filter((t) => t !== e0 && Math.abs(t.y - e0.y) < 1.5 && t.x > e0.x && t.x < e0.x + e0.szel + e0.meret * 1.5 && Math.abs(t.meret - e0.meret) < 1).sort((a, b) => a.x - b.x)); }
       } else {
-        const mellette = vizszintes.filter((t) => Math.abs(t.y - l.y) < 2 && t.x > l.x + 20 && t.x < l.x + 200).sort((a, b) => a.x - b.x);
+        const mellette = vizszintes.filter((t) => Math.abs(t.y - l.y) < 2 && t.x > l.x + 20 && t.x < l.x + 200 && !cimkeE(t)).sort((a, b) => a.x - b.x);
         ertek = mellette.slice(0, 1);
+        if (!ertek.length) {
+          // név a címke alatt, mellette a névjegyzéki szám (pl. „Páll Ákos  É 11-0297”)
+          const al = vizszintes.filter((t) => Math.abs(t.x - l.x) < 6 && t.y > l.y + 2 && t.y < l.y + Math.max(16, l.meret * 2.5) && !cimkeE(t)).sort((a, b) => a.y - b.y)[0];
+          if (al) {
+            ertek = [al];
+            const nyj = vizszintes.find((t) => Math.abs(t.y - al.y) < 1.5 && t.x > al.x && t.x < al.x + al.szel + 40 && /^[A-ZÉ]{1,3}(-[A-Z]{1,2})?\s*\d{2}-\d{3,6}$/.test(t.s.trim()));
+            if (nyj) ki.tervezoNy = nyj.s.trim();
+          }
+        }
         const ny = ertek[0] && vizszintes.find((t) => Math.abs(t.x - ertek[0]!.x) < 3 && t.y > ertek[0]!.y + 2 && t.y < ertek[0]!.y + 14);
         if (ny && /^[A-ZÉ]{1,3}(-[A-Z]{1,2})?\s*\d{2}-\d{3,6}$/.test(ny.s.trim())) ki.tervezoNy = ny.s.trim();
       }
@@ -68,7 +77,19 @@ export function pecsetKinyer(szovegek: Szoveg[]): PecsetAdat {
       if (s && s !== '-' && !ki[kulcs]) { (ki as Record<string, unknown>)[kulcs] = s; break; }
     }
   }
-  if (ki.helyszin) ki.cim = cimBont(ki.helyszin);
+  for (const k of ['epitteto', 'megrendelo', 'projekt', 'helyszin'] as const) if (ki[k]) ki[k] = ki[k]!.replace(/\s+,/g, ',').replace(/[,;]\s*$/, '').trim();
+  if (ki.helyszin) {
+    // „H-2800 Tatabánya, Petőfi Sándor utca Hrsz.: 6151/152” → cím + hrsz
+    const h = /,?\s*hrsz\.?\s*:?\s*([0-9]+(?:\/[0-9A-Z]+)*)\s*$/i.exec(ki.helyszin);
+    if (h) { ki.hrsz ??= h[1]; ki.helyszin = ki.helyszin.slice(0, h.index).replace(/[,;]\s*$/, '').trim(); }
+    ki.helyszin = ki.helyszin.replace(/^H\s*-\s*(?=\d{4}\b)/, '');
+    ki.cim = cimBont(ki.helyszin);
+  }
   if (ki.hrsz) ki.hrsz = ki.hrsz.replace(/^hrsz\.?:?\s*/i, '');
+  if (!ki.szint) {
+    // „±0,00 = 152,06 mBf” a szövegmezőben bárhol
+    const t = vizszintes.find((x) => /±\s*0[,.]00\s*=\s*\d/.test(x.s));
+    if (t) ki.szint = t.s.replace(/^.*?=\s*/, '').trim();
+  }
   return ki;
 }

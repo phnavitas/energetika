@@ -42,15 +42,15 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
         {p.hohidMod === 'psi' && <div class="figyelmeztetes" style="margin-top:8px">Részletes hőhíd-módszer van beállítva (Hőhidak lépés): a felületek χ értéke most nem számít, helyette a csomópontok Ψ·l tagjai.</div>}
         {p.hohidMod === 'vegyes' && p.feluletek.some((f) => f.chiPsi) && <div class="figyelmeztetes" style="margin-top:8px">Vegyes hőhíd-módszer (Hőhidak lépés): a „Ψ·l” jelölésű felületeken a χ nem számít, a többin igen.</div>}
         <div class="tabla-gorgeto">
-          <table class="tabla ragadt-vege">
-            <thead><tr><th aria-label="Sorrend"></th><th>Megnevezés</th><th>Rétegrend</th><th>Határoló tér</th><th>Bruttó felület</th><th class="szam">Nettó</th><th>Hőhidasság</th><th></th></tr></thead>
+          <table class="tabla">
+            <thead><tr><th aria-label="Sorrend"></th><th>Megnevezés</th><th>Rétegrend</th><th>Határoló tér</th><th>Bruttó felület</th><th class="szam">Nettó</th><th>Hőhidasság</th></tr></thead>
             <tbody>
               {opak.map((f) => {
                 const r = p.retegrendek.find((x) => x.id === f.retegrendId);
                 const chiOpciok = CHI_VALASZTEK.filter((c) => !r || c.szerep === r.szerep || (r.szerep === 'teto' && c.szerep === 'teto'));
                 return (
                   <tr {...huzasProps('opak', f.id, athelyez)}>
-                    <td><Fogantyu cimke={f.nev} fel={() => lep(f.id, -1)} le={() => lep(f.id, 1)} /></td>
+                    <td style="white-space:nowrap"><Fogantyu cimke={f.nev} fel={() => lep(f.id, -1)} le={() => lep(f.id, 1)} /><button class="sor-torol" title="Törlés" aria-label={`${f.nev} törlése`} onClick={() => torol(f.id)}>✕</button></td>
                     <td style="min-width:130px"><Szoveg ertek={f.nev} valt={(v) => fv(f.id, (x) => { x.nev = v; })} /></td>
                     <td style="min-width:160px"><Valaszto cimke="Rétegrend" ertek={f.retegrendId} ures="Válassz…" valt={(v) => fv(f.id, (x) => { x.retegrendId = v; })} opciok={retegrendOpciok(false)} /></td>
                     <td style="min-width:130px"><Valaszto cimke="Határoló tér" ertek={f.hatar} valt={(v) => fv(f.id, (x) => { x.hatar = v; })} opciok={HATAROK} /></td>
@@ -83,7 +83,6 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
                       </select>
                       {p.hohidMod && p.hohidMod !== 'chi' && chiErvenyes(p, f) === 0 && (f.chi ?? 0) > 0 && <small class="halkabb" style="display:block">χ nem számít – Ψ·l a Hőhidak lépésből</small>}
                     </td>
-                    <td><button class="gomb halk-gomb" onClick={() => torol(f.id)}>Törlés</button></td>
                   </tr>
                 );
               })}
@@ -103,12 +102,12 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
         <h2>Nyílászárók</h2>
         <p class="halk">A tájolás és a dőlés a havi sugárzási nyereséghez kell (2. függ. 1.6. táblázat). Ha a nyílászárót egy falhoz rendeled, a fal felületéből levonódik.</p>
         <div class="tabla-gorgeto">
-          <table class="tabla ragadt-vege">
-            <thead><tr><th aria-label="Sorrend"></th><th>Megnevezés</th><th>Típus</th><th class="szam">Db</th><th>Tájolás</th><th>Dőlés</th><th>Falban</th><th>Helyiség</th><th class="szam">Felület</th><th>Árnyékoló</th><th class="szam" title="Fűtési idényre vonatkozó árnyékolási tényező: környező beépítés, erkély, előtető, növényzet (1 = nincs)">F<sub>árny</sub></th><th class="szam" title="Passzív szoláris nyereség Qsd = Au · 0,9 · gn · F · Gs">Napnyereség<br /><span class="halkabb">fűtési idény / év</span></th><th></th></tr></thead>
+          <table class="tabla">
+            <thead><tr><th aria-label="Sorrend"></th><th>Megnevezés</th><th>Típus</th><th class="szam">Db</th><th>Tájolás</th><th>Dőlés</th><th>Falban</th><th>Helyiség</th><th class="szam">Felület</th><th>Árnyékoló</th><th class="szam" title="Fűtési idényre vonatkozó árnyékolási tényező: környező beépítés, erkély, előtető, növényzet (1 = nincs)">F<sub>árny</sub></th><th class="szam" title="Passzív szoláris nyereség Qsd = Au · 0,9 · gn · F · Gs">Napnyereség<br /><span class="halkabb">fűtési idény / év</span></th></tr></thead>
             <tbody>
               {ny.map((f) => { const nt = p.nyilaszarok.find((x) => x.id === f.nyilaszaroId); const napny = nyilasNapnyereseg(p, f); const ar = nt?.arnyekolo ? ARNYEKOLOK.find((a) => a.kod === nt.arnyekolo!.kod) : undefined; return (
                 <tr {...huzasProps('nyilas', f.id, athelyez)}>
-                  <td><Fogantyu cimke={f.nev} fel={() => lep(f.id, -1)} le={() => lep(f.id, 1)} /></td>
+                  <td style="white-space:nowrap"><Fogantyu cimke={f.nev} fel={() => lep(f.id, -1)} le={() => lep(f.id, 1)} /><button class="sor-torol" title="Törlés" aria-label={`${f.nev} törlése`} onClick={() => torol(f.id)}>✕</button></td>
                   <td style="min-width:120px"><Szoveg ertek={f.nev} valt={(v) => fv(f.id, (x) => { x.nev = v; })} /></td>
                   <td style="min-width:150px"><Valaszto cimke="Típus" ertek={f.nyilaszaroId} ures="Válassz…" valt={(v) => fv(f.id, (x) => { x.nyilaszaroId = v; })} opciok={p.nyilaszarok.map((n) => ({ ertek: n.id, nev: n.nev }))} /></td>
                   <td style="min-width:58px"><Szam cimke="Darab" ertek={f.darab ?? 1} lepes={1} min={1} valt={(v) => fv(f.id, (x) => { x.darab = Math.max(1, Math.round(v)); })} /></td>
@@ -120,19 +119,18 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
                   <td class="halkabb" style="min-width:64px">{ar ? ar.megnevezes : 'nincs'}</td>
                   <td style="width:64px"><Szam cimke="Árnyékolási tényező" ertek={f.arnyekolas ?? 1} lepes={0.05} min={0} valt={(v) => fv(f.id, (x) => { x.arnyekolas = Math.min(1, Math.max(0, v)); if (x.arnyekolas === 1) delete x.arnyekolas; })} /></td>
                   <td class="szam" style="white-space:nowrap">{napny ? <>{sz(napny.ideny, 0)} / {sz(napny.ev, 0)} kWh</> : '–'}</td>
-                  <td><button class="gomb halk-gomb" onClick={() => torol(f.id)}>Törlés</button></td>
                 </tr>
               ); })}
             </tbody>
             {ny.length > 0 && (() => { const o = ny.map((f) => nyilasNapnyereseg(p, f)).reduce<{ ideny: number; ev: number }>((a, x) => ({ ideny: a.ideny + (x?.ideny ?? 0), ev: a.ev + (x?.ev ?? 0) }), { ideny: 0, ev: 0 }); return (
               <tfoot>
-                <tr><td colSpan={11}>Passzív szoláris nyereség összesen (Q<sub>sd</sub> = A<sub>ü</sub> · 0,9 · g · F · G<sub>s</sub>, árnyékolással, hasznosítási tényező nélkül)</td><td class="szam" style="white-space:nowrap">{sz(o.ideny, 0)} / {sz(o.ev, 0)} kWh</td><td /></tr>
+                <tr><td colSpan={11}>Passzív szoláris nyereség összesen (Q<sub>sd</sub> = A<sub>ü</sub> · 0,9 · g · F · G<sub>s</sub>, árnyékolással, hasznosítási tényező nélkül)</td><td class="szam" style="white-space:nowrap">{sz(o.ideny, 0)} / {sz(o.ev, 0)} kWh</td></tr>
                 {eredmeny && (() => {
                   // fűtési idény (havi mérleg, ahol QF,net > 0): hőveszteség, szoláris nyereség és annak hasznosított része
                   const h = eredmeny.zonak.flatMap((z) => z.havi).filter((x) => x.QFnet > 0);
                   const veszt = h.reduce((a, x) => a + x.Qveszt, 0), qsd = h.reduce((a, x) => a + x.Qsd, 0), hasz = h.reduce((a, x) => a + x.eta * x.Qsd, 0);
                   return veszt > 0 ? (
-                    <tr><td colSpan={13} class="halkabb">Fűtési hónapokban ({h.length} hó, QF,net &gt; 0): hőveszteség (transzmisszió + szellőzés) <strong>{sz(veszt, 0)} kWh</strong> · szoláris nyereség (g-vel) <strong>{sz(qsd, 0)} kWh</strong> ({sz((qsd / veszt) * 100, 0)}%) · ebből hasznosítható (η·Q<sub>sd</sub>) <strong>{sz(hasz, 0)} kWh</strong> ({sz((hasz / veszt) * 100, 0)}%)</td></tr>
+                    <tr><td colSpan={12} class="halkabb">Fűtési hónapokban ({h.length} hó, QF,net &gt; 0): hőveszteség (transzmisszió + szellőzés) <strong>{sz(veszt, 0)} kWh</strong> · szoláris nyereség (g-vel) <strong>{sz(qsd, 0)} kWh</strong> ({sz((qsd / veszt) * 100, 0)}%) · ebből hasznosítható (η·Q<sub>sd</sub>) <strong>{sz(hasz, 0)} kWh</strong> ({sz((hasz / veszt) * 100, 0)}%)</td></tr>
                   ) : null;
                 })()}
               </tfoot>

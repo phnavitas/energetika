@@ -63,7 +63,9 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const [aIdx, setAIdx] = useState(-1);
   const [mIdx, setMIdx] = useState(-1);
   const [meretarany, setMeretarany] = useState<number | undefined>(undefined);
-  const [eszak, setEszak] = useState<number | null>(null);
+  // északjel: alapból egy közös érték minden laphoz (ha egyszer beállítottad), laponként külön is felülírható
+  const [eszakKozos, setEszakKozos] = useState<number | null>(null);
+  const [eszakKulon, setEszakKulon] = useState<Record<number, number>>({});
   // laponként megjegyzett kijelölések (egységek, helyiségek, besorolás, nyílások) – lapozáskor és átvételkor is ezek érvényesek
   const [kijelolesek, setKijelolesek] = useState<Record<number, Kijeloles>>({});
   // „minden fűtött” kapcsoló: az összes lap minden helyisége fűtött (a kézi besorolás felülírja)
@@ -115,7 +117,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
 
   /** Beépített típusalaprajz-mintalap (panel / blokkos): előre feldolgozott lakásadatok, kattintásos lakásválasztás. */
   function mintalap(fajta: 'panel' | 'blokkos') {
-    setLapok([]); setAIdx(-1); setMIdx(-1); setKesz(null); setHiba(null); setMintaFajta(fajta); setElemzesek({}); setKijelolesek({}); setAtvett(new Set());
+    setLapok([]); setAIdx(-1); setMIdx(-1); setKesz(null); setHiba(null); setMintaFajta(fajta); setElemzesek({}); setKijelolesek({}); setAtvett(new Set()); setEszakKozos(null); setEszakKulon({});
   }
 
   const aLap = aIdx >= 0 ? lapok[aIdx] : undefined;
@@ -178,8 +180,6 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   // alapértékek a felismerésből
   useEffect(() => {
     if (!al) return;
-    const e = al.e.eszak;
-    setEszak(e ? norm(e.szog + eszakJavitas(e.alairas)) : 0);
     // ha van helyiségpecsét, a csak a jegyzékben szereplő sorok (párjuk nincs a rajzon) alapból nem kerülnek át;
     // típusalaprajznál a lakáshoz nem tartozó terek (lépcsőház, folyosó, akna) kimaradnak
   }, [al]);
@@ -202,7 +202,11 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     .map(({ n, k }) => ({ n, k, hi: helyisegek.indexOf(al!.magHelyisegek[n.helyiseg!]!) }))
     .filter(({ hi }) => hi >= 0 && valasztott[hi]);
   const belsoAjtok = (al?.nyilasok ?? []).filter((n) => !n.kulso).length;
-  const eszakSz = eszak ?? 0;
+  const eszakFelismert = (a: AlaprajzFeldolgozas | null | undefined) => (a?.e.eszak ? norm(a.e.eszak.szog + eszakJavitas(a.e.eszak.alairas)) : 0);
+  const eszakLap = (i: number, a: AlaprajzFeldolgozas | null | undefined) => eszakKulon[i] ?? eszakKozos ?? eszakFelismert(a);
+  const eszakSz = eszakLap(aIdx, al);
+  const kulonE = aIdx in eszakKulon;
+  const setEszak = (v: number) => { if (kulonE) setEszakKulon((x) => ({ ...x, [aIdx]: v })); else setEszakKozos(v); };
 
   // homlokzatonkénti összesítés
   const iranyok = [0, 90, 180, 270].map((ir) => ({
@@ -250,8 +254,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
         // a megnyitott lapnál a kézi kijelölés, a többinél az alapértelmezett
         const k = i === aIdx ? kj : kijeloles(i, a);
         const sz = lapSzintek(i);
-        const e = a.e.eszak ? norm(a.e.eszak.szog + eszakJavitas(a.e.eszak.alairas)) : eszakSz;
-        const u = egyAtvetel(q, a, k, { csere: n === 0 ? csere : false, padloAt: !!futott.length && sz.includes(futott[0]!), tetoAt: !!futott.length && sz.includes(futott.at(-1)!), eszak: i === aIdx ? eszakSz : e, szintek: sz, fajl: l.fajl });
+        const u = egyAtvetel(q, a, k, { csere: n === 0 ? csere : false, padloAt: !!futott.length && sz.includes(futott[0]!), tetoAt: !!futott.length && sz.includes(futott.at(-1)!), eszak: eszakLap(i, a), szintek: sz, fajl: l.fajl });
         uz.push(`${l.cim || l.fajl}: ${atvetelReszek(a, k).helyisegek.length} helyiség${sz.length > 1 ? ` × ${sz.length} szint` : ''}`, ...u.filter((x) => !/azonos felület összevonva/.test(x)));
         for (const s0 of sz) if (s0 !== 'P') szintA.set(s0, (szintA.get(s0) ?? 0) + atvetelReszek(a, k).helyisegek.filter((h) => h.kategoria !== 'gyengen_kapcsolt').reduce((t, h) => t + h.A, 0));
       });
@@ -310,7 +313,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
           <button class={`gomb${mintaFajta === 'panel' ? ' aktiv-gomb' : ''}`} onClick={() => mintalap('panel')}>Panel típusalaprajzok</button>
           <button class={`gomb${mintaFajta === 'blokkos' ? ' aktiv-gomb' : ''}`} onClick={() => mintalap('blokkos')}>Blokkos típusalaprajzok</button>
           <label class="gomb fo" style="cursor:pointer">PDF tervlapok kiválasztása<input type="file" accept="application/pdf,.pdf" multiple style="display:none" onChange={(e) => { const t = e.target as HTMLInputElement; setMintaFajta(null); void betolt(t.files).then(() => { t.value = ''; }); }} /></label>
-          {lapok.length > 0 && <button class="gomb halk-gomb semleges" onClick={() => { setLapok([]); setAIdx(-1); setMIdx(-1); setKesz(null); setElemzesek({}); setKijelolesek({}); setAtvett(new Set()); }}>Lapok törlése</button>}
+          {lapok.length > 0 && <button class="gomb halk-gomb semleges" onClick={() => { setLapok([]); setAIdx(-1); setMIdx(-1); setKesz(null); setElemzesek({}); setKijelolesek({}); setAtvett(new Set()); setEszakKozos(null); setEszakKulon({}); }}>Lapok törlése</button>}
           {folyamat && !halad && <span class="halk" role="status">{folyamat}</span>}
         </div>
         {halad && <div class="halad" role="status"><progress value={halad.arany} max={1} /><span>{Math.round(halad.arany * 100)}% · {halad.szoveg}</span></div>}
@@ -443,7 +446,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                 <button class="gomb" onClick={() => setEszak(norm(eszakSz - 45))}>−45°</button>
                 <button class="gomb" onClick={() => setEszak(norm(eszakSz + 45))}>+45°</button>
               </div>
-              {ej && <small class="halkabb">{ej.forras === 'betu' ? 'Az „É” / „N” betűs északjelből.' : eszakJavitas(ej.alairas) !== 0 ? 'Ismert északjel: a korábban rögzített iránnyal. Ellenőrizd az előnézeten (piros nyíl).' : 'Az északjel alakjából – ellenőrizd az előnézeten (piros nyíl), a javítást a program ehhez a jelhez megjegyzi.'}</small>}
+              <label class="halkabb" style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" checked={kulonE} onChange={(e) => { const be = (e.target as HTMLInputElement).checked; setEszakKulon((x) => { const y = { ...x }; if (be) y[aIdx] = eszakSz; else delete y[aIdx]; return y; }); }} /> Ennél a lapnál külön érték{!kulonE && eszakKozos !== null ? ' (most: közös, minden lapra érvényes)' : ''}</label>
+              {ej && eszakKozos === null && !kulonE && <small class="halkabb">{ej.forras === 'betu' ? 'Az „É” / „N” betűs északjelből.' : eszakJavitas(ej.alairas) !== 0 ? 'Ismert északjel: a korábban rögzített iránnyal. Ellenőrizd az előnézeten (piros nyíl).' : 'Az északjel alakjából – ellenőrizd az előnézeten (piros nyíl), a javítást a program ehhez a jelhez megjegyzi.'}</small>}
             </div>
             {al.e.egysegek.length > 1 && (
               <div class="mezo szeles"><span>Lakások / egységek (a helyiségszámozás szerint)
