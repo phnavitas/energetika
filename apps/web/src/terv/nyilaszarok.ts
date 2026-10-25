@@ -2,7 +2,7 @@
  * Nyílászárók felismerése (4. kör): a nyílásméret-feliratok (két egymás alatti szám: szélesség / magasság, cm;
  * mellette „pm 90” mellvédmagasság) párosítása a falnyílásokkal, helyiséghez és homlokzati irányhoz rendelése.
  */
-import type { Szoveg } from './kinyeres';
+import type { Szoveg, Lap } from './kinyeres';
 import type { Raszter } from './raszter';
 import { szovegJavit } from './alaprajz';
 
@@ -17,7 +17,9 @@ export interface TervNyilas {
   helyiseg: number | null;
   irany: number | null;
   kulso: boolean;
-  fajta: 'ablak' | 'erkelyajto' | 'bejarati_ajto' | 'garazskapu' | 'belso_ajto';
+  /** A fal iránya a lapon (a feliratpárból). */
+  fal?: 'v' | 'f';
+  fajta: 'ablak' | 'erkelyajto' | 'bejarati_ajto' | 'bejarati_uvegajto' | 'garazskapu' | 'belso_ajto' | 'falfulke';
 }
 
 /** Nyílásméret cm-ben; a „+30” toldás (redőnytok, tokszélesítés) a magasság mellett – a nyílásméret az első szám. */
@@ -129,6 +131,56 @@ export function nyilasFeliratok(sz: Szoveg[]): NyilasFelirat[] {
     ki.push({ szel: w / 100, mag: h / 100, pm, x: g.cx, y: g.cy, fal: Math.abs(g.dir[0]) >= Math.abs(g.dir[1]) ? 'v' : 'f' });
   }
   return ki;
+}
+
+/**
+ * Falfülke: a feliratozott „nyílás” helyén a fal sraffozása nem szakad meg (a fülke csak a falvastagság egy részét
+ * veszi el – radiátor-, redőny-, bútorfülke). Vizsgálat: a felirat mögötti falsávban, a nyílás szélességén a rövid
+ * ferde sraffvonalak sűrűsége legalább fele a szomszédos falpilléreken mértnek. Ablaknál, ajtónál a nyílás
+ * szakaszán a falsávban tok-, üveg- és szárnyvonalak vannak, sraff nincs.
+ */
+export function falfulkeE(f: { x: number; y: number; szel: number; fal?: 'v' | 'f'; irany?: number | null }, r: Raszter, lap: Lap): boolean {
+  const ptPx = r.mPerPt / r.px;
+  const fx = Math.round((f.x - r.x0) * ptPx), fy = Math.round((f.y - r.y0) * ptPx);
+  const vizsz = f.fal ? f.fal === 'v' : f.irany === 0 || f.irany === 180;
+  const falPx = (x: number, y: number) => x >= 0 && y >= 0 && x < r.w && y < r.h && !!r.fal[y * r.w + x];
+  const maxD = Math.round(0.9 / r.px);
+  for (const s of [1, -1]) {
+    let d0 = -1;
+    for (let d = 0; d <= maxD; d++) { const x = vizsz ? fx : fx + s * d, y = vizsz ? fy + s * d : fy; if (falPx(x, y)) { d0 = d; break; } }
+    if (d0 < 0) continue;
+    let d1 = d0; while (d1 - d0 < Math.round(0.8 / r.px)) { const x = vizsz ? fx : fx + s * (d1 + 1), y = vizsz ? fy + s * (d1 + 1) : fy; if (!falPx(x, y)) break; d1++; }
+    // falsáv lapkoordinátában: a fal mentén [a0, a1], keresztben [c0, c1]
+    const toPt = (px: number) => px / ptPx;
+    const keresztben = [s * d0, s * d1].map((v) => (vizsz ? r.y0 + toPt(fy + v) : r.x0 + toPt(fx + v))).sort((a, b) => a - b) as [number, number];
+    const kozep = vizsz ? f.x : f.y;
+    const felSz = f.szel * 0.4 / r.mPerPt, pill = 0.45 / r.mPerPt, res = f.szel * 0.5 / r.mPerPt + 0.12 / r.mPerPt;
+    if (keresztben[1] - keresztben[0] < 0.05 / r.mPerPt) continue;
+    // a nyílás szakasza, és 2 m-en belül mindkét irányban 0,45 m-es falpillér-ablakok (a szomszédos nyílásokon túl is)
+    const sav: [number, number][] = [[kozep - felSz, kozep + felSz]];
+    for (let e = 0; e < 2.0 / r.mPerPt; e += 0.3 / r.mPerPt) { sav.push([kozep - res - e - pill, kozep - res - e]); sav.push([kozep + res + e, kozep + res + e + pill]); }
+    const db = sav.map(() => 0);
+    const amin = Math.min(...sav.map((x) => x[0])), amax = Math.max(...sav.map((x) => x[1]));
+    for (const u of lap.utvonalak) {
+      if (u.muvelet !== 'stroke') continue;
+      const [bx0, by0, bx1, by1] = u.bbox;
+      const c0 = vizsz ? by0 : bx0, c1 = vizsz ? by1 : bx1, a0 = vizsz ? bx0 : by0, a1 = vizsz ? bx1 : by1;
+      if (c1 < keresztben[0] || c0 > keresztben[1] || a1 < amin || a0 > amax) continue;
+      for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) {
+        const dx = p[i + 2]! - p[i]!, dy = p[i + 3]! - p[i + 1]!; const l = Math.hypot(dx, dy) * r.mPerPt;
+        if (l < 0.01 || l > 0.8) continue;
+        const sz = Math.abs(Math.atan2(dy, dx) * 180 / Math.PI) % 90; if (sz < 15 || sz > 75) continue;
+        const mx = (p[i]! + p[i + 2]!) / 2, my = (p[i + 1]! + p[i + 3]!) / 2;
+        const c = vizsz ? my : mx, a = vizsz ? mx : my;
+        if (c < keresztben[0] || c > keresztben[1]) continue;
+        sav.forEach(([s0, s1], k) => { if (a >= s0 && a <= s1) db[k]!++; });
+      }
+    }
+    const nyilasSuru = db[0]! / (sav[0]![1] - sav[0]![0]);
+    const pillerSuru = Math.max(...sav.slice(1).map((x, k) => db[k + 1]! / (x[1] - x[0])));
+    if (pillerSuru > 0 && db[0]! >= 3 && nyilasSuru >= 0.5 * pillerSuru) return true;
+  }
+  return false;
 }
 
 /**

@@ -19,7 +19,7 @@ const KATEGORIAK: { ertek: HelyisegKategoria; nev: string }[] = [
   { ertek: 'erosen_kapcsolt', nev: 'Fűtetlen, lakótéren belüli' },
   { ertek: 'gyengen_kapcsolt', nev: 'Fűtetlen tér (b tényezővel)' },
 ];
-const FAJTA_NEV = { ablak: 'Ablak', erkelyajto: 'Erkélyajtó', bejarati_ajto: 'Bejárati ajtó', garazskapu: 'Garázskapu', belso_ajto: 'Belső ajtó' } as const;
+const FAJTA_NEV = { ablak: 'Ablak', erkelyajto: 'Erkélyajtó', bejarati_ajto: 'Bejárati ajtó', bejarati_uvegajto: 'Bejárati ajtó (üvegezett)', garazskapu: 'Garázskapu', belso_ajto: 'Belső ajtó', falfulke: 'Falfülke (nem nyílászáró)' } as const;
 const IRANY_SZIN: Record<number, string> = { 0: '#C2410C', 90: '#2E6DB4', 180: '#15803D', 270: '#A21CAF' };
 const IRANY_NEV: Record<number, string> = { 0: 'lapon fent', 90: 'lapon jobbra', 180: 'lapon lent', 270: 'lapon balra' };
 const norm = (d: number) => ((Math.round(d * 10) / 10) % 360 + 360) % 360;

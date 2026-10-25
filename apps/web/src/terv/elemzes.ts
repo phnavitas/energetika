@@ -7,7 +7,7 @@ import { alaprajzElemez, type AlaprajzEredmeny, type TervHelyiseg } from './alap
 import { raszterEpit, type Raszter } from './raszter';
 import { kotaEllenoriz } from './kota';
 import { meretaranyKotabol, automatikusHelyisegek, lakasCsoportok, arnyalatHatarok, type SzurkeKep } from './autohelyiseg';
-import { nyilasFeliratok, nyilasokHozzarendel, type TervNyilas } from './nyilaszarok';
+import { nyilasFeliratok, nyilasokHozzarendel, falfulkeE, type TervNyilas } from './nyilaszarok';
 import { retegrendBlokkok, szerepBecsles, retegekEpit, szintekKeres, type TervRetegrend, type SzerepBecsles, type TervRetegUI, type SzintEredmeny } from './metszet';
 import { ujId } from '../modell';
 
@@ -134,7 +134,27 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
       e.figyelmeztetesek.push(`${l.egysegek.length} lakást ismertem fel a szürke színezésből (egy lakás = egy összefüggő színezett terület, az x-szel áthúzott aknák nélkül). Válaszd ki a lakást a táblázatban.`);
     }
   }
-  const nyilasok = nyilasokHozzarendel(nyilasFeliratok(lap.szovegek), r, magHelyisegek.map((h) => h.nev), auto);
+  // falfülke (padlótól induló, sraffozott falszakasz előtti felirat): nem nyílászáró – kimarad az átvételből
+  const nyilasok = nyilasokHozzarendel(nyilasFeliratok(lap.szovegek), r, magHelyisegek.map((h) => h.nev), auto)
+    .map((n) => ((n.pm ?? 0) <= 0.05 && n.fajta !== 'belso_ajto' && falfulkeE(n, r, lap) ? { ...n, fajta: 'falfulke' as const, kulso: false } : n));
+  // bejárat: az előtér / szélfogó / lépcsőház padlószintű külső nyílásai közül a legszélesebb az (üvegezett) bejárati ajtó,
+  // a többi mellette lévő üvegezés (ablak)
+  const BEJARAT = /előtér|eloter|szélfogó|szelfogo|bejárat|bejarat|lépcső|lepcso|közlekedő|kozlekedo|lobby|hall/i;
+  // csoport: azonos homlokzati irányú, egymástól legfeljebb 5 m-re lévő bejárati nyílások (előtér + mellette a lépcsőház üvegezése)
+  const jelolt = nyilasok.filter((n) => n.kulso && n.helyiseg !== null && n.pm !== null && n.pm <= 0.05 && n.mag >= 2 && (n.fajta === 'erkelyajto' || n.fajta === 'bejarati_ajto') && BEJARAT.test(magHelyisegek[n.helyiseg]?.nev ?? ''));
+  const csoportok: TervNyilas[][] = [];
+  for (const n of jelolt) {
+    const c = csoportok.find((l) => l.some((m) => m.irany === n.irany && Math.hypot(m.x - n.x, m.y - n.y) * r.mPerPt <= 5));
+    if (c) c.push(n); else csoportok.push([n]);
+  }
+  const BEJ = /előtér|eloter|szélfogó|szelfogo|bejárat|bejarat|lobby|hall/i;
+  for (const l of csoportok) {
+    // ajtó csak ott, ahol előtér / szélfogó is van a csoportban; a magában álló lépcsőházi üvegezés (emeleteken) ablak
+    const bejaratos = l.filter((n) => BEJ.test(magHelyisegek[n.helyiseg!]?.nev ?? ''));
+    if (!bejaratos.length) { for (const n of l) n.fajta = 'ablak'; continue; }
+    const ajto = bejaratos.reduce((a, b) => (b.szel > a.szel ? b : a));
+    for (const n of l) n.fajta = n === ajto ? 'bejarati_uvegajto' : 'ablak';
+  }
   return { e, magHelyisegek, r, nyilasok, auto };
 }
 

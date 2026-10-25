@@ -95,6 +95,8 @@ export interface Felulet {
   /** Opak: felület (nettó, ha nincs szülőhöz kötött nyílászáró) · padló: alapterület. */
   A?: number;
   darab?: number;
+  /** Tervből: a darabszám mely szintekre oszlik (azonos szintek együtt beolvasva) – csoportosításhoz, szűréshez. */
+  szintek?: string[];
   tajolas?: Tajolas | null;
   hajlasszog?: 0 | Hajlasszog;
   /** Opak felület méretből: határoló hossz × magasság (a bruttó felület A ebből adódik). */

@@ -1,3 +1,4 @@
+import { useState } from 'preact/hooks';
 import { klima } from '@mag/index';
 import { Mezo, Szam, Szoveg, Valaszto, sz, kov } from '../ui';
 import type { EpuletEredmeny } from '@mag/index';
@@ -17,7 +18,13 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
   const fv = (id: string, fn: (f: Felulet) => void) => modosit((q) => { const f = q.feluletek.find((x) => x.id === id); if (f) fn(f); });
   const torol = (id: string) => modosit((q) => { q.feluletek = q.feluletek.filter((x) => x.id !== id && x.szuloId !== id).map((x) => x); });
   const opak = p.feluletek.filter((f) => f.fajta === 'opak');
-  const ny = p.feluletek.filter((f) => f.fajta === 'nyilaszaro');
+  const nyMind = p.feluletek.filter((f) => f.fajta === 'nyilaszaro');
+  // nyílászárók szűrése égtáj, szint, épület szerint (ellenőrzéshez)
+  const [nySzuro, setNySzuro] = useState({ taj: '', szint: '', epulet: '' });
+  const nySzint = (f: Felulet) => (f.szintek?.length ? f.szintek : [p.helyisegek.find((h) => h.id === f.helyisegId)?.szint ?? '']);
+  const nyEpulet = (f: Felulet) => { const h = p.helyisegek.find((x) => x.id === f.helyisegId); return (h?.egyseg && /^(\S{1,3}) épület/.exec(h.egyseg)?.[1]) ?? (h && /\(([A-ZÁÉ]{1,2})\.[^)]*\)/.exec(h.nev)?.[1]) ?? ''; };
+  const ny = nyMind.filter((f) => (!nySzuro.taj || f.tajolas === nySzuro.taj) && (!nySzuro.szint || nySzint(f).includes(nySzuro.szint)) && (!nySzuro.epulet || nyEpulet(f) === nySzuro.epulet));
+  const nyOpc = (l: string[]) => [...new Set(l.filter(Boolean))].sort();
   const padlok = p.feluletek.filter((f) => f.fajta === 'padlo');
   /** Felület áthelyezése a lista egy másik eleme elé (húzás) vagy egy hellyel (gombbal) – a saját fajtáján belül. */
   const athelyez = (id: string, celId: string) => modosit((q) => {
@@ -101,6 +108,14 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
       <section class="szakasz">
         <h2>Nyílászárók</h2>
         <p class="halk">A tájolás és a dőlés a havi sugárzási nyereséghez kell (2. függ. 1.6. táblázat). Ha a nyílászárót egy falhoz rendeled, a fal felületéből levonódik.</p>
+        {nyMind.length > 5 && (
+          <div class="gombsor" style="gap:12px;margin:8px 0;align-items:flex-end">
+            <label class="mezo"><span>Égtáj</span><select value={nySzuro.taj} onChange={(e) => setNySzuro({ ...nySzuro, taj: (e.target as HTMLSelectElement).value })}><option value="">Mind</option>{klima.TAJOLASOK.filter((t) => nyMind.some((f) => f.tajolas === t)).map((t) => <option value={t}>{t}</option>)}</select></label>
+            <label class="mezo"><span>Szint</span><select value={nySzuro.szint} onChange={(e) => setNySzuro({ ...nySzuro, szint: (e.target as HTMLSelectElement).value })}><option value="">Mind</option>{nyOpc(nyMind.flatMap(nySzint)).map((t) => <option value={t}>{t}</option>)}</select></label>
+            <label class="mezo"><span>Épület</span><select value={nySzuro.epulet} onChange={(e) => setNySzuro({ ...nySzuro, epulet: (e.target as HTMLSelectElement).value })}><option value="">Mind</option>{nyOpc(nyMind.map(nyEpulet)).map((t) => <option value={t}>{t}</option>)}</select></label>
+            <span class="halkabb">{ny.length} / {nyMind.length} sor · {ny.reduce((s, f) => s + (f.darab ?? 1), 0)} db · {sz(ny.reduce((s, f) => s + feluletNettoA(p, f), 0), 1)} m²</span>
+          </div>
+        )}
         <div class="tabla-gorgeto">
           <table class="tabla">
             <thead><tr><th aria-label="Sorrend"></th><th>Megnevezés</th><th>Típus</th><th class="szam">Db</th><th>Tájolás</th><th>Dőlés</th><th>Falban</th><th>Helyiség</th><th class="szam">Felület</th><th>Árnyékoló</th><th class="szam" title="Fűtési idényre vonatkozó árnyékolási tényező: környező beépítés, erkély, előtető, növényzet (1 = nincs)">F<sub>árny</sub></th><th class="szam" title="Passzív szoláris nyereség Qsd = Au · 0,9 · gn · F · Gs">Napnyereség<br /><span class="halkabb">fűtési idény / év</span></th></tr></thead>
