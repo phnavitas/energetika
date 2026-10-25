@@ -18,6 +18,7 @@ import { HohidakLepes } from './lepesek/Hohidak';
 import { FelujitasLepes } from './lepesek/Felujitas';
 import { AlternativLepes } from './lepesek/Alternativ';
 import { TervbolLepes, tervbolFuggo } from './lepesek/Tervbol';
+import { projektFajlba } from './letoltes';
 import { ProfilKitoltes, Belepes, IrodaLetrehozas, IrodaNezet, KonyvtarNezet, ProjektekNezet, TavoliKontextus, konyvtarBetolt, type Konyvtar, type TavoliAllapot } from './fiok';
 import * as t from './tarolo';
 import { ProfilKontextus, helyiProfil, helyiProfilMent, jogosult as jogosultFv, uresTanusito, ZAR_SZOVEG } from './profil';
@@ -74,7 +75,14 @@ function osszesito(e: EpuletEredmeny | null, AN: number): t.Osszesito {
 }
 
 function App() {
-  const [p, setP] = useState<Projekt>(betolt);
+  const [p, setPNyers] = useState<Projekt>(betolt);
+  // Visszavonás / újra: a projekt korábbi állapotai (gyors egymás utáni módosítások – pl. gépelés – egy lépésnek számítanak)
+  const mult = useRef<Projekt[]>([]);
+  const jovo = useRef<Projekt[]>([]);
+  const utolsoMod = useRef(0);
+  const [, setElozmenyJel] = useState(0);
+  /** Új projekt betöltése: az előzmények törlődnek. */
+  const setP = (x: Projekt) => { mult.current = []; jovo.current = []; utolsoMod.current = 0; setElozmenyJel((v) => v + 1); setPNyers(x); };
   const [nezet, setNezetNyers] = useState<Nezet>('eredmeny');
   // a Tervből lépésben beolvasott, de át nem vett tervlapok elvesznek a lépés elhagyásakor – előbb rákérdezünk
   const [elhagyKerdes, setElhagyKerdes] = useState<Nezet | null>(null);
@@ -158,8 +166,22 @@ function App() {
   // A kapcsolat csak az aktív irodában érvényes; más irodában helyi projektként marad.
   const aktivKapcsolat = tavoli && kapcsolat && iroda && kapcsolat.irodaId === iroda.id ? kapcsolat : null;
 
-  const modosit = (fn: (q: Projekt) => void) => {
-    setP((elozo) => { const n = structuredClone(elozo); fn(n); anyagPillanatkep(n); return n; });
+  const modosit = (fn: (q: Projekt) => void, elozmeny = true) => {
+    setPNyers((elozo) => {
+      // a fotók (nagy base64 adatok) nem klónozódnak minden lépésnél – csak a lista
+      const n = { ...structuredClone({ ...elozo, fotok: undefined }), fotok: elozo.fotok?.map((f) => ({ ...f })) } as Projekt;
+      if (!n.fotok) delete n.fotok;
+      fn(n); anyagPillanatkep(n);
+      // érdemi változás nélküli hívás (pl. effektből, mezőelhagyáskor) nem kerül az előzmények közé
+      if (JSON.stringify({ ...n, fotok: undefined }) === JSON.stringify({ ...elozo, fotok: undefined }) && (n.fotok?.length ?? 0) === (elozo.fotok?.length ?? 0)) return elozo;
+      const most = Date.now();
+      if (!elozmeny) return n;
+      if (most - utolsoMod.current > 800 || !mult.current.length) { mult.current.push(elozo); if (mult.current.length > 80) mult.current.shift(); }
+      utolsoMod.current = most;
+      jovo.current = [];
+      return n;
+    });
+    setElozmenyJel((v) => v + 1);
     const k = kapcsolatRef.current;
     if (k && !k.piszkos) setKapcsolat({ ...k, piszkos: true });
   };
@@ -167,7 +189,7 @@ function App() {
   // A böngésző tárhelye ~5 MB: ha a fotókkal nem fér el, a helyi vázlat fotók nélkül marad (a fiókba mentés és a projektfájl tartalmazza őket).
   // A projekt tanúsítói adatai a profilból jönnek.
   useEffect(() => {
-    if (profil && JSON.stringify(profil) !== JSON.stringify(p.tanusito)) modosit((q) => { q.tanusito = structuredClone(profil); });
+    if (profil && JSON.stringify(profil) !== JSON.stringify(p.tanusito)) modosit((q) => { q.tanusito = structuredClone(profil); }, false);
   }, [profil, p.tanusito]);
   // Magyarázó szövegek: egy sorra rövidítve, kattintásra nyílnak (részletezés csak kérésre).
   useEffect(() => {
@@ -193,6 +215,35 @@ function App() {
   const hibak = hiba ? [...atal.hibak, hiba] : atal.hibak;
   const eRef = useRef({ e, AN: atal.geometria.AN });
   eRef.current = { e, AN: atal.geometria.AN };
+
+  function elozmenyLep(irany: -1 | 1) {
+    const honnan = irany < 0 ? mult.current : jovo.current, hova = irany < 0 ? jovo.current : mult.current;
+    const cel = honnan.pop();
+    if (!cel) return;
+    hova.push(pRef.current);
+    utolsoMod.current = 0;
+    setPNyers(cel); setElozmenyJel((v) => v + 1);
+    const k = kapcsolatRef.current;
+    if (k && !k.piszkos) setKapcsolat({ ...k, piszkos: true });
+  }
+  /** Kézi mentés: irodai projektnél azonnal a szerverre, helyi projektnél .json fájlba. */
+  async function kezMentes() {
+    if (aktivKapcsolat) { window.clearTimeout(idozito.current); if (kapcsolatRef.current?.piszkos) await ment(); else setMentes({ a: 'mentve' }); }
+    else { const h = await projektFajlba(pRef.current); setUzenet(h ?? 'Projekt fájlba mentve.'); }
+  }
+  useEffect(() => {
+    const f = (ev: KeyboardEvent) => {
+      if (!(ev.ctrlKey || ev.metaKey) || ev.altKey) return;
+      const t0 = ev.target as HTMLElement | null;
+      const k = ev.key.toLowerCase();
+      if (k === 's') { ev.preventDefault(); kezMentes(); return; }
+      if (t0?.tagName === 'TEXTAREA' || t0?.isContentEditable) return;
+      if (k === 'z' && !ev.shiftKey) { ev.preventDefault(); (t0 as HTMLInputElement | null)?.blur?.(); elozmenyLep(-1); }
+      else if (k === 'y' || (k === 'z' && ev.shiftKey)) { ev.preventDefault(); (t0 as HTMLInputElement | null)?.blur?.(); elozmenyLep(1); }
+    };
+    addEventListener('keydown', f);
+    return () => removeEventListener('keydown', f);
+  });
 
   async function ment(): Promise<void> {
     while (folyamatban.current) await folyamatban.current;
@@ -474,6 +525,11 @@ function App() {
               <p class="halk">{fej.leiras}</p>
             </div>
             {tavoli && <span class={`mentes-pirula ${mentesOsztaly}`} role="status" aria-live="polite">{mentesSzoveg}</span>}
+            <div class="gombsor eszkozsor">
+              <button class="gomb halk-gomb semleges" disabled={!mult.current.length} title="Visszavonás (Ctrl+Z)" aria-label="Visszavonás" onClick={() => elozmenyLep(-1)}>↶</button>
+              <button class="gomb halk-gomb semleges" disabled={!jovo.current.length} title="Újra (Ctrl+Y vagy Ctrl+Shift+Z)" aria-label="Újra" onClick={() => elozmenyLep(1)}>↷</button>
+              <button class="gomb halk-gomb semleges" title={aktivKapcsolat ? 'Mentés az irodába most (Ctrl+S)' : 'Projekt mentése .json fájlba (Ctrl+S)'} onClick={kezMentes}>Mentés</button>
+            </div>
             {lepesIdx >= 0 && (
               <div class="gombsor">
                 {lepesIdx > 0 && <button class="gomb" onClick={() => setNezet(LEPESEK[lepesIdx - 1]!.kod)}>Vissza</button>}

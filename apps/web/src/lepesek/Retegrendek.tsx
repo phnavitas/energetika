@@ -193,10 +193,19 @@ function Szerkeszto({ r, m, kijelolt, jelol, torol }: { r: Retegrend; m: (fn: (r
                   </td>
                   <td style="width:130px"><Szam cimke="Vastagság" ertek={x.dCm} egyseg="cm" valt={(v) => m((q) => { q.retegek[i]!.dCm = v; })} /></td>
                   <td style="width:120px" class="szam">
-                    {x.lambda !== undefined
-                      ? <Szam cimke="Hővezetési tényező" ertek={x.lambda} egyseg="W/mK" valt={(v) => m((q) => { q.retegek[i]!.lambda = v; })} />
-                      : x.R !== undefined ? <Szam cimke="Hővezetési ellenállás" ertek={x.R} egyseg="m²K/W" valt={(v) => m((q) => { q.retegek[i]!.R = v; })} />
-                      : a?.lambda ? sz(a.lambda, 3) : a?.R ? <span class="halkabb">termék R</span> : '–'}
+                    {x.R !== undefined ? <Szam cimke="Hővezetési ellenállás" ertek={x.R} egyseg="m²K/W" valt={(v) => m((q) => { q.retegek[i]!.R = v; })} />
+                      : x.legreteg ? '–'
+                      : (() => {
+                        // katalógusanyagnál is átírható: a kézi λ felülírja a katalógus értékét (termék-R esetén az egyenértékű λ = d/R)
+                        const katL = a?.lambda ?? (a?.R ? a.R.d / a.R.R : undefined);
+                        const kezi = x.lambda !== undefined && x.anyagId !== undefined;
+                        return <>
+                          <Szam cimke="Hővezetési tényező" ertek={x.lambda ?? (katL !== undefined ? Math.round(katL * 10000) / 10000 : undefined)} egyseg="W/mK"
+                            valt={(v) => m((q) => { const t = q.retegek[i]!; if (katL !== undefined && x.anyagId && Math.abs(v - katL) < 5e-5) delete t.lambda; else t.lambda = v; })} />
+                          {kezi && <small class="halkabb" style="display:block;text-align:right">kézi · katalógus {katL !== undefined ? sz(katL, 3) : '–'} <button class="link-gomb" onClick={() => m((q) => { delete q.retegek[i]!.lambda; })}>visszaállít</button></small>}
+                          {!kezi && a?.R && <small class="halkabb" style="display:block;text-align:right">termék R {sz(a.R.R, 3)} / {sz(a.R.d * 100, 0)} cm</small>}
+                        </>;
+                      })()}
                   </td>
                   <td class="szam">{R !== undefined ? sz(R, 3) : '–'}</td>
                   <td style="width:96px" title={muAlap(x).forras}><Szam cimke="Páradiffúziós ellenállási szám" ertek={muAlap(x).mu} valt={(v) => m((q) => { q.retegek[i]!.mu = v > 0 ? v : undefined; })} /></td>

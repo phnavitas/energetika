@@ -13,29 +13,7 @@ import { FotokSzakasz } from './Fotok';
 type Modosit = (fn: (p: Projekt) => void) => void;
 const MIN: Record<string, string> = { kivalo: 'kiváló', jo: 'jó', kozepes: 'közepes', gyenge: 'gyenge', rossz: 'rossz' };
 
-type Letoltes = { save: (r: { filename: string; data: string | Blob }) => Promise<unknown> };
-declare global { interface Window { claude?: { use: (n: string) => Promise<unknown> } } }
-
-/** Letöltés: megosztott artifact-nézetben a platform mentési párbeszédén át, helyben közvetlen fájlként. */
-async function letolt(nev: string, tartalom: string | Uint8Array, tipus: string): Promise<string | null> {
-  const adat = typeof tartalom === 'string' ? tartalom : new Blob([tartalom as BlobPart], { type: tipus });
-  if (window.claude?.use) {
-    const d = (await window.claude.use('downloads')) as Letoltes | null;
-    if (d) {
-      try { await d.save({ filename: nev, data: adat }); return null; } catch (e) {
-        const kod = (e as { code?: string }).code;
-        if (kod === 'declined') return null;
-        if (kod === 'rejected_extension') return 'Ebben a megosztott nézetben ez a fájltípus nem menthető. Az XML-t a helyben futtatott alkalmazásból töltsd le.';
-        return 'A mentés ebben a nézetben nem érhető el.';
-      }
-    }
-  }
-  const url = URL.createObjectURL(typeof adat === 'string' ? new Blob([adat], { type: tipus }) : adat);
-  const a = document.createElement('a');
-  a.href = url; a.download = nev; a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  return null;
-}
+import { letolt, projektFajlba } from '../letoltes';
 
 export function EredmenyLepes({ p, e, g, atal, hibak, modosit, rogzit, resz = 'eredmeny' }: { resz?: 'eredmeny' | 'tanusitvany'; p: Projekt; e: EpuletEredmeny | null; g: Geometria; atal: Atalakitas; hibak: string[]; modosit: Modosit; rogzit?: () => Promise<string> }) {
   const [pdfFut, setPdfFut] = useState(false);
@@ -105,7 +83,7 @@ export function EredmenyLepes({ p, e, g, atal, hibak, modosit, rogzit, resz = 'e
             catch (err) { setXmlHiba(`A jegyzőkönyv nem készült el: ${(err as Error).message}`); }
             finally { setPdfFut(false); }
           }}>{pr.jogosult ? '' : '🔒 '}{pdfFut ? 'Jegyzőkönyv készül…' : 'Számítási jegyzőkönyv (PDF)'}</button>
-          <button class="gomb" onClick={() => letolt(`${(p.meta.nev || 'projekt').replace(/[^\p{L}\p{N} _-]/gu, '')}.json`, JSON.stringify(p, null, 1), 'application/json').then(setXmlHiba)}>Projekt mentése fájlba</button>
+          <button class="gomb" onClick={() => projektFajlba(p).then(setXmlHiba)}>Projekt mentése fájlba</button>
         </div>
         {!pr.jogosult && <p class="halkabb" style="margin-top:8px;color:var(--figyel)">{ZAR_SZOVEG} <button class="link-gomb" onClick={pr.szerkeszt}>Szám megadása a profilban</button></p>}
         {xmlHiba && <div class="hiba-doboz" style="margin-top:12px">{xmlHiba}</div>}

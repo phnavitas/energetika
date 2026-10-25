@@ -158,7 +158,7 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
     blokk.push(tabla(['#', 'Réteg (belülről kifelé)', 'd [cm]', 'λ [W/mK]', 'R [m²K/W]'], [
       ...r.retegek.map((x, i) => {
         const a = anyag(x.anyagId);
-        return [String(i + 1), x.nev ?? a?.nev ?? '–', f(x.dCm, 1), x.lambda !== undefined ? f(x.lambda, 3) : a?.lambda !== undefined ? f(a.lambda, 3) : x.legreteg ? 'légréteg' : 'R', f(er!.retegR[i], 3)];
+        return [String(i + 1), x.nev ?? a?.nev ?? '–', f(x.dCm, 1), x.lambda !== undefined ? `${f(x.lambda, 3)}${a ? ' (kézi)' : ''}` : a?.lambda !== undefined ? f(a.lambda, 3) : x.legreteg ? 'légréteg' : 'R', f(er!.retegR[i], 3)];
       }),
       ['', { text: `Rsi + Rse = ${f(er.Rsi)} + ${f(er.Rse)}`, color: SZIN.halk }, '', '', f(er.Rsi + er.Rse, 3)],
     ], [14, '*', 40, 45, 50], [2, 3, 4]));

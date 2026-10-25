@@ -425,3 +425,5 @@ details.osszecsukhato[open] > summary { margin-bottom: 4px; }
 /* széles táblázatok: a sor végi művelet (Törlés) vízszintes görgetésnél is látszik */
 .sor-torol { border: 0; background: none; color: var(--halk, #888); cursor: pointer; font-size: 13px; padding: 2px 5px; margin-left: 2px; border-radius: 4px; line-height: 1; vertical-align: middle; }
 .sor-torol:hover { color: #b3261e; background: rgba(179,38,30,.08); }
+.munka > header .eszkozsor { gap: 4px; margin-left: auto; }
+.munka > header .eszkozsor .gomb[aria-label] { min-width: 36px; font-size: 17px; line-height: 1; padding: 6px 10px; }
