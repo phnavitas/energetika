@@ -69,6 +69,11 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
   pdfMake.vfs = vfs;
 
   const m = p.meta, g = atal.geometria, ind = e.indikatorok, k = e.kovetelmeny;
+  // energiahordozó neve: távhőnél a szolgáltató által közölt súlyozó tényezőkkel (9/2023 ÉKM 8. § (1))
+  const th = p.gepeszet.tavho;
+  const ehNev = (eh: string, reszletes = false) => eh === 'tavho' && th
+    ? `Távhő – ${th.szolgaltato}${th.rendszer ? `, ${th.rendszer}` : ''}${reszletes ? ` (szolgáltatói adat: fnren ${f(th.fnren, 3)}, fren ${f(th.fren, 3)}, fCO₂ ${f(th.fCO2, 1)} g/kWh)` : ''}`
+    : sulyozo.SULYOZO[eh as keyof typeof sulyozo.SULYOZO].megnevezes;
   const cimSzoveg = [m.irsz, m.telepules, m.kozterulet ? [m.kozterulet, m.kozteruletJelleg, m.hazszam].filter(Boolean).join(' ') : ''].filter(Boolean).join(', ') || '–';
   const datum = new Date().toLocaleDateString('hu-HU');
   const tartalom: Content[] = [];
@@ -213,7 +218,8 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
   }
 
   tartalom.push(cim('Szerkezetek követelményellenőrzése (1. melléklet)', 2));
-  tartalom.push(tabla(['Elem', 'U [W/m²K]', 'Megengedett', 'Minősítés', ''], e.szerkezetek.map((s) => [s.nev, f(s.U, 3), s.Umax !== null ? f(s.Umax, 3) : '–', s.minosites ? MIN_NEV[s.minosites] : '–', megfelel(s.megfelel)]), ['*', 50, 55, 55, 60], [1, 2]));
+  tartalom.push(tabla(['Elem', 'U rétegtervi [W/m²K]', 'Megengedett', 'U eredő [W/m²K]', 'Minősítés', ''], e.szerkezetek.map((s) => [s.nev, f(s.Uelemi, 3), s.Umax !== null ? f(s.Umax, 3) : '–', Math.abs(s.U - s.Uelemi) > 5e-4 ? f(s.U, 3) : '–', s.minosites ? MIN_NEV[s.minosites] : '–', megfelel(s.megfelel)]), ['*', 55, 52, 52, 50, 60], [1, 2, 3]));
+  tartalom.push(megj('Az elemi követelményt (1. melléklet) a rétegtervi U-ra ellenőrizzük; az eredő U a csatlakozási hőhidakkal (χ) növelt, talajjal érintkező szerkezetnél az egyenértékű érték – a minősítés (176/2008 4. melléklet) ehhez készül.'));
 
   // --- Energiamérleg -------------------------------------------------------------------------
   if (z && zr) {
@@ -300,13 +306,13 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
       ['Elosztás', a.elosztas.hely === 'nincs' ? 'nincs' : `fűtött téren ${a.elosztas.hely === 'belul' ? 'belül' : 'kívül'}, ${a.elosztas.elore}/${a.elosztas.vissza} °C`],
       ...reszlet(r, [['qSzall', 'Elosztási veszteség [kWh/m²a]', 2], ['QTar', 'Tárolási veszteség [kWh/a]', 0], ['WFveg', 'Villamos segédenergia [kWh/a]', 0]]),
     ]));
-    tartalom.push(tabla(['Végenergia tétel', 'Energiahordozó', 'Q [kWh/a]'], r.tetelek.map((t) => [t.megnevezes, sulyozo.SULYOZO[t.energiahordozo].megnevezes, f(t.Q, 0)]), ['*', 150, 60], [2]));
+    tartalom.push(tabla(['Végenergia tétel', 'Energiahordozó', 'Q [kWh/a]'], r.tetelek.map((t) => [t.megnevezes, ehNev(t.energiahordozo), f(t.Q, 0)]), ['*', 150, 60], [2]));
   });
   const hmvR = e.rendszerek.find((r) => r.cel === 'hmv');
   if (hmvR) {
     tartalom.push(cim('Használati melegvíz', 2));
     tartalom.push(adatsor(reszlet(hmvR, [['QHMVnet', 'Nettó HMV igény [kWh/a]', 0], ['epszilonHMV', 'Teljesítménytényező εHMV', 3], ['QTar', 'Tárolási veszteség [kWh/a]', 0], ['QSzall', 'Elosztási veszteség [kWh/a]', 0], ['Wcirk', 'Cirkuláció segédenergia [kWh/a]', 0]])));
-    tartalom.push(tabla(['Végenergia tétel', 'Energiahordozó', 'Q [kWh/a]'], hmvR.tetelek.map((t) => [t.megnevezes, sulyozo.SULYOZO[t.energiahordozo].megnevezes, f(t.Q, 0)]), ['*', 150, 60], [2]));
+    tartalom.push(tabla(['Végenergia tétel', 'Energiahordozó', 'Q [kWh/a]'], hmvR.tetelek.map((t) => [t.megnevezes, ehNev(t.energiahordozo), f(t.Q, 0)]), ['*', 150, 60], [2]));
   }
   const szR = e.rendszerek.find((r) => r.cel === 'szellozes');
   if (szR) {
@@ -368,7 +374,7 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
       [{ text: 'Összesen', bold: true }, { text: f(ind.osszes.nren, 0), bold: true, alignment: 'right' }, { text: f(ind.osszes.ren, 0), bold: true, alignment: 'right' }, { text: f(ind.osszes.tot, 0), bold: true, alignment: 'right' }, { text: f(ind.osszes.CO2, 0), bold: true, alignment: 'right' }]],
     ['*', 70, 70, 70, 70], [1, 2, 3, 4]));
   tartalom.push(cim('Végenergia energiahordozónként', 2));
-  tartalom.push(tabla(['Energiahordozó', 'Végenergia [kWh/a]', 'Fajlagos [kWh/m²a]'], Object.entries(ind.vegenergia).filter(([, Q]) => (Q ?? 0) > 0).map(([eh, Q]) => [sulyozo.SULYOZO[eh as keyof typeof sulyozo.SULYOZO].megnevezes, f(Q, 0), f((Q ?? 0) / g.AN, 2)]), ['*', 90, 90], [1, 2]));
+  tartalom.push(tabla(['Energiahordozó', 'Végenergia [kWh/a]', 'Fajlagos [kWh/m²a]'], Object.entries(ind.vegenergia).filter(([, Q]) => (Q ?? 0) > 0).map(([eh, Q]) => [ehNev(eh, true), f(Q, 0), f((Q ?? 0) / g.AN, 2)]), ['*', 90, 90], [1, 2]));
   const rf = e.rendszerErtekeles;
   tartalom.push(cim('Rendszerek értékelése a referencia rendszerhez képest (5. melléklet)', 2));
   tartalom.push(tabla(['Rendszer', 'Enren [kWh/a]', 'Referencia [kWh/a]', 'Arány', 'Minősítés'], [

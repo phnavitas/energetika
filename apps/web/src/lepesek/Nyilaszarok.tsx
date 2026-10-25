@@ -95,6 +95,7 @@ export function NyilaszarokLepes({ p, modosit }: { p: Projekt; modosit: Modosit 
 
   return (
     <>
+      <div style="margin-bottom:12px"><ArnyekoloMind p={p} modosit={modosit} /></div>
       <section class="kartya" style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px">
         <div style="flex:1;min-width:260px">
           <h3>Nyílászárók kora</h3>
@@ -147,6 +148,30 @@ export function NyilaszarokLepes({ p, modosit }: { p: Projekt; modosit: Modosit 
           : <div class="kartya halk">Válassz csoportot vagy típust, vagy vegyél fel újat.</div>}
       </div>
     </>
+  );
+}
+
+const ABLAK_KODOK = new Set(['ablak_fa_pvc', 'ablak_fem', 'tetosik_ablak']);
+/** Üvegezett (ablak, erkélyajtó, tetősík ablak) típus-e – az árnyékoló ezekre értelmes. */
+export const ablakTipusE = (n: NyilaszaroTipus) => ABLAK_KODOK.has(n.kovetelmenyKod ?? '') && (n.gn ?? 0) > 0;
+
+/** Társított árnyékoló beállítása minden árnyékoló nélküli ablaktípusra (a hűtési igényhez és a nyári hővédelemhez). */
+export function ArnyekoloMind({ p, modosit }: { p: Projekt; modosit: Modosit }) {
+  const [kod, setKod] = useState('redony');
+  const hasznalt = new Set(p.feluletek.map((f) => f.nyilaszaroId).filter(Boolean));
+  const nelkul = p.nyilaszarok.filter((n) => ablakTipusE(n) && !n.arnyekolo && hasznalt.has(n.id));
+  if (!nelkul.length) return null;
+  return (
+    <div class="figyelmeztetes" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+      <span style="flex:1;min-width:260px">{nelkul.length} beépített ablaktípusnak nincs társított árnyékolója – nyáron a teljes napsugárzással számol (hűtési igény, nyári hővédelem). Ha a terv szerint van:</span>
+      <select value={kod} aria-label="Árnyékoló" onChange={(e) => setKod((e.target as HTMLSelectElement).value)}>
+        {ARNYEKOLOK.map((a) => <option value={a.kod}>{a.megnevezes} ({a.kivul !== null ? `kívül ${a.kivul}` : `belül ${a.belul}`})</option>)}
+      </select>
+      <button class="gomb" onClick={() => modosit((q) => {
+        const a = ARNYEKOLOK.find((x) => x.kod === kod)!;
+        for (const n of q.nyilaszarok) if (ablakTipusE(n) && !n.arnyekolo) n.arnyekolo = { kod, dR: REDONY_DR[kod] ?? 0, garnyH: a.kivul ?? a.belul ?? 1 };
+      })}>Beállítás mind a {nelkul.length} típusra</button>
+    </div>
   );
 }
 

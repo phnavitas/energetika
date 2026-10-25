@@ -169,13 +169,13 @@ export function EredmenyLepes({ p, e, g, atal, hibak, modosit, rogzit, resz = 'e
         <h2>Szerkezetek</h2>
         <div class="tabla-gorgeto">
           <table class="tabla">
-            <thead><tr><th>Szerkezet</th><th class="szam">Felület</th><th class="szam">U</th><th class="szam">Követelmény</th><th>Minősítés</th></tr></thead>
+            <thead><tr><th>Szerkezet</th><th class="szam">Felület</th><th class="szam">U rétegtervi</th><th class="szam">Követelmény</th><th class="szam">U eredő</th><th>Minősítés</th></tr></thead>
             <tbody>{e.szerkezetek.map((s) => (
-              <tr><td>{s.nev}</td><td class="szam">{sz(s.A, 1)} m²</td><td class="szam">{sz(s.U, 3)}</td><td class="szam">{s.Umax !== null ? kov(s.Umax) : '–'}</td><td>{s.megfelel === false ? <span class="jel rossz">Nem felel meg</span> : s.minosites ? MIN[s.minosites] : '–'}</td></tr>
+              <tr><td>{s.nev}</td><td class="szam">{sz(s.A, 1)} m²</td><td class="szam">{sz(s.Uelemi, 3)}</td><td class="szam">{s.Umax !== null ? kov(s.Umax) : '–'}</td><td class="szam halkabb">{Math.abs(s.U - s.Uelemi) > 5e-4 ? sz(s.U, 3) : '–'}</td><td>{s.megfelel === false ? <span class="jel rossz">Nem felel meg</span> : s.minosites ? MIN[s.minosites] : '–'}</td></tr>
             ))}</tbody>
           </table>
         </div>
-        <p class="halkabb" style="margin-top:8px">U: falaknál és födémeknél a csatlakozási hőhidakkal növelt eredő érték, padlónál a talaj hatását is tartalmazó egyenértékű érték. A követelményt a rétegtervi értékre ellenőrizzük.</p>
+        <p class="halkabb" style="margin-top:8px">A követelményt a rétegtervi U-ra ellenőrizzük. Az eredő U falaknál és födémeknél a csatlakozási hőhidakkal (χ) növelt, padlónál a talaj hatását is tartalmazó egyenértékű érték; a minősítés ehhez készül.</p>
       </section>
 
       {e.figyelmeztetesek.length > 0 && (

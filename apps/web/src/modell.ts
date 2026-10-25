@@ -193,7 +193,9 @@ export interface Projekt {
     /** Referencia hűtőgép típusa és teljesítménye (5. melléklet SEER-táblázat). */
     refHutes?: { tipus: 'leg' | 'viz'; kW: number };
   };
-  zona: { legzaras: Legzaras; elhelyezes: NyilasElhelyezes; szelnekKitett: boolean; hotarolo: keyof typeof epuletfizika.HOTAROLO_KEPESSEG; cmEffFajl?: number; futesProgramozhato: boolean };
+  zona: { legzaras: Legzaras; elhelyezes: NyilasElhelyezes; szelnekKitett: boolean; hotarolo: keyof typeof epuletfizika.HOTAROLO_KEPESSEG; cmEffFajl?: number; futesProgramozhato: boolean;
+    /** Nyári éjszakai szellőztetés (2. függ. 2.3. táblázat) – a hűtési igényhez (6.11). */
+    ejjeliSzellozes?: keyof typeof epuletfizika.EJSZAKAI_SZELLOZES };
   helyisegek: Helyiseg[];
   retegrendek: Retegrend[];
   nyilaszarok: NyilaszaroTipus[];
@@ -568,6 +570,7 @@ export function atalakit(p: Projekt): Atalakitas {
       ...(pr && haviOra ? { rendeltetes: 'egyeb' as const, termSzellozesHavi: haviOra.map((h, i) => h / klima.HONAP_ORAK[i]!) } : {}),
       CmEffFajl: p.zona.cmEffFajl ?? epuletfizika.HOTAROLO_KEPESSEG[p.zona.hotarolo].ertek,
       futesProgramozhato: p.zona.futesProgramozhato, elemek,
+      ...(p.zona.ejjeliSzellozes ? { nEjjel: epuletfizika.EJSZAKAI_SZELLOZES[p.zona.ejjeliSzellozes] } : {}),
       gepiSzellozes: gp.szellozes ? { etaR: gp.szellozes.etaR, uzemArany: gp.szellozes.uzemArany, ...(pr ? { hasznalatiIdoben: true } : {}) } : undefined,
     }],
     futes, hmv: [hmv], szellozes,

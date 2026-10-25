@@ -10,6 +10,7 @@ import { TAVHO_ALAP, tavhoLista, tavhoSulyozobol, eepitesKeres, eepitesPdf, legu
 import * as C from '../gepeszetCimkek';
 import { useTavoli } from '../fiok';
 import { szettMent } from '../tarolo';
+import { ArnyekoloMind } from './Nyilaszarok';
 
 type Modosit = (fn: (p: Projekt) => void) => void;
 type SzabValasztas = Parameters<typeof szabalyozasiTenyezo>[0];
@@ -225,6 +226,17 @@ export function GepeszetLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: M
               torol={() => mg((g) => { g.hutes!.splice(i, 1); if (g.hutes!.length === 1) delete g.hutes![0]!.lefedes; })} />
           ))}
         </div>
+        {!!gp.hutes?.length && (
+          <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">
+            <div class="racs">
+              <Mezo cim="Nyári éjszakai szellőztetés" sugo="2. függ. 2.3. táblázat: intenzív éjszakai átszellőztetés nyitható ablakokkal – a hűtési idényben a légcsere 3 (egy homlokzat) vagy 6 1/h (több homlokzat) értékkel nő (6.11).">
+                <Valaszto ertek={p.zona.ejjeliSzellozes ?? ''} valt={(v) => modosit((q) => { if (v) q.zona.ejjeliSzellozes = v as 'egy_homlokzat' | 'tobb_homlokzat'; else delete q.zona.ejjeliSzellozes; })}
+                  opciok={[{ ertek: '', nev: 'Nincs' }, { ertek: 'egy_homlokzat', nev: 'Nyitható ablakok egy homlokzaton (3 1/h)' }, { ertek: 'tobb_homlokzat', nev: 'Több homlokzaton / átszellőztethető (6 1/h)' }]} />
+              </Mezo>
+            </div>
+            <ArnyekoloMind p={p} modosit={modosit} />
+          </div>
+        )}
         {p.meta.rendeltetes === 'egyeb' && !!gp.hutes?.length && (() => {
           const rh = p.meta.refHutes ?? { tipus: 'leg' as const, kW: 100 };
           return (

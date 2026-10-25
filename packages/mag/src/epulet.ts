@@ -65,6 +65,8 @@ export interface SzerkezetErtekeles {
   nev: string;
   kovetelmenyKod: string | null;
   U: number;
+  /** Az elemi követelménnyel összevetett érték: falaknál, födémeknél a rétegtervi U (hőhíd nélkül). */
+  Uelemi: number;
   Umax: number | null;
   megfelel: boolean | null;
   minosites: Minosites | null;
@@ -312,7 +314,7 @@ export function epuletSzamitas(b: EpuletBemenet, opciok?: SzamitasiOpciok): Epul
       minosites = U <= k.Umax ? 'jo' : 'kozepes';
       fw.push({ kod: 'MINOSITES_NINCS_SOR', uzenet: `„${e.nev}”: a 176/2008 4. melléklete nem ad értékelési sort; a követelményhez mért minősítést adtunk.`, forras: '176/2008 Korm. r. 4. melléklet' });
     }
-    szerkezetek.push({ nev: e.nev, kovetelmenyKod: kod, U, Umax: k?.Umax ?? null, megfelel: k ? Uelemi <= k.Umax + 1e-9 : null, minosites, A: e.A });
+    szerkezetek.push({ nev: e.nev, kovetelmenyKod: kod, U, Uelemi, Umax: k?.Umax ?? null, megfelel: k ? Uelemi <= k.Umax + 1e-9 : null, minosites, A: e.A });
   }
 
   // Épülettechnikai rendszerek értékelése (176/2008 5. melléklet) – referencia rendszerhez
