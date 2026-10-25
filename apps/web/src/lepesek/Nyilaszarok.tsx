@@ -349,7 +349,7 @@ function CsoportSzerkeszto({ p, cs, modosit, mcs, kijelol, sablonCsere, torol }:
         <KozosBeallitasok n={elso} m={mcs} sablonCsere={sablonCsere} />
         <section>
           <h3 style="margin-bottom:8px">Típusok a csoportban</h3>
-          <div class="tabla-gorgeto" style="overflow-x:auto"><table class="tabla">
+          <div class="tabla-gorgeto" style="overflow-x:auto"><table class="tabla ragadt-vege">
             <thead><tr><th>Ábra</th><th>Megnevezés</th><th class="szam">Szélesség</th><th class="szam">Magasság</th><th class="szam">Felület / üveg</th><th class="szam">U</th><th class="szam">Beépítve</th><th></th></tr></thead>
             <tbody>{tagok.map((x) => { const d = nyilaszaroAdatok(x); return (
               <tr>

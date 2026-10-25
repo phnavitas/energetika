@@ -42,7 +42,7 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
         {p.hohidMod === 'psi' && <div class="figyelmeztetes" style="margin-top:8px">Részletes hőhíd-módszer van beállítva (Hőhidak lépés): a felületek χ értéke most nem számít, helyette a csomópontok Ψ·l tagjai.</div>}
         {p.hohidMod === 'vegyes' && p.feluletek.some((f) => f.chiPsi) && <div class="figyelmeztetes" style="margin-top:8px">Vegyes hőhíd-módszer (Hőhidak lépés): a „Ψ·l” jelölésű felületeken a χ nem számít, a többin igen.</div>}
         <div class="tabla-gorgeto">
-          <table class="tabla">
+          <table class="tabla ragadt-vege">
             <thead><tr><th aria-label="Sorrend"></th><th>Megnevezés</th><th>Rétegrend</th><th>Határoló tér</th><th>Bruttó felület</th><th class="szam">Nettó</th><th>Hőhidasság</th><th></th></tr></thead>
             <tbody>
               {opak.map((f) => {
@@ -103,7 +103,7 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
         <h2>Nyílászárók</h2>
         <p class="halk">A tájolás és a dőlés a havi sugárzási nyereséghez kell (2. függ. 1.6. táblázat). Ha a nyílászárót egy falhoz rendeled, a fal felületéből levonódik.</p>
         <div class="tabla-gorgeto">
-          <table class="tabla">
+          <table class="tabla ragadt-vege">
             <thead><tr><th aria-label="Sorrend"></th><th>Megnevezés</th><th>Típus</th><th class="szam">Db</th><th>Tájolás</th><th>Dőlés</th><th>Falban</th><th>Helyiség</th><th class="szam">Felület</th><th>Árnyékoló</th><th class="szam" title="Fűtési idényre vonatkozó árnyékolási tényező: környező beépítés, erkély, előtető, növényzet (1 = nincs)">F<sub>árny</sub></th><th class="szam" title="Passzív szoláris nyereség Qsd = Au · 0,9 · gn · F · Gs">Napnyereség<br /><span class="halkabb">fűtési idény / év</span></th><th></th></tr></thead>
             <tbody>
               {ny.map((f) => { const nt = p.nyilaszarok.find((x) => x.id === f.nyilaszaroId); const napny = nyilasNapnyereseg(p, f); const ar = nt?.arnyekolo ? ARNYEKOLOK.find((a) => a.kod === nt.arnyekolo!.kod) : undefined; return (
