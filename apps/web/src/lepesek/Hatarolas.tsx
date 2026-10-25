@@ -25,6 +25,9 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
   const nyEpulet = (f: Felulet) => { const h = p.helyisegek.find((x) => x.id === f.helyisegId); return (h?.egyseg && /^(\S{1,3}) épület/.exec(h.egyseg)?.[1]) ?? (h && /\(([A-ZÁÉ]{1,2})\.[^)]*\)/.exec(h.nev)?.[1]) ?? ''; };
   const ny = nyMind.filter((f) => (!nySzuro.taj || f.tajolas === nySzuro.taj) && (!nySzuro.szint || nySzint(f).includes(nySzuro.szint)) && (!nySzuro.epulet || nyEpulet(f) === nySzuro.epulet));
   const nyOpc = (l: string[]) => [...new Set(l.filter(Boolean))].sort();
+  const szintRend = (x: string) => (/pince/i.test(x) ? -1 : /földszint/i.test(x) ? 0 : /(\d+)\./.test(x) ? Number(/(\d+)\./.exec(x)![1]) : /tetőtér/i.test(x) ? 50 : 99);
+  // szintszűrésnél a több szintre együtt átvett sor darabszámának és felületének csak az adott szintre eső része számít
+  const nyResz = (f: Felulet) => (nySzuro.szint ? 1 / Math.max(1, nySzint(f).length) : 1);
   // azonos típusú és elhelyezésű (tájolás, dőlés, fal, árnyékolás) nyílászárók egy sorban, darabszám-összeggel;
   // a kibontott sorokban helyiségenként
   const [nyNyitva, setNyNyitva] = useState<Set<string>>(new Set());
@@ -124,9 +127,9 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
         {nyMind.length > 5 && (
           <div class="gombsor" style="gap:12px;margin:8px 0;align-items:flex-end">
             <label class="mezo"><span>Égtáj</span><select value={nySzuro.taj} onChange={(e) => setNySzuro({ ...nySzuro, taj: (e.target as HTMLSelectElement).value })}><option value="">Mind</option>{klima.TAJOLASOK.filter((t) => nyMind.some((f) => f.tajolas === t)).map((t) => <option value={t}>{t}</option>)}</select></label>
-            <label class="mezo"><span>Szint</span><select value={nySzuro.szint} onChange={(e) => setNySzuro({ ...nySzuro, szint: (e.target as HTMLSelectElement).value })}><option value="">Mind</option>{nyOpc(nyMind.flatMap(nySzint)).map((t) => <option value={t}>{t}</option>)}</select></label>
+            <label class="mezo"><span>Szint</span><select value={nySzuro.szint} onChange={(e) => setNySzuro({ ...nySzuro, szint: (e.target as HTMLSelectElement).value })}><option value="">Mind</option>{nyOpc(nyMind.flatMap(nySzint)).sort((a, b) => szintRend(a) - szintRend(b)).map((t) => <option value={t}>{t}</option>)}</select></label>
             <label class="mezo"><span>Épület</span><select value={nySzuro.epulet} onChange={(e) => setNySzuro({ ...nySzuro, epulet: (e.target as HTMLSelectElement).value })}><option value="">Mind</option>{nyOpc(nyMind.map(nyEpulet)).map((t) => <option value={t}>{t}</option>)}</select></label>
-            <span class="halkabb">{ny.length} / {nyMind.length} sor · {ny.reduce((s, f) => s + (f.darab ?? 1), 0)} db · {sz(ny.reduce((s, f) => s + feluletNettoA(p, f), 0), 1)} m²</span>
+            <span class="halkabb">{ny.length} / {nyMind.length} sor · {sz(ny.reduce((s, f) => s + (f.darab ?? 1) * nyResz(f), 0), 0)} db · {sz(ny.reduce((s, f) => s + feluletNettoA(p, f) * nyResz(f), 0), 1)} m²{nySzuro.szint ? ' (a szintre eső rész)' : ''}</span>
           </div>
         )}
         <div class="tabla-gorgeto">
@@ -138,8 +141,8 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
                 const fvCs = (fn: (x: Felulet) => void) => modosit((q) => { for (const x of q.feluletek) if (ids.has(x.id)) fn(x); });
                 const nt = p.nyilaszarok.find((x) => x.id === f.nyilaszaroId);
                 const ar = nt?.arnyekolo ? ARNYEKOLOK.find((a) => a.kod === nt.arnyekolo!.kod) : undefined;
-                const napny = tagok.map((x) => nyilasNapnyereseg(p, x)).reduce<{ ideny: number; ev: number } | null>((a, x) => (x ? { ideny: (a?.ideny ?? 0) + x.ideny, ev: (a?.ev ?? 0) + x.ev } : a), null);
-                const db = tagok.reduce((s2, x) => s2 + (x.darab ?? 1), 0);
+                const napny = tagok.map((x) => { const n = nyilasNapnyereseg(p, x); return n ? { ideny: n.ideny * nyResz(x), ev: n.ev * nyResz(x) } : null; }).reduce<{ ideny: number; ev: number } | null>((a, x) => (x ? { ideny: (a?.ideny ?? 0) + x.ideny, ev: (a?.ev ?? 0) + x.ev } : a), null);
+                const db = tagok.reduce((s2, x) => s2 + (x.darab ?? 1) * nyResz(x), 0);
                 const nyitott = nyNyitva.has(k);
                 const helyNev = (x: Felulet) => p.helyisegek.find((h) => h.id === x.helyisegId)?.nev;
                 const helyek = [...new Set(tagok.map(helyNev).filter(Boolean))];
@@ -150,14 +153,14 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
                       <button class="sor-torol" title={tagok.length > 1 ? `Törlés (mind a ${tagok.length} sor)` : 'Törlés'} aria-label="Törlés" onClick={() => modosit((q) => { q.feluletek = q.feluletek.filter((x) => !ids.has(x.id)); })}>✕</button>
                     </td>
                     <td style="min-width:150px"><Valaszto cimke="Típus" ertek={f.nyilaszaroId} ures="Válassz…" valt={(v) => fvCs((x) => { x.nyilaszaroId = v; })} opciok={p.nyilaszarok.map((n) => ({ ertek: n.id, nev: n.nev }))} /></td>
-                    <td style="min-width:58px">{tagok.length === 1
+                    <td style="min-width:58px">{tagok.length === 1 && !nySzuro.szint
                       ? <Szam cimke="Darab" ertek={f.darab ?? 1} lepes={1} min={1} valt={(v) => fv(f.id, (x) => { x.darab = Math.max(1, Math.round(v)); })} />
-                      : <span class="szam" style="display:block;text-align:right" title="A helyiségenkénti darabszám a kibontott sorokban módosítható">{db}</span>}</td>
+                      : <span class="szam" style="display:block;text-align:right" title="A helyiségenkénti darabszám a kibontott sorokban módosítható">{sz(db, Number.isInteger(db) ? 0 : 1)}</span>}</td>
                     <td style="min-width:84px"><Valaszto cimke="Tájolás" ertek={f.tajolas ?? undefined} valt={(v) => fvCs((x) => { x.tajolas = v; })} opciok={TAJOLASOK} /></td>
                     <td style="min-width:124px"><Valaszto cimke="Dőlés" ertek={String(f.hajlasszog ?? 90)} valt={(v) => fvCs((x) => { x.hajlasszog = Number(v) as Felulet['hajlasszog']; })} opciok={HAJLAS} /></td>
                     <td style="min-width:120px"><Valaszto cimke="Szülő fal" ertek={f.szuloId} ures="Nincs levonás" valt={(v) => fvCs((x) => { x.szuloId = v || undefined; })} opciok={opak.map((o) => ({ ertek: o.id, nev: o.nev }))} /></td>
                     <td class="halkabb" style="min-width:90px">{helyek.length === 1 ? helyek[0] : helyek.length ? `${helyek.length} helyiség` : '–'}</td>
-                    <td class="szam">{sz(tagok.reduce((s2, x) => s2 + feluletNettoA(p, x), 0), 2)} m²</td>
+                    <td class="szam">{sz(tagok.reduce((s2, x) => s2 + feluletNettoA(p, x) * nyResz(x), 0), 2)} m²</td>
                     <td class="halkabb" style="min-width:64px">{ar ? ar.megnevezes : 'nincs'}</td>
                     <td style="width:64px"><Szam cimke="Árnyékolási tényező" ertek={f.arnyekolas ?? 1} lepes={0.05} min={0} valt={(v) => fvCs((x) => { x.arnyekolas = Math.min(1, Math.max(0, v)); if (x.arnyekolas === 1) delete x.arnyekolas; })} /></td>
                     <td class="szam" style="white-space:nowrap">{napny ? <>{sz(napny.ideny, 0)} / {sz(napny.ev, 0)} kWh</> : '–'}</td>
@@ -165,7 +168,7 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
                   {nyitott && tagok.map((x) => (
                     <tr class="alsor">
                       <td style="text-align:right"><button class="sor-torol" title="Törlés" aria-label={`${x.nev} törlése`} onClick={() => torol(x.id)}>✕</button></td>
-                      <td colSpan={1} class="halkabb" style="padding-left:18px">{x.nev}{x.szintek?.length ? ` · ${x.szintek.join(', ')}` : ''}</td>
+                      <td colSpan={1} class="halkabb" style="padding-left:18px">{x.nev}{x.szintek?.length ? ` · ${x.szintek.join(' + ')}${x.szintek.length > 1 ? ` (a darabszám ${x.szintek.length} szint együtt)` : ''}` : ''}</td>
                       <td style="min-width:58px"><Szam cimke="Darab" ertek={x.darab ?? 1} lepes={1} min={1} valt={(v) => fv(x.id, (y) => { y.darab = Math.max(1, Math.round(v)); })} /></td>
                       <td colSpan={3} />
                       <td style="min-width:110px"><Valaszto cimke="Helyiség" ertek={x.helyisegId} ures="–" valt={(v) => fv(x.id, (y) => { y.helyisegId = v || undefined; })} opciok={helyisegOpciok} /></td>
