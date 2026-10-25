@@ -4,7 +4,7 @@
  * ebből áll elő a zóna (AN, V) és a határoló elemek listája.
  */
 import {
-  retegrendU, talajonFekvoPadlo, osztottAblak, kapcsoltLegretegR, kethejuNyilaszaroU, nyilaszaroU, nyilaszaroArnyekoloval, nyilaszaroSablon,
+  retegrendU, talajonFekvoPadlo, futottPinceFal, osztottAblak, kapcsoltLegretegR, kethejuNyilaszaroU, nyilaszaroU, nyilaszaroArnyekoloval, nyilaszaroSablon,
   epuletfizika, kovetelmeny, klima, hoszukseglet, GEPESZETI_SZETTEK, FUTES_SZETTEK, HMV_SZETTEK, SZELLOZES_SZETTEK, HUTES_SZETTEK, szabalyozasiTenyezo, pvgis, profilok,
   type EpuletBemenet, type HataroloElem, type Reteg, type Hatar, type FutesiHotermelo, type HmvHotermelo,
   type FutesSablon, type HmvSablon, type HutesSablon, type SzellozesRendszer,
@@ -95,6 +95,8 @@ export interface Felulet {
   /** Opak: felület (nettó, ha nincs szülőhöz kötött nyílászáró) · padló: alapterület. */
   A?: number;
   darab?: number;
+  /** Fűtött pince talajjal érintkező fala (4.27–4.28, 6.6): z = a padló mélysége a terepszinttől [m]; A = kerület × z. */
+  talajFal?: { z: number };
   /** Tervből: a darabszám mely szintekre oszlik (azonos szintek együtt beolvasva) – csoportosításhoz, szűréshez. */
   szintek?: string[];
   tajolas?: Tajolas | null;
@@ -502,6 +504,11 @@ export function atalakit(p: Projekt): Atalakitas {
         const r = p.retegrendek.find((x) => x.id === f.retegrendId);
         if (!r) { hibak.push(`„${f.nev}”: nincs rétegrend kiválasztva.`); continue; }
         const e = retegrendSzamitas(r);
+        if (f.talajFal) {
+          // fűtött pince fala: egyenértékű U a talaj hatásával (4.27–4.28), a padló dp-jével; a HtrT része (6.6)
+          elemek.push({ tipus: 'talaj', nev: f.nev, A: feluletNettoA(p, f), UT: pinceFalUT(p, f, r), P: 0, psiPF: 0, kovetelmenyKod: r.kovetelmenyKod, UElemi: e.U });
+          continue;
+        }
         elemek.push({ tipus: 'opak', nev: f.nev, A: feluletNettoA(p, f), U: e.U, chi: chiErvenyes(p, f), hatar: hatar(f.hatar), kovetelmenyKod: r.kovetelmenyKod, tajolas: f.tajolas ?? null });
       }
     } catch (err) {
@@ -672,6 +679,22 @@ export function padloPsi(p: Projekt, f: Felulet): { psi: number; hohid?: HohidUI
 }
 
 /** Talajon fekvő padló egyenértékű hőátbocsátási tényezője (MSZ EN ISO 13370, 4.20–4.33). */
+/** Fűtött pince talajjal érintkező falának egyenértékű U-értéke (4.27–4.28); a dp a projekt terepszint alatti padlójából. */
+export function pinceFalUT(p: Projekt, f: Felulet, r: Retegrend): number {
+  const Rpf = retegrendSzamitas(r).retegR.reduce((s, x) => s + x, 0);
+  const pf = p.feluletek.find((x) => x.fajta === 'padlo' && (x.padlo?.z ?? 0) > 0.5);
+  const pr = pf && p.retegrendek.find((x) => x.id === pf.retegrendId);
+  let dp: number;
+  if (pf && pr) {
+    const Rp = retegrendSzamitas(pr).retegR.reduce((s, x) => s + x, 0);
+    dp = talajonFekvoPadlo({ A: pf.A ?? 0, P: Math.max(0.1, padloKerulet(p, pf)), df: pf.padlo!.dfCm / 100, Rp, z: pf.padlo!.z }).dp;
+  } else {
+    const d = retegrendSzamitas(r).retegR.length ? r.retegek.reduce((s, l) => s + l.dCm, 0) / 100 : 0.3;
+    dp = d + epuletfizika.TALAJ[2].lambda * (epuletfizika.RSI.lefele + epuletfizika.RSE);
+  }
+  return futottPinceFal({ z: Math.max(0.5, f.talajFal?.z ?? 0), Rpf, dp });
+}
+
 export function padloUT(r: Retegrend, f: Felulet, p?: Projekt): number {
   const e = retegrendSzamitas(r);
   const Rp = e.retegR.reduce((s, x) => s + x, 0);

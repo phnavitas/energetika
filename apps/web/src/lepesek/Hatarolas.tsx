@@ -76,7 +76,9 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
                     <td style="white-space:nowrap"><Fogantyu cimke={f.nev} fel={() => lep(f.id, -1)} le={() => lep(f.id, 1)} /><button class="sor-torol" title="Törlés" aria-label={`${f.nev} törlése`} onClick={() => torol(f.id)}>✕</button></td>
                     <td style="min-width:130px"><Szoveg ertek={f.nev} valt={(v) => fv(f.id, (x) => { x.nev = v; })} /></td>
                     <td style="min-width:160px"><Valaszto cimke="Rétegrend" ertek={f.retegrendId} ures="Válassz…" valt={(v) => fv(f.id, (x) => { x.retegrendId = v; })} opciok={retegrendOpciok(false)} /></td>
-                    <td style="min-width:130px"><Valaszto cimke="Határoló tér" ertek={f.hatar} valt={(v) => fv(f.id, (x) => { x.hatar = v; })} opciok={HATAROK} /></td>
+                    <td style="min-width:130px">{f.talajFal
+                      ? <div title="Fűtött pince talajjal érintkező fala (4.27–4.28): az egyenértékű U a talaj hatásával, a padló mélysége szerint"><span class="halkabb" style="font-size:12px">Talaj (pincefal), mélység</span><Szam cimke="Mélység a terepszinttől" ertek={f.talajFal.z} egyseg="m" valt={(v) => fv(f.id, (x) => { x.talajFal = { z: Math.max(0.5, v) }; if (x.meret) { x.meret.magassag = Math.max(0.5, v); x.A = Math.round(x.meret.hossz * x.meret.magassag * 100) / 100; } })} /><button class="link-gomb" style="font-size:12px" onClick={() => fv(f.id, (x) => { delete x.talajFal; })}>külső levegő felé</button></div>
+                      : <><Valaszto cimke="Határoló tér" ertek={f.hatar} valt={(v) => fv(f.id, (x) => { x.hatar = v; })} opciok={HATAROK} /><button class="link-gomb" style="font-size:12px" title="Fűtött pince talajjal érintkező fala" onClick={() => fv(f.id, (x) => { x.hatar = 'kulso'; x.talajFal = { z: x.meret?.magassag ?? 3 }; x.chi = 0; })}>talajjal érintkező</button></>}</td>
                     <td style="min-width:290px">
                       <div class="meret-mod">
                         <select aria-label="Felület megadása" value={f.meret ? 'meret' : 'A'} onChange={(e) => fv(f.id, (x) => {

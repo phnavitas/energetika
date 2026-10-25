@@ -39,6 +39,8 @@ export interface FalSzakasz {
   vastagsag: number;
   /** A szakasz pixelei (lapkoordinátában, pt) – megjelenítéshez és a nyílászárók hozzárendeléséhez. */
   pontok: [number, number][];
+  /** Külső szakasznál: a fal mögött talaj (terep-/földsraffozás) van – terepszint alatti szintnél talajjal érintkező fal. */
+  talaj?: boolean;
 }
 
 export interface Raszter {
@@ -77,7 +79,7 @@ export function falKitoltes(u: Utvonal, mPerPt: number, maxFal = 0.9): boolean {
 }
 
 /** Sokszögek kitöltése páros-páratlan szabállyal a rácsra. */
-function poliRajzol(m: Uint8Array | Uint16Array, w: number, h: number, polik: number[][], tr: (x: number, y: number) => [number, number], ertek = 1) {
+export function poliRajzol(m: Uint8Array | Uint16Array, w: number, h: number, polik: number[][], tr: (x: number, y: number) => [number, number], ertek = 1) {
   const el: [number, number, number, number][] = [];
   let ymin = Infinity, ymax = -Infinity;
   for (const p of polik) {

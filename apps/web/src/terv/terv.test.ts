@@ -144,3 +144,26 @@ describe('tervbeolvasás – tagolt kódok, szintek', () => {
     expect(r.at(-1)!.anyagId).toBe('nemesvakolat');
   });
 });
+
+describe('tervbeolvasás – metszet: eltérő táblaformák', () => {
+  it('egybeírt vastagság + leírás, „**” jelű kód, több darabból álló cím, szerep a rétegsorrendből', () => {
+    const sz: Szoveg[] = [
+      t('P02**', 1014, 270, 9.6), t('zúzottkő RÉTEGREND', 1040, 270, 9.6),
+      t('10 cm', 1013, 278, 7.3), t('zúzottkő burkolat', 1038, 278, 7.3),
+      { ...t('1,8 mm PVC vízszigetelés', 1013, 286, 7.3), szel: 74 },
+      t('25 cm', 1013, 294, 7.3), t('EPS 100 hőszigetelés lejtésképzéssel', 1038, 294, 7.3),
+      t('20 cm', 1013, 302, 7.3), t('monolit vasbeton födém', 1038, 302, 7.3),
+      t('P03', 1014, 345, 9.6), { ...t('Általános', 1038, 345, 9.6), szel: 33 }, t('FÖDÉM RÉTEGREND', 1072, 345, 9.6),
+      t('1 cm', 1013, 353, 7.3), t('padlóburkolat', 1038, 353, 7.3), t('6 cm', 1013, 361, 7.3), t('esztrichbeton', 1038, 361, 7.3),
+      t('P02', 1014, 420, 9.6), t('Földszinti FÖDÉM', 1038, 420, 9.6),
+      t('6 cm', 1013, 428, 7.3), t('esztrichbeton', 1038, 428, 7.3), t('40 cm', 1013, 436, 7.3), t('monolit vasbeton födém', 1038, 436, 7.3),
+      t('10 cm', 1013, 444, 7.3), t('Rockwool Stroprock G hőszigetelés', 1038, 444, 7.3),
+    ];
+    const b = retegrendBlokkok(sz);
+    expect(b.map((x) => x.kod)).toEqual(['P02**', 'P03', 'P02']);
+    expect(b[0]!.retegek[1]).toMatchObject({ dCm: 0.18, leiras: 'PVC vízszigetelés' });
+    expect(b[1]!.cim).toBe('Általános FÖDÉM');
+    expect(szerepBecsles(b[0]!, b).szerep).toBe('teto');
+    expect(szerepBecsles(b[2]!, b).szerep).toBe('pincefodem');
+  });
+});

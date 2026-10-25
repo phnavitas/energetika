@@ -45,7 +45,7 @@ function atvetelReszek(al: AlaprajzFeldolgozas, k: Kijeloles): { helyisegek: Atv
   const kiv = hs.map((h, i) => ({ h, i })).filter(({ i }) => valasztott[i]);
   const index = new Map(kiv.map(({ i }, j) => [i, j]));
   const helyisegek = kiv.map(({ h, i }) => ({
-    kod: h.kod, nev: h.nev, burkolat: h.burkolat, A: h.A, kategoria: kategoria(i), egyseg: h.egyseg ? (al.e.egysegInfo[h.egyseg]?.nev ?? h.egyseg) : undefined, falak: falak(i).map((f) => ({ irany: f.irany, hossz: f.hossz })),
+    kod: h.kod, nev: h.nev, burkolat: h.burkolat, A: h.A, kategoria: kategoria(i), egyseg: h.egyseg ? (al.e.egysegInfo[h.egyseg]?.nev ?? h.egyseg) : undefined, falak: falak(i).map((f) => ({ irany: f.irany, hossz: f.hossz, ...(f.talaj ? { talaj: true } : {}) })),
     // fal fűtetlen (gyengén kapcsolt) helyiség felé, pl. garázs
     futetlenFalak: (() => { const x = ri(i); if (!al.r || x < 0) return []; return al.r.helyisegek[x]!.szakaszok.filter((s) => typeof s.tul === 'number' && s.hossz >= 0.3).flatMap((s) => {
       const mi = hs.indexOf(al.magHelyisegek[s.tul as number]!); return mi >= 0 && valasztott[mi] && kategoria(mi) === 'gyengen_kapcsolt' && kategoria(i) !== 'gyengen_kapcsolt' ? [{ hossz: s.hossz, fele: hs[mi]!.nev }] : []; }); })(),
@@ -129,7 +129,13 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const alaprajzLapok = lapok.map((l, i) => ({ l, i })).filter(({ l }) => l.szerep === 'alaprajz');
   const homlokzatLapok = useMemo(() => lapok.map((l, i) => ({ l, i })).filter(({ l }) => l.szerep === 'homlokzat'), [lapok]);
   /** Kimarad-e a lap az „Összes átvétele” műveletből (alapból a pince). */
-  const kimarad = (i: number) => kihagyLap[i] ?? lapSzintek(i).includes('P');
+  /** A pinceszint alapból kimarad – kivéve, ha van fűtött helyisége (pl. pincei lépcsőház, előtér, gépészet). */
+  const kimarad = (i: number) => {
+    if (kihagyLap[i] !== undefined) return kihagyLap[i]!;
+    if (!lapSzintek(i).includes('P')) return false;
+    const a = elemzesek[i];
+    return !(typeof a === 'object' && atvetelReszek(a, { ...(kijelolesek[i] ?? alapKijeloles(a)), mindFutott }).helyisegek.some((h) => h.kategoria !== 'gyengen_kapcsolt'));
+  };
   // át nem vett, átvételre jelölt alaprajzok: a lépés elhagyása / az oldal bezárása előtt figyelmeztetünk
   tervbolFuggo.lapok = alaprajzLapok.filter(({ i }) => !atvett.has(i) && !kimarad(i)).length;
   useEffect(() => {
@@ -187,6 +193,13 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     return () => window.removeEventListener('keydown', k);
   });
   const me = useMemo(() => (mLap ? metszetFeldolgoz(mLap.lap) : null), [mLap]);
+  /** A terepszint alatti (pince) padló mélysége a metszet szintjeleiből: terepszint (vagy ±0,00) − legalsó padlószint. */
+  const pinceMelyseg = (() => {
+    const sz = me?.szintek; if (!sz) return undefined;
+    const lista = sz.padlo.length ? sz.padlo : sz.szintek; if (!lista.length) return undefined;
+    const also = Math.min(...lista), t = sz.terepszint ?? 0;
+    return also < t - 1 ? Math.round((t - also) * 100) / 100 : undefined;
+  })();
   const pecset = useMemo<PecsetAdat | null>(() => { const l = aLap ?? mLap; if (!l) return null; const d = pecsetKinyer(l.lap.szovegek); return Object.keys(d).length ? d : null; }, [aLap, mLap]);
 
   // alapértékek a felismerésből
@@ -229,13 +242,16 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
 
   /** Közös átvétel: egy alaprajz a megadott kijelöléssel, szintekkel, padló/tető beállítással. */
   function egyAtvetel(q: Projekt, a: AlaprajzFeldolgozas, k: Kijeloles, o: { csere: boolean; padloAt: boolean; tetoAt: boolean; eszak: number; szintek: string[]; fajl?: string }): string[] {
-    const blokkok = (me?.blokkok ?? []).filter((b) => rrKi[b.rr.kod]);
+    // terepszint alatti szint (pince, alagsor): a feltételes rétegrendek (pincefal, pincepadló) is átkerülnek
+    const terepAlatt = o.szintek.includes('P');
+    const blokkok = (me?.blokkok ?? []).filter((b) => rrKi[b.rr.kod] || (terepAlatt && b.becsles.feltetel === 'terepAlatt'));
     const { helyisegek: hs, nyilasok: ny } = atvetelReszek(a, k);
     return tervAtvesz(q, {
       helyisegek: hs, retegrendek: blokkok, nyilasok: ny,
       eszakSzog: o.eszak, belmagassag: bm ?? 2.7, szintszam: szintszam ?? 1, csere: o.csere, padloAt: o.padloAt, tetoAt: o.tetoAt,
       ...(mintaFajta === 'blokkos' ? { alapFalSablon: 'fal_blokk_kohosalak' } : {}),
       forras: [o.fajl, mLap?.fajl].filter(Boolean).join(', '), szintek: o.szintek,
+      ...(terepAlatt ? { terepAlatt: true, ...(pinceMelyseg ? { terepMelyseg: pinceMelyseg } : {}) } : {}),
     }).uzenetek;
   }
 

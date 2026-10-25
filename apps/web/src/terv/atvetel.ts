@@ -15,7 +15,8 @@ export interface AtvettHelyiseg {
   /** Lakás / egység megjelenő neve (csoportosításhoz). */
   egyseg?: string;
   /** Külső falak a homlokzat lapiránya szerint (nettó belső hossz, m). */
-  falak: { irany: number; hossz: number }[];
+  /** Külső falszakaszok; `talaj`: a fal mögött az épület körvonalán kívüli tér (terepszint alatt: talaj). */
+  falak: { irany: number; hossz: number; talaj?: boolean }[];
   /** Fal fűtetlen, gyengén kapcsolt helyiség (pl. garázs) felé. */
   futetlenFalak?: { hossz: number; fele: string }[];
 }
@@ -46,11 +47,16 @@ export interface TervAtvetel {
   alapFalSablon?: string;
   /** Forrás a megjegyzésekhez (fájlnév). */
   forras?: string;
+  /** Terepszint alatti szint (pince, alagsor): a fűtött helyiségek külső falai talajjal érintkező falak, a padlójuk talajon fekvő padló a megadott mélységben. */
+  terepAlatt?: boolean;
+  /** A terepszint alatti padló mélysége a terepszinttől [m]. */
+  terepMelyseg?: number;
   /** Az alaprajz által ábrázolt szintek (pl. ['1', '2'] – azonos 1. és 2. emelet): a helyiségek szintenként, a falak, nyílászárók szintszámszorosan. */
   szintek?: string[];
 }
 
 const kerek = (x: number, n = 2) => Math.round(x * 10 ** n) / 10 ** n;
+const sz2 = (x: number) => x.toLocaleString('hu-HU', { maximumFractionDigits: 2 });
 
 const CSOPORT_NEV = { ablak: 'Ablakok', erkelyajto: 'Erkélyajtók', bejarati_ajto: 'Bejárati ajtók', bejarati_uvegajto: 'Bejárati ajtók', garazskapu: 'Garázskapuk' } as const;
 /** A fajtának megfelelő nyílászáró-csoport (szükség esetén létrehozza). */
@@ -125,7 +131,12 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
     rrId[x.rr.kod] = r.id;
   }
   const keres = (sz: string, kizar?: string) => a.retegrendek.find((x) => x.becsles.szerep === sz && !x.becsles.kihagy && x.rr.kod !== kizar);
-  const fal = keres('fal'); const padlas = keres('padlas'); const padlok = a.retegrendek.filter((x) => x.becsles.szerep === 'padlo' && !x.becsles.kihagy);
+  const fal = keres('fal'); const padlas = keres('padlas');
+  // terepszint alatti szintnél a feltételes (pince-) rétegrendek is számítanak
+  const terep = !!a.terepAlatt;
+  const padlok = a.retegrendek.filter((x) => x.becsles.szerep === 'padlo' && (!x.becsles.kihagy || (terep && x.becsles.feltetel === 'terepAlatt')));
+  const talajFal = a.retegrendek.find((x) => x.becsles.kovetelmenyKod === 'talajjal_erintkezo_fal' && (!x.becsles.kihagy || (terep && x.becsles.feltetel === 'terepAlatt')));
+  const z = a.terepMelyseg ?? a.belmagassag + 0.3;
   if (!fal) uz.push('Külső fal rétegrendet nem találtam a metszeten – a homlokzati falfelületekhez válassz rétegrendet.');
   let falRid = fal ? rrId[fal.rr.kod] : undefined;
   if (!falRid && a.alapFalSablon) {
@@ -164,7 +175,24 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
   const falFel: Record<number, string> = {};
   // a fűtetlen (gyengén kapcsolt) helyiség – pl. garázs – külső fala és nyílászárói nem a hőburok részei
   const burok = (h: AtvettHelyiseg) => h.kategoria !== 'gyengen_kapcsolt';
-  const iranyok = [...new Set(a.helyisegek.filter(burok).flatMap((h) => h.falak.map((f) => f.irany)))].sort((x, y) => x - y);
+  const iranyok = terep ? [] : [...new Set(a.helyisegek.filter(burok).flatMap((h) => h.falak.map((f) => f.irany)))].sort((x, y) => x - y);
+  if (terep) {
+    // terepszint alatt: a fűtött helyiségek „külső” (nem helyiséggel határos) falai talajjal érintkező falak (4.27–4.28, 6.6)
+    // a talaj felé eső szakaszok (az épület körvonalán) – a többi a szint fűtetlen belső tere (pl. mélygarázs) felé néz
+    const hossz = kerek(a.helyisegek.filter(burok).reduce((s, h) => s + h.falak.filter((f) => f.talaj).reduce((q, f) => q + f.hossz, 0), 0));
+    const belsoH = kerek(a.helyisegek.filter(burok).reduce((s, h) => s + h.falak.filter((f) => !f.talaj).reduce((q, f) => q + f.hossz, 0), 0));
+    if (belsoH >= 0.2) {
+      const nev = a.helyisegek.find((h) => !burok(h) && /garázs|garazs|parkoló|parkolo/i.test(h.nev))?.nev ?? a.helyisegek.find((h) => !burok(h))?.nev;
+      const hat = nev && /mélygarázs|melygarazs|parkoló|parkolo/i.test(nev) ? 'melygarazs' : nev && /garázs|garazs/i.test(nev) ? 'garazs' : 'pince';
+      p.feluletek.push({ id: ujId(), nev: `Pincefal – ${nev ? nev.toLowerCase() : 'fűtetlen pincetér'} felé`, fajta: 'opak', retegrendId: talajFal ? rrId[talajFal.rr.kod] : falRid, hatar: hat, tajolas: null, hajlasszog: 90, meret: { hossz: kerek(belsoH * n), magassag: a.belmagassag }, A: kerek(belsoH * n * a.belmagassag), chi: 0.1 });
+      uz.push(`Terepszint alatti szint: ${sz2(belsoH * n)} m fal a fűtetlen ${nev ? `„${nev}”` : 'pincetér'} felé (b-tényezővel).`);
+    }
+    if (hossz >= 0.2) {
+      const rid = talajFal ? rrId[talajFal.rr.kod] : falRid;
+      p.feluletek.push({ id: ujId(), nev: 'Pincefal – talajjal érintkező', fajta: 'opak', retegrendId: rid, hatar: 'kulso', tajolas: null, hajlasszog: 90, meret: { hossz: kerek(hossz * n), magassag: kerek(z) }, A: kerek(hossz * n * z), chi: 0, talajFal: { z: kerek(z) } });
+      uz.push(`Terepszint alatti szint: ${sz2(hossz * n)} m talajjal érintkező fal ${sz2(z)} m mélységig${talajFal ? ` (${talajFal.rr.kod} „${talajFal.rr.cim}”)` : ' – a metszeten nincs pincefal-rétegrend, a Határolás lépésben válassz'}. A talaj felé esőnek az épület (pinceszint) körvonalán lévő szakaszokat vettem – a Határolás lépésben ellenőrizd.`);
+    }
+  }
   for (const ir of iranyok) {
     const hossz = kerek(a.helyisegek.filter(burok).reduce((s, h) => s + h.falak.filter((f) => f.irany === ir).reduce((q, f) => q + f.hossz, 0), 0));
     if (hossz < 0.2) continue;
@@ -185,13 +213,14 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
   // talajon fekvő padló(k) – burkolat szerint a megfelelő padló-rétegrendre; a kerület a terület arányában oszlik meg
   const futott = a.helyisegek.filter((h) => h.kategoria !== 'gyengen_kapcsolt');
   const Aossz = futott.reduce((s, h) => s + h.A, 0);
-  const Possz = a.helyisegek.filter(burok).reduce((s, h) => s + h.falak.reduce((q, f) => q + f.hossz, 0), 0);
+  // terepszint alatt csak a talaj felé eső kerület kitett (a fűtetlen belső tér felé eső nem)
+  const Possz = a.helyisegek.filter(burok).reduce((s, h) => s + h.falak.filter((f) => !terep || f.talaj).reduce((q, f) => q + f.hossz, 0), 0);
   const pinceFodem = a.retegrendek.find((x) => x.becsles.szerep === 'pincefodem' && x.becsles.kovetelmenyKod === 'also_zarofodem' && !x.becsles.kihagy);
-  if (foldszint && pinceFodem && Aossz > 0) {
+  if (foldszint && !terep && pinceFodem && Aossz > 0) {
     const garazs = /garázs|garazs/i.test(pinceFodem.rr.cim);
     p.feluletek.push({ id: ujId(), nev: `Födém – fűtetlen ${garazs ? 'garázs' : 'pince'} felett`, fajta: 'opak', retegrendId: rrId[pinceFodem.rr.kod], hatar: garazs ? 'melygarazs' : 'pince', A: kerek(Aossz), tajolas: null, hajlasszog: 0, chi: 0.1 });
     uz.push(`A legalsó fűtött szint padlója a(z) ${pinceFodem.rr.kod} „${pinceFodem.rr.cim}” födém (fűtetlen ${garazs ? 'mélygarázs' : 'pince'} felett, b-tényezővel).`);
-  } else if (foldszint && padlok.length && Aossz > 0) {
+  } else if ((foldszint || terep) && padlok.length && Aossz > 0) {
     const elsoReteg = (x: AtvettRetegrend) => x.retegek.find((l) => !l.kimarad)?.forras.toLowerCase() ?? '';
     // fűtött helyiség alá nem kerül a garázs / tároló padlója; a vizes helyiség a „vizes” padlót kapja
     const futottPadlok = padlok.filter((x) => !/garázs|garazs|tároló|pince/i.test(x.rr.cim)) .length ? padlok.filter((x) => !/garázs|garazs|tároló|pince/i.test(x.rr.cim)) : padlok;
@@ -209,7 +238,7 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
     for (const [r, A] of csop) {
       p.feluletek.push({
         id: ujId(), nev: `Talajon fekvő padló – ${r.rr.kod}`, fajta: 'padlo', retegrendId: rrId[r.rr.kod], hatar: 'kulso', A: kerek(A),
-        padlo: { P: kerek(Possz * A / Aossz), dfCm: a.falVastagsagCm ?? (fal ? kerek(fal.retegek.filter((l) => !l.kimarad).reduce((s, l) => s + l.dCm, 0), 1) : 45), z: 0, psiPF: 0.15 },
+        padlo: { P: kerek(Possz * A / Aossz), dfCm: a.falVastagsagCm ?? (fal ? kerek(fal.retegek.filter((l) => !l.kimarad).reduce((s, l) => s + l.dCm, 0), 1) : 45), z: terep ? kerek(z) : 0, psiPF: terep ? 0 : 0.15 },
       });
     }
     if (csop.size > 1) uz.push('A padló több rétegrendre bontva: a kitett kerület a területek arányában oszlik meg (azonos B′ jellemző méret).');

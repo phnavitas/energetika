@@ -18,7 +18,7 @@ export interface TervRetegrend {
   x: number; y: number;
 }
 
-const FEJLEC_KOD = /^[A-ZÁÉ]{1,3}[-.]?\d{1,3}[a-z]?[*'’]?$/;
+const FEJLEC_KOD = /^[A-ZÁÉ]{1,3}[-.]?\d{1,3}[a-z]?[*'’]{0,3}$/;
 const FEJLEC_CIM = /rétegrend|rétegfelépítés|réteg-?rend/i;
 /** Szerkezetnév a rétegrend-fejlécben („homlokzati fal”, „emelet födém”, „zöldtető”). */
 const SZERKEZET_SZO = /fal\b|fal |padló|padlo|födém|fodem|tető|teto|lemez|aljzat|szerkezet|rétegrend/i;
@@ -26,7 +26,11 @@ const VASTAG = /^(\d+(?:[,.]\d+)?)\s*(cm|mm|m)\.?$|^(\d+)\s*rtg\.?$|^-{1,3}$|^�
 
 function vastagsag(s: string): { dCm: number | null; rtg?: number } | null {
   // „10+8 cm” → 18 cm; „2-6 cm” (lejtésben) → 4 cm átlag
-  s = s.trim()
+  s = s.trim().replace(/^\(\s*/, '').replace(/\)+$/, '')
+    // „22+ cm” (lejtésképzés: legalább) → 22 cm
+    .replace(/^(\d+(?:[,.]\d+)?)\s*\+\s*(?=cm|mm|m\b)/, '$1 ')
+    // „0/5 cm” (változó vastagság) → átlag
+    .replace(/^(\d+(?:[,.]\d+)?)\s*\/\s*(\d+(?:[,.]\d+)?)/, (_m, a: string, b: string) => String((szamErtek(a) + szamErtek(b)) / 2).replace('.', ','))
     .replace(/^(\d+(?:[,.]\d+)?)\s*\+\s*(\d+(?:[,.]\d+)?)/, (_m, a: string, b: string) => String(szamErtek(a) + szamErtek(b)).replace('.', ','))
     .replace(/^(\d+(?:[,.]\d+)?)\s*[-–]\s*(\d+(?:[,.]\d+)?)/, (_m, a: string, b: string) => String((szamErtek(a) + szamErtek(b)) / 2).replace('.', ','));
   const m = VASTAG.exec(s);
@@ -48,8 +52,17 @@ function sorFuz(t: Szoveg[]): string {
   return s.replace(/\s+/g, ' ').trim();
 }
 
+/** Egy szövegdarabba írt „vastagság + leírás” („1,8 mm PVC vízszigetelés”, „5+2 cm kerámia burkolat”) két darabra bontva. */
+const EGYBEN_SOR = /^(\(?\s*\d+(?:[,.]\d+)?(?:\s*[-–+/]\s*\d+(?:[,.]\d+)?)?\s*\+?\s*(?:cm|mm|m)\.?|\(?\s*\d+\s*rtg\.?)\s+(\p{L}.*)$/u;
+function egybenBont(t: Szoveg): Szoveg[] {
+  const m = EGYBEN_SOR.exec(t.s.trim());
+  if (!m) return [t];
+  const n = Math.max(1, t.s.trim().length), xL = t.x + t.szel * (t.s.trim().length - m[2]!.length) / n;
+  return [{ ...t, s: m[1]!, szel: t.szel * m[1]!.length / n }, { ...t, s: m[2]!, x: xL, szel: t.x + t.szel - xL }];
+}
+
 export function retegrendBlokkok(sz: Szoveg[]): TervRetegrend[] {
-  const vsz = sz.filter((t) => Math.abs(t.szog) < 2);
+  const vsz = sz.filter((t) => Math.abs(t.szog) < 2).flatMap(egybenBont);
   const fejlecek: { kod: Szoveg; cim: Szoveg }[] = [];
   for (const k of vsz) {
     const egyben = /^([A-ZÁÉ]{1,3}[-.]?\d{1,3}[a-z]?)\s+(\S.{3,})$/.exec(szovegJavit(k.s));
@@ -59,8 +72,19 @@ export function retegrendBlokkok(sz: Szoveg[]): TervRetegrend[] {
       continue;
     }
     if (!FEJLEC_KOD.test(k.s.trim())) continue;
-    const cim = vsz.filter((t) => t !== k && Math.abs(t.y - k.y) < k.meret * 0.4 && t.x > k.x && t.x - (k.x + k.szel) < k.meret * 6)
+    let cim = vsz.filter((t) => t !== k && Math.abs(t.y - k.y) < k.meret * 0.4 && t.x > k.x && t.x - (k.x + k.szel) < k.meret * 6)
       .sort((a, b) => a.x - b.x)[0];
+    // a fejléc több szövegdarabból is állhat („Általános” + „FÖDÉM RÉTEGREND”)
+    let cimT = cim;
+    while (cimT) {
+      const c = cimT;
+      const kov = vsz.filter((t) => t !== c && t !== k && Math.abs(t.y - c.y) < c.meret * 0.3 && t.x > c.x + c.szel - c.meret * 0.5 && t.x - (c.x + c.szel) < c.meret * 1.5 && Math.abs(t.meret - c.meret) < c.meret * 0.15)
+        .sort((a, b) => a.x - b.x)[0];
+      if (!kov) break;
+      cimT = { ...c, s: c.s + ' ' + kov.s, szel: kov.x + kov.szel - c.x };
+      if (cimT.s.length > 80) break;
+    }
+    if (cimT) cim = cimT;
     if (cim && (FEJLEC_CIM.test(cim.s) || (cim.s === cim.s.toUpperCase() && /\p{L}{4}/u.test(cim.s)) || (cim.meret >= k.meret * 0.9 && SZERKEZET_SZO.test(cim.s)))) fejlecek.push({ kod: k, cim });
   }
   const ki: TervRetegrend[] = [];
@@ -82,7 +106,14 @@ export function retegrendBlokkok(sz: Szoveg[]): TervRetegrend[] {
     }
     // a leírások oszlopa: a sorok betűs (nem mértékegység) szövegeinek bal széle
     const betus = tagok.filter((t) => /\p{L}{3}/u.test(t.s) && !/^(cm|mm|rtg\.?)$/i.test(t.s.trim()) && !VASTAG.test(t.s.trim()));
-    const xL = betus.length ? Math.min(...betus.map((t) => t.x)) : xL0;
+    // a leírásoszlop bal széle: a betűs darabok leggyakoribb kezdő x-e (egy-egy oszlopon kívül írt sor ne tolja el)
+    let xL = xL0;
+    if (betus.length) {
+      const db = new Map<number, number>([[Math.round(xL0 / (kod.meret * 0.5)), 1]]); // a fejléc címe is szavaz
+      for (const t of betus) { const kx = Math.round(t.x / (kod.meret * 0.5)); db.set(kx, (db.get(kx) ?? 0) + 1); }
+      const leggy = [...db.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]![0];
+      xL = Math.min(...betus.filter((t) => Math.abs(t.x / (kod.meret * 0.5) - leggy) <= 1).map((t) => t.x));
+    }
     // a leírásoszlopon túl kezdődő szöveg (szomszédos rajzpecsét, megjegyzés) nem a blokk része
     for (let i = tagok.length - 1; i >= 0; i--) if (tagok[i]!.x > xL + kod.meret * 12) tagok.splice(i, 1);
     // sorokba rendezés
@@ -97,18 +128,25 @@ export function retegrendBlokkok(sz: Szoveg[]): TervRetegrend[] {
       const y = r[0]!.y;
       if (y - elozoY > kod.meret * 2.6) break; // a blokk vége
       elozoY = y;
-      const bal = r.filter((t) => t.x < xL - kod.meret * 0.3);
-      const jobbR = r.filter((t) => t.x >= xL - kod.meret * 0.3);
+      // vastagság: a leírásoszloptól balra eső, betűt (a mértékegységen kívül) nem tartalmazó darabok
+      const betuE = (t: Szoveg) => /\p{L}{3}/u.test(t.s.replace(/\b(cm|mm|rtg)\b\.?/gi, ''));
+      const bal = r.filter((t) => t.x < xL - kod.meret * 0.3 && !betuE(t));
+      const jobbR = r.filter((t) => !bal.includes(t));
+      // a vastagság-oszlopban kezdődő leírás („kültéri vakolat”) önálló réteg, nem az előző folytatása
+      const balraKezd = jobbR.some((t) => t.x < xL - kod.meret * 0.3);
       const v = bal.length ? vastagsag(sorFuz(bal)) : null;
-      const leiras = sorFuz(jobbR).replace(/^[.,]$/, '');
+      const leiras = sorFuz(jobbR).replace(/^[.,]$/, '').replace(/\)\s*\)$/, ')');
+      if (!v && /:$/.test(leiras)) continue; // „vizeshelyiségben:” – feltétel-felirat
       if (!leiras && !v) continue;
       if (v) retegek.push({ ...v, leiras });
+      else if (balraKezd) retegek.push({ dCm: null, leiras });
       else if (retegek.length && retegek.at(-1)!.leiras.endsWith(',')) retegek.at(-1)!.leiras += ' ' + leiras;
       else if (retegek.length && /^[a-záéíóöőúüű(]/.test(leiras)) retegek.at(-1)!.leiras += ' ' + leiras;
       else retegek.push({ dCm: null, leiras });
     }
     // valódi rétegrend-tábla: legalább két réteg vastagsággal (a rajzon álló szerkezetjelölő felirat nem ilyen)
-    if (retegek.filter((r) => r.dCm !== null || r.rtg).length >= 2) ki.push({ kod: kod.s.trim(), cim: sorFuz([cim]).replace(/\s*rétegrend(je)?\s*$/i, '').trim(), retegek, x: kod.x, y: kod.y });
+    // (kifejezetten „rétegrend” fejlécű táblánál egy is elég)
+    if (retegek.filter((r) => r.dCm !== null || r.rtg).length >= (FEJLEC_CIM.test(cim.s) ? 1 : 2)) ki.push({ kod: kod.s.trim(), cim: sorFuz([cim]).replace(/\s*rétegrend(je)?\s*$/i, '').trim(), retegek, x: kod.x, y: kod.y });
   }
   return ki;
 }
@@ -119,6 +157,8 @@ export interface SzerepBecsles {
   szerep: Szerep | null;
   /** Nem a hőburok része (válaszfal, terasz, tetőfedés hideg padlás fölött) – alapból nem kerül át. */
   kihagy?: string;
+  /** Feltételesen hőburok: terepszint alatti fűtött helyiségnél (fűtött pince) a talajjal érintkező fal, ill. padló – akkor átkerül. */
+  feltetel?: 'terepAlatt';
   kovetelmenyKod: string;
   hoaramIrany: 'vizszintes' | 'felfele' | 'lefele';
   kulsoOldal: 'kulso' | 'futetlen' | 'belso';
@@ -128,18 +168,25 @@ export function szerepBecsles(rr: TervRetegrend, mind: TervRetegrend[]): SzerepB
   const c = (rr.cim + ' ' + rr.kod).toLowerCase();
   const reteg = rr.retegek.map((r) => r.leiras.toLowerCase()).join(' | ');
   const vanPadlasfodem = mind.some((m) => /padlásfödém|padlasfodem/i.test(m.cim));
+  // rétegek sorrendje (a táblában kívülről befelé / felülről lefelé): hőszigetelés a födém fölött vagy alatt
+  const fodemI = rr.retegek.map((r) => /vasbeton|födém|fodem|monolit|zárófödém/i.test(r.leiras)).lastIndexOf(true);
+  const hoszI = rr.retegek.flatMap((r, i) => /hőszigetel|hoszigetel|\bxps\b|\beps\b|\bpir\b|kőzetgyapot|rockwool|ásványgyapot|üveggyapot/i.test(r.leiras) && (r.dCm ?? 0) >= 8 ? [i] : []);
+  const vizsz = /vízszigetel|vizszigetel|csapadékvíz|pvc|bitumenes/i.test(reteg);
+  const lapostetoRetegek = fodemI >= 0 && vizsz && hoszI.some((i) => i < fodemI);
+  const alulSzigetelt = fodemI >= 0 && hoszI.some((i) => i > fodemI) && !hoszI.some((i) => i < fodemI);
+  if (/terasz|erkély/.test(c) && (/tető|teto/.test(c) || lapostetoRetegek)) return { szerep: 'teto', kovetelmenyKod: 'lapostető', hoaramIrany: 'felfele', kulsoOldal: 'kulso' };
   if (/terasz|járda|erkély|burkolt felület/.test(c)) return { szerep: null, kihagy: 'Külső burkolat, nem a hőburok része.', kovetelmenyKod: '', hoaramIrany: 'lefele', kulsoOldal: 'kulso' };
   if (/válaszfal|valaszfal/.test(c)) return { szerep: 'belso', kihagy: 'Belső válaszfal – két fűtött tér között.', kovetelmenyKod: '', hoaramIrany: 'vizszintes', kulsoOldal: 'belso' };
   if (/belső teherhordó|belső fal|teherhordó fal/.test(c) && !/külső|homlokzat/.test(c)) return { szerep: 'belso', kihagy: 'Belső fal – fűtött terek között nincs hőáram (fűtetlen helyiség, pl. garázs felé a határolásnál választható).', kovetelmenyKod: '', hoaramIrany: 'vizszintes', kulsoOldal: 'belso' };
   if (/lakáselválasztó|lakaselvalaszto|elválasztó fal/.test(c)) return { szerep: 'belso', kihagy: 'Fűtött lakások közötti fal (azonos hőmérsékletű terek között nincs hőáram).', kovetelmenyKod: 'szomszedos_futott', hoaramIrany: 'vizszintes', kulsoOldal: 'belso' };
-  if (/lábazat|labazat|pincefal|talajjal érintkező fal/.test(c)) return { szerep: 'fal', kihagy: 'Lábazati / talajjal érintkező fal – a padló kerületi hőszigetelésénél (perem) vehető figyelembe.', kovetelmenyKod: 'talajjal_erintkezo_fal', hoaramIrany: 'vizszintes', kulsoOldal: 'kulso' };
+  if (/lábazat|labazat|pincefal|talajjal érintkező fal/.test(c)) return { szerep: 'fal', kihagy: 'Lábazati / talajjal érintkező fal – fűtött pince esetén a pincefal (talajjal érintkező fal) rétegrendje, egyébként a padló kerületi hőszigetelésénél (perem) vehető figyelembe.', feltetel: 'terepAlatt', kovetelmenyKod: 'talajjal_erintkezo_fal', hoaramIrany: 'vizszintes', kulsoOldal: 'kulso' };
   if (/garázs felett|garazs felett|pince felett/.test(c) && /tető|teto/.test(c)) return { szerep: null, kihagy: 'Fűtetlen garázs / pince feletti tető – nem a fűtött hőburok része.', kovetelmenyKod: '', hoaramIrany: 'felfele', kulsoOldal: 'kulso' };
   if (/garázs felett|garazs felett|pince felett|pince feletti|pincefödém/.test(c) && /födém|fodem|padló|padlo/.test(c)) return { szerep: 'pincefodem', kovetelmenyKod: 'also_zarofodem', hoaramIrany: 'lefele', kulsoOldal: 'futetlen' };
   if (/konzol|áthajtó|árkád|kiugr/.test(c) && /födém|fodem/.test(c)) return { szerep: 'pincefodem', kovetelmenyKod: 'arkadfodem', hoaramIrany: 'lefele', kulsoOldal: 'kulso' };
   if (/(emelet|közbenső|kozbenso|szintek közötti|általános)/.test(c) && /födém|fodem/.test(c) && !/padlás|padlas/.test(c)) return { szerep: 'belso', kihagy: 'Fűtött szintek közötti födém – nincs hőáram.', kovetelmenyKod: '', hoaramIrany: 'lefele', kulsoOldal: 'belso' };
   if (/padlás fal|padlas fal|padlástér felé|padlásfal/.test(c)) return { szerep: 'fal', kovetelmenyKod: 'futott_futetlen_fal', hoaramIrany: 'vizszintes', kulsoOldal: 'futetlen' };
-  if (/garázs|garazs/.test(c) && /padló|padlo/.test(c)) return { szerep: null, kihagy: 'Fűtetlen garázs padlója – nem a fűtött hőburok része.', kovetelmenyKod: '', hoaramIrany: 'lefele', kulsoOldal: 'kulso' };
-  if (/pincefal|terepszint alatt|terepszint alatti/.test(c)) return { szerep: 'fal', kihagy: 'Pincefal (terepszint alatt) – fűtött pince esetén a talajjal érintkező falként vehető fel.', kovetelmenyKod: 'talajjal_erintkezo_fal', hoaramIrany: 'vizszintes', kulsoOldal: 'kulso' };
+  if (/garázs|garazs/.test(c) && /padló|padlo/.test(c)) return { szerep: 'padlo', kihagy: 'Garázs / pince padlója – csak a terepszint alatti fűtött helyiségek (pl. pincei lépcsőház, gépészet) alatt hőburok.', feltetel: 'terepAlatt', kovetelmenyKod: 'talajon_fekvo_padlo', hoaramIrany: 'lefele', kulsoOldal: 'kulso' };
+  if (/pincefal|terepszint alatt|terepszint alatti/.test(c)) return { szerep: 'fal', kihagy: 'Pincefal (terepszint alatt) – fűtött pince esetén a talajjal érintkező falként kerül át.', feltetel: 'terepAlatt', kovetelmenyKod: 'talajjal_erintkezo_fal', hoaramIrany: 'vizszintes', kulsoOldal: 'kulso' };
   if (/padlásfödém|padlasfodem|zárófödém/.test(c)) return { szerep: 'padlas', kovetelmenyKod: 'padlasfodem', hoaramIrany: 'felfele', kulsoOldal: 'futetlen' };
   if (/lapostető|lapos tető|járható tető|nem járható tető|zöldtető|zöld tető|alacs\.? hajlású|alacsony hajlású/.test(c)) return { szerep: 'teto', kovetelmenyKod: 'lapostető', hoaramIrany: 'felfele', kulsoOldal: 'kulso' };
   if (/magastető|tető|teto/.test(c)) {
@@ -149,6 +196,9 @@ export function szerepBecsles(rr: TervRetegrend, mind: TervRetegrend[]): SzerepB
   if (/pincefödém|pince feletti/.test(c)) return { szerep: 'pincefodem', kovetelmenyKod: 'also_zarofodem', hoaramIrany: 'lefele', kulsoOldal: 'futetlen' };
   if (/padló|padlo|aljzat/.test(c)) return { szerep: 'padlo', kovetelmenyKod: 'talajon_fekvo_padlo', hoaramIrany: 'lefele', kulsoOldal: 'kulso' };
   if (/fal/.test(c)) return { szerep: 'fal', kovetelmenyKod: 'homlokzati_fal', hoaramIrany: 'vizszintes', kulsoOldal: 'kulso' };
+  // a címből nem derül ki – a rétegek sorrendjéből: födém fölötti hőszigetelés + vízszigetelés → lapostető; csak a födém alatti → fűtetlen tér / külső levegő feletti födém
+  if (lapostetoRetegek) return { szerep: 'teto', kovetelmenyKod: 'lapostető', hoaramIrany: 'felfele', kulsoOldal: 'kulso' };
+  if (alulSzigetelt) return { szerep: 'pincefodem', kovetelmenyKod: 'also_zarofodem', hoaramIrany: 'lefele', kulsoOldal: 'futetlen' };
   return { szerep: null, kihagy: 'A szerkezet szerepe nem állapítható meg a címből.', kovetelmenyKod: '', hoaramIrany: 'vizszintes', kulsoOldal: 'kulso' };
 }
 

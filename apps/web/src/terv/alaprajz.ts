@@ -52,7 +52,8 @@ export function szovegJavit(s: string): string {
 
 export const szamErtek = (s: string): number => Number(s.replace(/\s/g, '').replace(',', '.'));
 
-const TERULET = /^(\d{1,4}[,.]\d{1,2})\s*m\s*(²|2)?$/;
+/** Terület m²-ben; ezres tagolással is („1 042,93 m²”). */
+const TERULET = /^(\d{1,3}(?:[ \u00a0]\d{3})+,\d{1,2}|\d{1,4}[,.]\d{1,2})\s*m\s*(²|2)?$/;
 const KOD = /^[A-ZÁÉ]{0,3}\.?\s?\d{0,3}[.\-/]?\s?\d{1,3}[a-z]?$/;
 /** Többtagú, pontokkal tagolt helyiség-/lakáskód: „A.F.L.4.”, „A.1.K.”, „B.F.L.1.3”, „L01.02”. */
 export const KOD_TAGOLT = /^[A-ZÁÉ0-9]{1,4}(?:\.[A-ZÁÉ0-9]{1,4}){1,5}\.?$/;
@@ -85,7 +86,7 @@ export function pecsetek(sz: Szoveg[]): TervHelyiseg[] {
     // a „m” nélküli szám csak akkor terület, ha közvetlenül utána felső indexű „2” vagy „m²” áll
     let ter: number | null = m ? szamErtek(m[1]!) : null;
     if (ter === null) {
-      if (!/^\d{1,4}[,.]\d{1,2}$/.test(s)) continue;
+      if (!/^(\d{1,3}(?:[ \u00a0]\d{3})+,\d{1,2}|\d{1,4}[,.]\d{1,2})$/.test(s)) continue;
       const kov = vsz.find((t) => t !== a && /^m\s*(²|2)?$/.test(szovegJavit(t.s)) && Math.abs(t.y - a.y) < a.meret * 0.5 && t.x > a.x && t.x - (a.x + a.szel) < a.meret);
       if (!kov) continue;
       ter = szamErtek(s);

@@ -8,6 +8,7 @@ import { raszterEpit, type Raszter } from './raszter';
 import { kotaEllenoriz } from './kota';
 import { meretaranyKotabol, automatikusHelyisegek, lakasCsoportok, arnyalatHatarok, type SzurkeKep } from './autohelyiseg';
 import { nyilasFeliratok, nyilasokHozzarendel, falfulkeE, type TervNyilas } from './nyilaszarok';
+import { talajOldal } from './talaj';
 import { retegrendBlokkok, szerepBecsles, retegekEpit, szintekKeres, type TervRetegrend, type SzerepBecsles, type TervRetegUI, type SzintEredmeny } from './metszet';
 import { ujId } from '../modell';
 
@@ -124,6 +125,7 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
   const kulsoPontok = e.helyisegek.filter((h) => h.kulter && h.forras === 'pecset').map((h) => h.mutato ?? h);
   const r = raszterEpit(lap, e.mPerPt, magHelyisegek.map((h) => h.mutato ?? h), auto ? { px: 0.04, resZaras: 3.0, vastagVonalFal: 0.05, ...(szurke ? { szinKep: szurke } : {}) } : { ...(kulsoPontok.length ? { kulsoPontok } : {}) });
   kotaEllenoriz(r, lap.szovegek);
+  talajOldal(lap, r, e.helyisegek.filter((h) => h.forras === 'pecset' && !h.kulter).map((h) => h.mutato ?? h));
   // pecsét nélküli típusalaprajz: lakás = egy szürkével színezett, összefüggő terület helyiségei (az x-szel áthúzott aknák nélkül)
   if (auto && szurke) {
     const l = lakasCsoportok(r, magHelyisegek, lap, szurke);
