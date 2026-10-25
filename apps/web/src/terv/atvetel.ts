@@ -95,6 +95,10 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
     for (const h of p.hohidak ?? []) delete h.padloId;
   }
   const retegAlairas = (r: Pick<Retegrend, 'szerep' | 'retegek'>) => JSON.stringify([r.szerep, r.retegek.map((l) => [l.anyagId ?? l.nev ?? '', l.dCm, l.lambda ?? null, l.R ?? null, l.legreteg ?? null])]);
+  // több lakás: többlakásos (egyéb) lakóépület – a HMV nettó igénye 30 kWh/m²a (2. függ. 2.2. táblázat), nem a családi ház 25-je
+  const lakasok = new Set(a.helyisegek.map((h) => h.egyseg).filter((e): e is string => !!e && /lakás/i.test(e)));
+  const lakasBetu = new Set(a.helyisegek.map((h) => /^[A-ZÁÉ]{1,2}\.\w+\.L\.?\d+/i.exec(h.kod ?? '')?.[0]).filter(Boolean));
+  if ((lakasok.size >= 2 || lakasBetu.size >= 2) && p.meta.kategoria === 'csaladi_haz') { p.meta.kategoria = 'egyeb_lakoepulet'; uz.push('Több lakás: az épület kategóriája „egyéb (többlakásos) lakóépület” lett – HMV nettó igény 30 kWh/m²a (2. függ. 2.2.).'); }
   const szintek = a.szintek?.length ? a.szintek : [''];
   const n = szintek.length;
   p.meta.szintek = a.csere ? Math.max(a.szintszam, n) : Math.max(p.meta.szintek ?? 1, a.szintszam);
