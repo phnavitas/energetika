@@ -17,7 +17,7 @@ import { HoszuksegletLepes } from './lepesek/Hoszukseglet';
 import { HohidakLepes } from './lepesek/Hohidak';
 import { FelujitasLepes } from './lepesek/Felujitas';
 import { AlternativLepes } from './lepesek/Alternativ';
-import { TervbolLepes } from './lepesek/Tervbol';
+import { TervbolLepes, tervbolFuggo } from './lepesek/Tervbol';
 import { ProfilKitoltes, Belepes, IrodaLetrehozas, IrodaNezet, KonyvtarNezet, ProjektekNezet, TavoliKontextus, konyvtarBetolt, type Konyvtar, type TavoliAllapot } from './fiok';
 import * as t from './tarolo';
 import { ProfilKontextus, helyiProfil, helyiProfilMent, jogosult as jogosultFv, uresTanusito, ZAR_SZOVEG } from './profil';
@@ -75,7 +75,10 @@ function osszesito(e: EpuletEredmeny | null, AN: number): t.Osszesito {
 
 function App() {
   const [p, setP] = useState<Projekt>(betolt);
-  const [nezet, setNezet] = useState<Nezet>('eredmeny');
+  const [nezet, setNezetNyers] = useState<Nezet>('eredmeny');
+  // a Tervből lépésben beolvasott, de át nem vett tervlapok elvesznek a lépés elhagyásakor – előbb rákérdezünk
+  const [elhagyKerdes, setElhagyKerdes] = useState<Nezet | null>(null);
+  const setNezet = (n: Nezet) => { if (nezet === 'terv' && n !== 'terv' && tervbolFuggo.lapok > 0) { setElhagyKerdes(n); return; } setElhagyKerdes(null); setNezetNyers(n); };
   const fajl = useRef<HTMLInputElement>(null);
   const [ujMegerosit, setUjMegerosit] = useState(false);
   const [uzenet, setUzenet] = useState<string | null>(null);
@@ -437,6 +440,15 @@ function App() {
         </nav>
 
         <main class="munka">
+          {elhagyKerdes && (
+            <div class="figyelmeztetes sav" role="alertdialog" aria-label="Beolvasott tervlapok">
+              <span>{tervbolFuggo.lapok} beolvasott tervlapot még nem vettél át a projektbe. Ha elhagyod a lapot, a beolvasás és a kijelölések elvesznek. Biztosan elhagyod?</span>
+              <span class="gombsor">
+                <button class="gomb" onClick={() => setElhagyKerdes(null)}>Maradok, átveszem</button>
+                <button class="gomb halk-gomb semleges" onClick={() => { tervbolFuggo.lapok = 0; const n = elhagyKerdes; setElhagyKerdes(null); setNezetNyers(n); }}>Elhagyom</button>
+              </span>
+            </div>
+          )}
           {tavoli && mentes.a === 'utkozes' && (
             <div class="figyelmeztetes sav">
               <span>A projektet közben valaki más is módosította. Melyik változat maradjon?</span>

@@ -56,6 +56,9 @@ function atvetelReszek(al: AlaprajzFeldolgozas, k: Kijeloles): { helyisegek: Atv
   return { helyisegek, nyilasok };
 }
 
+/** A beolvasott, de még át nem vett alaprajz-lapok száma (a lépés elhagyásakor figyelmeztetéshez). */
+export const tervbolFuggo = { lapok: 0 };
+
 export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modosit; ugrik: (n: 'helyisegek' | 'hatarolas' | 'retegrendek') => void }) {
   const [lapok, setLapok] = useState<TervLap[]>([]);
   const [folyamat, setFolyamat] = useState<string | null>(null);
@@ -125,6 +128,13 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const alaprajzLapok = lapok.map((l, i) => ({ l, i })).filter(({ l }) => l.szerep === 'alaprajz');
   /** Kimarad-e a lap az „Összes átvétele” műveletből (alapból a pince). */
   const kimarad = (i: number) => kihagyLap[i] ?? lapSzintek(i).includes('P');
+  // át nem vett, átvételre jelölt alaprajzok: a lépés elhagyása / az oldal bezárása előtt figyelmeztetünk
+  tervbolFuggo.lapok = alaprajzLapok.filter(({ i }) => !atvett.has(i) && !kimarad(i)).length;
+  useEffect(() => {
+    const f = (e: BeforeUnloadEvent) => { if (tervbolFuggo.lapok > 0) { e.preventDefault(); e.returnValue = ''; } };
+    window.addEventListener('beforeunload', f);
+    return () => { window.removeEventListener('beforeunload', f); tervbolFuggo.lapok = 0; };
+  }, []);
   const SZINT_SOR = ['P', 'F', '1', '2', '3', '4', '5', 'T'];
   // a fűtött szintek (a pince nélkül) közül a legalsót ábrázoló lapnál padló, a legfelsőnél padlásfödém / tető
   useEffect(() => {
