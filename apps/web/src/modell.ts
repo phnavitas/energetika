@@ -11,7 +11,7 @@ import {
 } from '@mag/index';
 import type { BTenyezoKod, HoaramIrany, Legzaras, NyilasElhelyezes } from '@mag/tablak/epuletfizika';
 import type { Tajolas, Hajlasszog } from '@mag/tablak/klima';
-import { anyag, beepitett, type Anyag } from './katalogus';
+import { anyag, beepitett, UVEGEZESEK, KERETEK, type Anyag } from './katalogus';
 import type { FelujitasBeallitas } from './felujitas';
 import type { AlternativBeallitas } from './alternativ';
 
@@ -343,8 +343,8 @@ export function psiTablabol(k: Pick<NyilaszaroKomponens, 'uvegKod' | 'keretKod' 
   if (k.tavtarto === 'nincs') return 0;
   if (!k.tavtarto) return null;
   // egyedi (termékadat szerinti) üvegezésnél / keretnél a bevonat és a keretanyag az U-értékből becsülve
-  const uveg = epuletfizika.UVEGEZES_TAJEKOZTATO.find((x) => x.kod === k.uvegKod);
-  const keret = epuletfizika.KERET_TAJEKOZTATO.find((x) => x.kod === k.keretKod);
+  const uveg = UVEGEZESEK.find((x) => x.kod === k.uvegKod);
+  const keret = KERETEK.find((x) => x.kod === k.keretKod);
   if (uveg?.kod === 'egyreteg' || (!uveg && (k.Ug ?? 0) >= 4)) return 0;
   const lowe = uveg ? !!uveg.lowe : (k.Ug ?? 3) < 2.0;
   const anyag = keret ? keret.anyag : 'pvc';

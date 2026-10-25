@@ -31,8 +31,24 @@ export function anyagLista(): Anyag[] {
 
 export function beepitett(id: string | undefined) { return !!id && ALAP_ANYAGOK.some((a) => a.id === id); }
 
-export const UVEGEZESEK = epuletfizika.UVEGEZES_TAJEKOZTATO;
-export const KERETEK = epuletfizika.KERET_TAJEKOZTATO;
+/**
+ * Üvegezések: a 4.1. táblázat tájékoztató sorai, kiegészítve a mai háromrétegű termékek jellemző (gyártói) értékeivel.
+ * A kiegészítő sorok nem rendeleti értékek – a tényleges teljesítménynyilatkozat (Ug, g) szerint pontosítandók.
+ */
+export const UVEGEZESEK: readonly { kod: string; megnevezes: string; Ug: number; gn: number; lowe: boolean }[] = [
+  ...epuletfizika.UVEGEZES_TAJEKOZTATO,
+  { kod: 'haromreteg_07', megnevezes: 'Háromrétegű (4-14-4-14-4) két low-e, argon – gyártói jellemző érték', Ug: 0.7, gn: 0.53, lowe: true },
+  { kod: 'haromreteg_06', megnevezes: 'Háromrétegű (4-16-4-16-4) két low-e, argon – gyártói jellemző érték', Ug: 0.6, gn: 0.52, lowe: true },
+  { kod: 'haromreteg_05', megnevezes: 'Háromrétegű (4-18-4-18-4) két low-e, argon/kripton – gyártói jellemző érték', Ug: 0.5, gn: 0.5, lowe: true },
+];
+/** Keretek: a 4.2. táblázat tájékoztató sorai, kiegészítve mai profilok jellemző (gyártói) Uf értékeivel. */
+export const KERETEK: readonly { kod: string; megnevezes: string; Uk: number; anyag: string }[] = [
+  ...epuletfizika.KERET_TAJEKOZTATO,
+  { kod: 'pvc_uf11', megnevezes: 'Műanyag, 5–6 kamrás, 70–82 mm – gyártói jellemző érték', Uk: 1.1, anyag: 'pvc' },
+  { kod: 'pvc_uf09', megnevezes: 'Műanyag, 6–7 kamrás, ≥ 82 mm, középtömítéses – gyártói jellemző érték', Uk: 0.9, anyag: 'pvc' },
+  { kod: 'fa_uf11', megnevezes: 'Fa, 88–92 mm (IV 92) – gyártói jellemző érték', Uk: 1.1, anyag: 'fa' },
+  { kod: 'fem_uf11', megnevezes: 'Alumínium, erős hőhídmegszakítással (passzívház-profil) – gyártói jellemző érték', Uk: 1.1, anyag: 'fem' },
+];
 export const ARNYEKOLOK = epuletfizika.ARNYEKOLO_G;
 
 /**
