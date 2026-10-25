@@ -62,9 +62,12 @@ export const kodE = (t: string) => (KOD.test(t) && /\d/.test(t)) || tagoltKod(t)
 /** Tagolt kód: legalább három tag, vagy van benne számjegy (az „AKM. WC” rövidítés + név nem kód). */
 export const tagoltKod = (t: string) => { const k = t.replace(/\s/g, ''); const tg = k.split('.').filter(Boolean); return KOD_TAGOLT.test(k) && (/\d/.test(k) || tg.length >= 3 || tg.every((x) => x.length === 1)); };
 const BURKOLAT = /kerámia|keramia|parketta|parketa|laminált|lam\.|térkő|terko|beton|csempe|járólap|greslap|gres|pvc|linóleum|szőnyeg|padlószőnyeg|műgyanta|kő\b|kőlap|fa\s?burkolat|deszka|vinyl|vinil|esztrich|kavics|aszfalt|gumi|burkolat|kulé/i;
+/** Kert, parkoló (szabadtéri) – a mélygarázs / garázs parkolója fűtetlen helyiség, nem kültér. */
+const KULTER2 = /(?:^|[\s(/-])(?:saját\s+|közös\s+|belső\s+)?kert(?:rész|résznek|terület)?(?:\b|$)|zöldfelület|zöld\s*felület|(?:^|[\s(/-])parkoló(?:hely|k)?(?:\b|$)|gépkocsi\s*beálló|gk\.?\s*beálló/i;
+const kulterE = (nev: string) => KULTER.test(nev) || (KULTER2.test(nev) && !/garázs|garazs|teremgarázs/i.test(nev));
 const KULTER = /terasz|erkély|erkely|loggia|kocsibeálló|kocsibeallo|járda|tornác|tornac|előkert|udvar|árkád|lépcsőfeljáró|kerti|bejáró|bejaro|kukatároló|kukataroló|hulladéktároló|szemetes|(?:^|[\s(/-])(?:nem\s+járható\s+)?(?:lapos|zöld|zold)?(?:tető|teto)(?!t?éri|teri)(?:tér|ter|kert|felület|felulet)?(?:\b|$|[\s,.)])/i;
 /** Tető, lapostető, zöldtető, tetőtér (a „tetőtéri szoba” nem): nem helyiség, hanem külső / fűtetlen tér. */
-export const kulterNev = (nev: string) => KULTER.test(nev);
+export const kulterNev = (nev: string) => kulterE(nev);
 
 const kozep = (t: Szoveg) => t.x + t.szel / 2;
 const vizszintes = (t: Szoveg) => Math.abs(t.szog) < 2;
@@ -121,7 +124,7 @@ export function pecsetek(sz: Szoveg[]): TervHelyiseg[] {
     const ys = [...sorok, a].map((t) => t.y);
     const bal = Math.min(...[...sorok, a].map((t) => t.x)), jobb = Math.max(...[...sorok, a].map((t) => t.x + t.szel));
     const bbox: [number, number, number, number] = [bal, Math.min(...ys) - a.meret, jobb, Math.max(...ys) + a.meret * 0.25];
-    ki.push({ kod, nev: nagybetuJavit(nev), burkolat, A: ter, x: cx, y: (Math.min(...ys) + Math.max(...ys)) / 2 - a.meret / 2, bbox, forras: 'pecset', kulter: KULTER.test(nev) || (!kod && BURKOLAT.test(nev) && nev.split(' ').length <= 2), egyseg: kod ? egysegKod(kod) : undefined });
+    ki.push({ kod, nev: nagybetuJavit(nev), burkolat, A: ter, x: cx, y: (Math.min(...ys) + Math.max(...ys)) / 2 - a.meret / 2, bbox, forras: 'pecset', kulter: kulterE(nev) || (!kod && BURKOLAT.test(nev) && nev.split(' ').length <= 2), egyseg: kod ? egysegKod(kod) : undefined });
   }
   // azonos pecsét kétszeri felismerése ellen
   return ki.filter((h, i) => ki.findIndex((g) => Math.hypot(g.x - h.x, g.y - h.y) < 3 && g.A === h.A) === i);
@@ -179,7 +182,7 @@ export function jegyzekSorok(sz: Szoveg[]): TervHelyiseg[] {
     for (const t of kozepso) { if (!burkolat && nevResz.length && BURKOLAT.test(t)) burkolat = t; else nevResz.push(t); }
     if (!nevResz.length || /összesen|össz\.|sum/i.test(nevResz.join(' ')) || !/\p{L}{2}/u.test(nevResz.join(' '))) continue;
     const nev = nevResz.join(' ');
-    ki.push({ kod, nev: nagybetuJavit(nev), burkolat, A: szamErtek(utolso), x: kozep(r[0]!), y: r[0]!.y, forras: 'jegyzek', kulter: KULTER.test(nev), egyseg: egysegKod(kod) });
+    ki.push({ kod, nev: nagybetuJavit(nev), burkolat, A: szamErtek(utolso), x: kozep(r[0]!), y: r[0]!.y, forras: 'jegyzek', kulter: kulterE(nev), egyseg: egysegKod(kod) });
   }
   return ki;
 }

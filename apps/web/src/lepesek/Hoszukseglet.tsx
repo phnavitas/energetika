@@ -120,7 +120,7 @@ export function HoszuksegletLepes({ p, modosit }: { p: Projekt; modosit: Modosit
         <div class="tabla-gorgeto"><table class="tabla" style="max-width:640px">
           <thead><tr><th>Szerkezet</th><th class="szam">Helyiségekben</th><th class="szam">Határolásban</th><th></th></tr></thead>
           <tbody>
-            {([['Homlokzati fal (nettó)', osszevetes.falHelyisegek, osszevetes.falHatarolas], ['Padlásfödém / tető', osszevetes.padlasHelyisegek, osszevetes.padlasHatarolas], ['Talajon fekvő padló', osszevetes.padloHelyisegek, osszevetes.padloHatarolas]] as const).map(([n, a, b]) => (
+            {([['Homlokzati fal (nettó)', osszevetes.falHelyisegek, osszevetes.falHatarolas], ['Padlásfödém / tető', osszevetes.padlasHelyisegek, osszevetes.padlasHatarolas], ['Padló (talajon fekvő, ill. alsó zárófödém)', osszevetes.padloHelyisegek, osszevetes.padloHatarolas]] as const).map(([n, a, b]) => (
               <tr><td>{n}</td><td class="szam">{sz(a, 1)} m²</td><td class="szam">{sz(b, 1)} m²</td>
                 <td>{b === 0 && a === 0 ? '–' : elteres(a, b) <= 0.05 ? <span class="jel jo">egyezik</span> : <span class="jel figy">{sz(elteres(a, b) * 100, 0)}% eltérés</span>}</td></tr>
             ))}

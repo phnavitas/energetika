@@ -66,7 +66,7 @@ export function HelyisegekLepes({ p, modosit }: { p: Projekt; modosit: Modosit }
                 });
               })()}
             </tbody>
-            <tfoot><tr><td colSpan={2}>Hasznos alapterület és fűtött térfogat</td><td class="szam">{sz(AN, 2)} m²</td><td></td><td class="szam">{sz(V, 1)} m³</td><td></td></tr></tfoot>
+            <tfoot><tr><td colSpan={2}>Hasznos alapterület és fűtött térfogat ({p.helyisegek.length} helyiség)</td><td class="szam">{sz(AN, 2)} m²</td><td></td><td class="szam">{sz(V, 1)} m³</td><td></td></tr></tfoot>
           </table>
         </div>
         <div class="gombsor" style="margin-top:12px">

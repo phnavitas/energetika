@@ -132,6 +132,8 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
   }
   const keres = (sz: string, kizar?: string) => a.retegrendek.find((x) => x.becsles.szerep === sz && !x.becsles.kihagy && x.rr.kod !== kizar);
   const fal = keres('fal'); const padlas = keres('padlas');
+  // padlásfödém híján a legfelső szint tetője a (lapos) tető rétegrend – a fűtetlen garázs / pince feletti tető nem
+  const teto = padlas ? undefined : a.retegrendek.find((x) => x.becsles.szerep === 'teto' && !x.becsles.kihagy && !/garázs|garazs|pince/i.test(x.rr.cim));
   // terepszint alatti szintnél a feltételes (pince-) rétegrendek is számítanak
   const terep = !!a.terepAlatt;
   const padlok = a.retegrendek.filter((x) => x.becsles.szerep === 'padlo' && (!x.becsles.kihagy || (terep && x.becsles.feltetel === 'terepAlatt')));
@@ -165,7 +167,7 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
       ...(sz ? { szint: szintNev(sz) } : {}), ...(h.egyseg ? { egyseg: h.egyseg.replace(/ · (földszint|pince|tetőtér|\d+\. emelet)/, '') } : {}),
       hsz: {
         kulsoFalak: falRid ? h.falak.filter((f) => f.hossz >= 0.3).map((f) => ({ id: ujId(), retegrendId: falRid, hossz: kerek(f.hossz) })) : [],
-        padlas: legfelso && si === n - 1 && !!padlas, padlo: foldszint && si === 0 && !!padlok.length, szomszedok: [],
+        padlas: legfelso && si === n - 1 && (!!padlas || !!teto), padlo: (foldszint || terep) && si === 0 && !!padlok.length, szomszedok: [],
       },
     };
     p.helyisegek.push(hz);
@@ -218,7 +220,10 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
   const pinceFodem = a.retegrendek.find((x) => x.becsles.szerep === 'pincefodem' && x.becsles.kovetelmenyKod === 'also_zarofodem' && !x.becsles.kihagy);
   if (foldszint && !terep && pinceFodem && Aossz > 0) {
     const garazs = /garázs|garazs/i.test(pinceFodem.rr.cim);
-    p.feluletek.push({ id: ujId(), nev: `Födém – fűtetlen ${garazs ? 'garázs' : 'pince'} felett`, fajta: 'opak', retegrendId: rrId[pinceFodem.rr.kod], hatar: garazs ? 'melygarazs' : 'pince', A: kerek(Aossz), tajolas: null, hajlasszog: 0, chi: 0.1 });
+    const fodId = ujId();
+    // a legalsó szint helyiségeinek padlója ez a födém (a hőszükségletben b-tényezővel), nem talajon fekvő
+    for (const id of helyIdk) { const h = p.helyisegek.find((x) => x.id === id); if (h?.hsz) { h.hsz.padlo = true; h.hsz.padloFeluletId = fodId; } }
+    p.feluletek.push({ id: fodId, nev: `Födém – fűtetlen ${garazs ? 'garázs' : 'pince'} felett`, fajta: 'opak', retegrendId: rrId[pinceFodem.rr.kod], hatar: garazs ? 'melygarazs' : 'pince', A: kerek(Aossz), tajolas: null, hajlasszog: 0, chi: 0.1 });
     uz.push(`A legalsó fűtött szint padlója a(z) ${pinceFodem.rr.kod} „${pinceFodem.rr.cim}” födém (fűtetlen ${garazs ? 'mélygarázs' : 'pince'} felett, b-tényezővel).`);
   } else if ((foldszint || terep) && padlok.length && Aossz > 0) {
     const elsoReteg = (x: AtvettRetegrend) => x.retegek.find((l) => !l.kimarad)?.forras.toLowerCase() ?? '';
@@ -244,6 +249,11 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
     if (csop.size > 1) uz.push('A padló több rétegrendre bontva: a kitett kerület a területek arányában oszlik meg (azonos B′ jellemző méret).');
   }
   if (legfelso && padlas && Aossz > 0) p.feluletek.push({ id: ujId(), nev: 'Padlásfödém', fajta: 'opak', retegrendId: rrId[padlas.rr.kod], hatar: 'padlas', A: kerek(Aossz), tajolas: null, hajlasszog: 0, chi: 0.1 });
+  else if (legfelso && teto && Aossz > 0) {
+    p.feluletek.push({ id: ujId(), nev: 'Tető – legfelső szint felett', fajta: 'opak', retegrendId: rrId[teto.rr.kod], hatar: 'kulso', A: kerek(Aossz), tajolas: null, hajlasszog: 0, chi: 0.1 });
+    const tobb = a.retegrendek.filter((x) => x.becsles.szerep === 'teto' && !x.becsles.kihagy && x !== teto).length;
+    uz.push(`Padlásfödém nincs: a legfelső szint tetője a(z) ${teto.rr.kod} „${teto.rr.cim}” (${sz2(Aossz)} m², a helyiségek nettó alapterülete)${tobb ? ` – a metszeten még ${tobb} tető-rétegrend van, a Határolás lépésben bontsd a tényleges tetőfelületek szerint` : ''}.`);
+  }
 
   // nyílászárók: típus méret és fajta szerint, felület helyiség × tájolás × típus szerint darabszámmal
   const tipusok = new Map<string, NyilaszaroTipus>();

@@ -112,6 +112,7 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
                 );
               })}
             </tbody>
+            {opak.length > 1 && <tfoot><tr><td /><td colSpan={3}>Összesen ({opak.length} felület)</td><td /><td class="szam">{sz(opak.reduce((s, f) => s + feluletNettoA(p, f), 0), 2)} m²</td><td /></tr></tfoot>}
           </table>
         </div>
         <button class="gomb" style="margin-top:12px" onClick={() => modosit((q) => {
@@ -183,6 +184,7 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
             </tbody>
             {ny.length > 0 && (() => { const o = ny.map((f) => nyilasNapnyereseg(p, f)).reduce<{ ideny: number; ev: number }>((a, x) => ({ ideny: a.ideny + (x?.ideny ?? 0), ev: a.ev + (x?.ev ?? 0) }), { ideny: 0, ev: 0 }); return (
               <tfoot>
+                <tr style="font-weight:600"><td colSpan={2}>Összesen{ny.length < nyMind.length || nySzuro.szint ? ' (szűrt)' : ''}</td><td class="szam">{sz(ny.reduce((s, f) => s + (f.darab ?? 1) * nyResz(f), 0), 0)} db</td><td colSpan={4} /><td class="szam">{sz(ny.reduce((s, f) => s + feluletNettoA(p, f) * nyResz(f), 0), 2)} m²</td><td colSpan={3} /></tr>
                 <tr><td colSpan={10}>Passzív szoláris nyereség összesen (Q<sub>sd</sub> = A<sub>ü</sub> · 0,9 · g · F · G<sub>s</sub>, árnyékolással, hasznosítási tényező nélkül)</td><td class="szam" style="white-space:nowrap">{sz(o.ideny, 0)} / {sz(o.ev, 0)} kWh</td></tr>
                 {eredmeny && (() => {
                   // fűtési idény (havi mérleg, ahol QF,net > 0): hőveszteség, szoláris nyereség és annak hasznosított része
