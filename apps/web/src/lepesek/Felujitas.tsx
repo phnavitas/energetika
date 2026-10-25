@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'preact/hooks';
 import { nyilaszaroSablon as NS, FUTES_SZETTEK, HMV_SZETTEK, SZELLOZES_SZETTEK } from '@mag/index';
-import { Mezo, Szam, Szoveg, Valaszto, sz } from '../ui';
+import { Mezo, Szam, Szoveg, Valaszto, sz, MindJelolo } from '../ui';
 import { ujId, SZEREP_NEV, type Projekt, type Szerep } from '../modell';
 import { anyag } from '../katalogus';
 import { SZIG_VALASZTEK } from '../tipologiaRetegek';
@@ -69,7 +69,7 @@ function Elemzo({ p, b, modosit }: { p: Projekt; b: FelujitasBeallitas; modosit:
         <p class="halk">Mindegyik intézkedés hatását önmagában is kiszámolja a program; a bejelölt intézkedések együtt alkotják a felújítási csomagot (a csomag hatása nem egyenlő az egyenkénti hatások összegével). Az egységárak nettók; a megtérülés a bruttó (ÁFA-s) beruházással számol.</p>
         <div class="tabla-gorgeto">
           <table class="tabla felujitas-tabla">
-            <thead><tr><th>Csomagban</th><th>Intézkedés</th><th class="szam">Mennyiség</th><th class="szam">Beruházás (bruttó)</th><th class="szam">Megtakarítás/év</th><th class="szam">Ep után</th><th class="szam">Megtérülés</th><th class="szam">Nettó jelenérték</th><th></th></tr></thead>
+            <thead><tr><th><MindJelolo db={b.intezkedesek.filter((m) => m.aktiv).length} ossz={b.intezkedesek.length} szoveg="Csomagban" valt={(be) => mb((x) => { for (const m of x.intezkedesek) m.aktiv = be; })} /></th><th>Intézkedés</th><th class="szam">Mennyiség</th><th class="szam">Beruházás (bruttó)</th><th class="szam">Megtakarítás/év</th><th class="szam">Ep után</th><th class="szam">Megtérülés</th><th class="szam">Nettó jelenérték</th><th></th></tr></thead>
             <tbody>
               {b.intezkedesek.map((m, i) => {
                 const r = egyenkent[i];

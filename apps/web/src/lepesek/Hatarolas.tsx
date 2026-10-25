@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import { klima } from '@mag/index';
-import { Mezo, Szam, Szoveg, Valaszto, sz, kov } from '../ui';
+import { Mezo, Szam, Szoveg, Valaszto, sz, kov, MindJelolo } from '../ui';
 import type { EpuletEredmeny } from '@mag/index';
 import { ujId, feluletNettoA, geometria, atlagBelmagassag, padloKerulet, padloPsi, chiErvenyes, azonosFeluletek, feluletekOsszevon, falhosszHelyisegekbol, nyilasNapnyereseg, CHI_VALASZTEK, HATAR_NEV, SZEREP_NEV, type Projekt, type HatarKod, type Felulet } from '../modell';
 import { Fogantyu, huzasProps } from '../huzas';
@@ -235,7 +235,7 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
                 const kij = f.padlo?.falIds ?? [];
                 return (
                   <fieldset class="fal-valaszto">
-                    <legend>Kerület a földszinti külső falak hosszából</legend>
+                    <legend>Kerület a földszinti külső falak hosszából {falak.length > 1 && <MindJelolo db={falak.filter((o) => kij.includes(o.id)).length} ossz={falak.length} szoveg="mind / egyik sem" valt={(be) => fv(f.id, (x) => { if (be) x.padlo!.falIds = falak.map((o) => o.id); else delete x.padlo!.falIds; })} />}</legend>
                     {falak.map((o) => (
                       <label class="jelolo"><input type="checkbox" checked={kij.includes(o.id)} onChange={(e) => fv(f.id, (x) => {
                         const l = new Set(x.padlo!.falIds ?? []);

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Projekt, HohidUI } from '../modell';
 import { chiErvenyes } from '../modell';
-import { Mezo, Szam, Szoveg, Valaszto, sz } from '../ui';
+import { Mezo, Szam, Szoveg, Valaszto, sz, MindJelolo } from '../ui';
 import { HOHID_SABLONOK, sablon, alapParameterek, type Parameter } from '../hohid/katalogus';
 import { hohidSzamolHatter, ujHohid, projektParameterek, javasoltHossz, ajanlott, type HohidSzamitas } from '../hohid/projekt';
 import { geometriaRajz, izotermRajz } from '../hohid/rajz';
@@ -73,7 +73,7 @@ export function HohidakLepes({ p, modosit }: { p: Projekt; modosit: Modosit }) {
         <h2>Csomópontok</h2>
         {hidak.length > 0 && (
           <div class="tabla-gorgeto"><table class="tabla">
-            <thead><tr><th>Csomópont</th><th class="szam">Ψ</th><th class="szam">Hossz</th><th class="szam">Ψ·l</th><th class="szam">θsi,min / fRsi</th><th>Számításba</th><th></th></tr></thead>
+            <thead><tr><th>Csomópont</th><th class="szam">Ψ</th><th class="szam">Hossz</th><th class="szam">Ψ·l</th><th class="szam">θsi,min / fRsi</th><th><MindJelolo db={hidak.filter((x) => x.szamit).length} ossz={hidak.length} szoveg="Számításba" valt={(be) => modosit((q) => { for (const y of q.hohidak ?? []) y.szamit = be; })} /></th><th></th></tr></thead>
             <tbody>{hidak.map((x) => { const psi = x.eredmeny ? (x.meretrendszer === 'kulso' ? x.eredmeny.psiE : x.eredmeny.psiI) : null; return (
               <tr style={x.id === aktiv ? 'background:var(--kijelolt)' : ''}>
                 <td><button class="link-gomb" onClick={() => { setAktiv(x.id); setKatalog(false); }}>{x.nev}</button></td>

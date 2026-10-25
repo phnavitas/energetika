@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { ujId as ujIdT, type Projekt, type HelyisegKategoria } from '../modell';
 const sz2 = (x: number) => x.toLocaleString('hu-HU', { maximumFractionDigits: 1 });
-import { Szam, Valaszto, sz } from '../ui';
+import { Szam, Valaszto, sz, MindJelolo } from '../ui';
 import { kategoriaJavaslat } from './Helyisegek';
 import { anyag } from '../katalogus';
 import { pecsetKinyer, type PecsetAdat } from '../terv/pecset';
@@ -366,6 +366,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
         {alaprajzLapok.length > 0 && (
           <div style="margin-top:16px">
             <span class="halkabb">Alaprajzok és szintek – egy alaprajz több azonos szintet is ábrázolhat (pl. 1. és 2. emelet); a helyiségek szintenként, a falak és nyílászárók a szintek számával szorozva kerülnek át</span>
+            {(() => { const v = alaprajzLapok.filter(({ i }) => !atvett.has(i)); return v.length > 1 && <div style="margin-top:4px"><MindJelolo db={v.filter(({ i }) => !kimarad(i)).length} ossz={v.length} szoveg="mind átvételre / egyik sem" valt={(be) => { const k = { ...kihagyLap }; for (const { i } of v) k[i] = !be; setKihagyLap(k); }} /></div>; })()}
             <table class="tabla" style="margin-top:4px">
               <tbody>
                 {alaprajzLapok.map(({ l, i }) => (
@@ -540,7 +541,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
 
           <div class="tabla-gorgeto">
             <table class="tabla">
-              <thead><tr><th></th><th>Kód</th><th>Helyiség</th><th>Besorolás</th><th class="szam">Terület</th><th>Külső fal (nettó)</th><th>Ellenőrzés</th></tr></thead>
+              <thead><tr><th>{(() => { const v = helyisegek.map((h, i) => (egysegben(i) && !h.kulter ? i : -1)).filter((i) => i >= 0); return <MindJelolo db={v.filter((i) => !kizartH.has(i)).length} ossz={v.length} valt={(be) => setKizartH((e) => { const s = new Set(e); for (const i of v) { if (be) s.delete(i); else s.add(i); } return s; })} />; })()}</th><th>Kód</th><th>Helyiség</th><th>Besorolás</th><th class="szam">Terület</th><th>Külső fal (nettó)</th><th>Ellenőrzés</th></tr></thead>
               <tbody>
                 {(() => { let elozo: string | null | undefined = null; return helyisegek.map((h, i) => {
                   if (!egysegben(i)) return null;
@@ -589,6 +590,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             <label class="mezo"><span>Belmagasság</span><Szam ertek={bm} egyseg="m" valt={setBm} /></label>
             <div class="mezo"><span>Szintmagasság-jelek</span><span class="halk">{me.szintek.szintek.map((v) => (v > 0 ? '+' : v === 0 ? '±' : '') + sz(v)).join(' · ')}</span></div>
           </div>
+          {(() => { const v = me.blokkok.filter((b) => b.becsles.szerep); return v.length > 1 && <div style="margin-bottom:8px"><MindJelolo db={v.filter((b) => rrKi[b.rr.kod]).length} ossz={v.length} szoveg="mind átvételre / egyik sem" valt={(be) => { const k = { ...rrKi }; for (const b of v) k[b.rr.kod] = be; setRrKi(k); }} /></div>; })()}
           {me.blokkok.map((b) => (
             <div class="kartya" style="margin-bottom:10px">
               <label style="display:flex;gap:8px;align-items:baseline;font-weight:600">
@@ -626,7 +628,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
           </table>
           <div class="tabla-gorgeto">
             <table class="tabla">
-              <thead><tr><th></th><th>Fajta</th><th class="szam">Szélesség × magasság</th><th class="szam">Mellvéd</th><th>Helyiség</th><th>Égtáj</th><th class="szam">Db</th></tr></thead>
+              <thead><tr><th><MindJelolo db={nyilasok.filter(({ k }) => !kizartNy.has(k)).length} ossz={nyilasok.length} valt={(be) => setKizartNy(be ? new Set() : new Set(nyilasok.map(({ k }) => k)))} /></th><th>Fajta</th><th class="szam">Szélesség × magasság</th><th class="szam">Mellvéd</th><th>Helyiség</th><th>Égtáj</th><th class="szam">Db</th></tr></thead>
               <tbody>
                 {(() => {
                   // azonos fajta, méret, mellvéd, helyiség és égtáj: egy sor darabszámmal

@@ -1,5 +1,5 @@
 import type { ComponentChildren } from 'preact';
-import { useState } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 
 export function Mezo(p: { cim: string; sugo?: string; szeles?: boolean; rovid?: boolean; children: ComponentChildren }) {
   return (
@@ -50,3 +50,11 @@ export const sz = (x: number | undefined | null, tizedes = 2) =>
 
 /** Követelményérték kiírása tizedesvesszővel, felesleges nullák nélkül. */
 export const kov = (x: number) => x.toLocaleString('hu-HU', { maximumFractionDigits: 3 });
+
+/** Lista fejléce: mind / egyik sem jelölés (részleges kijelölésnél „–” állapot). */
+export function MindJelolo(p: { db: number; ossz: number; valt: (be: boolean) => void; szoveg?: string }) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (ref.current) ref.current.indeterminate = p.db > 0 && p.db < p.ossz; }, [p.db, p.ossz]);
+  const doboz = <input ref={ref} type="checkbox" title={p.db >= p.ossz ? 'Egyik sem' : 'Mind'} aria-label="Mind / egyik sem" disabled={!p.ossz} checked={p.ossz > 0 && p.db >= p.ossz} onChange={() => p.valt(p.db < p.ossz)} />;
+  return p.szoveg ? <label class="jelolo" style="font-size:12px;font-weight:400">{doboz} {p.szoveg}</label> : doboz;
+}
