@@ -177,7 +177,10 @@ export function falfulkeE(f: { x: number; y: number; szel: number; fal?: 'v' | '
       }
     }
     const nyilasSuru = db[0]! / (sav[0]![1] - sav[0]![0]);
-    const pillerSuru = Math.max(...sav.slice(1).map((x, k) => db[k + 1]! / (x[1] - x[0])));
+    // a falpillér-ablakok sűrűségének mediánja (a nem sraffozott – nyílásba eső – ablakok nélkül); egy-egy sűrűbben
+    // sraffozott elem (pillér, kémény) nem dönti el
+    const suruk = sav.slice(1).map((x, k) => db[k + 1]! / (x[1] - x[0])).filter((v) => v > 0).sort((a, b) => a - b);
+    const pillerSuru = suruk.length ? suruk[Math.floor(suruk.length / 2)]! : 0;
     if (pillerSuru > 0 && db[0]! >= 3 && nyilasSuru >= 0.5 * pillerSuru) return true;
   }
   return false;

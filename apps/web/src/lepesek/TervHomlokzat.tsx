@@ -14,7 +14,7 @@ type Tajolas = (typeof klima.TAJOLASOK)[number];
 const TOL = 0.05; // méretegyezés tűrése [m]
 const ISM = '?';
 
-interface Tetel { hom: boolean; taj: string; szint: string; epulet: string; szel: number; mag: number; db: number; takart: number; nev?: string }
+interface Tetel { hom: boolean; taj: string; szint: string; epulet: string; szel: number; mag: number; db: number; takart: number; nev?: string; illesztett?: boolean }
 
 /** Szintnév → sorrend (pince, földszint, emeletek, tetőtér). */
 function szintSorrend(s: string): number {
@@ -89,6 +89,15 @@ export function HomlokzatEllenorzes({ p, lapok }: { p: Projekt; lapok: { l: Terv
     }
   });
 
+  // takart (korlát, attika mögötti) homlokzati ablak: a látható magasság kisebb a valódinál – ha ugyanabban az égtáj / szint /
+  // épület csoportban van azonos szélességű, legalább ilyen magas projekt-nyílászáró, annak magasságával számolunk
+  for (const t of tetelek) {
+    if (!t.hom || !t.takart) continue;
+    const jelolt = tetelek.filter((x) => !x.hom && x.taj === t.taj && x.szint === t.szint && x.epulet === t.epulet && Math.abs(x.szel - t.szel) <= TOL && x.mag >= t.mag - 0.05)
+      .sort((a, b) => a.mag - b.mag)[0];
+    if (jelolt) { t.mag = jelolt.mag; t.illesztett = true; }
+  }
+
   // ——— szűrés, csoportosítás
   const szurt = tetelek.filter((t) => (!szuro.taj || t.taj === szuro.taj) && (!szuro.szint || t.szint === szuro.szint) && (!szuro.epulet || t.epulet === szuro.epulet));
   const kulcs = (t: Tetel) => [t.taj, bontas.szint ? t.szint : '', bontas.epulet ? t.epulet : ''].join('|');
@@ -133,7 +142,7 @@ export function HomlokzatEllenorzes({ p, lapok }: { p: Projekt; lapok: { l: Terv
   return (
     <section class="szakasz">
       <h2>Homlokzatok – nyílászárók ellenőrzése</h2>
-      <p class="halk">A homlokzati lapokon a program a színezett üvegfelületekből és a körbefutó keretsávokból ismeri fel a nyílászárókat (tokkülméret), és égtáj, szint és épület szerint összeveti a projektben lévő külső, üvegezett nyílászárókkal. A korlát vagy attika mögé bukó ablakok magassága becsült („takart”). A homlokzati szint az ablakok felső élének magasságából, az épület a homlokzat vízszintes tömbjeiből adódik – a tömbök nevét (balról jobbra, vesszővel) lapoként megadhatod; a rajzon takart, azonos homlokzatnál a szorzó és a „+” jel (pl. „A+B”) adja meg, mely épületekre vonatkozik.</p>
+      <p class="halk">A homlokzati lapokon a program a színezett üvegfelületekből és a körbefutó keretsávokból ismeri fel a nyílászárókat (tokkülméret), és égtáj, szint és épület szerint összeveti a projektben lévő külső, üvegezett nyílászárókkal. A korlát vagy attika mögé bukó ablakok („takart”) magassága a homlokzatról nem olvasható: ha ugyanabban a csoportban van azonos szélességű projekt-nyílászáró, annak magasságával számol, egyébként a látható résszel. A homlokzati szint az ablakok felső élének magasságából, az épület a homlokzat vízszintes tömbjeiből adódik – a tömbök nevét (balról jobbra, vesszővel) lapoként megadhatod; a rajzon takart, azonos homlokzatnál a szorzó és a „+” jel (pl. „A+B”) adja meg, mely épületekre vonatkozik.</p>
       <div class="tabla-gorgeto">
         <table class="tabla">
           <thead><tr><th>Homlokzati lap</th><th>Tájolás</th><th class="szam" title="Azonos, a rajzon nem látható homlokzatok száma">Szorzó</th><th title="A homlokzat tömbjei balról jobbra, vesszővel (pl. „A,B”); takart azonos homlokzatnál „A+B”">Épület(ek)</th><th class="szam">Nyílászáró</th><th class="szam">Felület</th><th class="szam" title="Keretszínű tömör panelek: jellemzően fém homlokzatburkolat, tömör ajtólap">Keretszínű panel</th><th>Megjegyzés</th></tr></thead>

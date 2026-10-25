@@ -427,3 +427,5 @@ details.osszecsukhato[open] > summary { margin-bottom: 4px; }
 .sor-torol:hover { color: #b3261e; background: rgba(179,38,30,.08); }
 .munka > header .eszkozsor { gap: 4px; margin-left: auto; }
 .munka > header .eszkozsor .gomb[aria-label] { min-width: 36px; font-size: 17px; line-height: 1; padding: 6px 10px; }
+.sor-nyit { border: 0; background: none; cursor: pointer; font-size: 13px; padding: 2px 4px; color: var(--szoveg, inherit); line-height: 1; vertical-align: middle; }
+.tabla tr.alsor td { background: var(--lap-2, rgba(0,0,0,.025)); font-size: 13px; }

@@ -25,6 +25,19 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
   const nyEpulet = (f: Felulet) => { const h = p.helyisegek.find((x) => x.id === f.helyisegId); return (h?.egyseg && /^(\S{1,3}) épület/.exec(h.egyseg)?.[1]) ?? (h && /\(([A-ZÁÉ]{1,2})\.[^)]*\)/.exec(h.nev)?.[1]) ?? ''; };
   const ny = nyMind.filter((f) => (!nySzuro.taj || f.tajolas === nySzuro.taj) && (!nySzuro.szint || nySzint(f).includes(nySzuro.szint)) && (!nySzuro.epulet || nyEpulet(f) === nySzuro.epulet));
   const nyOpc = (l: string[]) => [...new Set(l.filter(Boolean))].sort();
+  // azonos típusú és elhelyezésű (tájolás, dőlés, fal, árnyékolás) nyílászárók egy sorban, darabszám-összeggel;
+  // a kibontott sorokban helyiségenként
+  const [nyNyitva, setNyNyitva] = useState<Set<string>>(new Set());
+  const nyCsoportok: { k: string; tagok: Felulet[] }[] = [];
+  for (const f of ny) {
+    const n = p.nyilaszarok.find((x) => x.id === f.nyilaszaroId);
+    const k = [n ? `${n.szelesseg}|${n.magassag}` : '', f.nyilaszaroId ?? '', f.tajolas ?? '', f.hajlasszog ?? 90, f.szuloId ?? '', f.arnyekolas ?? 1].join('#');
+    const c = nyCsoportok.find((x) => x.k === k); if (c) c.tagok.push(f); else nyCsoportok.push({ k, tagok: [f] });
+  }
+  nyCsoportok.sort((a, b) => {
+    const na = p.nyilaszarok.find((x) => x.id === a.tagok[0]!.nyilaszaroId), nb = p.nyilaszarok.find((x) => x.id === b.tagok[0]!.nyilaszaroId);
+    return (nb ? nb.szelesseg * nb.magassag : 0) - (na ? na.szelesseg * na.magassag : 0) || klima.TAJOLASOK.indexOf(a.tagok[0]!.tajolas ?? 'É') - klima.TAJOLASOK.indexOf(b.tagok[0]!.tajolas ?? 'É');
+  });
   const padlok = p.feluletek.filter((f) => f.fajta === 'padlo');
   /** Felület áthelyezése a lista egy másik eleme elé (húzás) vagy egy hellyel (gombbal) – a saját fajtáján belül. */
   const athelyez = (id: string, celId: string) => modosit((q) => {
@@ -118,34 +131,60 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
         )}
         <div class="tabla-gorgeto">
           <table class="tabla">
-            <thead><tr><th aria-label="Sorrend"></th><th>Megnevezés</th><th>Típus</th><th class="szam">Db</th><th>Tájolás</th><th>Dőlés</th><th>Falban</th><th>Helyiség</th><th class="szam">Felület</th><th>Árnyékoló</th><th class="szam" title="Fűtési idényre vonatkozó árnyékolási tényező: környező beépítés, erkély, előtető, növényzet (1 = nincs)">F<sub>árny</sub></th><th class="szam" title="Passzív szoláris nyereség Qsd = Au · 0,9 · gn · F · Gs">Napnyereség<br /><span class="halkabb">fűtési idény / év</span></th></tr></thead>
+            <thead><tr><th aria-label="Kibontás és törlés"></th><th>Típus</th><th class="szam">Db</th><th>Tájolás</th><th>Dőlés</th><th>Falban</th><th>Helyiség</th><th class="szam">Felület</th><th>Árnyékoló</th><th class="szam" title="Fűtési idényre vonatkozó árnyékolási tényező: környező beépítés, erkély, előtető, növényzet (1 = nincs)">F<sub>árny</sub></th><th class="szam" title="Passzív szoláris nyereség Qsd = Au · 0,9 · gn · F · Gs">Napnyereség<br /><span class="halkabb">fűtési idény / év</span></th></tr></thead>
             <tbody>
-              {ny.map((f) => { const nt = p.nyilaszarok.find((x) => x.id === f.nyilaszaroId); const napny = nyilasNapnyereseg(p, f); const ar = nt?.arnyekolo ? ARNYEKOLOK.find((a) => a.kod === nt.arnyekolo!.kod) : undefined; return (
-                <tr {...huzasProps('nyilas', f.id, athelyez)}>
-                  <td style="white-space:nowrap"><Fogantyu cimke={f.nev} fel={() => lep(f.id, -1)} le={() => lep(f.id, 1)} /><button class="sor-torol" title="Törlés" aria-label={`${f.nev} törlése`} onClick={() => torol(f.id)}>✕</button></td>
-                  <td style="min-width:120px"><Szoveg ertek={f.nev} valt={(v) => fv(f.id, (x) => { x.nev = v; })} /></td>
-                  <td style="min-width:150px"><Valaszto cimke="Típus" ertek={f.nyilaszaroId} ures="Válassz…" valt={(v) => fv(f.id, (x) => { x.nyilaszaroId = v; })} opciok={p.nyilaszarok.map((n) => ({ ertek: n.id, nev: n.nev }))} /></td>
-                  <td style="min-width:58px"><Szam cimke="Darab" ertek={f.darab ?? 1} lepes={1} min={1} valt={(v) => fv(f.id, (x) => { x.darab = Math.max(1, Math.round(v)); })} /></td>
-                  <td style="min-width:84px"><Valaszto cimke="Tájolás" ertek={f.tajolas ?? undefined} valt={(v) => fv(f.id, (x) => { x.tajolas = v; })} opciok={TAJOLASOK} /></td>
-                  <td style="min-width:124px"><Valaszto cimke="Dőlés" ertek={String(f.hajlasszog ?? 90)} valt={(v) => fv(f.id, (x) => { x.hajlasszog = Number(v) as Felulet['hajlasszog']; })} opciok={HAJLAS} /></td>
-                  <td style="min-width:120px"><Valaszto cimke="Szülő fal" ertek={f.szuloId} ures="Nincs levonás" valt={(v) => fv(f.id, (x) => { x.szuloId = v || undefined; })} opciok={opak.map((o) => ({ ertek: o.id, nev: o.nev }))} /></td>
-                  <td style="min-width:110px"><Valaszto cimke="Helyiség" ertek={f.helyisegId} ures="–" valt={(v) => fv(f.id, (x) => { x.helyisegId = v || undefined; })} opciok={helyisegOpciok} /></td>
-                  <td class="szam">{sz(feluletNettoA(p, f), 2)} m²</td>
-                  <td class="halkabb" style="min-width:64px">{ar ? ar.megnevezes : 'nincs'}</td>
-                  <td style="width:64px"><Szam cimke="Árnyékolási tényező" ertek={f.arnyekolas ?? 1} lepes={0.05} min={0} valt={(v) => fv(f.id, (x) => { x.arnyekolas = Math.min(1, Math.max(0, v)); if (x.arnyekolas === 1) delete x.arnyekolas; })} /></td>
-                  <td class="szam" style="white-space:nowrap">{napny ? <>{sz(napny.ideny, 0)} / {sz(napny.ev, 0)} kWh</> : '–'}</td>
-                </tr>
-              ); })}
+              {nyCsoportok.map(({ k, tagok }) => {
+                const f = tagok[0]!; const ids = new Set(tagok.map((x) => x.id));
+                const fvCs = (fn: (x: Felulet) => void) => modosit((q) => { for (const x of q.feluletek) if (ids.has(x.id)) fn(x); });
+                const nt = p.nyilaszarok.find((x) => x.id === f.nyilaszaroId);
+                const ar = nt?.arnyekolo ? ARNYEKOLOK.find((a) => a.kod === nt.arnyekolo!.kod) : undefined;
+                const napny = tagok.map((x) => nyilasNapnyereseg(p, x)).reduce<{ ideny: number; ev: number } | null>((a, x) => (x ? { ideny: (a?.ideny ?? 0) + x.ideny, ev: (a?.ev ?? 0) + x.ev } : a), null);
+                const db = tagok.reduce((s2, x) => s2 + (x.darab ?? 1), 0);
+                const nyitott = nyNyitva.has(k);
+                const helyNev = (x: Felulet) => p.helyisegek.find((h) => h.id === x.helyisegId)?.nev;
+                const helyek = [...new Set(tagok.map(helyNev).filter(Boolean))];
+                return (<>
+                  <tr>
+                    <td style="white-space:nowrap">
+                      <button class="sor-nyit" aria-expanded={nyitott} title={nyitott ? 'Helyiségek elrejtése' : 'Helyiségek megjelenítése'} onClick={() => setNyNyitva((x) => { const y = new Set(x); if (y.has(k)) y.delete(k); else y.add(k); return y; })}>{nyitott ? '▾' : '▸'}</button>
+                      <button class="sor-torol" title={tagok.length > 1 ? `Törlés (mind a ${tagok.length} sor)` : 'Törlés'} aria-label="Törlés" onClick={() => modosit((q) => { q.feluletek = q.feluletek.filter((x) => !ids.has(x.id)); })}>✕</button>
+                    </td>
+                    <td style="min-width:150px"><Valaszto cimke="Típus" ertek={f.nyilaszaroId} ures="Válassz…" valt={(v) => fvCs((x) => { x.nyilaszaroId = v; })} opciok={p.nyilaszarok.map((n) => ({ ertek: n.id, nev: n.nev }))} /></td>
+                    <td style="min-width:58px">{tagok.length === 1
+                      ? <Szam cimke="Darab" ertek={f.darab ?? 1} lepes={1} min={1} valt={(v) => fv(f.id, (x) => { x.darab = Math.max(1, Math.round(v)); })} />
+                      : <span class="szam" style="display:block;text-align:right" title="A helyiségenkénti darabszám a kibontott sorokban módosítható">{db}</span>}</td>
+                    <td style="min-width:84px"><Valaszto cimke="Tájolás" ertek={f.tajolas ?? undefined} valt={(v) => fvCs((x) => { x.tajolas = v; })} opciok={TAJOLASOK} /></td>
+                    <td style="min-width:124px"><Valaszto cimke="Dőlés" ertek={String(f.hajlasszog ?? 90)} valt={(v) => fvCs((x) => { x.hajlasszog = Number(v) as Felulet['hajlasszog']; })} opciok={HAJLAS} /></td>
+                    <td style="min-width:120px"><Valaszto cimke="Szülő fal" ertek={f.szuloId} ures="Nincs levonás" valt={(v) => fvCs((x) => { x.szuloId = v || undefined; })} opciok={opak.map((o) => ({ ertek: o.id, nev: o.nev }))} /></td>
+                    <td class="halkabb" style="min-width:90px">{helyek.length === 1 ? helyek[0] : helyek.length ? `${helyek.length} helyiség` : '–'}</td>
+                    <td class="szam">{sz(tagok.reduce((s2, x) => s2 + feluletNettoA(p, x), 0), 2)} m²</td>
+                    <td class="halkabb" style="min-width:64px">{ar ? ar.megnevezes : 'nincs'}</td>
+                    <td style="width:64px"><Szam cimke="Árnyékolási tényező" ertek={f.arnyekolas ?? 1} lepes={0.05} min={0} valt={(v) => fvCs((x) => { x.arnyekolas = Math.min(1, Math.max(0, v)); if (x.arnyekolas === 1) delete x.arnyekolas; })} /></td>
+                    <td class="szam" style="white-space:nowrap">{napny ? <>{sz(napny.ideny, 0)} / {sz(napny.ev, 0)} kWh</> : '–'}</td>
+                  </tr>
+                  {nyitott && tagok.map((x) => (
+                    <tr class="alsor">
+                      <td style="text-align:right"><button class="sor-torol" title="Törlés" aria-label={`${x.nev} törlése`} onClick={() => torol(x.id)}>✕</button></td>
+                      <td colSpan={1} class="halkabb" style="padding-left:18px">{x.nev}{x.szintek?.length ? ` · ${x.szintek.join(', ')}` : ''}</td>
+                      <td style="min-width:58px"><Szam cimke="Darab" ertek={x.darab ?? 1} lepes={1} min={1} valt={(v) => fv(x.id, (y) => { y.darab = Math.max(1, Math.round(v)); })} /></td>
+                      <td colSpan={3} />
+                      <td style="min-width:110px"><Valaszto cimke="Helyiség" ertek={x.helyisegId} ures="–" valt={(v) => fv(x.id, (y) => { y.helyisegId = v || undefined; })} opciok={helyisegOpciok} /></td>
+                      <td class="szam halkabb">{sz(feluletNettoA(p, x), 2)} m²</td>
+                      <td colSpan={3} />
+                    </tr>
+                  ))}
+                </>);
+              })}
             </tbody>
             {ny.length > 0 && (() => { const o = ny.map((f) => nyilasNapnyereseg(p, f)).reduce<{ ideny: number; ev: number }>((a, x) => ({ ideny: a.ideny + (x?.ideny ?? 0), ev: a.ev + (x?.ev ?? 0) }), { ideny: 0, ev: 0 }); return (
               <tfoot>
-                <tr><td colSpan={11}>Passzív szoláris nyereség összesen (Q<sub>sd</sub> = A<sub>ü</sub> · 0,9 · g · F · G<sub>s</sub>, árnyékolással, hasznosítási tényező nélkül)</td><td class="szam" style="white-space:nowrap">{sz(o.ideny, 0)} / {sz(o.ev, 0)} kWh</td></tr>
+                <tr><td colSpan={10}>Passzív szoláris nyereség összesen (Q<sub>sd</sub> = A<sub>ü</sub> · 0,9 · g · F · G<sub>s</sub>, árnyékolással, hasznosítási tényező nélkül)</td><td class="szam" style="white-space:nowrap">{sz(o.ideny, 0)} / {sz(o.ev, 0)} kWh</td></tr>
                 {eredmeny && (() => {
                   // fűtési idény (havi mérleg, ahol QF,net > 0): hőveszteség, szoláris nyereség és annak hasznosított része
                   const h = eredmeny.zonak.flatMap((z) => z.havi).filter((x) => x.QFnet > 0);
                   const veszt = h.reduce((a, x) => a + x.Qveszt, 0), qsd = h.reduce((a, x) => a + x.Qsd, 0), hasz = h.reduce((a, x) => a + x.eta * x.Qsd, 0);
                   return veszt > 0 ? (
-                    <tr><td colSpan={12} class="halkabb">Fűtési hónapokban ({h.length} hó, QF,net &gt; 0): hőveszteség (transzmisszió + szellőzés) <strong>{sz(veszt, 0)} kWh</strong> · szoláris nyereség (g-vel) <strong>{sz(qsd, 0)} kWh</strong> ({sz((qsd / veszt) * 100, 0)}%) · ebből hasznosítható (η·Q<sub>sd</sub>) <strong>{sz(hasz, 0)} kWh</strong> ({sz((hasz / veszt) * 100, 0)}%)</td></tr>
+                    <tr><td colSpan={11} class="halkabb">Fűtési hónapokban ({h.length} hó, QF,net &gt; 0): hőveszteség (transzmisszió + szellőzés) <strong>{sz(veszt, 0)} kWh</strong> · szoláris nyereség (g-vel) <strong>{sz(qsd, 0)} kWh</strong> ({sz((qsd / veszt) * 100, 0)}%) · ebből hasznosítható (η·Q<sub>sd</sub>) <strong>{sz(hasz, 0)} kWh</strong> ({sz((hasz / veszt) * 100, 0)}%)</td></tr>
                   ) : null;
                 })()}
               </tfoot>
