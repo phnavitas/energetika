@@ -477,7 +477,7 @@ function App() {
           {nezet === 'helyisegek' && <HelyisegekLepes p={p} modosit={modosit} />}
           {nezet === 'retegrendek' && <RetegrendekLepes p={p} modosit={modosit} />}
           {nezet === 'nyilaszarok' && <NyilaszarokLepes p={p} modosit={modosit} />}
-          {nezet === 'hatarolas' && <HatarolasLepes p={p} modosit={modosit} />}
+          {nezet === 'hatarolas' && <HatarolasLepes p={p} modosit={modosit} eredmeny={e} />}
           {nezet === 'hohidak' && <HohidakLepes p={p} modosit={modosit} />}
           {nezet === 'hoszukseglet' && <HoszuksegletLepes p={p} modosit={modosit} />}
           {nezet === 'gepeszet' && <GepeszetLepes p={p} modosit={modosit} eredmeny={e} />}

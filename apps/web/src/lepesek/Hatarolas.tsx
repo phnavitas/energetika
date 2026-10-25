@@ -1,5 +1,6 @@
 import { klima } from '@mag/index';
 import { Mezo, Szam, Szoveg, Valaszto, sz, kov } from '../ui';
+import type { EpuletEredmeny } from '@mag/index';
 import { ujId, feluletNettoA, geometria, atlagBelmagassag, padloKerulet, padloPsi, chiErvenyes, azonosFeluletek, feluletekOsszevon, falhosszHelyisegekbol, nyilasNapnyereseg, CHI_VALASZTEK, HATAR_NEV, SZEREP_NEV, type Projekt, type HatarKod, type Felulet } from '../modell';
 import { Fogantyu, huzasProps } from '../huzas';
 import { ARNYEKOLOK } from '../katalogus';
@@ -10,7 +11,7 @@ const HATAROK = (Object.keys(HATAR_NEV) as HatarKod[]).map((k) => ({ ertek: k, n
 const TAJOLASOK = klima.TAJOLASOK.map((t) => ({ ertek: t, nev: t }));
 const HAJLAS = [{ ertek: '90', nev: 'Függőleges' }, { ertek: '60', nev: '60°' }, { ertek: '45', nev: '45°' }, { ertek: '30', nev: '30°' }, { ertek: '0', nev: 'Vízszintes' }];
 
-export function HatarolasLepes({ p, modosit }: { p: Projekt; modosit: Modosit }) {
+export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: Modosit; eredmeny?: EpuletEredmeny | null }) {
   const g = geometria(p);
   const helyisegOpciok = p.helyisegek.map((h) => ({ ertek: h.id, nev: h.nev || 'névtelen' }));
   const fv = (id: string, fn: (f: Felulet) => void) => modosit((q) => { const f = q.feluletek.find((x) => x.id === id); if (f) fn(f); });
@@ -124,7 +125,17 @@ export function HatarolasLepes({ p, modosit }: { p: Projekt; modosit: Modosit })
               ); })}
             </tbody>
             {ny.length > 0 && (() => { const o = ny.map((f) => nyilasNapnyereseg(p, f)).reduce<{ ideny: number; ev: number }>((a, x) => ({ ideny: a.ideny + (x?.ideny ?? 0), ev: a.ev + (x?.ev ?? 0) }), { ideny: 0, ev: 0 }); return (
-              <tfoot><tr><td colSpan={11}>Passzív szoláris nyereség összesen (árnyékolással, hasznosítási tényező nélkül)</td><td class="szam" style="white-space:nowrap">{sz(o.ideny, 0)} / {sz(o.ev, 0)} kWh</td><td /></tr></tfoot>
+              <tfoot>
+                <tr><td colSpan={11}>Passzív szoláris nyereség összesen (Q<sub>sd</sub> = A<sub>ü</sub> · 0,9 · g · F · G<sub>s</sub>, árnyékolással, hasznosítási tényező nélkül)</td><td class="szam" style="white-space:nowrap">{sz(o.ideny, 0)} / {sz(o.ev, 0)} kWh</td><td /></tr>
+                {eredmeny && (() => {
+                  // fűtési idény (havi mérleg, ahol QF,net > 0): hőveszteség, szoláris nyereség és annak hasznosított része
+                  const h = eredmeny.zonak.flatMap((z) => z.havi).filter((x) => x.QFnet > 0);
+                  const veszt = h.reduce((a, x) => a + x.Qveszt, 0), qsd = h.reduce((a, x) => a + x.Qsd, 0), hasz = h.reduce((a, x) => a + x.eta * x.Qsd, 0);
+                  return veszt > 0 ? (
+                    <tr><td colSpan={13} class="halkabb">Fűtési hónapokban ({h.length} hó, QF,net &gt; 0): hőveszteség (transzmisszió + szellőzés) <strong>{sz(veszt, 0)} kWh</strong> · szoláris nyereség (g-vel) <strong>{sz(qsd, 0)} kWh</strong> ({sz((qsd / veszt) * 100, 0)}%) · ebből hasznosítható (η·Q<sub>sd</sub>) <strong>{sz(hasz, 0)} kWh</strong> ({sz((hasz / veszt) * 100, 0)}%)</td></tr>
+                  ) : null;
+                })()}
+              </tfoot>
             ); })()}
           </table>
         </div>

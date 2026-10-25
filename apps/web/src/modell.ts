@@ -35,6 +35,8 @@ export interface HoszuksegletBeallitas {
   /** Felfűtési többlet: 'nincs' (folyamatos fűtés), 'fajlagos' (fRH W/m²), 'arany' (ΦT+ΦV %-ában). */
   rhMod?: 'nincs' | 'fajlagos' | 'arany';
   fRH: number; rhArany?: number;
+  /** A passzív szoláris nyereség levonása a hőszükségletből (januári átlagteljesítmény) – az MSZ EN 12831 nem számol vele. */
+  napLevon?: boolean;
 }
 export const HSZ_ALAP: HoszuksegletBeallitas = { thetaE: -15, n50: 3, vedettseg: 'mersekelt', Gw: 1, fRH: 0 };
 
@@ -335,14 +337,17 @@ export function retegrendVastagsag(r: Retegrend) {
 // Nyílászáró → mag
 
 /** 4.3. táblázat: Ψ keret–üveg a keret anyaga, az üvegezés bevonata és a távtartó szerint. */
-export function psiTablabol(k: Pick<NyilaszaroKomponens, 'uvegKod' | 'keretKod' | 'tavtarto'>): number | null {
+export function psiTablabol(k: Pick<NyilaszaroKomponens, 'uvegKod' | 'keretKod' | 'tavtarto' | 'Ug' | 'Uk'>): number | null {
   if (k.tavtarto === 'nincs') return 0;
+  if (!k.tavtarto) return null;
+  // egyedi (termékadat szerinti) üvegezésnél / keretnél a bevonat és a keretanyag az U-értékből becsülve
   const uveg = epuletfizika.UVEGEZES_TAJEKOZTATO.find((x) => x.kod === k.uvegKod);
   const keret = epuletfizika.KERET_TAJEKOZTATO.find((x) => x.kod === k.keretKod);
-  if (!uveg || !keret || !k.tavtarto) return null;
-  if (uveg.kod === 'egyreteg') return 0;
-  const sor = keret.anyag === 'fem' ? (keret.kod === 'fem_0' ? epuletfizika.PSI_KERET_UVEG.fem_nelkul : epuletfizika.PSI_KERET_UVEG.fem_termikus) : epuletfizika.PSI_KERET_UVEG.fa_pvc;
-  return sor[uveg.lowe ? 'lowe' : 'bevonat_nelkul'][k.tavtarto];
+  if (uveg?.kod === 'egyreteg' || (!uveg && (k.Ug ?? 0) >= 4)) return 0;
+  const lowe = uveg ? !!uveg.lowe : (k.Ug ?? 3) < 2.0;
+  const anyag = keret ? keret.anyag : 'pvc';
+  const sor = anyag === 'fem' ? (keret?.kod === 'fem_0' ? epuletfizika.PSI_KERET_UVEG.fem_nelkul : epuletfizika.PSI_KERET_UVEG.fem_termikus) : epuletfizika.PSI_KERET_UVEG.fa_pvc;
+  return sor[lowe ? 'lowe' : 'bevonat_nelkul'][k.tavtarto];
 }
 
 export function nyilaszaroGeometria(n: NyilaszaroTipus) {
@@ -454,6 +459,14 @@ export function nyilasNapnyereseg(p: Projekt, f: Felulet): { ideny: number; ev: 
     ev += q; if (FUTESI_HONAPOK.includes(m)) ideny += q;
   }
   return { ideny, ev };
+}
+
+/** A nyílászáró januári átlagos szoláris teljesítménye [W] (Qsd,jan / 744 h) – a hőszükséglet opcionális csökkentéséhez. */
+export function nyilasNapTeljesitmenyJan(p: Projekt, f: Felulet): number {
+  if (f.fajta !== 'nyilaszaro' || f.hatar !== 'kulso') return 0;
+  const n = p.nyilaszarok.find((x) => x.id === f.nyilaszaroId); if (!n) return 0;
+  const Au = nyilaszaroAdatok(n).Au * (f.darab ?? 1);
+  return (Au * epuletfizika.F_UVEGEZES_BEESESI * n.gn * (f.arnyekolas ?? 1) * klima.sugarzasiHozam(f.tajolas ?? null, f.hajlasszog ?? 90, 0) * 1000) / klima.HONAP_ORAK[0]!;
 }
 
 export function atalakit(p: Projekt): Atalakitas {

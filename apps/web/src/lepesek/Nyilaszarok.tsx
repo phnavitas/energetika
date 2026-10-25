@@ -270,7 +270,7 @@ function KozosBeallitasok({ n, m, sablonCsere }: { n: NyilaszaroTipus; m: M; sab
                 <Mezo cim="Ug"><Szam ertek={komp.Ug} egyseg="W/m²K" valt={(v) => mk((c) => { c.Ug = v; c.uvegKod = undefined; })} /></Mezo>
                 <Mezo cim="g (merőleges)"><Szam ertek={n.gn} valt={(v) => m((x) => { x.gn = v; })} /></Mezo>
               </div>
-              <Mezo cim="Távtartó"><Valaszto ertek={komp.tavtarto ?? 'fem'} valt={(v) => mk((c) => { c.tavtarto = v; })} opciok={TAVTARTO} /></Mezo>
+              <Mezo cim="Távtartó" sugo={komp.psiKezi ? 'A Ψ kézi értékre van állítva – a távtartó váltása visszaállítja a táblázati értékre' : `Ψ = ${sz(komp.psi, 2)} W/mK (4.3. táblázat)`}><Valaszto ertek={komp.tavtarto ?? 'fem'} valt={(v) => mk((c) => { c.tavtarto = v; c.psiKezi = false; })} opciok={TAVTARTO} /></Mezo>
               {mod === 'kapcsolt' && <Mezo cim="Légrés a szárnyak között" sugo={`Rl = ${sz(d.Rl ?? 0, 2)} m²K/W (4.2. táblázat)`}><Szam ertek={komp.kapcsoltResMm} egyseg="mm" valt={(v) => mk((c) => { c.kapcsoltResMm = Math.max(v, 1); })} /></Mezo>}
             </div></fieldset>
 

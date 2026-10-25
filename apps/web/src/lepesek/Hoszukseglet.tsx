@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'preact/hooks';
 import { hoszukseglet as H } from '@mag/index';
 import { Mezo, Szam, Valaszto, sz } from '../ui';
-import { ujId, hoszuksegletBemenet, hszAlapertek, hszUres, HSZ_ALAP, nyilasNapnyereseg, SZEREP_NEV, retegrendSzamitas, type Projekt, type Helyiseg, type HelyisegHsz } from '../modell';
+import { ujId, hoszuksegletBemenet, hszAlapertek, hszUres, HSZ_ALAP, nyilasNapnyereseg, nyilasNapTeljesitmenyJan, SZEREP_NEV, retegrendSzamitas, type Projekt, type Helyiseg, type HelyisegHsz } from '../modell';
 
 type Modosit = (fn: (p: Projekt) => void) => void;
 
@@ -20,6 +20,10 @@ export function HoszuksegletLepes({ p, modosit }: { p: Projekt; modosit: Modosit
   const falak = p.retegrendek.filter((r) => r.szerep === 'fal');
   const max = Math.max(1, ...eredmeny.helyisegek.map((h) => h.PhiHL));
   const futott = p.helyisegek.filter((h) => h.kategoria !== 'gyengen_kapcsolt');
+  const napW = (hid: string) => p.feluletek.filter((f) => f.helyisegId === hid).reduce((a, f) => a + nyilasNapTeljesitmenyJan(p, f), 0);
+  const netto = (hid: string, phi: number | undefined) => (phi === undefined ? undefined : be.napLevon ? Math.max(0, phi - napW(hid)) : phi);
+  const napOssz = futott.reduce((a, h) => a + napW(h.id), 0);
+  const nettoOssz = futott.reduce((a, h) => a + (netto(h.id, eredmeny.helyisegek.find((x) => x.id === h.id)?.PhiHL) ?? 0), 0);
   const elteres = (a: number, b: number) => (b > 0 ? Math.abs(a - b) / b : a > 0 ? 1 : 0);
 
   return (
@@ -48,6 +52,10 @@ export function HoszuksegletLepes({ p, modosit }: { p: Projekt; modosit: Modosit
             <p style="margin-top:6px">A szabvány (MSZ EN 12831 7.3) szerint a felfűtési többlet ΦRH = A · fRH, ahol fRH a felfűtési időtől, a csökkentés alatti hőmérséklet-eséstől és az épület hőtároló tömegétől függ; a szabvány D melléklete (D.10a/b táblázat) és a nemzeti melléklet ad értékeket. Lakóépületre az egyszerűsítés csak legfeljebb 8 órás éjszakai csökkentésnél és nem könnyűszerkezetes épületnél alkalmazható. A táblázatot nem tudtam forrásból ellenőrizni, ezért a program nem kínál belőle értéket: a tervezési gyakorlat szerinti fajlagos értéket vagy %-os pótlékot add meg. Folyamatos üzemű (pl. hőszivattyús, padlófűtéses) rendszernél a többlet általában 0.</p>
           </details>
         )}
+        <label class="jelolo" style="margin-top:10px;display:flex;gap:8px;align-items:center">
+          <input type="checkbox" checked={!!be.napLevon} onChange={(e) => mb((b) => { b.napLevon = (e.target as HTMLInputElement).checked; })} />
+          <span>Szoláris nyereség figyelembevétele: a nyílászárók januári átlagos szoláris teljesítménye (Q<sub>sd,jan</sub> / 744 h) levonódik a hőszükségletből. <span class="halkabb">Az MSZ EN 12831 a méretezési hőszükségletet napnyereség nélkül számítja – csak tájékoztató, a hőtermelőt a levonás nélküli értékre méretezd.</span></span>
+        </label>
         {p.gepeszet.szellozes && <p class="halkabb" style="margin-top:8px">Gépi szellőzés hővisszanyeréssel (ηr = {sz(p.gepeszet.szellozes.etaR * 100, 0)}%): a minimális légcserét a befúvás fedezi, (1 − ηr) arányban terhelve.</p>}
       </section>
 
@@ -58,7 +66,7 @@ export function HoszuksegletLepes({ p, modosit }: { p: Projekt; modosit: Modosit
         <div class="tabla-gorgeto">
           <table class="tabla hsz-tabla">
             <thead>
-              <tr><th>Helyiség</th><th class="szam" title="Belső méretezési hőmérséklet">Belső hőm.</th><th class="szam" title="A helyiséghez rendelt külső falszakaszok nettó hossza (a tervből vagy a Részletekben)">Külső fal</th><th>Padlás / tető</th><th>Talaj</th><th class="szam" title="Transzmissziós hőveszteség">Transzm.</th><th class="szam" title="Szellőzési hőveszteség">Szellőz.</th><th class="szam">Hőszükséglet</th><th class="szam">W/m²</th><th class="szam" title="A helyiség nyílászáróinak passzív szoláris nyeresége a fűtési idényben (tájékoztató; a méretezési hőszükséglet az MSZ EN 12831 szerint napnyereség nélkül számít)">Napnyereség</th><th></th></tr>
+              <tr><th>Helyiség</th><th class="szam" title="Belső méretezési hőmérséklet">Belső hőm.</th><th class="szam" title="A helyiséghez rendelt külső falszakaszok nettó hossza (a tervből vagy a Részletekben)">Külső fal</th><th>Padlás / tető</th><th>Talaj</th><th class="szam" title="Transzmissziós hőveszteség">Transzm.</th><th class="szam" title="Szellőzési hőveszteség">Szellőz.</th><th class="szam">Hőszükséglet{be.napLevon ? <br /> : ''}{be.napLevon ? <span class="halkabb">napnyereséggel</span> : ''}</th><th class="szam">W/m²</th><th class="szam" title="A helyiség nyílászáróinak passzív szoláris nyeresége: fűtési idényre (kWh) és januári átlagteljesítményként (W)">Napnyereség<br /><span class="halkabb">idény / jan. átl.</span></th><th></th></tr>
             </thead>
             <tbody>
               {futott.map((h) => {
@@ -79,10 +87,10 @@ export function HoszuksegletLepes({ p, modosit }: { p: Projekt; modosit: Modosit
                       <td class="szam">{sz(r?.PhiV, 0)}</td>
                       <td class="szam hsz-oszlop">
                         <span class="hsz-sav" style={`width:${((r?.PhiHL ?? 0) / max) * 100}%`} aria-hidden="true" />
-                        <strong>{sz(r?.PhiHL, 0)} W</strong>
+                        <strong title={be.napLevon ? `Napnyereség nélkül: ${sz(r?.PhiHL, 0)} W` : undefined}>{sz(netto(h.id, r?.PhiHL), 0)} W</strong>
                       </td>
-                      <td class="szam">{sz(r?.fajlagos, 0)}</td>
-                      <td class="szam" style="white-space:nowrap">{(() => { const q = p.feluletek.filter((f) => f.helyisegId === h.id).reduce((a, f) => a + (nyilasNapnyereseg(p, f)?.ideny ?? 0), 0); return q > 0 ? `${sz(q, 0)} kWh` : '–'; })()}</td>
+                      <td class="szam">{sz(be.napLevon && h.A > 0 ? (netto(h.id, r?.PhiHL) ?? 0) / h.A : r?.fajlagos, 0)}</td>
+                      <td class="szam" style="white-space:nowrap">{(() => { const q = p.feluletek.filter((f) => f.helyisegId === h.id).reduce((a, f) => a + (nyilasNapnyereseg(p, f)?.ideny ?? 0), 0); return q > 0 ? `${sz(q, 0)} kWh / ${sz(napW(h.id), 0)} W` : '–'; })()}</td>
                       <td><button class="gomb halk-gomb semleges" onClick={() => setNyitott(nyitva ? null : h.id)}>{nyitva ? 'Bezár' : 'Részletek'}</button></td>
                     </tr>
                     {nyitva && (
@@ -96,9 +104,9 @@ export function HoszuksegletLepes({ p, modosit }: { p: Projekt; modosit: Modosit
             </tbody>
             <tfoot>
               <tr><td>Összesen</td><td /><td class="szam">{sz(futott.reduce((a, h) => a + (h.hsz?.kulsoFalak ?? []).reduce((b, x) => b + x.hossz, 0), 0), 2)} m</td><td class="szam">{sz(osszevetes.padlasHelyisegek, 1)} m²</td><td class="szam">{sz(osszevetes.padloHelyisegek, 1)} m²</td>
-                <td class="szam">{sz(eredmeny.PhiT, 0)}</td><td class="szam">{sz(eredmeny.PhiV, 0)}</td><td class="szam"><strong>{sz(eredmeny.osszesen / 1000, 2)} kW</strong></td>
-                <td class="szam">{sz(eredmeny.osszesen / Math.max(1, futott.reduce((s, h) => s + h.A, 0)), 0)}</td>
-                <td class="szam" style="white-space:nowrap">{sz(p.feluletek.reduce((a, f) => a + (nyilasNapnyereseg(p, f)?.ideny ?? 0), 0), 0)} kWh</td><td /></tr>
+                <td class="szam">{sz(eredmeny.PhiT, 0)}</td><td class="szam">{sz(eredmeny.PhiV, 0)}</td><td class="szam"><strong title={be.napLevon ? `Napnyereség nélkül: ${sz(eredmeny.osszesen / 1000, 2)} kW` : undefined}>{sz((be.napLevon ? nettoOssz : eredmeny.osszesen) / 1000, 2)} kW</strong></td>
+                <td class="szam">{sz((be.napLevon ? nettoOssz : eredmeny.osszesen) / Math.max(1, futott.reduce((s, h) => s + h.A, 0)), 0)}</td>
+                <td class="szam" style="white-space:nowrap">{sz(p.feluletek.reduce((a, f) => a + (nyilasNapnyereseg(p, f)?.ideny ?? 0), 0), 0)} kWh / {sz(napOssz, 0)} W</td><td /></tr>
             </tfoot>
           </table>
         </div>

@@ -419,3 +419,6 @@ details.osszecsukhato[open] > summary { margin-bottom: 4px; }
 .tabla tr.csoport-al td { font-weight: 600; font-size: 13px; color: var(--tus-2); padding-top: 10px; }
 .halad { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 13px; color: var(--tus-2); }
 .halad progress { flex: 1; max-width: 420px; height: 10px; accent-color: var(--hideg); }
+
+.lapozo{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--lap);border:1px solid var(--vonal);border-radius:8px;padding:6px 10px;margin-bottom:12px;box-shadow:0 2px 6px rgba(0,0,0,.05)}
+.lapozo .gomb{min-width:36px;font-size:18px;line-height:1;padding:4px 10px}
