@@ -63,7 +63,7 @@ export const kodE = (t: string) => (KOD.test(t) && /\d/.test(t)) || tagoltKod(t)
 export const tagoltKod = (t: string) => { const k = t.replace(/\s/g, ''); const tg = k.split('.').filter(Boolean); return KOD_TAGOLT.test(k) && (/\d/.test(k) || tg.length >= 3 || tg.every((x) => x.length === 1)); };
 const BURKOLAT = /kerámia|keramia|parketta|parketa|laminált|lam\.|térkő|terko|beton|csempe|járólap|greslap|gres|pvc|linóleum|szőnyeg|padlószőnyeg|műgyanta|kő\b|kőlap|fa\s?burkolat|deszka|vinyl|vinil|esztrich|kavics|aszfalt|gumi|burkolat|kulé/i;
 /** Kert, parkoló (szabadtéri) – a mélygarázs / garázs parkolója fűtetlen helyiség, nem kültér. */
-const KULTER2 = /(?:^|[\s(/-])(?:saját\s+|közös\s+|belső\s+)?kert(?:rész|résznek|terület)?(?:\b|$)|zöldfelület|zöld\s*felület|(?:^|[\s(/-])parkoló(?:hely|k)?(?:\b|$)|gépkocsi\s*beálló|gk\.?\s*beálló/i;
+const KULTER2 = /(?:^|[\s(/-])(?:saját\s+|közös\s+|belső\s+)?kert(?:rész|terület)?(?=$|[\s,.;:()/-])|áttörés|beömlő\s+nyílás|légbeszívó|légakna|zöldfelület|zöld\s*felület|(?:^|[\s(/-])parkoló(?:hely|helyek|k)?(?=$|[\s,.;:()/-])|gépkocsi\s*beálló|gk\.?\s*beálló/i;
 const kulterE = (nev: string) => KULTER.test(nev) || (KULTER2.test(nev) && !/garázs|garazs|teremgarázs/i.test(nev));
 const KULTER = /terasz|erkély|erkely|loggia|kocsibeálló|kocsibeallo|járda|tornác|tornac|előkert|udvar|árkád|lépcsőfeljáró|kerti|bejáró|bejaro|kukatároló|kukataroló|hulladéktároló|szemetes|(?:^|[\s(/-])(?:nem\s+járható\s+)?(?:lapos|zöld|zold)?(?:tető|teto)(?!t?éri|teri)(?:tér|ter|kert|felület|felulet)?(?:\b|$|[\s,.)])/i;
 /** Tető, lapostető, zöldtető, tetőtér (a „tetőtéri szoba” nem): nem helyiség, hanem külső / fűtetlen tér. */
@@ -376,8 +376,13 @@ export function alaprajzElemez(lap: Lap): AlaprajzEredmeny {
 /** A lap címéből a szintek: „Pince alaprajz” → [P], „1. és 2. emeleti alaprajz” → [1, 2], „Földszint” → [F]. */
 export const SZINT_NEV: Record<string, string> = { P: 'Pince', F: 'Földszint', T: 'Tetőtér' };
 export const szintNev = (k: string) => SZINT_NEV[k] ?? `${k}. emelet`;
+const SORSZAM: Record<string, number> = { első: 1, második: 2, harmadik: 3, negyedik: 4, ötödik: 5, hatodik: 6, hetedik: 7, nyolcadik: 8, kilencedik: 9, tizedik: 10 };
+const ROMAI: Record<string, number> = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10 };
 export function szintekCimbol(cim: string): string[] {
-  const c = cim.toLowerCase();
+  // betűvel / római számmal írt sorszám („Első emeleti”, „II. emelet”) → „1.”
+  const c = cim.toLowerCase()
+    .replace(/(első|második|harmadik|negyedik|ötödik|hatodik|hetedik|nyolcadik|kilencedik|tizedik)(?=[\s,–-]|$)/g, (m) => `${SORSZAM[m]}.`)
+    .replace(/(?<![a-záéíóöőúüű])(i{1,3}|iv|v|vi{1,3}|ix|x)\s*\.(?=\s*(?:[-–,]|és|emelet))/g, (_m, r: string) => `${ROMAI[r]}.`);
   if (/pince|alagsor|mélygarázs/.test(c)) return ['P'];
   if (/földszint|fszt|földsz/.test(c)) return ['F'];
   if (/tetőtér|tetoter/.test(c)) return ['T'];

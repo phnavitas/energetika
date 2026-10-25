@@ -30,6 +30,8 @@ export interface HelyisegHsz {
   padlo: boolean;
   /** A padló nem talajon fekvő, hanem ez a felület (pl. fűtetlen garázs / pince feletti födém). */
   padloFeluletId?: string;
+  /** Részleges tető / alsó födém: a helyiségnek csak ekkora része (m²) határos vele (szintek egymásra vetítéséből). */
+  padlasA?: number; padlasFeluletId?: string; padloA?: number;
   szomszedok: { id: string; helyisegId: string; A: number; U: number }[];
 }
 export interface HoszuksegletBeallitas {
@@ -779,19 +781,22 @@ export function hoszuksegletBemenet(p: Projekt): { bemenet: hoszukseglet.HszBeme
     }
     if (nyilasA > 0 && falBrutto < nyilasA) hibak.push(`${h.nev}: a nyílászárók felülete (${nyilasA.toFixed(1)} m²) nagyobb a megadott külső falnál – add meg a külső fal hosszát.`);
     if (hz.padlas) {
-      const U = padlasF ? Uopak(padlasF.retegrendId, chiErvenyes(p, padlasF)) : null;
-      if (U === null || !padlasF) hibak.push(`${h.nev}: nincs padlásfödém vagy tető a határolásban.`);
-      else if (padlasF.hatar === 'kulso') elemek.push({ tipus: 'kulso', nev: 'Tető', A: h.A, U });
-      else elemek.push({ tipus: 'futetlen', nev: 'Padlásfödém', A: h.A, U, bu: epuletfizika.B_TENYEZO[padlasF.hatar].tel });
-      osszevetes.padlasHelyisegek += h.A;
+      const pf = (hz.padlasFeluletId && p.feluletek.find((f) => f.id === hz.padlasFeluletId)) || padlasF;
+      const Ap = hz.padlasA ?? h.A;
+      const U = pf ? Uopak(pf.retegrendId, chiErvenyes(p, pf)) : null;
+      if (U === null || !pf) hibak.push(`${h.nev}: nincs padlásfödém vagy tető a határolásban.`);
+      else if (pf.hatar === 'kulso') elemek.push({ tipus: 'kulso', nev: 'Tető', A: Ap, U });
+      else elemek.push({ tipus: 'futetlen', nev: 'Padlásfödém', A: Ap, U, bu: epuletfizika.B_TENYEZO[pf.hatar].tel });
+      osszevetes.padlasHelyisegek += Ap;
     }
     const padloFod = hz.padlo && hz.padloFeluletId ? p.feluletek.find((f) => f.id === hz.padloFeluletId && f.fajta === 'opak') : undefined;
     if (padloFod) {
       const U = Uopak(padloFod.retegrendId, chiErvenyes(p, padloFod));
+      const Ap = hz.padloA ?? h.A;
       if (U === null) hibak.push(`${h.nev}: a padló alatti födém rétegrendje hiányos.`);
-      else if (padloFod.hatar === 'kulso') elemek.push({ tipus: 'kulso', nev: padloFod.nev, A: h.A, U });
-      else elemek.push({ tipus: 'futetlen', nev: padloFod.nev, A: h.A, U, bu: epuletfizika.B_TENYEZO[padloFod.hatar].tel });
-      osszevetes.padloHelyisegek += h.A;
+      else if (padloFod.hatar === 'kulso') elemek.push({ tipus: 'kulso', nev: padloFod.nev, A: Ap, U });
+      else elemek.push({ tipus: 'futetlen', nev: padloFod.nev, A: Ap, U, bu: epuletfizika.B_TENYEZO[padloFod.hatar].tel });
+      osszevetes.padloHelyisegek += Ap;
     } else if (hz.padlo) {
       if (padloU === null) hibak.push(`${h.nev}: nincs talajon fekvő padló a határolásban.`);
       else elemek.push({ tipus: 'talaj', nev: 'Talajon fekvő padló', A: h.A, Uequiv: padloU });

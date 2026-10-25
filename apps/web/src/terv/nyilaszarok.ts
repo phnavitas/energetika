@@ -191,6 +191,7 @@ export function falfulkeE(f: { x: number; y: number; szel: number; fal?: 'v' | '
  * előtti helyiségfal-szakasz adja a helyiséget és a homlokzat irányát; ha a szakasz túloldala külső tér, a nyílás külső.
  */
 export function nyilasokHozzarendel(feliratok: NyilasFelirat[], r: Raszter, nevek: string[] = [], tipusLap = false): TervNyilas[] {
+  const LAKO = /nappali|szoba|háló|halo\b|konyha|étkez|etkez|dolgozó|gyerek|living/i;
   const GARAZS = /gar[aá]zs|gépkocsi|gepkocsi|beálló|autó/i;
   const ptPx = r.mPerPt / r.px;
   const ki: TervNyilas[] = [];
@@ -265,8 +266,10 @@ export function nyilasokHozzarendel(feliratok: NyilasFelirat[], r: Raszter, neve
     if (f.kapuJelolt && !(p && kulso && (garazsban || f.szel >= 2.2))) continue;
     // feliratozott mellvédű tervben a mellvéd nélküli, ajtómagasságnál alacsonyabb „nyílás” valójában méretlánc-részlet
     if (vanPm && f.pm === null && f.mag < 1.9) continue;
-    const kapu = kulso && f.pm === null && f.mag >= 1.8 && (f.kapuJelolt || (garazsban && f.szel >= 1.8) || f.szel >= 2.2);
-    const fajta: TervNyilas['fajta'] = kapu ? 'garazskapu' : !kulso ? 'belso_ajto' : f.pm !== null && f.pm > 0.05 ? 'ablak' : f.pm !== null ? 'erkelyajto' : f.mag >= 1.9 ? (tipusLap ? 'erkelyajto' : 'bejarati_ajto') : 'ablak';
+    // lakóhelyiség (nappali, szoba, konyha) külső ajtaja erkély- / teraszajtó (a széles is: tolóajtó), nem bejárati ajtó és nem kapu
+    const lako = p ? LAKO.test(nevek[p.h] ?? '') : false;
+    const kapu = kulso && f.pm === null && f.mag >= 1.8 && (garazsban ? f.kapuJelolt || f.szel >= 1.8 : !lako && f.kapuJelolt && f.szel >= 2.2);
+    const fajta: TervNyilas['fajta'] = kapu ? 'garazskapu' : !kulso ? 'belso_ajto' : f.pm !== null && f.pm > 0.05 ? 'ablak' : f.pm !== null ? 'erkelyajto' : f.mag >= 1.9 ? (tipusLap || lako ? 'erkelyajto' : 'bejarati_ajto') : 'ablak';
     ki.push({ ...f, helyiseg: p?.h ?? null, irany: p?.irany ?? null, kulso, fajta });
   }
   return ki;
