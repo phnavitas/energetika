@@ -173,7 +173,16 @@ export function anyagKepez(leiras: string, dCm: number | null, szerep: Szerep | 
   if (/pe fólia|polietilén|pe párazáró|párazáró|technológiai szig|védőfólia|páraáteresztő|tetőfólia/.test(n)) return { anyagId: 'pe_folia' };
   if (/gipszkarton|gipszrost/.test(n)) return { anyagId: /rost/.test(n) ? 'gipszrost' : 'gipszkarton_rb' };
   if (/\bosb\b/.test(n)) return { anyagId: 'osb' };
-  if (/fagyapot|heraklith|heratekta/.test(n)) return { anyagId: 'fagyapot_heraklith', megjegyzes: /heratekta/.test(n) ? 'Heratekta (fagyapot + kőzetgyapot magréteg) – λ-ját a gyártói adatlapból pontosítsd.' : undefined };
+  if (/heratekta|tektalan/.test(n)) {
+    // többrétegű fagyapot lap: a gyártói R a lapvastagság szerint; a legközelebbi (a vastagabbnál nem nagyobb) lap egyenértékű λ-jával
+    const d = dCm ?? 0;
+    const tekt = /tektalan|kőzetgyapot|smarttec/.test(n);
+    const sor = tekt ? [5, 7.5, 10, 12.5, 15, 20] : [5, 7.5, 10, 12.5, 15];
+    const v = sor.reduce((a, b) => (Math.abs(b - d) < Math.abs(a - d) ? b : a));
+    const id = tekt ? `tektalan_a2_st_${Math.round(v * 10)}` : `heratekta_c3_031_${Math.round(v * 10)}`;
+    return { anyagId: id, megjegyzes: `${tekt ? 'Tektalan A2-SmartTec (kőzetgyapot magos)' : 'Heratekta C3 031 (grafitos EPS magos)'} ${String(v).replace('.', ',')} cm-es lap gyártói R-je alapján${Math.abs(v - d) > 0.5 ? ` – a ${String(d).replace('.', ',')} cm-es vastagsághoz egyenértékű λ-val; ellenőrizd a terv szerinti terméket (kőzetgyapot vagy EPS mag)` : ''}.` };
+  }
+  if (/fagyapot|heraklith/.test(n)) return { anyagId: 'fagyapot_heraklith' };
   if (/laminált|parketta/.test(n)) return { anyagId: 'parketta' };
   // általános / meg nem nevezett padlóburkolat: greslap / kerámia
   if (/klinker|tégla ?burkolat|téglaburkolat|burkolótégla/.test(n)) return { anyagId: 'tomor_tegla_falazat', megjegyzes: 'Téglaburkolat – ha mögötte átszellőztetett légrés van, a burkolat kimarad.' };
@@ -184,7 +193,20 @@ export function anyagKepez(leiras: string, dCm: number | null, szerep: Szerep | 
   if (/vasalt aljzat|vasbeton|monolit beton|alaplemez/.test(n)) return { anyagId: 'vasbeton_2300' };
   if (/zsalukő|zsaluelem/.test(n)) return { anyagId: 'zsalufal_leier_beton' };
   if (/zúzott ?kő|kavics/.test(n)) return { anyagId: 'kavics_homok' };
-  if (/xps|extrudált/.test(n)) return { anyagId: 'xps_labazati' };
+  if (/xps|extrudált/.test(n)) {
+    const d = dCm ?? 0;
+    if (/top ?70/.test(n)) return { anyagId: d <= 6 ? 'at_xps70_50_60' : 'at_xps70_80_140' };
+    if (/top ?50/.test(n)) return { anyagId: 'at_xps50tb' };
+    if (/top ?30/.test(n) || (/top/.test(n) && !/top ?p/.test(n))) return { anyagId: d <= 6 ? 'at_xps30_30_60' : d <= 12 ? 'at_xps30_70_120' : 'at_xps30_140_160', megjegyzes: d > 16 ? 'XPS TOP 30: 160 mm felett nincs gyártói érték, a 140–160 mm-es λ-val (a többrétegű fektetés miatt).' : undefined };
+    return { anyagId: 'xps_labazati' };
+  }
+  if (/grafit ?reflex/.test(n)) return { anyagId: 'at_grafit_reflex' };
+  if (/fixrock/.test(n)) return { anyagId: 'rw_fixrock_fb1' };
+  if (/multirock/.test(n)) return { anyagId: 'rw_multirock' };
+  if (/deltarock/.test(n)) return { anyagId: 'rw_deltarock' };
+  if (/hardrock/.test(n)) return { anyagId: 'rw_hardrock_max' };
+  if (/steprock/.test(n)) return { anyagId: 'rw_steprock_nd' };
+  if (/\bpir\b|poliizocianur/.test(n)) return { anyagId: /kingspan|therma/.test(n) ? 'kingspan_tr26' : 'bauder_pir_fa' };
   if (/eps ?100|lépésálló/.test(n)) return { anyagId: /grafit/.test(n) ? 'eps100_grafit' : 'eps100_feher' };
   if (/eps ?80|eps ?70|homlokzati eps|hőszigetelő vakolatrendszer/.test(n)) return { anyagId: /grafit/.test(n) ? 'eps80_grafit' : 'eps80_feher' };
   if (/eps|polisztirol/.test(n)) return { anyagId: szerep === 'padlo' ? (/grafit/.test(n) ? 'eps100_grafit' : 'eps100_feher') : (/grafit/.test(n) ? 'eps80_grafit' : 'eps80_feher') };
@@ -196,7 +218,13 @@ export function anyagKepez(leiras: string, dCm: number | null, szerep: Szerep | 
   if (/vázkerámia|porotherm|kerámia falaz|hanggátló/.test(n)) {
     const d = dCm ?? 0;
     if (/hanggátló/.test(n)) return { megjegyzes: 'Hanggátló falazóblokk – λ-ját a gyártói adatlapból add meg.' };
-    if (/x-?therm/.test(n) && Math.abs(d - 30) < 1) return { anyagId: 'vazkeramia_30', megjegyzes: 'Porotherm 30 X-therm: a katalógusban általános 30 cm-es vázkerámia – λ-t a gyártói adatlapból pontosítsd.' };
+    if (/x-?th/.test(n)) {
+      const rapid = /rapid|dryx|dryfix/.test(n);
+      if (Math.abs(d - 30) < 1) return { anyagId: rapid ? 'pth30_xtherm_rapid' : 'pth30_xtherm_m5l', megjegyzes: rapid ? undefined : 'Porotherm 30 X-therm M5L habarccsal – Rapid (Dryx) falazásnál válts a Rapid változatra.' };
+      if (Math.abs(d - 38) < 1) return { anyagId: rapid ? 'pth38_xtherm_rapid' : 'porotherm_38_xtherm_m5l' };
+      if (Math.abs(d - 44) < 1) return { anyagId: rapid ? 'porotherm_44_xtherm_rapid' : 'pth44_xtherm_m5l' };
+      if (Math.abs(d - 50) < 1) return { anyagId: 'pth50_xtherm_rapid' };
+    }
     if (Math.abs(d - 30) < 1) return { anyagId: 'vazkeramia_30' };
     if (Math.abs(d - 38) < 1) return { anyagId: 'porotherm_38_nf_m25' };
     if (Math.abs(d - 44) < 1) return { anyagId: 'porotherm_44_xtherm_rapid' };

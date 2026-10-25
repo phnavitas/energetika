@@ -13,7 +13,7 @@ import { ujId } from '../modell';
 
 export interface TervLap {
   fajl: string; oldal: number;
-  szerep: 'alaprajz' | 'metszet' | 'egyeb';
+  szerep: 'alaprajz' | 'metszet' | 'homlokzat' | 'egyeb';
   cim: string;
   lap: Lap;
   /** Előnézeti kép (JPEG dataURL) és mérete pixelben. */
@@ -63,6 +63,7 @@ export function lapSzerep(lap: Lap): { szerep: TervLap['szerep']; cim: string } 
   const cim = lap.szovegek.filter((t) => t.meret >= 12 && /alaprajz|metszet|homlokzat|helyszínrajz|tetőfelülnézet/i.test(t.s)).map((t) => t.s.trim())[0] ?? '';
   if (/metszet/i.test(cim)) return { szerep: 'metszet', cim };
   if (/alaprajz/i.test(cim)) return { szerep: 'alaprajz', cim };
+  if (/homlokzat/i.test(cim)) return { szerep: 'homlokzat', cim };
   if (/rétegrend/i.test(sz) && /[±+]\d,\d{2}/.test(sz)) return { szerep: 'metszet', cim: cim || 'Metszet' };
   if (/\d+[,.]\d{2}\s*m(²|2)/.test(sz)) return { szerep: 'alaprajz', cim: cim || 'Alaprajz' };
   // típusalaprajz-lap pecsét nélkül: sok nyílásfelirat („pm 90”, „P 90”) és „…típusok” felirat

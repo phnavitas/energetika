@@ -5,6 +5,7 @@ import { Szam, Valaszto, sz } from '../ui';
 import { kategoriaJavaslat } from './Helyisegek';
 import { anyag } from '../katalogus';
 import { pecsetKinyer, type PecsetAdat } from '../terv/pecset';
+import { HomlokzatEllenorzes } from './TervHomlokzat';
 import type { SzurkeKep } from '../terv/autohelyiseg';
 import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, eszakJavitas, eszakJavitasMent, type TervLap, type AlaprajzFeldolgozas } from '../terv/elemzes';
 import { egtaj, szintekCimbol, szintNev } from '../terv/alaprajz';
@@ -126,6 +127,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const aLap = aIdx >= 0 ? lapok[aIdx] : undefined;
   const lapSzintek = (i: number) => szintKi[i] ?? szintekCimbol(lapok[i]?.cim ?? '');
   const alaprajzLapok = lapok.map((l, i) => ({ l, i })).filter(({ l }) => l.szerep === 'alaprajz');
+  const homlokzatLapok = useMemo(() => lapok.map((l, i) => ({ l, i })).filter(({ l }) => l.szerep === 'homlokzat'), [lapok]);
   /** Kimarad-e a lap az „Összes átvétele” műveletből (alapból a pince). */
   const kimarad = (i: number) => kihagyLap[i] ?? lapSzintek(i).includes('P');
   // át nem vett, átvételre jelölt alaprajzok: a lépés elhagyása / az oldal bezárása előtt figyelmeztetünk
@@ -677,6 +679,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
           )}
         </section>
       )}
+      {homlokzatLapok.length > 0 && <HomlokzatEllenorzes p={p} lapok={homlokzatLapok} />}
     </>
   );
 }
