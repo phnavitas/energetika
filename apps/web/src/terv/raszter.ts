@@ -20,6 +20,8 @@ export interface RaszterBeallitas {
   vastagVonalFal?: number;
   /** A renderelt lap szürkeképe: a színezett (lakás-) foltok határa is elválasztja a tereket (pl. ajtó a lépcsőház felé). */
   szinKep?: { w: number; h: number; ptPx: number; adat: Uint8Array; hatar?: [number, number, number] };
+  /** Külső térként felismert feliratok helye (terasz, erkély, lapostető, zöldtető…): az ott kezdődő zárt tér külső tér. */
+  kulsoPontok?: { x: number; y: number }[];
 }
 
 export interface FalSzakasz {
@@ -195,7 +197,8 @@ function nyitas(c: Int32Array, w: number, h: number, r: number): Uint8Array {
 export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: number }[], b: RaszterBeallitas = {}, margo = 6): Raszter {
   const px = b.px ?? 0.025, maxFal = b.maxFal ?? 0.9;
   const ptPx = mPerPt / px; // 1 pt hány pixel
-  const xs = magok.map((m) => m.x), ys = magok.map((m) => m.y);
+  const kp = b.kulsoPontok ?? [];
+  const xs = [...magok, ...kp].map((m) => m.x), ys = [...magok, ...kp].map((m) => m.y);
   const mPt = margo / mPerPt;
   const x0 = Math.min(...xs) - mPt, y0 = Math.min(...ys) - mPt, x1 = Math.max(...xs) + mPt, y1 = Math.max(...ys) + mPt;
   const w = Math.ceil((x1 - x0) * ptPx), h = Math.ceil((y1 - y0) * ptPx);
@@ -478,6 +481,16 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   for (let y = 0; y < h; y++) for (const x of [0, w - 1]) if (szabad[y * w + x] && !helyCimke[y * w + x]) kulsoMag[y * w + x] = 1;
   const nemHely = new Uint8Array(w * h);
   for (let i = 0; i < w * h; i++) nemHely[i] = szabad[i] && !helyCimke[i] ? 1 : 0;
+  // külső tér feliratai (lapostető, terasz…): a körülzárt terük is külső tér
+  for (const m of kp) {
+    const [cx, cy] = tr(m.x, m.y).map(Math.round) as [number, number];
+    let kesz = false;
+    for (let r = 0; r < 40 && !kesz; r++) for (let dy = -r; dy <= r && !kesz; dy++) for (let dx = -r; dx <= r; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+      const x = cx + dx, y = cy + dy; if (x < 0 || y < 0 || x >= w || y >= h) continue;
+      const i = y * w + x; if (nemHely[i]) { kulsoMag[i] = 1; kesz = true; break; }
+    }
+  }
   araszt(kulsoMag, nemHely, w, h);
   // zárt, címkézetlen zsebek (pl. szegély és homlokzat közti járda): 3 m² felett külső tér
   const latott = new Uint8Array(w * h);

@@ -61,7 +61,9 @@ export const kodE = (t: string) => (KOD.test(t) && /\d/.test(t)) || tagoltKod(t)
 /** Tagolt kód: legalább három tag, vagy van benne számjegy (az „AKM. WC” rövidítés + név nem kód). */
 export const tagoltKod = (t: string) => { const k = t.replace(/\s/g, ''); const tg = k.split('.').filter(Boolean); return KOD_TAGOLT.test(k) && (/\d/.test(k) || tg.length >= 3 || tg.every((x) => x.length === 1)); };
 const BURKOLAT = /kerámia|keramia|parketta|parketa|laminált|lam\.|térkő|terko|beton|csempe|járólap|greslap|gres|pvc|linóleum|szőnyeg|padlószőnyeg|műgyanta|kő\b|kőlap|fa\s?burkolat|deszka|vinyl|vinil|esztrich|kavics|aszfalt|gumi|burkolat|kulé/i;
-const KULTER = /terasz|erkély|erkely|loggia|kocsibeálló|kocsibeallo|járda|tornác|tornac|előkert|udvar|árkád|lépcsőfeljáró|kerti|bejáró|bejaro|kukatároló|kukataroló|hulladéktároló|szemetes/i;
+const KULTER = /terasz|erkély|erkely|loggia|kocsibeálló|kocsibeallo|járda|tornác|tornac|előkert|udvar|árkád|lépcsőfeljáró|kerti|bejáró|bejaro|kukatároló|kukataroló|hulladéktároló|szemetes|(?:^|[\s(/-])(?:nem\s+járható\s+)?(?:lapos|zöld|zold)?(?:tető|teto)(?!t?éri|teri)(?:tér|ter|kert|felület|felulet)?(?:\b|$|[\s,.)])/i;
+/** Tető, lapostető, zöldtető, tetőtér (a „tetőtéri szoba” nem): nem helyiség, hanem külső / fűtetlen tér. */
+export const kulterNev = (nev: string) => KULTER.test(nev);
 
 const kozep = (t: Szoveg) => t.x + t.szel / 2;
 const vizszintes = (t: Szoveg) => Math.abs(t.szog) < 2;

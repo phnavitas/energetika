@@ -120,7 +120,8 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
     if (magHelyisegek.length) e.figyelmeztetesek.push(`Helyiségpecsét nincs a lapon: ${magHelyisegek.length} zárt teret ismertem fel helyiségként (Helyiség 1, 2, …). Jelöld ki a lakás helyiségeit, és nevezd át őket a Helyiségek lépésben.`);
   }
   if (!e.mPerPt || !magHelyisegek.length) return { e, magHelyisegek, r: null, nyilasok: [] };
-  const r = raszterEpit(lap, e.mPerPt, magHelyisegek.map((h) => h.mutato ?? h), auto ? { px: 0.04, resZaras: 3.0, vastagVonalFal: 0.05, ...(szurke ? { szinKep: szurke } : {}) } : {});
+  const kulsoPontok = e.helyisegek.filter((h) => h.kulter && h.forras === 'pecset').map((h) => h.mutato ?? h);
+  const r = raszterEpit(lap, e.mPerPt, magHelyisegek.map((h) => h.mutato ?? h), auto ? { px: 0.04, resZaras: 3.0, vastagVonalFal: 0.05, ...(szurke ? { szinKep: szurke } : {}) } : { ...(kulsoPontok.length ? { kulsoPontok } : {}) });
   kotaEllenoriz(r, lap.szovegek);
   // pecsét nélküli típusalaprajz: lakás = egy szürkével színezett, összefüggő terület helyiségei (az x-szel áthúzott aknák nélkül)
   if (auto && szurke) {
