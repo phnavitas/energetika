@@ -3,7 +3,7 @@ import { epuletfizika, kovetelmeny, nyilaszaroSablon as NS } from '@mag/index';
 import { UVEGEZESEK, KERETEK, ARNYEKOLOK, AJTO_KAPU_SABLONOK, type AjtoKapuSablon } from '../katalogus';
 import { useTavoli, KonyvtarbaGomb } from '../fiok';
 import { nyilaszaroKonyvtarba } from '../tarolo';
-import { Mezo, Szam, Szoveg, Valaszto, sz, kov } from '../ui';
+import { Mezo, Szam, Szoveg, Valaszto, sz, kov, OsszesTorles } from '../ui';
 import {
   ujId, nyilaszaroAdatok, nyilaszaroGeometria, psiTablabol, sablonbolNyilaszaro, kovetelmenyNev,
   type Projekt, type NyilaszaroTipus, type NyilaszaroKomponens, type NyilaszaroCsoport,
@@ -126,6 +126,7 @@ export function NyilaszarokLepes({ p, modosit }: { p: Projekt; modosit: Modosit 
             {csoportNelkul.map((x) => elemGomb(x, csoportok.length > 0))}
             {!p.nyilaszarok.length && !csoportok.length && <p class="halk" style="padding:12px">Még nincs nyílászáró-típus.</p>}
           </div>
+          <div><OsszesTorles db={p.nyilaszarok.length} mit="nyílászáró-típust" megjegyzes="A határolás nyílászáró-sorai is törlődnek." torol={() => { modosit((q) => { q.nyilaszarok = []; q.nyilaszaroCsoportok = []; q.feluletek = q.feluletek.filter((f) => f.fajta !== 'nyilaszaro'); }); setKij(null); }} /></div>
           <div class="gombsor">
             <button class="gomb" onClick={() => { const id = ujId(); modosit((q) => { (q.nyilaszaroCsoportok ??= []).push({ id, nev: `Csoport ${(q.nyilaszaroCsoportok?.length ?? 0) + 1}` }); }); setKij({ t: 'cs', id }); }}>Új csoport</button>
             <button class="gomb" onClick={() => felvesz(sablonbolNyilaszaro(NS.NYILASZARO_SABLONOK.find((s) => s.kod === 'pvc_3r')!, { id: ujId(), szelesseg: 1.2, magassag: 1.5, kovetelmenyKod: 'ablak_fa_pvc' }))}>Üres (új építésű) ablak</button>

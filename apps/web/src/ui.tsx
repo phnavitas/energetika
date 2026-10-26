@@ -58,3 +58,16 @@ export function MindJelolo(p: { db: number; ossz: number; valt: (be: boolean) =>
   const doboz = <input ref={ref} type="checkbox" title={p.db >= p.ossz ? 'Egyik sem' : 'Mind'} aria-label="Mind / egyik sem" disabled={!p.ossz} checked={p.ossz > 0 && p.db >= p.ossz} onChange={() => p.valt(p.db < p.ossz)} />;
   return p.szoveg ? <label class="jelolo" style="font-size:12px;font-weight:400">{doboz} {p.szoveg}</label> : doboz;
 }
+
+/** „Összes törlése” – kétlépéses megerősítéssel (a visszavonás is működik). */
+export function OsszesTorles(p: { db: number; mit: string; torol: () => void; megjegyzes?: string }) {
+  const [kerdes, setKerdes] = useState(false);
+  if (!p.db) return null;
+  return kerdes
+    ? <span class="gombsor" style="display:inline-flex;gap:6px;align-items:center">
+        <span class="halkabb">Törlöd mind a {p.db} {p.mit}?{p.megjegyzes ? ` ${p.megjegyzes}` : ''}</span>
+        <button class="gomb veszely" onClick={() => { p.torol(); setKerdes(false); }}>Igen, törlés</button>
+        <button class="gomb halk-gomb" onClick={() => setKerdes(false)}>Mégse</button>
+      </span>
+    : <button class="gomb halk-gomb" onClick={() => setKerdes(true)}>Összes törlése ({p.db})</button>;
+}

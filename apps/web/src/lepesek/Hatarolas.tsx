@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import { klima } from '@mag/index';
-import { Mezo, Szam, Szoveg, Valaszto, sz, kov, MindJelolo } from '../ui';
+import { Mezo, Szam, Szoveg, Valaszto, sz, kov, MindJelolo, OsszesTorles } from '../ui';
 import type { EpuletEredmeny } from '@mag/index';
 import { ujId, feluletNettoA, geometria, atlagBelmagassag, padloKerulet, padloPsi, chiErvenyes, azonosFeluletek, feluletekOsszevon, falhosszHelyisegekbol, nyilasNapnyereseg, CHI_VALASZTEK, HATAR_NEV, SZEREP_NEV, type Projekt, type HatarKod, type Felulet } from '../modell';
 import { Fogantyu, huzasProps } from '../huzas';
@@ -120,6 +120,7 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
           const h = falhosszHelyisegekbol(q, rid), m = atlagBelmagassag(q);
           q.feluletek.push({ id: ujId(), nev: 'Homlokzati fal', fajta: 'opak', retegrendId: rid, hatar: 'kulso', meret: { hossz: h, magassag: m }, A: Math.round(h * m * 100) / 100, chi: 0.2 });
         })}>Felület hozzáadása</button>
+        <span style="margin-left:12px"><OsszesTorles db={opak.length + padlok.length} mit="határoló felületet (fal, födém, tető, talajon fekvő padló)" megjegyzes="A nyílászárók megmaradnak, fal nélkül." torol={() => modosit((q) => { const ids = new Set(q.feluletek.filter((f) => f.fajta !== 'nyilaszaro').map((f) => f.id)); q.feluletek = q.feluletek.filter((f) => f.fajta === 'nyilaszaro'); for (const f of q.feluletek) { if (f.szuloId && ids.has(f.szuloId)) delete f.szuloId; if (f.padlo?.falIds) { f.padlo.falIds = f.padlo.falIds.filter((x) => !ids.has(x)); if (!f.padlo.falIds.length) delete f.padlo.falIds; } } })} /></span>
       </section>
 
       <Osszesites p={p} modosit={modosit} />
@@ -199,6 +200,7 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
           </table>
         </div>
         <button class="gomb" style="margin-top:12px" disabled={!p.nyilaszarok.length} onClick={() => modosit((q) => { q.feluletek.push({ id: ujId(), nev: 'Ablak', fajta: 'nyilaszaro', nyilaszaroId: q.nyilaszarok[0]?.id, hatar: 'kulso', darab: 1, tajolas: 'D', hajlasszog: 90 }); })}>Nyílászáró hozzáadása</button>
+        <span style="margin-left:12px"><OsszesTorles db={nyMind.length} mit="nyílászáró-sort" torol={() => modosit((q) => { q.feluletek = q.feluletek.filter((f) => f.fajta !== 'nyilaszaro'); })} /></span>
         {!p.nyilaszarok.length && <span class="halkabb" style="margin-left:8px">Előbb vegyél fel nyílászáró-típust.</span>}
       </section>
 

@@ -6,7 +6,7 @@ import { glaser, muAlap, GLASER_ALAP, type GlaserFeltetel } from '../paradiffuzi
 import { useTavoli, KonyvtarbaGomb } from '../fiok';
 import { retegrendKonyvtarba } from '../tarolo';
 import { anyagLista, anyag, beepitett } from '../katalogus';
-import { Mezo, Szam, Szoveg, Valaszto, sz, kov } from '../ui';
+import { Mezo, Szam, Szoveg, Valaszto, sz, kov, OsszesTorles } from '../ui';
 import { Fogantyu, huzasProps } from '../huzas';
 import { ujId, retegrendSzamitas, retegrendVastagsag, retegrendAutoNev, SZEREP_ALAP, SZEREP_NEV, kovetelmenyNev, type Projekt, type Retegrend, type Szerep } from '../modell';
 
@@ -79,6 +79,7 @@ export function RetegrendekLepes({ p, modosit }: { p: Projekt; modosit: Modosit 
           })}
           {!p.retegrendek.length && <p class="halk" style="padding:12px">Még nincs rétegrend.</p>}
         </div>
+        <div><OsszesTorles db={p.retegrendek.length} mit="rétegrendet" megjegyzes="A határoló felületek rétegrend nélkül maradnak." torol={() => { modosit((q) => { q.retegrendek = []; for (const f of q.feluletek) if (f.fajta !== 'nyilaszaro') delete f.retegrendId; }); setAktivId(null); }} /></div>
         <Mezo cim="Új szerkezet" sugo="A típus a kiegészítő rétegeivel (vakolat, ragasztó, hőszigetelés) jön létre; utána szabadon módosítható">
           <select value="" onChange={(e) => { const v = (e.target as HTMLSelectElement).value; if (v.startsWith('k:')) konyvtarbol(v.slice(2)); else if (v.startsWith('s:')) sablonbol(v.slice(2)); else if (v) uj(v as Szerep); }}>
             <option value="">Szerkezet típusa…</option>
