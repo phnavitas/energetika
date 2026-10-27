@@ -98,42 +98,36 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
   const tanusitoSor = [p.tanusito.nev, p.tanusito.jogosultsag, p.tanusito.email, p.tanusito.telefon].filter(Boolean).join(' · ') || '–';
   const tervezoSor = [m.tervezo, m.tervezoNy].filter(Boolean).join(' · ') || '–';
   const QFnetOssz = e.zonak.reduce((t, zz) => t + zz.QFnetEv, 0);
+  // felső sáv: cím, majd az alapadatok két oszlopban a teljes szélességben
+  tartalom.push({ text: 'Energetikai számítás', style: 'cim' });
+  tartalom.push({ text: m.nev || 'Névtelen projekt', fontSize: 12, bold: true, margin: [0, 2, 0, 6] });
   tartalom.push({
     columns: [
-      {
-        width: '*',
-        stack: [
-          { text: 'Energetikai számítás', style: 'cim' },
-          { text: m.nev || 'Névtelen projekt', fontSize: 12, bold: true, margin: [0, 2, 0, 6] },
-          {
-            columns: [
-              { width: '*', stack: [
-                csoport('Épület', [
-                  ['Cím', `${cimSzoveg}${m.hrsz ? ` · hrsz. ${m.hrsz}` : ''}`],
-                  ['Rendeltetés', m.rendeltetes === 'egyeb' ? 'Egyéb rendeltetés' : m.kategoria === 'csaladi_haz' ? 'Lakóépület, családi ház' : 'Lakóépület'],
-                  ['Építés éve, szint', `${m.epitesiEv}${m.nyilaszaroCsereEv ? ` (nyílászárócsere ${m.nyilaszaroCsereEv})` : ''} · ${m.szintek} szint`],
-                  ['AN / V / A/V', `${f(g.AN)} m² · ${f(g.V)} m³ · ${f(e.aV, 3)} m²/m³`],
-                ]),
-                csoport('Szereplők', [
-                  ['Megrendelő', m.megrendelo || '–'],
-                  ['Tervező', tervezoSor],
-                  ['Tanúsító', tanusitoSor],
-                ]),
-              ] },
-              { width: 170, stack: [
-                csoport('Számítás', [
-                  ['Követelményszint', m.kovetelmenySzint === 'kozel_nulla' ? 'Közel nulla (2. mell.)' : m.kovetelmenySzint === 'jelentos_felujitas' ? 'Jelentős felújítás (3. mell.)' : 'Meglévő épület'],
-                  ['Dátum', datum],
-                ]),
-              ] },
-            ],
-            columnGap: 10,
-          },
-        ],
-      },
-      ...(cimlap ? [{ width: 150, image: cimlap.dataUrl, fit: [150, 112] as [number, number], margin: [10, 0, 0, 0] } as Content] : []),
+      { width: '*', stack: [
+        csoport('Épület', [
+          ['Cím', `${cimSzoveg}${m.hrsz ? ` · hrsz. ${m.hrsz}` : ''}`],
+          ['Rendeltetés', m.rendeltetes === 'egyeb' ? 'Egyéb rendeltetés' : m.kategoria === 'csaladi_haz' ? 'Lakóépület, családi ház' : 'Lakóépület'],
+          ['Építés éve, szint', `${m.epitesiEv}${m.nyilaszaroCsereEv ? ` (nyílászárócsere ${m.nyilaszaroCsereEv})` : ''} · ${m.szintek} szint`],
+          ['AN / V / A/V', `${f(g.AN)} m² · ${f(g.V)} m³ · ${f(e.aV, 3)} m²/m³`],
+        ]),
+      ] },
+      { width: '*', stack: [
+        csoport('Szereplők', [
+          ['Megrendelő', m.megrendelo || '–'],
+          ['Tervező', tervezoSor],
+          ['Tanúsító', tanusitoSor],
+        ]),
+        csoport('Számítás', [
+          ['Követelményszint', m.kovetelmenySzint === 'kozel_nulla' ? 'Közel nulla energiaigényű (2. melléklet)' : m.kovetelmenySzint === 'jelentos_felujitas' ? 'Jelentős felújítás (3. melléklet)' : 'Meglévő épület'],
+          ['Dátum', datum],
+        ]),
+      ] },
     ],
+    columnGap: 18,
   });
+  tartalom.push({ canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: SZIN.vonal }], margin: [0, 2, 0, 8] } as Content);
+  // címlapfotó: nagy méretben, középen (nem a lap szélén); alatta a számítás eredménye
+  if (cimlap) tartalom.push({ image: cimlap.dataUrl, fit: [400, 230], alignment: 'center', margin: [0, 0, 0, 10] } as Content);
 
   const besor = e.besorolas;
   // színes osztályskála (SVG), nyíllal jelölve az Ep és a CO₂ szerinti besorolás
