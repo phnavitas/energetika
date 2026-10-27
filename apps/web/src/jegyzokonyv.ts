@@ -58,8 +58,8 @@ function tabla(fej: string[], sorok: (string | TableCell)[][], szelessegek?: (st
     table: { headerRows: 1, widths: szelessegek ?? fej.map(() => '*'), body: [fejCellak, ...body] },
     layout: {
       hLineWidth: (i: number) => (i === 1 ? 0.8 : 0.4), vLineWidth: () => 0,
-      // fejléc: előtte közepes, utána nagyobb rés; a sima sorok tömörek
-      hLineColor: (i: number) => (i === 1 ? SZIN.vonal : SZIN.vonal2), paddingTop: (i: number) => (i === 0 ? 3 : i === 1 ? 3.2 : 1.4), paddingBottom: (i: number) => (i === 0 ? 4 : 1.4),
+      // fejléc: előtte közepes, utána kisebb rés; a sima sorok tömörek
+      hLineColor: (i: number) => (i === 1 ? SZIN.vonal : SZIN.vonal2), paddingTop: (i: number) => (i === 0 ? 3 : i === 1 ? 2 : 1.4), paddingBottom: (i: number) => (i === 0 ? 2.2 : 1.4),
     },
     fontSize: 8, margin: [0, 0, 0, 8],
   };
@@ -200,7 +200,7 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
       columns: [
         { text: r.nev, bold: true, fontSize: 8.5 },
         { text: [...new Set([SZEREP_NEV[r.szerep], kn?.megnevezes ?? '–'])].join(' · '), color: SZIN.halk, fontSize: 7.5, alignment: 'right' },
-      ], margin: [0, 8, 0, 5],
+      ], margin: [0, 8, 0, 2.5],
     }];
     if (!er) { tartalom.push({ stack: [...blokk, { text: 'Hiányos rétegrend – nem számolható.', color: SZIN.rossz }] }); continue; }
     const retegTabla = tabla(['#', 'Réteg (belülről kifelé)', 'd [cm]', 'λ [W/mK]', 'R [m²K/W]'], [
