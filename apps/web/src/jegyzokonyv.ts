@@ -100,7 +100,7 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
   const QFnetOssz = e.zonak.reduce((t, zz) => t + zz.QFnetEv, 0);
   // felső sáv: cím, majd az alapadatok két oszlopban a teljes szélességben
   tartalom.push({ text: 'Energetikai számítás', style: 'cim' });
-  tartalom.push({ text: m.nev || 'Névtelen projekt', fontSize: 12, bold: true, margin: [0, 2, 0, 26] });
+  tartalom.push({ text: m.nev || 'Névtelen projekt', fontSize: 12, bold: true, margin: [0, 2, 0, 52] });
   tartalom.push({
     columns: [
       { width: '*', stack: [
@@ -125,7 +125,7 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
     ],
     columnGap: 18,
   });
-  tartalom.push({ canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: SZIN.vonal }], margin: [0, 2, 0, 8] } as Content);
+  tartalom.push({ canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: SZIN.vonal }], margin: [0, 2, 0, 20] } as Content);
   // címlapfotó: nagy méretben, középen (nem a lap szélén); alatta a számítás eredménye
 
   const besor = e.besorolas;
@@ -169,14 +169,14 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
     ['q [W/m³K]', f(e.qm, 3), f(k.qmMax, 3), '–', megfelel(k.qmMegfelel)],
     ['Nyári hővédelem', e.nyariHovedelem.mutato === null ? 'nem kell' : f(e.nyariHovedelem.mutato, 3), f(kovetelmeny.NYARI_HOVEDELEM.megengedettAtlag, 2), '–', megfelel(e.nyariHovedelem.megfelel)],
     ['Elemi U (2.4.)', `${e.szerkezetek.filter((s) => s.megfelel === false).length} hibás`, '0', '–', megfelel(e.szerkezetek.every((s) => s.megfelel !== false))],
-  ], ['*', 40, 46, 30, 58], [1, 2, 3]);
+  ], ['*', 38, 46, 28, 56], [1, 2, 3]);
   // felső sor: balra a skála, jobbra a címlapfotó (azonos magasság); alatta balra az eredmény, mellette a mutatók táblázata
   tartalom.push({
     columns: [
       { width: 228, stack: [{ svg: skalaSvg, fit: [skalaW, fotoMag] } as Content] },
       cimlap ? { width: '*', stack: [{ image: cimlap.dataUrl, fit: [272, fotoMag], alignment: 'right' } as Content], margin: [14, 0, 0, 0] } : { width: '*', stack: eredmenyBlokk, margin: [14, 0, 0, 0] },
     ],
-    margin: [0, 0, 0, 10],
+    margin: [0, 0, 0, 32],
   });
   tartalom.push(cimlap ? {
     columns: [
