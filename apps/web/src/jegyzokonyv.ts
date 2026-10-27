@@ -17,6 +17,8 @@ const MODSZER = '9/2023. (V. 25.) ÉKM rendelet; számítási módszer: kormany.
 const f = (x: number | null | undefined, t = 2) => (x === null || x === undefined || Number.isNaN(x) ? '–' : x.toLocaleString('hu-HU', { minimumFractionDigits: t, maximumFractionDigits: t }));
 const MIN_NEV: Record<kovetelmeny.Minosites, string> = { kivalo: 'kiváló', jo: 'jó', kozepes: 'közepes', gyenge: 'gyenge', rossz: 'rossz' };
 const OSZTALYOK = ['A+++', 'A++', 'A+', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+/** Energiaosztály-skála színei (zöldtől pirosig), mint a képernyőn. */
+const OSZTALY_SZIN = ['#14693B', '#1E7A46', '#2F8F4E', '#4AA145', '#7DB33A', '#B5BE2E', '#D9B526', '#E39A22', '#E07B21', '#D65A22', '#C63D24', '#A92A25', '#842022'];
 
 const SZIN = { tus: '#1D2B33', halk: '#4B5A61', halkabb: '#75848A', vonal: '#C9D1CF', vonal2: '#E1E6E4', jo: '#2F8F5B', rossz: '#C2362F', kiemel: '#E7EEF7' };
 
@@ -63,7 +65,7 @@ function tabla(fej: string[], sorok: (string | TableCell)[][], szelessegek?: (st
 
 const megfelel = (ok: boolean | null) => (ok === null ? { text: '–' } : { text: ok ? 'megfelel' : 'nem felel meg', color: ok ? SZIN.jo : SZIN.rossz, bold: true });
 
-export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalakitas): Promise<Uint8Array> {
+export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalakitas, opt: { helyisegLista?: boolean } = {}): Promise<Uint8Array> {
   const pdfMake = (await import('pdfmake/build/pdfmake')).default;
   const vfs = (await import('pdfmake/build/vfs_fonts')).default as unknown as Record<string, string>;
   pdfMake.vfs = vfs;
@@ -112,7 +114,7 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
       {
         width: 110,
         stack: OSZTALYOK.map((o) => ({
-          table: { widths: ['*'], body: [[{ text: o, bold: o === besor.energetikai, color: o === besor.energetikai ? '#FFFFFF' : SZIN.halk, fillColor: o === besor.energetikai ? SZIN.tus : SZIN.vonal2, fontSize: o === besor.energetikai ? 9.5 : 7, margin: [6, 0.5, 0, 0.5] }]] },
+          table: { widths: ['*'], body: [[{ text: o, bold: true, color: '#FFFFFF', fillColor: OSZTALY_SZIN[OSZTALYOK.indexOf(o)], fontSize: o === besor.energetikai ? 10 : 7, margin: [6, o === besor.energetikai ? 1.5 : 0.5, 0, o === besor.energetikai ? 1.5 : 0.5] }]] },
           layout: 'noBorders', margin: [0, 0, OSZTALYOK.indexOf(o) * 2, 1.2],
         } as Content)),
       },
@@ -194,10 +196,27 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
   if (z) {
     tartalom.push(cim('Transzmissziós hőveszteség elemenként (6.1–6.7 képlet)', 2));
     let sD = 0, sX = 0, sT = 0;
-    const sorok = z.elemek.map((el) => {
+    // azonos szerkezet, tájolás, U, χ és határ: egy sor (felület és H összegezve)
+    const csop = new Map<string, { el: (typeof z.elemek)[number]; db: number; A: number; H: number; Hb: number }>();
+    for (const el of z.elemek) {
+      const nev = ('szerkezet' in el && el.szerkezet) || el.nev;
+      const taj = el.tipus === 'nyilaszaro' || el.tipus === 'opak' ? el.tajolas ?? '' : '';
+      const k = el.tipus === 'opak' ? `o|${nev}|${taj}|${el.U.toFixed(4)}|${el.chi}|${JSON.stringify(el.hatar)}`
+        : el.tipus === 'nyilaszaro' ? `n|${nev}|${taj}|${(el.UFutes ?? el.U).toFixed(4)}|${JSON.stringify(el.hatar)}` : `x|${csop.size}`;
+      const A = el.tipus === 'opak' || el.tipus === 'nyilaszaro' ? el.A : 0;
+      const db = el.tipus === 'nyilaszaro' ? el.darab ?? 1 : 1;
+      const H = el.tipus === 'opak' ? el.A * el.U * (1 + el.chi) : el.tipus === 'nyilaszaro' ? el.A * (el.UFutes ?? el.U) : 0;
+      const x = csop.get(k);
+      if (x) { x.db += db; x.A += A; x.H += H; } else csop.set(k, { el, db, A, H, Hb: 0 });
+    }
+    const TR = { opak: 0, talaj: 1, nyilaszaro: 2 } as Record<string, number>, TAJ = ['É', 'ÉK', 'K', 'DK', 'D', 'DNy', 'Ny', 'ÉNy'];
+    const kulcs = (el: (typeof z.elemek)[number]) => [TR[el.tipus] ?? 3, ('szerkezet' in el && el.szerkezet) || el.nev, el.tipus === 'opak' || el.tipus === 'nyilaszaro' ? TAJ.indexOf(el.tajolas ?? '') : -1] as const;
+    const rendezett = [...csop.values()].sort((a, b) => { const x = kulcs(a.el), y = kulcs(b.el); return x[0] - y[0] || String(x[1]).localeCompare(String(y[1]), 'hu', { numeric: true }) || x[2] - y[2]; });
+    const sorok = rendezett.map(({ el: el0, db, A: Aossz, H: Hossz }) => {
+      const el = el0.tipus === 'opak' || el0.tipus === 'nyilaszaro' ? { ...el0, A: Aossz } : el0;
       let A = '–', U = '–', chi = '–', b = '1', H = 0;
-      if (el.tipus === 'opak') { A = f(el.A, 2); U = f(el.U, 3); chi = f(el.chi, 2); H = el.A * el.U * (1 + el.chi); }
-      else if (el.tipus === 'nyilaszaro') { A = f(el.A, 2); U = f(el.UFutes ?? el.U, 3); H = el.A * (el.UFutes ?? el.U); }
+      if (el.tipus === 'opak') { A = f(el.A, 2); U = f(el.U, 3); chi = f(el.chi, 2); H = Hossz; }
+      else if (el.tipus === 'nyilaszaro') { A = f(el.A, 2); U = f(el.UFutes ?? el.U, 3); H = Hossz; }
       else if (el.tipus === 'talaj') { A = f(el.A, 2); U = `${f(el.UT, 3)} UT`; chi = `P·Ψ ${f(el.P * el.psiPF, 1)}`; H = el.A * el.UT + el.P * el.psiPF + (el.pinceFal ? el.pinceFal.z * el.P * el.pinceFal.UTpf : 0); }
       else if (el.tipus === 'vonal') { A = `${f(el.l, 1)} m`; U = `Ψ ${f(el.psi, 3)}`; H = el.l * el.psi; }
       else { A = `${el.db} db`; U = `χ ${f(el.chi, 3)}`; H = el.chi * el.db; }
@@ -207,8 +226,10 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
       else if (hatar && hatar.tipus === 'futetlen_b') bt = hatar.bTel;
       if (hatar && hatar.tipus !== 'kulso') b = f(bt, 2);
       if (el.tipus === 'talaj') { sT += H; b = 'talaj'; } else if (hatar?.tipus === 'kulso') sD += H; else sX += bt * H;
-      const taj = el.tipus === 'nyilaszaro' ? el.tajolas ?? 'vízsz.' : '';
-      return [{ text: [el.nev, taj ? { text: ` · ${taj}`, color: SZIN.halk } : ''] }, A, U, chi, b, f(H * (el.tipus === 'talaj' ? 1 : bt), 2)];
+      const taj = el.tipus === 'nyilaszaro' ? el.tajolas ?? 'vízsz.' : el.tipus === 'opak' ? el.tajolas ?? '' : '';
+      const nev = ('szerkezet' in el && el.szerkezet) || el.nev;
+      const tobb = el.tipus === 'nyilaszaro' ? ` · ${db} db` : db > 1 ? ` · ${db} felület` : '';
+      return [{ text: [nev, taj || tobb ? { text: `${taj ? ` · ${taj}` : ''}${tobb}`, color: SZIN.halk } : ''] }, A, U, chi, b, f(H * (el.tipus === 'talaj' ? 1 : bt), 2)];
     });
     tartalom.push(tabla(['Elem', 'A [m²] / l', 'U [W/m²K]', 'χ', 'b (tél)', 'H [W/K]'], [
       ...sorok,
@@ -218,7 +239,16 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
   }
 
   tartalom.push(cim('Szerkezetek követelményellenőrzése (1. melléklet)', 2));
-  tartalom.push(tabla(['Elem', 'U rétegtervi [W/m²K]', 'Megengedett', 'U eredő [W/m²K]', 'Minősítés', ''], e.szerkezetek.map((s) => [s.nev, f(s.Uelemi, 3), s.Umax !== null ? f(s.Umax, 3) : '–', Math.abs(s.U - s.Uelemi) > 5e-4 ? f(s.U, 3) : '–', s.minosites ? MIN_NEV[s.minosites] : '–', megfelel(s.megfelel)]), ['*', 55, 52, 52, 50, 60], [1, 2, 3]));
+  {
+    // azonos szerkezet, tájolás és U: egy sor felület- és darabszám-összeggel
+    const m = new Map<string, { s: (typeof e.szerkezetek)[number]; A: number; db: number }>();
+    for (const s of e.szerkezetek) {
+      const k = [s.szerkezet ?? s.nev, s.tajolas ?? '', s.Uelemi.toFixed(4), s.U.toFixed(4), s.kovetelmenyKod].join('|');
+      const x = m.get(k); if (x) { x.A += s.A; x.db += s.darab ?? 1; } else m.set(k, { s, A: s.A, db: s.darab ?? 1 });
+    }
+    const sorok = [...m.values()].sort((a, b) => (a.s.tipus === 'nyilaszaro' ? 1 : 0) - (b.s.tipus === 'nyilaszaro' ? 1 : 0) || (a.s.szerkezet ?? a.s.nev).localeCompare(b.s.szerkezet ?? b.s.nev, 'hu', { numeric: true }) || ['É', 'ÉK', 'K', 'DK', 'D', 'DNy', 'Ny', 'ÉNy'].indexOf(a.s.tajolas ?? '') - ['É', 'ÉK', 'K', 'DK', 'D', 'DNy', 'Ny', 'ÉNy'].indexOf(b.s.tajolas ?? ''));
+    tartalom.push(tabla(['Szerkezet', 'Tájolás', 'Db', 'A [m²]', 'U rétegt.', 'Umax', 'U eredő', 'Minősítés', ''], sorok.map(({ s, A, db }) => [s.szerkezet ?? s.nev, s.tajolas ?? '–', String(db), f(A, 1), f(s.Uelemi, 3), s.Umax !== null ? f(s.Umax, 3) : '–', Math.abs(s.U - s.Uelemi) > 5e-4 ? f(s.U, 3) : '–', s.minosites ? MIN_NEV[s.minosites] : '–', megfelel(s.megfelel)]), ['*', 30, 22, 38, 42, 40, 38, 40, 50], [2, 3, 4, 5, 6]));
+  }
   tartalom.push(megj('Az elemi követelményt (1. melléklet) a rétegtervi U-ra ellenőrizzük; az eredő U a csatlakozási hőhidakkal (χ) növelt, talajjal érintkező szerkezetnél az egyenértékű érték – a minősítés (176/2008 4. melléklet) ehhez készül.'));
 
   // --- Energiamérleg -------------------------------------------------------------------------
@@ -240,16 +270,23 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
       tartalom.push(cim('Passzív szoláris nyereség nyílászárónként', 2));
       const futesHo = zr.havi.map((h) => h.QFnet > 0);
       let sF = 0, sE = 0;
-      const sorok = ablakok.map((el) => {
+      const egy = new Map<string, { el: NyilaszaroElem; db: number; Au: number; QF: number; QE: number }>();
+      for (const el of ablakok) {
         const Au = el.Au ?? el.A * (1 - (el.keretarany ?? 0.3));
         let QF = 0, QE = 0;
         for (let i = 0; i < 12; i++) {
           const q = Au * epuletfizika.F_UVEGEZES_BEESESI * el.gn * (el.Farny?.[i] ?? 1) * klima.sugarzasiHozam(el.tajolas, el.hajlasszog, i);
           QE += q; if (futesHo[i]) QF += q;
         }
+        const k = [el.szerkezet ?? el.nev, el.tajolas ?? '', el.hajlasszog, el.gn, JSON.stringify(el.Farny ?? null)].join('|');
+        const x = egy.get(k);
+        if (x) { x.db += el.darab ?? 1; x.Au += Au; x.QF += QF; x.QE += QE; } else egy.set(k, { el, db: el.darab ?? 1, Au, QF, QE });
+      }
+      const TAJ2 = ['É', 'ÉK', 'K', 'DK', 'D', 'DNy', 'Ny', 'ÉNy'];
+      const sorok = [...egy.values()].sort((a, b) => (a.el.szerkezet ?? a.el.nev).localeCompare(b.el.szerkezet ?? b.el.nev, 'hu', { numeric: true }) || TAJ2.indexOf(a.el.tajolas ?? '') - TAJ2.indexOf(b.el.tajolas ?? '')).map(({ el, db, Au, QF, QE }) => {
         sF += QF; sE += QE;
         const Fatl = el.Farny ? el.Farny.reduce((s2, x) => s2 + x, 0) / 12 : 1;
-        return [el.nev, el.tajolas ?? 'vízsz.', `${el.hajlasszog}°`, f(Au, 2), f(el.gn), f(Fatl, 2), f(QF, 0), f(QE, 0)];
+        return [`${el.szerkezet ?? el.nev} · ${db} db`, el.tajolas ?? 'vízsz.', `${el.hajlasszog}°`, f(Au, 2), f(el.gn), f(Fatl, 2), f(QF, 0), f(QE, 0)];
       });
       tartalom.push(tabla(['Nyílászáró', 'Tájolás', 'Hajlás', 'Aü [m²]', 'g', 'F (átl.)', 'Qsd fűtési [kWh]', 'Qsd éves [kWh]'], [
         ...sorok,
@@ -389,7 +426,9 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
       const hr = H.helyisegHoszukseglet(hb.bemenet);
       tartalom.push(cim('Helyiségenkénti tervezési hőszükséglet (MSZ EN 12831 szerkezetű számítás)'));
       tartalom.push({ text: `θe = ${f(hb.bemenet.thetaE, 0)} °C · n50 = ${f(hb.bemenet.n50, 1)} 1/h · ${H.HSZ_FORRAS}. Nem része a 9/2023 ÉKM szerinti energetikai számításnak.`, fontSize: 7.5, color: SZIN.halk, margin: [0, 0, 0, 6] });
-      tartalom.push(tabla(['Helyiség', 'A [m²]', 'θint [°C]', 'ΦT [W]', 'ΦV [W]', 'ΦRH [W]', 'ΦHL [W]', 'W/m²'],
+      // a helyiségenkénti lista csak kifejezett kérésre (nagy épületnél több oldal); alapból csak az összesítés
+      if (!opt.helyisegLista) tartalom.push(adatsor([['Helyiségek', `${hr.helyisegek.length} db`], ['ΦT / ΦV / ΦRH', `${f(hr.PhiT, 0)} / ${f(hr.PhiV, 0)} / ${f(hr.PhiRH, 0)} W`], ['Összes hőszükséglet ΦHL', `${f(hr.osszesen / 1000, 2)} kW`]], 150));
+      else tartalom.push(tabla(['Helyiség', 'A [m²]', 'θint [°C]', 'ΦT [W]', 'ΦV [W]', 'ΦRH [W]', 'ΦHL [W]', 'W/m²'],
         [...hr.helyisegek.map((h) => [h.nev, f(h.A, 1), f(h.thetaInt, 0), f(h.PhiT, 0), f(h.PhiV, 0), f(h.PhiRH, 0), f(h.PhiHL, 0), f(h.fajlagos, 0)]),
           [{ text: 'Összesen', bold: true }, '', '', f(hr.PhiT, 0), f(hr.PhiV, 0), f(hr.PhiRH, 0), { text: f(hr.osszesen, 0), bold: true, alignment: 'right' }, '']],
         ['*', 40, 42, 45, 45, 45, 50, 35], [1, 2, 3, 4, 5, 6, 7]));

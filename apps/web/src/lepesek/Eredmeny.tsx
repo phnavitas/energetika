@@ -16,6 +16,7 @@ const MIN: Record<string, string> = { kivalo: 'kiváló', jo: 'jó', kozepes: 'k
 import { letolt, projektFajlba } from '../letoltes';
 
 export function EredmenyLepes({ p, e, g, atal, hibak, modosit, rogzit, resz = 'eredmeny' }: { resz?: 'eredmeny' | 'tanusitvany'; p: Projekt; e: EpuletEredmeny | null; g: Geometria; atal: Atalakitas; hibak: string[]; modosit: Modosit; rogzit?: () => Promise<string> }) {
+  const [helyisegLista, setHelyisegLista] = useState(false);
   const [pdfFut, setPdfFut] = useState(false);
   const [xmlHiba, setXmlHiba] = useState<string | null>(null);
   const [rogzitve, setRogzitve] = useState<string | null>(null);
@@ -50,7 +51,7 @@ export function EredmenyLepes({ p, e, g, atal, hibak, modosit, rogzit, resz = 'e
     if (p.meta.rendeltetes === 'egyeb') { setXmlHiba('Egyéb (nem lakó) rendeltetésű épület e-tanúsítás XML-je még nem készíthető: a rendeltetés és épületkategória XSD-kódjait a Lechner-féle sémából még nem ellenőriztük. A számítási jegyzőkönyv (PDF) elkészíthető.'); return; }
     try {
       setPdfFut(true);
-      const pdf = base64(await jegyzokonyvPdf(p, e!, atal));
+      const pdf = base64(await jegyzokonyvPdf(p, e!, atal, { helyisegLista }));
       setPdfFut(false);
       const x = feltoltesiXml(e!, {
         megrendelo: p.meta.megrendelo,
@@ -79,12 +80,13 @@ export function EredmenyLepes({ p, e, g, atal, hibak, modosit, rogzit, resz = 'e
           <button class="gomb fo" disabled={pdfFut || !pr.jogosult} title={pr.jogosult ? undefined : ZAR_SZOVEG} onClick={xml}>{pr.jogosult ? '' : '🔒 '}XML előnézet letöltése</button>
           <button class="gomb" disabled={pdfFut || !pr.jogosult} title={pr.jogosult ? undefined : ZAR_SZOVEG} onClick={async () => {
             setXmlHiba(null); setPdfFut(true);
-            try { const b = await jegyzokonyvPdf(p, e!, atal); setXmlHiba(await letolt(`${(p.meta.nev || 'projekt').replace(/[^\p{L}\p{N} _-]/gu, '')}-jegyzokonyv.pdf`, b, 'application/pdf')); }
+            try { const b = await jegyzokonyvPdf(p, e!, atal, { helyisegLista }); setXmlHiba(await letolt(`${(p.meta.nev || 'projekt').replace(/[^\p{L}\p{N} _-]/gu, '')}-jegyzokonyv.pdf`, b, 'application/pdf')); }
             catch (err) { setXmlHiba(`A jegyzőkönyv nem készült el: ${(err as Error).message}`); }
             finally { setPdfFut(false); }
           }}>{pr.jogosult ? '' : '🔒 '}{pdfFut ? 'Jegyzőkönyv készül…' : 'Számítási jegyzőkönyv (PDF)'}</button>
           <button class="gomb" onClick={() => projektFajlba(p).then(setXmlHiba)}>Projekt mentése fájlba</button>
         </div>
+        <label class="jelolo" style="margin-top:8px;font-size:13px"><input type="checkbox" checked={helyisegLista} onChange={(ev) => setHelyisegLista((ev.target as HTMLInputElement).checked)} /> Helyiségenkénti hőszükséglet-lista a jegyzőkönyvbe (alapból csak az összesítés kerül bele)</label>
         {!pr.jogosult && <p class="halkabb" style="margin-top:8px;color:var(--figyel)">{ZAR_SZOVEG} <button class="link-gomb" onClick={pr.szerkeszt}>Szám megadása a profilban</button></p>}
         {xmlHiba && <div class="hiba-doboz" style="margin-top:12px">{xmlHiba}</div>}
         {rogzitve && <div class="siker-doboz" style="margin-top:12px">{rogzitve}</div>}
