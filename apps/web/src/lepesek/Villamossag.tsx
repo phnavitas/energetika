@@ -83,7 +83,7 @@ export function VillamossagLepes({ p, modosit, eredmeny }: { p: Projekt; modosit
   return (
     <>
       <section class="szakasz">
-        <h2>Beépített világítás</h2>
+        <h2>Beépített világítás {egyeb && pr ? <span class="jel jo" style="font-size:14px;margin-left:8px">beszámít az Ep-be</span> : <span class="jel rossz" style="font-size:14px;margin-left:8px">lakóépületnél nem számít bele</span>}</h2>
         {egyeb && pr ? (<>
         <p class="halk">Egyéb rendeltetésnél a beépített világítás energiafelhasználása <strong>beszámít</strong> az összesített energetikai jellemzőbe (1. függ. 12.1, egyszerűsített módszer). A referenciaépületben nem dimmelhető LED, parabolatükrös lámpatest és kézi kapcsolás szerepel (5. melléklet).</p>
         <div class="racs">
@@ -106,7 +106,8 @@ export function VillamossagLepes({ p, modosit, eredmeny }: { p: Projekt; modosit
           <tr><td><strong>Világítás éves villamosenergia-igénye (12.1) – beszámít</strong></td><td class="szam"><strong>{eredmeny ? `${sz(vk.W, 0)} kWh/év` : 'számítás után'}</strong></td></tr>
         </tbody></table>
         </>) : (<>
-        <p class="halk">9/2023 ÉKM 1. függelék 12. fejezet: lakóépületnél a beépített világítás energiafelhasználása <strong>nem számítható be</strong> az energiamérlegbe (a tanúsítvány indikátoraiba sem). Az alábbi számítás a rendelet 12.1 egyszerűsített módszerével készül, tájékoztatásul – a villamos mérleghez és a napelem méretezéséhez. Lakóépületre a rendelet nem ad megvilágítási és üzemóra-értéket (2.1., 12.6. táblázat), ezek tervezői feltételezések.</p>
+        <div class="hiba-doboz" style="margin-bottom:10px;font-size:15px"><strong>Lakóépületnél a beépített világítás NEM számít bele az energetikai számításba</strong> – sem az összesített energetikai jellemzőbe (Ep), sem a CO₂-kibocsátásba, sem a besorolásba (9/2023 ÉKM 1. függelék 12. fejezet). Az itt megadott adatok csak tájékoztatók.</div>
+        <p class="halk">Az alábbi számítás a rendelet 12.1 egyszerűsített módszerével készül, tájékoztatásul – a villamos mérleghez és a napelem méretezéséhez. Lakóépületre a rendelet nem ad megvilágítási és üzemóra-értéket (2.1., 12.6. táblázat), ezek tervezői feltételezések.</p>
         <div class="racs">
           <Mezo cim="Fényforrás" sugo="12.1. táblázat"><Valaszto ertek={vil.fenyforras} valt={(x) => mvil((b) => { b.fenyforras = x; })} opciok={FENYFORRAS.map((x) => ({ ertek: x.kod, nev: `${x.nev} (${x.FH} lm/W)` }))} /></Mezo>
           <Mezo cim="Lámpatest" sugo="12.2. táblázat"><Valaszto ertek={vil.lampatest} valt={(x) => mvil((b) => { b.lampatest = x; })} opciok={LAMPATEST.map((x) => ({ ertek: x.kod, nev: `${x.nev} (η = ${String(x.eta).replace('.', ',')})` }))} /></Mezo>

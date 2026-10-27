@@ -219,7 +219,7 @@ export function anyagKepez(leiras: string, dCm: number | null, szerep: Szerep | 
   if (/pvc lemez|pvc szig|tpo|fpo/.test(n) && (dCm === null || dCm < 0.5)) return { kimarad: 'Műanyag vízszigetelő lemez – elhanyagolható hővezetési ellenállás.' };
   if (/(szelemen|gerenda|fedélszerkezet|fedélszék|rácsos|tartóváz|váz|léc).*(közte|között)/.test(n)) return { kimarad: 'Teherhordó váz – a közte lévő hőszigetelés külön rétegként szerepel; a fa részarányát ellenőrizd.', megjegyzes: 'Inhomogén réteg.' };
   if (/cd profil|ud profil|direktrögzítő|álmennyezeti váz/.test(n)) return { legreteg: 'zart', megjegyzes: 'Álmennyezeti szerelőváz – zárt légrétegként.' };
-  if (/elasztomer|bitumen|bit\. ?lemez|talajnedv|vízszig/.test(n)) return { anyagId: 'bitumenes_lemez' };
+  if (/elasztomer|bitumen|bit\. ?lemez|talajnedv|talajvíz|vízszig|vízzáró|visszatapadó/.test(n)) return { anyagId: 'bitumenes_lemez' };
   if (/pe fólia|polietilén|pe párazáró|párazáró|technológiai szig|védőfólia|páraáteresztő|tetőfólia/.test(n)) return { anyagId: 'pe_folia' };
   if (/gipszkarton|gipszrost/.test(n)) return { anyagId: /rost/.test(n) ? 'gipszrost' : 'gipszkarton_rb' };
   if (/\bosb\b/.test(n)) return { anyagId: 'osb' };
@@ -238,7 +238,9 @@ export function anyagKepez(leiras: string, dCm: number | null, szerep: Szerep | 
   if (/klinker|tégla ?burkolat|téglaburkolat|burkolótégla/.test(n)) return { anyagId: 'tomor_tegla_falazat', megjegyzes: 'Téglaburkolat – ha mögötte átszellőztetett légrés van, a burkolat kimarad.' };
   if (/burkolat|greslap|gres\b/.test(n) && !/fal ?burkolat|tető|térburkol/.test(n)) return { anyagId: 'keramia' };
   if (/kerámia padló|krámia|kerámia burkolat|járólap|greslap|csempe/.test(n)) return { anyagId: 'keramia' };
+  if (/vasalt (beton)?aljzat|vasalt beton/.test(n)) return { anyagId: 'vasbeton_2300' };
   if (/esztrich|aljzatbeton|aljzatkiegyenlít/.test(n)) return { anyagId: 'esztrich_cement' };
+  if (/betonaljzat/.test(n)) return { anyagId: 'beton_2200' };
   if (/lejtbeton|szerelőbeton|szerelobeton|kavicsbeton|beton ágyazat/.test(n)) return { anyagId: 'beton_2200' };
   if (/vasalt aljzat|vasbeton|monolit beton|alaplemez/.test(n)) return { anyagId: 'vasbeton_2300' };
   if (/zsalukő|zsaluelem/.test(n)) return { anyagId: 'zsalufal_leier_beton' };
@@ -256,11 +258,12 @@ export function anyagKepez(leiras: string, dCm: number | null, szerep: Szerep | 
   if (/deltarock/.test(n)) return { anyagId: 'rw_deltarock' };
   if (/hardrock/.test(n)) return { anyagId: 'rw_hardrock_max' };
   if (/steprock/.test(n)) return { anyagId: 'rw_steprock_nd' };
+  if (/stroprock/.test(n)) return { anyagId: 'rw_stroprock_g' };
   if (/\bpir\b|poliizocianur/.test(n)) return { anyagId: /kingspan|therma/.test(n) ? 'kingspan_tr26' : 'bauder_pir_fa' };
   if (/eps ?100|lépésálló/.test(n)) return { anyagId: /grafit/.test(n) ? 'eps100_grafit' : 'eps100_feher' };
   if (/eps ?80|eps ?70|homlokzati eps|hőszigetelő vakolatrendszer/.test(n)) return { anyagId: /grafit/.test(n) ? 'eps80_grafit' : 'eps80_feher' };
   if (/eps|polisztirol/.test(n)) return { anyagId: szerep === 'padlo' ? (/grafit/.test(n) ? 'eps100_grafit' : 'eps100_feher') : (/grafit/.test(n) ? 'eps80_grafit' : 'eps80_feher') };
-  if (/kőzetgyapot|közetgyapot|kozetgyapot|ásványgyapot|üveggyapot/.test(n)) {
+  if (/kőzetgyapot|közetgyapot|kozetgyapot|ásványgyapot|üveggyapot|rockwool|isover|\bursa\b|knauf insulation/.test(n)) {
     const tartoval = /szeglemez|szarufa|gerenda|fa ?váz|tetőszerkezet|profil/.test(n);
     const id = szerep === 'fal' ? 'kozetgyapot_homlokzati' : szerep === 'teto' ? 'asvanyiyapot_szarufa' : 'asvanyiyapot_lemez_padlas';
     return { anyagId: id, megjegyzes: tartoval ? 'Inhomogén réteg (faszerkezet a hőszigetelés síkjában) – a fa részarányát ellenőrizd, szükség esetén csökkentsd a λ-t vagy vedd fel kétirányú rétegként.' : undefined };
@@ -293,6 +296,8 @@ export function anyagKepez(leiras: string, dCm: number | null, szerep: Szerep | 
   if (/clt/.test(n)) return { anyagId: 'clt' };
   if (/deszka|fenyő|puhafa|szarufa|gerenda/.test(n)) return { anyagId: 'puhafa' };
   if (/térkő|térburkoló/.test(n)) return { kimarad: 'Külső burkolat.' };
+  // fel nem ismert, 5 mm-nél vékonyabb réteg (lemez, fólia, bevonat): hővezetési ellenállása elhanyagolható
+  if (dCm !== null && dCm < 0.5) return { kimarad: 'Vékony (5 mm alatti), fel nem ismert réteg – elhanyagolható hővezetési ellenállás; ellenőrizd.' };
   return {};
 }
 

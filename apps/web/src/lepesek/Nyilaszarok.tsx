@@ -6,8 +6,7 @@ import { nyilaszaroKonyvtarba } from '../tarolo';
 import { Mezo, Szam, Szoveg, Valaszto, sz, kov, OsszesTorles } from '../ui';
 import {
   ujId, nyilaszaroAdatok, nyilaszaroGeometria, psiTablabol, sablonbolNyilaszaro, kovetelmenyNev,
-  type Projekt, type NyilaszaroTipus, type NyilaszaroKomponens, type NyilaszaroCsoport,
-} from '../modell';
+  type Projekt, type NyilaszaroTipus, type NyilaszaroKomponens, type NyilaszaroCsoport, nyilaszaroHibak } from '../modell';
 
 type Modosit = (fn: (p: Projekt) => void) => void;
 
@@ -95,6 +94,8 @@ export function NyilaszarokLepes({ p, modosit }: { p: Projekt; modosit: Modosit 
 
   return (
     <>
+      {(() => { const h = nyilaszaroHibak(p); return h.length > 0 && <div class="hiba-doboz" style="margin-bottom:12px"><strong>{h.length} nyílászáró-típus hiányos</strong> – amíg nem javítod, az energetikai számítás nem fut le:
+        <ul style="margin:6px 0 0 18px">{h.map((x) => <li><button class="link-gomb" onClick={() => setKij({ t: 'e', id: x.id })}>{x.nev}</button>: {x.hiba}</li>)}</ul></div>; })()}
       <div style="margin-bottom:12px"><ArnyekoloMind p={p} modosit={modosit} /></div>
       <section class="kartya" style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px">
         <div style="flex:1;min-width:260px">

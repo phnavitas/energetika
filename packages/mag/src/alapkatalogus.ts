@@ -2575,6 +2575,17 @@ export const GYARTOI_ANYAGOK: Anyag[] = [
   "megjegyzes": "Úsztatott esztrich alá. ρ=120 kg/m³."
  },
  {
+  "id": "rw_stroprock_g",
+  "nev": "Kőzetgyapot mennyezeti hőszigetelő lemez – Rockwool Stroprock G",
+  "kategoria": "Hőszigetelés",
+  "sraffozas": "hoszigeteles_szalas",
+  "lambda": 0.037,
+  "mu": 1,
+  "forras": "Rockwool Stroprock G termékoldal – λD 0,037 W/mK (EN 12667), páraáteresztés MU1 – https://www.rockwool.com/hu/termekek/stroprock-g/",
+  "ellenorzott": true,
+  "megjegyzes": "Födém alsó síkjára (mélygarázs, pince, árkád mennyezete). ρ nincs számszerűen."
+ },
+ {
   "id": "rw_airrock_nd",
   "nev": "Kőzetgyapot válaszfal-lemez – Rockwool Airrock ND",
   "kategoria": "Hőszigetelés",

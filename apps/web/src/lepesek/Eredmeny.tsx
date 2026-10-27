@@ -145,14 +145,7 @@ export function EredmenyLepes({ p, e, g, atal, hibak, modosit, rogzit, resz = 'e
 
       <section class="szakasz">
         <h2>Szerkezetek</h2>
-        <div class="tabla-gorgeto">
-          <table class="tabla">
-            <thead><tr><th>Szerkezet</th><th class="szam">Felület</th><th class="szam">U rétegtervi</th><th class="szam">Követelmény</th><th class="szam">U eredő</th><th>Minősítés</th></tr></thead>
-            <tbody>{e.szerkezetek.map((s) => (
-              <tr><td>{s.nev}</td><td class="szam">{sz(s.A, 1)} m²</td><td class="szam">{sz(s.Uelemi, 3)}</td><td class="szam">{s.Umax !== null ? kov(s.Umax) : '–'}</td><td class="szam halkabb">{Math.abs(s.U - s.Uelemi) > 5e-4 ? sz(s.U, 3) : '–'}</td><td>{s.megfelel === false ? <span class="jel rossz">Nem felel meg</span> : s.minosites ? MIN[s.minosites] : '–'}</td></tr>
-            ))}</tbody>
-          </table>
-        </div>
+        <SzerkezetKimutatas e={e} />
         <p class="halkabb" style="margin-top:8px">A követelményt a rétegtervi U-ra ellenőrizzük. Az eredő U falaknál és födémeknél a csatlakozási hőhidakkal (χ) növelt, padlónál a talaj hatását is tartalmazó egyenértékű érték; a minősítés ehhez készül.</p>
       </section>
 
@@ -219,4 +212,59 @@ function NapelemEredmeny({ p, e }: { p: Projekt; e: EpuletEredmeny }) {
       <p class="halkabb" style="margin-top:8px">Elszámolás: a teljes termelés exportáltként számít (1. függ. 13.1, 14.7): levonás = W · (f<sub>exp</sub> − f<sub>PV</sub>), nem megújuló primerenergiára {sz(fe.fnren - ft.fnren, 1)}, CO₂-re {sz((fe.fCO2 - ft.fCO2) / 1000, 3)} kg/kWh súlyozással (7. melléklet). {vanHavi ? 'A havi bontás csak a PVGIS-szel számolt mezőket tartalmazza.' : ''}</p>
     </section>
   );
+}
+
+type Szerk = EpuletEredmeny['szerkezetek'][number];
+const KIMUTATAS_CSOPORT: { nev: string; tag: (s: Szerk) => boolean }[] = [
+  { nev: 'Falak', tag: (s) => s.tipus !== 'nyilaszaro' && /fal/.test(s.kovetelmenyKod ?? '') },
+  { nev: 'Tetők és födémek', tag: (s) => s.tipus !== 'nyilaszaro' && /teto|tető|fodem/.test(s.kovetelmenyKod ?? '') },
+  { nev: 'Padlók', tag: (s) => s.tipus !== 'nyilaszaro' && /padlo/.test(s.kovetelmenyKod ?? '') },
+  { nev: 'Ablakok, üvegfalak, felülvilágítók', tag: (s) => s.tipus === 'nyilaszaro' && !/ajto|kapu/.test(s.kovetelmenyKod ?? '') },
+  { nev: 'Ajtók, kapuk', tag: (s) => s.tipus === 'nyilaszaro' && /ajto|kapu/.test(s.kovetelmenyKod ?? '') },
+];
+const TAJ_REND = ['É', 'ÉK', 'K', 'DK', 'D', 'DNy', 'Ny', 'ÉNy'];
+
+/** Szerkezetek kimutatása: azonos szerkezet (rétegrend / típus), tájolás és U érték egy sorban, csoportonként összesítve. */
+function SzerkezetKimutatas({ e }: { e: EpuletEredmeny }) {
+  const [reszletes, setReszletes] = useState(false);
+  const [tajSzerint, setTajSzerint] = useState(true);
+  const maradek = (s: Szerk) => !KIMUTATAS_CSOPORT.some((c) => c.tag(s));
+  const csoportok = [...KIMUTATAS_CSOPORT, { nev: 'Egyéb', tag: maradek }];
+  const sor = (s: Szerk, db: number, A: number, taj?: string) => (
+    <tr><td>{s.szerkezet ?? s.nev}</td><td>{taj ?? '–'}</td><td class="szam">{db}</td><td class="szam">{sz(A, 1)} m²</td><td class="szam">{sz(s.Uelemi, 3)}</td><td class="szam">{s.Umax !== null ? kov(s.Umax) : '–'}</td><td class="szam halkabb">{Math.abs(s.U - s.Uelemi) > 5e-4 ? sz(s.U, 3) : '–'}</td><td>{s.megfelel === false ? <span class="jel rossz">Nem felel meg</span> : s.minosites ? MIN[s.minosites] : '–'}</td></tr>
+  );
+  return (<>
+    <div class="gombsor" style="gap:16px;margin-bottom:8px">
+      <label class="jelolo" style="font-size:13px"><input type="checkbox" checked={tajSzerint} disabled={reszletes} onChange={(ev) => setTajSzerint((ev.target as HTMLInputElement).checked)} /> tájolás szerint bontva</label>
+      <label class="jelolo" style="font-size:13px"><input type="checkbox" checked={reszletes} onChange={(ev) => setReszletes((ev.target as HTMLInputElement).checked)} /> felületenként (részletes)</label>
+    </div>
+    <div class="tabla-gorgeto">
+      <table class="tabla">
+        <thead><tr><th>Szerkezet</th><th>Tájolás</th><th class="szam">Db</th><th class="szam">Felület</th><th class="szam">U rétegtervi</th><th class="szam">Követelmény</th><th class="szam">U eredő</th><th>Minősítés</th></tr></thead>
+        {csoportok.map((c) => {
+          const l = e.szerkezetek.filter(c.tag);
+          if (!l.length) return null;
+          let sorok: { s: Szerk; db: number; A: number; taj?: string }[];
+          if (reszletes) sorok = l.map((s) => ({ s: { ...s, szerkezet: s.nev }, db: s.darab ?? 1, A: s.A, taj: s.tajolas ?? undefined }));
+          else {
+            const m = new Map<string, { s: Szerk; db: number; A: number; taj?: string }>();
+            for (const s of l) {
+              const taj = tajSzerint ? s.tajolas ?? undefined : undefined;
+              const k = [s.szerkezet ?? s.nev, taj ?? '', s.Uelemi.toFixed(3), s.U.toFixed(3), s.kovetelmenyKod].join('|');
+              const x = m.get(k); if (x) { x.db += s.darab ?? 1; x.A += s.A; } else m.set(k, { s, db: s.darab ?? 1, A: s.A, taj });
+            }
+            sorok = [...m.values()].sort((a, b) => (a.s.szerkezet ?? a.s.nev).localeCompare(b.s.szerkezet ?? b.s.nev, 'hu') || TAJ_REND.indexOf(a.taj ?? '') - TAJ_REND.indexOf(b.taj ?? ''));
+          }
+          const A = l.reduce((t, s) => t + s.A, 0);
+          return (
+            <tbody>
+              <tr style="background:var(--lap)"><td colSpan={8}><strong>{c.nev}</strong></td></tr>
+              {sorok.map((x) => sor(x.s, x.db, x.A, x.taj))}
+              <tr style="font-weight:600"><td colSpan={2}>{c.nev} összesen</td><td class="szam">{l.reduce((t, s) => t + (s.darab ?? 1), 0)}</td><td class="szam">{sz(A, 1)} m²</td><td class="szam" colSpan={4} style="text-align:left;font-weight:400" >{A > 0 ? <span class="halkabb">átlagos U eredő {sz(l.reduce((t, s) => t + s.U * s.A, 0) / A, 3)} W/m²K</span> : null}</td></tr>
+            </tbody>
+          );
+        })}
+      </table>
+    </div>
+  </>);
 }

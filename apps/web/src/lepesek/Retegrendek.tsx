@@ -8,7 +8,7 @@ import { retegrendKonyvtarba } from '../tarolo';
 import { anyagLista, anyag, beepitett } from '../katalogus';
 import { Mezo, Szam, Szoveg, Valaszto, sz, kov, OsszesTorles } from '../ui';
 import { Fogantyu, huzasProps } from '../huzas';
-import { ujId, retegrendSzamitas, retegrendVastagsag, retegrendAutoNev, SZEREP_ALAP, SZEREP_NEV, kovetelmenyNev, type Projekt, type Retegrend, type Szerep } from '../modell';
+import { ujId, retegrendSzamitas, retegrendVastagsag, retegrendAutoNev, SZEREP_ALAP, SZEREP_NEV, kovetelmenyNev, type Projekt, type Retegrend, type Szerep, retegrendHibak } from '../modell';
 
 type Modosit = (fn: (p: Projekt) => void) => void;
 
@@ -67,13 +67,15 @@ export function RetegrendekLepes({ p, modosit }: { p: Projekt; modosit: Modosit 
   return (
     <div class="ketoszlop">
       <div style="display:flex;flex-direction:column;gap:12px">
+        {(() => { const h = retegrendHibak(p); return h.length > 0 && <div class="hiba-doboz"><strong>{h.length} rétegrend hiányos</strong> – amíg nem javítod, az energetikai számítás nem fut le:
+          <ul style="margin:6px 0 0 18px">{h.map((x) => <li><button class="link-gomb" onClick={() => setAktivId(x.id)}>{x.nev}</button>: {x.hiba}</li>)}</ul></div>; })()}
         <div class="lista" role="list">
           {p.retegrendek.map((x) => {
             const o = osszegzes(x);
             return (
               <button aria-pressed={x.id === aktivId} onClick={() => setAktivId(x.id)}>
                 <span class="lista-cim">{x.nev}</span>
-                <span class="lista-al"><span>{SZEREP_NEV[x.szerep]}</span><span>{o.e ? `U ${sz(o.e.U, 3)}` : 'hiányos'}{x.szerep !== 'padlo' && o.e && (glaser(x)?.kondenzacio.length ?? 0) > 0 ? ' · páralecsapódás' : ''}</span></span>
+                <span class="lista-al"><span>{SZEREP_NEV[x.szerep]}</span><span title={o.hiba ?? undefined} style={o.e ? '' : 'color:var(--hiba);font-weight:600'}>{o.e ? `U ${sz(o.e.U, 3)}` : '⚠ hiányos'}{x.szerep !== 'padlo' && o.e && (glaser(x)?.kondenzacio.length ?? 0) > 0 ? ' · páralecsapódás' : ''}</span></span>
               </button>
             );
           })}
@@ -164,10 +166,12 @@ function Szerkeszto({ r, m, kijelolt, jelol, torol }: { r: Retegrend; m: (fn: (r
           <tbody>
             {r.retegek.map((x, i) => {
               const a = anyag(x.anyagId);
+              // a réteg önmagában számolható-e (hiányzó λ, R, vastagság) – a hibás sor kiemelve
+              const rHiba = (() => { if (!o.hiba) return null; try { retegrendSzamitas({ ...r, retegek: [x] }); return null; } catch (err) { return (err as Error).message; } })();
               const R = o.e?.retegR[i];
               const sajat = !x.anyagId;
               return (
-                <tr style={kijelolt === x.id ? 'background:var(--kijelolt)' : ''} onFocusIn={() => jelol(x.id)} {...huzasProps(`reteg-${r.id}`, x.id, retegAthelyez)}>
+                <tr style={rHiba ? 'box-shadow:inset 3px 0 0 var(--hiba)' : kijelolt === x.id ? 'background:var(--kijelolt)' : ''} onFocusIn={() => jelol(x.id)} {...huzasProps(`reteg-${r.id}`, x.id, retegAthelyez)}>
                   <td style="white-space:nowrap"><Fogantyu cimke={`${i + 1}. réteg`} fel={() => i > 0 && retegAthelyez(x.id, r.retegek[i - 1]!.id)} le={() => i < r.retegek.length - 1 && retegAthelyez(x.id, r.retegek[i + 1]!.id)} /> {i + 1}</td>
                   <td style="min-width:240px">
                     <select aria-label={`${i + 1}. réteg anyaga`} value={x.anyagId ?? (x.R !== undefined ? '_r' : x.legreteg ? '_leg' : '_sajat')} onChange={(e) => {
@@ -191,17 +195,18 @@ function Szerkeszto({ r, m, kijelolt, jelol, torol }: { r: Retegrend; m: (fn: (r
                     </select>
                     {sajat && x.nev !== undefined && <div style="margin-top:4px"><Szoveg ertek={x.nev} valt={(v) => m((q) => { q.retegek[i]!.nev = v; })} /></div>}
                     {a && !a.ellenorzott && <small class="halkabb ellenorizendo" title={a.forras}>ellenőrizendő érték</small>}
+                    {rHiba && <small style="display:block;color:var(--hiba)">{rHiba}</small>}
                   </td>
                   <td style="width:130px"><Szam cimke="Vastagság" ertek={x.dCm} egyseg="cm" valt={(v) => m((q) => { q.retegek[i]!.dCm = v; })} /></td>
                   <td style="width:120px" class="szam">
-                    {x.R !== undefined ? <Szam cimke="Hővezetési ellenállás" ertek={x.R} egyseg="m²K/W" valt={(v) => m((q) => { q.retegek[i]!.R = v; })} />
+                    {x.R !== undefined ? <Szam cimke="Hővezetési ellenállás" min={0.0001} ertek={x.R} egyseg="m²K/W" valt={(v) => m((q) => { q.retegek[i]!.R = v; })} />
                       : x.legreteg ? '–'
                       : (() => {
                         // katalógusanyagnál is átírható: a kézi λ felülírja a katalógus értékét (termék-R esetén az egyenértékű λ = d/R)
                         const katL = a?.lambda ?? (a?.R ? a.R.d / a.R.R : undefined);
                         const kezi = x.lambda !== undefined && x.anyagId !== undefined;
                         return <>
-                          <Szam cimke="Hővezetési tényező" ertek={x.lambda ?? (katL !== undefined ? Math.round(katL * 10000) / 10000 : undefined)} egyseg="W/mK"
+                          <Szam cimke="Hővezetési tényező" min={0.0001} ertek={x.lambda ?? (katL !== undefined ? Math.round(katL * 10000) / 10000 : undefined)} egyseg="W/mK"
                             valt={(v) => m((q) => { const t = q.retegek[i]!; if (katL !== undefined && x.anyagId && Math.abs(v - katL) < 5e-5) delete t.lambda; else t.lambda = v; })} />
                           {kezi && <small class="halkabb" style="display:block;text-align:right">kézi · katalógus {katL !== undefined ? sz(katL, 3) : '–'} <button class="link-gomb" onClick={() => m((q) => { delete q.retegek[i]!.lambda; })}>visszaállít</button></small>}
                           {!kezi && a?.R && <small class="halkabb" style="display:block;text-align:right">termék R {sz(a.R.R, 3)} / {sz(a.R.d * 100, 0)} cm</small>}

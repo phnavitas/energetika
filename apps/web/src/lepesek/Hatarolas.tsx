@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks';
 import { klima } from '@mag/index';
 import { Mezo, Szam, Szoveg, Valaszto, sz, kov, MindJelolo, OsszesTorles } from '../ui';
 import type { EpuletEredmeny } from '@mag/index';
-import { ujId, feluletNettoA, geometria, atlagBelmagassag, padloKerulet, padloPsi, chiErvenyes, azonosFeluletek, feluletekOsszevon, falhosszHelyisegekbol, nyilasNapnyereseg, CHI_VALASZTEK, HATAR_NEV, SZEREP_NEV, type Projekt, type HatarKod, type Felulet } from '../modell';
+import { ujId, feluletNettoA, geometria, atlagBelmagassag, padloKerulet, padloPsi, chiErvenyes, azonosFeluletek, feluletekOsszevon, falhosszHelyisegekbol, nyilasNapnyereseg, CHI_VALASZTEK, HATAR_NEV, SZEREP_NEV, type Projekt, type HatarKod, type Felulet, atalakit, feluletHibak } from '../modell';
 import { Fogantyu, huzasProps } from '../huzas';
 import { ARNYEKOLOK } from '../katalogus';
 
@@ -57,8 +57,11 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
   };
   const retegrendOpciok = (padlo: boolean) => p.retegrendek.filter((r) => (r.szerep === 'padlo') === padlo).map((r) => ({ ertek: r.id, nev: r.nev }));
 
+  const fHibak = feluletHibak(atalakit(p).hibak);
   return (
     <>
+      {fHibak.length > 0 && <div class="hiba-doboz" style="margin-bottom:12px"><strong>{fHibak.length} határoló felület hiányos</strong> – amíg nem javítod, az energetikai számítás nem fut le:
+        <ul style="margin:6px 0 0 18px">{fHibak.slice(0, 12).map((x) => <li>{x}</li>)}{fHibak.length > 12 && <li>… és még {fHibak.length - 12}</li>}</ul></div>}
       <section class="szakasz">
         <h2>Falak, födémek, tetők</h2>
         <p class="halk">Bruttó felületet adj meg közvetlenül, vagy határoló hossz × magasság alapján (alapérték az átlagos belmagasság; a hossz a helyiségeknél megadott külső falhosszakból is átvehető). A hozzá rendelt nyílászárókat a program levonja. A sorok a fogantyúval áthúzhatók. A csatlakozási hőhidakat a 6.1. táblázat χ tényezője veszi figyelembe.</p>

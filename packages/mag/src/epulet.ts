@@ -71,6 +71,11 @@ export interface SzerkezetErtekeles {
   megfelel: boolean | null;
   minosites: Minosites | null;
   A: number;
+  /** Összevonáshoz: elemfajta, szerkezet (rétegrend / típus) neve, tájolás. */
+  tipus?: 'opak' | 'nyilaszaro' | 'talaj';
+  szerkezet?: string;
+  tajolas?: string | null;
+  darab?: number;
 }
 
 export interface RendszerMinosites { Enren: number; EnrenRef: number; szazalek: number; minosites: Minosites }
@@ -314,7 +319,7 @@ export function epuletSzamitas(b: EpuletBemenet, opciok?: SzamitasiOpciok): Epul
       minosites = U <= k.Umax ? 'jo' : 'kozepes';
       fw.push({ kod: 'MINOSITES_NINCS_SOR', uzenet: `„${e.nev}”: a 176/2008 4. melléklete nem ad értékelési sort; a követelményhez mért minősítést adtunk.`, forras: '176/2008 Korm. r. 4. melléklet' });
     }
-    szerkezetek.push({ nev: e.nev, kovetelmenyKod: kod, U, Uelemi, Umax: k?.Umax ?? null, megfelel: k ? Uelemi <= k.Umax + 1e-9 : null, minosites, A: e.A });
+    szerkezetek.push({ nev: e.nev, kovetelmenyKod: kod, U, Uelemi, Umax: k?.Umax ?? null, megfelel: k ? Uelemi <= k.Umax + 1e-9 : null, minosites, A: e.A, tipus: e.tipus, szerkezet: e.szerkezet, tajolas: e.tipus === 'talaj' ? null : (e.tajolas ?? null), ...(e.tipus === 'nyilaszaro' && e.darab ? { darab: e.darab } : {}) });
   }
 
   // Épülettechnikai rendszerek értékelése (176/2008 5. melléklet) – referencia rendszerhez

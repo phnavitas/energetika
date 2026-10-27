@@ -496,7 +496,7 @@ export function atalakit(p: Projekt): Atalakitas {
         const d = nyilaszaroAdatok(n);
         const db = f.darab ?? 1;
         elemek.push({
-          tipus: 'nyilaszaro', nev: f.nev, A: d.A * db, U: d.U, UFutes: d.UFutes, hatar: hatar(f.hatar),
+          tipus: 'nyilaszaro', nev: f.nev, szerkezet: n.nev, darab: db, A: d.A * db, U: d.U, UFutes: d.UFutes, hatar: hatar(f.hatar),
           tajolas: f.tajolas ?? null, hajlasszog: f.hajlasszog ?? 90, Au: d.Au * db, gn: n.gn,
           garnyH: n.arnyekolo?.garnyH, kovetelmenyKod: n.kovetelmenyKod,
           ...(f.arnyekolas !== undefined && f.arnyekolas < 1 ? { Farny: Array(12).fill(Math.max(0, f.arnyekolas)) } : {}),
@@ -505,17 +505,17 @@ export function atalakit(p: Projekt): Atalakitas {
         const r = p.retegrendek.find((x) => x.id === f.retegrendId);
         if (!r || !f.padlo) { hibak.push(`„${f.nev}”: hiányzó padló rétegrend vagy kerület.`); continue; }
         const UTp = padloUT(r, f, p);
-        elemek.push({ tipus: 'talaj', nev: f.nev, A: f.A ?? 0, UT: UTp, P: padloKerulet(p, f), psiPF: padloPsi(p, f).psi, kovetelmenyKod: r.kovetelmenyKod });
+        elemek.push({ tipus: 'talaj', nev: f.nev, szerkezet: r.nev, A: f.A ?? 0, UT: UTp, P: padloKerulet(p, f), psiPF: padloPsi(p, f).psi, kovetelmenyKod: r.kovetelmenyKod });
       } else {
         const r = p.retegrendek.find((x) => x.id === f.retegrendId);
         if (!r) { hibak.push(`„${f.nev}”: nincs rétegrend kiválasztva.`); continue; }
         const e = retegrendSzamitas(r);
         if (f.talajFal) {
           // fűtött pince fala: egyenértékű U a talaj hatásával (4.27–4.28), a padló dp-jével; a HtrT része (6.6)
-          elemek.push({ tipus: 'talaj', nev: f.nev, A: feluletNettoA(p, f), UT: pinceFalUT(p, f, r), P: 0, psiPF: 0, kovetelmenyKod: r.kovetelmenyKod, UElemi: e.U });
+          elemek.push({ tipus: 'talaj', nev: f.nev, szerkezet: r.nev, A: feluletNettoA(p, f), UT: pinceFalUT(p, f, r), P: 0, psiPF: 0, kovetelmenyKod: r.kovetelmenyKod, UElemi: e.U });
           continue;
         }
-        elemek.push({ tipus: 'opak', nev: f.nev, A: feluletNettoA(p, f), U: e.U, chi: chiErvenyes(p, f), hatar: hatar(f.hatar), kovetelmenyKod: r.kovetelmenyKod, tajolas: f.tajolas ?? null });
+        elemek.push({ tipus: 'opak', nev: f.nev, szerkezet: r.nev, A: feluletNettoA(p, f), U: e.U, chi: chiErvenyes(p, f), hatar: hatar(f.hatar), kovetelmenyKod: r.kovetelmenyKod, tajolas: f.tajolas ?? null });
       }
     } catch (err) {
       hibak.push(`„${f.nev}”: ${(err as Error).message}`);
@@ -952,3 +952,25 @@ export const HATAR_NEV: Record<HatarKod, string> = {
 export function kovetelmenyNev(kod: string) {
   return kovetelmeny.U_KOVETELMENYEK.find((k) => k.kod === kod);
 }
+
+/** Lépésenkénti hiányok – hogy ne csak az Eredmény lépésben derüljön ki, mi hiányzik. */
+export function retegrendHibak(p: Projekt): { id: string; nev: string; hiba: string }[] {
+  const ki: { id: string; nev: string; hiba: string }[] = [];
+  for (const r of p.retegrendek) {
+    if (!r.retegek.length) { ki.push({ id: r.id, nev: r.nev, hiba: 'Nincs egy rétege sem.' }); continue; }
+    try { const e = retegrendSzamitas(r); if (!Number.isFinite(e.U) || e.U <= 0) ki.push({ id: r.id, nev: r.nev, hiba: 'A hőátbocsátási tényező nem számítható.' }); }
+    catch (err) { ki.push({ id: r.id, nev: r.nev, hiba: (err as Error).message }); }
+  }
+  return ki;
+}
+export function nyilaszaroHibak(p: Projekt): { id: string; nev: string; hiba: string }[] {
+  const ki: { id: string; nev: string; hiba: string }[] = [];
+  for (const n of p.nyilaszarok) {
+    if (!(n.szelesseg > 0) || !(n.magassag > 0)) { ki.push({ id: n.id, nev: n.nev, hiba: 'Hiányzó szélesség vagy magasság.' }); continue; }
+    try { const d = nyilaszaroAdatok(n); if (!Number.isFinite(d.U) || d.U <= 0) ki.push({ id: n.id, nev: n.nev, hiba: 'Az U érték nem számítható – ellenőrizd az üvegezés és a keret adatait.' }); }
+    catch (err) { ki.push({ id: n.id, nev: n.nev, hiba: (err as Error).message }); }
+  }
+  return ki;
+}
+/** A határoló felületek hibái az átalakítás hibalistájából (a „Felület”: … alakúak). */
+export const feluletHibak = (hibak: string[]) => hibak.filter((h) => h.startsWith('„'));

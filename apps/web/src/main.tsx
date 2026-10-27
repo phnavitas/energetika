@@ -1,7 +1,7 @@
 import { render } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { epuletSzamitas, hoszukseglet, type EpuletEredmeny } from '@mag/index';
-import { atalakit, anyagPillanatkep, projektMigral, hoszuksegletBemenet, type Projekt } from './modell';
+import { atalakit, anyagPillanatkep, projektMigral, hoszuksegletBemenet, retegrendHibak, nyilaszaroHibak, feluletHibak, type Projekt } from './modell';
 import { mintaProjekt, uresProjekt } from './minta';
 import { irodaiAnyagokBeallit, projektAnyagokBeallit } from './katalogus';
 import { sz } from './ui';
@@ -360,13 +360,14 @@ function App() {
 
   let hszOsszeg: number | null = null;
   try { const hb = hoszuksegletBemenet(p); hszOsszeg = hb.bemenet.helyisegek.some((h) => h.elemek.length) ? hoszukseglet.helyisegHoszukseglet(hb.bemenet).osszesen : null; } catch { /* hiányos */ }
+  const rrHiba = retegrendHibak(p).length, nyHiba = nyilaszaroHibak(p).length, fHiba = feluletHibak(atal.hibak).length;
   const allapot: Record<LepesKod, string> = {
     epulet: p.meta.telepules || 'nincs cím',
     terv: 'PDF alaprajz, metszet',
     helyisegek: `${p.helyisegek.length} helyiség, ${sz(atal.geometria.AN, 1)} m²`,
-    retegrendek: `${p.retegrendek.length} rétegrend`,
-    nyilaszarok: `${p.nyilaszarok.length} típus`,
-    hatarolas: `${p.feluletek.length} felület`,
+    retegrendek: `${p.retegrendek.length} rétegrend${rrHiba ? ` · ${rrHiba} hiányos` : ''}`,
+    nyilaszarok: `${p.nyilaszarok.length} típus${nyHiba ? ` · ${nyHiba} hiányos` : ''}`,
+    hatarolas: `${p.feluletek.length} felület${fHiba ? ` · ${fHiba} hiányos` : ''}`,
     hohidak: p.hohidak?.length ? `${p.hohidak.length} csomópont${p.hohidMod === 'psi' ? ', Ψ-mód' : ''}` : (p.hohidMod === 'psi' ? 'Ψ-mód' : 'χ-tényezővel'),
     hoszukseglet: hszOsszeg !== null ? `${sz(hszOsszeg / 1000, 1)} kW` : '–',
     gepeszet: e ? 'kiválasztva' : '–',
@@ -381,9 +382,9 @@ function App() {
     epulet: p.meta.nev && p.meta.telepules ? 'kesz' : 'hiany',
     terv: null,
     helyisegek: atal.geometria.AN > 0 ? 'kesz' : 'hiany',
-    retegrendek: p.retegrendek.length ? 'kesz' : 'hiany',
-    nyilaszarok: p.nyilaszarok.length ? 'kesz' : 'hiany',
-    hatarolas: p.feluletek.length ? 'kesz' : 'hiany',
+    retegrendek: p.retegrendek.length && !rrHiba ? 'kesz' : 'hiany',
+    nyilaszarok: p.nyilaszarok.length && !nyHiba ? 'kesz' : 'hiany',
+    hatarolas: p.feluletek.length && !fHiba ? 'kesz' : 'hiany',
     hohidak: p.hohidak?.length ? 'kesz' : null,
     hoszukseglet: hszOsszeg !== null ? 'kesz' : null,
     gepeszet: e ? 'kesz' : 'hiany',

@@ -11,6 +11,8 @@ export type Hatar = { tipus: 'kulso' } | { tipus: 'futetlen'; b: BTenyezoKod } |
 export interface OpakElem {
   tipus: 'opak';
   nev: string;
+  /** A szerkezet (rétegrend / nyílászáró-típus) neve – a kimutatások összevonásához. */
+  szerkezet?: string;
   A: number;
   /** Rétegtervi (korrigált) U, csatlakozási hőhidak nélkül. */
   U: number;
@@ -26,6 +28,9 @@ export interface OpakElem {
 export interface NyilaszaroElem {
   tipus: 'nyilaszaro';
   nev: string;
+  szerkezet?: string;
+  /** Darabszám (a felület már a darabszámmal szorzott) – csak kimutatáshoz. */
+  darab?: number;
   /** Bruttó (tok-külméret szerinti) felület. */
   A: number;
   U: number;
@@ -50,6 +55,7 @@ export interface NyilaszaroElem {
 export interface TalajElem {
   tipus: 'talaj';
   nev: string;
+  szerkezet?: string;
   A: number;
   /** Talaj hatását is tartalmazó egyenértékű U (4.4). */
   UT: number;
