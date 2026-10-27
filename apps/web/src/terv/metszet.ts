@@ -216,6 +216,9 @@ export function anyagKepez(leiras: string, dCm: number | null, szerep: Szerep | 
   if (/filc|geotextil|szűrőréteg|szuroreteg|üvegszövet|háló\b/.test(n)) return { kimarad: 'Vékony elválasztó / szűrő / erősítő réteg – elhanyagolható hővezetési ellenállás.' };
   if (/vízelvezető|vizelvezeto|vízmegtartó|szivárgó|szivargo|drain|dombor/.test(n)) return { kimarad: 'Vízelvezető / szivárgó réteg – a hőtechnikai számításban nem vesszük figyelembe.' };
   if (/kultúrkeverék|ültetőközeg|termőföld|földvisszatöltés|visszatöltés|vegetáció/.test(n)) return { kimarad: 'Zöldtető-ültetőközeg / visszatöltés – a hőtechnikai számításban nem vesszük figyelembe.' };
+  // visszatapadó (előre felhordott) talajvíz elleni szigetelés: HDPE (Preprufe) vagy FPO (SikaProof) lemez
+  if (/sikaproof|\bfpo\b|\btpo\b/.test(n)) return { anyagId: 'fpo_vizszig_lemez' };
+  if (/preprufe|hdpe|pehd|visszatapadó/.test(n)) return { anyagId: 'hdpe_vizszig_lemez' };
   if (/pvc lemez|pvc szig|tpo|fpo/.test(n) && (dCm === null || dCm < 0.5)) return { kimarad: 'Műanyag vízszigetelő lemez – elhanyagolható hővezetési ellenállás.' };
   if (/(szelemen|gerenda|fedélszerkezet|fedélszék|rácsos|tartóváz|váz|léc).*(közte|között)/.test(n)) return { kimarad: 'Teherhordó váz – a közte lévő hőszigetelés külön rétegként szerepel; a fa részarányát ellenőrizd.', megjegyzes: 'Inhomogén réteg.' };
   if (/cd profil|ud profil|direktrögzítő|álmennyezeti váz/.test(n)) return { legreteg: 'zart', megjegyzes: 'Álmennyezeti szerelőváz – zárt légrétegként.' };

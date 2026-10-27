@@ -747,6 +747,28 @@ export const BOVITETT_ANYAGOK: Anyag[] = [
   "megjegyzes": "Száraz földre vonatkozó cseh érték, padlásfeltöltés közelítése. ρ = 1600 kg/m³"
  },
  {
+  "id": "hdpe_vizszig_lemez",
+  "nev": "HDPE vízszigetelő lemez, visszatapadó (pl. Grace Preprufe 300R)",
+  "kategoria": "Fólia",
+  "sraffozas": "folia",
+  "lambda": 0.5,
+  "mu": 50000,
+  "forras": "Horvát épületenergetikai műszaki előírás (valószínűleg 'Tehnički propis o racionalnoj uporabi energije i toplinskoj zaštiti u zgradama') B melléklet (Prilog B), 5. táblázat 'Projektne vrijednosti toplinske provodljivosti λ i ... µ' – a dokumentumon cím/dátum nem látszik; értékei az EN ISO 10456 / EN 1745 táblázatokkal egyeznek – https://www.vguk.hr/multimedia/a3ba58b2856039a133df6cbf8dbda1ae76ab404911eb4aa0e61a87d14a343a3cced6f71d1648636332.pdf – sor 5.11 'polietilen visoke gustoće (PEHD)' (ρ=1600; λ=0,50; μ=50000)",
+  "ellenorzott": true,
+  "megjegyzes": "A gyártó (Preprufe 300R adatlap) λ-t nem deklarál – az anyagra vonatkozó táblázatos tervezési érték. Vastagsága ~1,2 mm, hőtechnikailag elhanyagolható. ρ = 1600 kg/m³"
+ },
+ {
+  "id": "fpo_vizszig_lemez",
+  "nev": "FPO / TPO vízszigetelő lemez, visszatapadó (pl. SikaProof A)",
+  "kategoria": "Fólia",
+  "sraffozas": "folia",
+  "lambda": 0.26,
+  "mu": 90000,
+  "forras": "Horvát épületenergetikai műszaki előírás (valószínűleg 'Tehnički propis o racionalnoj uporabi energije i toplinskoj zaštiti u zgradama') B melléklet (Prilog B), 5. táblázat 'Projektne vrijednosti toplinske provodljivosti λ i ... µ' – a dokumentumon cím/dátum nem látszik; értékei az EN ISO 10456 / EN 1745 táblázatokkal egyeznek – https://www.vguk.hr/multimedia/a3ba58b2856039a133df6cbf8dbda1ae76ab404911eb4aa0e61a87d14a343a3cced6f71d1648636332.pdf – sor 5.10 'FPO/TPO' (ρ=1600; λ=0,26; μ=90000)",
+  "ellenorzott": true,
+  "megjegyzes": "A gyártó (SikaProof A teljesítménynyilatkozat, EN 13967) λ-t nem deklarál – a flexibilis poliolefin lemez táblázatos tervezési értéke. Hőtechnikailag elhanyagolható. ρ = 1600 kg/m³"
+ },
+ {
   "id": "bitumenes_lemez",
   "nev": "Bitumenes lemez (betétes)",
   "kategoria": "Fólia",
