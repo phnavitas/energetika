@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks';
 import { kovetelmeny, szerkezetSablon as SS } from '@mag/index';
 import { Metszet } from '../abrak/Metszet';
 import { GlaserAbra } from '../abrak/Glaser';
-import { glaser, muAlap, GLASER_ALAP, type GlaserFeltetel } from '../paradiffuzio';
+import { glaser, glaserNemErtelmezheto, muAlap, GLASER_ALAP, type GlaserFeltetel } from '../paradiffuzio';
 import { useTavoli, KonyvtarbaGomb } from '../fiok';
 import { retegrendKonyvtarba } from '../tarolo';
 import { anyagLista, anyag, beepitett } from '../katalogus';
@@ -75,7 +75,7 @@ export function RetegrendekLepes({ p, modosit }: { p: Projekt; modosit: Modosit 
             return (
               <button aria-pressed={x.id === aktivId} onClick={() => setAktivId(x.id)}>
                 <span class="lista-cim">{x.nev}</span>
-                <span class="lista-al"><span>{SZEREP_NEV[x.szerep]}</span><span title={o.hiba ?? undefined} style={o.e ? '' : 'color:var(--hiba);font-weight:600'}>{o.e ? `U ${sz(o.e.U, 3)}` : '⚠ hiányos'}{x.szerep !== 'padlo' && o.e && (glaser(x)?.kondenzacio.length ?? 0) > 0 ? ' · páralecsapódás' : ''}</span></span>
+                <span class="lista-al"><span>{SZEREP_NEV[x.szerep]}</span><span title={o.hiba ?? undefined} style={o.e ? '' : 'color:var(--hiba);font-weight:600'}>{o.e ? `U ${sz(o.e.U, 3)}` : '⚠ hiányos'}{!glaserNemErtelmezheto(x) && o.e && glaser(x)?.ertekeles === 'nem_megfelelo' ? ' · ⚠ páralecsapódás' : ''}</span></span>
               </button>
             );
           })}
@@ -249,15 +249,15 @@ function Szerkeszto({ r, m, kijelolt, jelol, torol }: { r: Retegrend; m: (fn: (r
 function Paradiffuzio({ r }: { r: Retegrend }) {
   const [f, setF] = useState<GlaserFeltetel>(GLASER_ALAP);
   const [sdSkala, setSdSkala] = useState(false);
-  if (r.szerep === 'padlo') return <p class="halkabb">Páradiffúziós vizsgálat: talajon fekvő padlónál a Glaser-módszer nem alkalmazható (a külső oldal a talaj).</p>;
+  if (glaserNemErtelmezheto(r)) return <p class="halkabb">Páradiffúziós vizsgálat: talajjal érintkező szerkezetnél a Glaser-módszer külső levegős peremfeltétellel nem alkalmazható (a külső oldal a talaj, a vízszigetelés talajnedvesség / talajvíz ellen véd).</p>;
   const g = glaser(r, f);
   if (!g) return null;
-  const allapot = g.kondenzacio.length === 0 ? 'jo' : g.g60 <= 0.5 ? 'figyel' : 'rossz';
+  const allapot = g.ertekeles === 'nincs' ? 'jo' : g.ertekeles === 'megengedett' ? 'figyel' : 'rossz';
   return (
     <details class="kartya" open={allapot !== 'jo' || undefined}>
       <summary style="cursor:pointer;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
         <strong>Páradiffúzió (Glaser)</strong>
-        <span class={`jel ${allapot === 'jo' ? 'jo' : 'rossz'}`}>{allapot === 'jo' ? 'Nincs páralecsapódás a szerkezetben' : `Páralecsapódás várható: ${sz(g.gNap, 2)} g/m²·nap, 60 napra ${sz(g.g60 * 1000, 0)} g/m²`}</span>
+        <span class={`jel ${allapot === 'rossz' ? 'rossz' : 'jo'}`}>{allapot === 'jo' ? 'Nincs páralecsapódás a szerkezetben' : allapot === 'figyel' ? `Megfelel: kis lecsapódás (${sz(g.g60 * 1000, 0)} g/m² / 60 nap ≤ ${sz(g.hatar * 1000, 0)} g/m²), nyáron kiszárad` : `Nem megfelelő páratechnika: ${sz(g.g60 * 1000, 0)} g/m² / 60 nap${g.g60 > g.hatar ? ` > ${sz(g.hatar * 1000, 0)} g/m²` : ''}${g.kiszaradas < g.g60 ? ', nyáron nem szárad ki' : ''}`}</span>
         {(g.feluletiKondenzacio || g.penesz) && <span class="jel rossz">{g.feluletiKondenzacio ? 'Felületi páralecsapódás' : 'Penészveszély a belső felületen'}</span>}
       </summary>
       <div class="racs" style="margin:12px 0">
@@ -275,11 +275,15 @@ function Paradiffuzio({ r }: { r: Retegrend }) {
           <tr><td>Belső felület hőmérséklete / a belső levegő harmatpontja</td><td class="szam">{sz(g.thetaSi, 1)} / {sz(g.harmatpontI, 1)} °C</td></tr>
           <tr><td>Felületi hőmérsékleti tényező fRsi (penészmentességhez legalább, φsi ≤ 80 %)</td><td class="szam">{sz(g.fRsi, 3)} ({sz(g.fRsiMin, 3)})</td></tr>
           {g.kondenzacio.map((k) => <tr><td>Kondenzációs sík a belső felülettől</td><td class="szam">{sz(k.x, 1)} cm – {sz(k.g, 2)} g/m²·nap</td></tr>)}
+          {g.kondenzacio.length > 0 && <>
+            <tr><td>Téli lecsapódás (60 nap) / megengedett{g.hatar < 1 ? ' (kapillárisan nem nedvszívó réteg határán)' : ''}</td><td class="szam">{sz(g.g60 * 1000, 0)} / {sz(g.hatar * 1000, 0)} g/m²</td></tr>
+            <tr><td>Nyári kiszáradási képesség (90 nap)</td><td class="szam">{sz(g.kiszaradas * 1000, 0)} g/m²</td></tr>
+          </>}
         </tbody>
       </table>
       <p class="halkabb" style="margin-top:8px">
         Állandósult állapotú Glaser-vizsgálat (MSZ EN ISO 13788 egyszerűsítés): psat a 13788 E.1 képletével, a gőznyomás-lefutás sd = μ·d szerint, kondenzációnál a telítési görbe alsó burka; δ₀ = 2·10⁻¹⁰ kg/(m·s·Pa). A méretezési állapot alapértéke a hazai gyakorlat (MSZ-04-140-2): belső 20 °C / 60 %, külső −2 °C / 90 %.
-        {allapot === 'figyel' && ' A lecsapódó mennyiség kicsi (≤ 0,5 kg/m² a 60 napos téli időszakra); megengedhető, ha a nyári időszakban kiszárad – a havi mérleggel (MSZ EN ISO 13788) ellenőrizendő.'}
+        {allapot !== 'jo' && ' Értékelés a DIN 4108-3 elve szerint: a téli lecsapódás legfeljebb 1,0 kg/m² (kapillárisan nem nedvszívó réteg – fólia, beton, hab- és szálas hőszigetelés – határán 0,5 kg/m²), és a nyári párolgási időszakban (90 nap, kint és bent 1200 Pa, a kondenzációs síkban falnál 12 °C, tetőnél 20 °C) ki kell száradnia. Fa és faalapú réteg határán a tömegszázalékos nedvességnövekedést (5 % / 3 %) külön ellenőrizd.'}
         {allapot === 'rossz' && ' A lecsapódó mennyiség jelentős: belső oldali párafékezés (párazáró) vagy külső oldali páranyitottabb réteg szükséges.'}
         {' '}A μ értékek – ahol a katalógus nem ad meg – anyagcsoport szerinti jellemző értékek (MSZ EN ISO 10456), a rétegtáblában felülírhatók.
       </p>

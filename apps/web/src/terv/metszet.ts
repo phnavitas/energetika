@@ -219,7 +219,8 @@ export function anyagKepez(leiras: string, dCm: number | null, szerep: Szerep | 
   // visszatapadó (előre felhordott) talajvíz elleni szigetelés: HDPE (Preprufe) vagy FPO (SikaProof) lemez
   if (/sikaproof|\bfpo\b|\btpo\b/.test(n)) return { anyagId: 'fpo_vizszig_lemez' };
   if (/preprufe|hdpe|pehd|visszatapadó/.test(n)) return { anyagId: 'hdpe_vizszig_lemez' };
-  if (/pvc lemez|pvc szig|tpo|fpo/.test(n) && (dCm === null || dCm < 0.5)) return { kimarad: 'Műanyag vízszigetelő lemez – elhanyagolható hővezetési ellenállás.' };
+  // PVC vízszigetelő lemez: hőtechnikailag elhanyagolható, de a páradiffúziós vizsgálatban a külső oldali párafékező réteg – ezért anyagként kerül át
+  if (/\bpvc\b/.test(n) && /lemez|szig/.test(n)) return { anyagId: 'pvc_vizszig_lemez' };
   if (/(szelemen|gerenda|fedélszerkezet|fedélszék|rácsos|tartóváz|váz|léc).*(közte|között)/.test(n)) return { kimarad: 'Teherhordó váz – a közte lévő hőszigetelés külön rétegként szerepel; a fa részarányát ellenőrizd.', megjegyzes: 'Inhomogén réteg.' };
   if (/cd profil|ud profil|direktrögzítő|álmennyezeti váz/.test(n)) return { legreteg: 'zart', megjegyzes: 'Álmennyezeti szerelőváz – zárt légrétegként.' };
   if (/elasztomer|bitumen|bit\. ?lemez|talajnedv|talajvíz|vízszig|vízzáró|visszatapadó/.test(n)) return { anyagId: 'bitumenes_lemez' };
@@ -239,6 +240,7 @@ export function anyagKepez(leiras: string, dCm: number | null, szerep: Szerep | 
   if (/laminált|parketta/.test(n)) return { anyagId: 'parketta' };
   // általános / meg nem nevezett padlóburkolat: greslap / kerámia
   if (/klinker|tégla ?burkolat|téglaburkolat|burkolótégla/.test(n)) return { anyagId: 'tomor_tegla_falazat', megjegyzes: 'Téglaburkolat – ha mögötte átszellőztetett légrés van, a burkolat kimarad.' };
+  if (/zúzott ?kő|kavics/.test(n)) return { anyagId: 'kavics_homok' };
   if (/burkolat|greslap|gres\b/.test(n) && !/fal ?burkolat|tető|térburkol/.test(n)) return { anyagId: 'keramia' };
   if (/kerámia padló|krámia|kerámia burkolat|járólap|greslap|csempe/.test(n)) return { anyagId: 'keramia' };
   if (/vasalt (beton)?aljzat|vasalt beton/.test(n)) return { anyagId: 'vasbeton_2300' };

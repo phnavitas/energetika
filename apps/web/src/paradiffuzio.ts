@@ -73,7 +73,18 @@ export interface GlaserEredmeny {
   /** Felületi hőmérsékleti tényező és a penészmentességhez szükséges legkisebb érték (φsi ≤ 80 %). */
   fRsi: number; fRsiMin: number;
   feluletiKondenzacio: boolean; penesz: boolean;
+  /** Nyári kiszáradás (90 nap, DIN 4108-3 párolgási időszak: kint és bent 1200 Pa; a kondenzációs síkban falnál 12 °C, tetőnél 20 °C telítési nyomás), kg/m². */
+  kiszaradas: number;
+  /** Megengedett lecsapódó mennyiség: 1,0 kg/m², kapillárisan nem nedvszívó réteg határán 0,5 kg/m² (DIN 4108-3). */
+  hatar: number;
+  /** 'nincs': nincs lecsapódás; 'megengedett': a határ alatt és nyáron kiszárad; 'nem_megfelelo'. */
+  ertekeles: 'nincs' | 'megengedett' | 'nem_megfelelo';
 }
+
+/** Kapillárisan nem nedvszívó anyag (fólia, lemez, beton, szálas és hab hőszigetelés) – DIN 4108-3 szerinti 0,5 kg/m²-es határ. */
+const NEM_NEDVSZIVO = /fólia|folia|lemez|bitumen|pvc|hdpe|fpo|beton|gyapot|eps|xps|pir|pur|polisztirol|poliuretán|üveg|fém|alumínium/i;
+/** A Glaser-vizsgálat külső levegős peremfeltétellel nem értelmezhető: talajjal érintkező szerkezet. */
+export const glaserNemErtelmezheto = (r: Retegrend) => r.szerep === 'padlo' || r.kovetelmenyKod === 'talajjal_erintkezo_fal' || r.kovetelmenyKod === 'talajon_fekvo_padlo';
 
 export function glaser(r: Retegrend, f: GlaserFeltetel = GLASER_ALAP): GlaserEredmeny | null {
   let e: ReturnType<typeof retegrendSzamitas>;
@@ -132,5 +143,17 @@ export function glaser(r: Retegrend, f: GlaserFeltetel = GLASER_ALAP): GlaserEre
   const thetaMin = harmatpont(pi / 0.8);
   const fRsiMin = (thetaMin - f.thetaE) / (f.thetaI - f.thetaE);
   const harmatpontI = harmatpont(pi);
-  return { pontok, retegek, sdOssz, pi, pe, kondenzacio, gNap, g60: gNap * 60 / 1000, thetaSi, harmatpontI, fRsi, fRsiMin, feluletiKondenzacio: thetaSi <= harmatpontI, penesz: fRsi < fRsiMin };
+  // nyári kiszáradás (DIN 4108-3): 90 nap, kint-bent 1200 Pa, a síkban a telítési nyomás 12 °C-on (fal), 20 °C-on (tető, felső zárófödém)
+  const tetoE = r.szerep === 'teto' || r.szerep === 'padlas';
+  const pSik = psat(tetoE ? 20 : 12);
+  const kiszaradas = kondenzacio.reduce((s, k) => {
+    const sdBe = Math.max(k.sd, 1e-3), sdKi = Math.max(sdOssz - k.sd, 1e-3);
+    return s + DELTA0 * Math.max(0, pSik - 1200) * (1 / sdBe + 1 / sdKi) * 90 * 24 * 3600;
+  }, 0);
+  const retegX = (x: number) => { let a = 0; return r.retegek.filter((rg) => { const b = a + rg.dCm; const t = x >= a - 0.5 && x <= b + 0.5; a = b; return t; }); };
+  const nemNedvszivo = kondenzacio.some((k) => retegX(k.x).some((rg) => NEM_NEDVSZIVO.test(`${anyag(rg.anyagId)?.nev ?? ''} ${rg.nev ?? ''}`)));
+  const hatar = nemNedvszivo ? 0.5 : 1.0;
+  const g60 = gNap * 60 / 1000;
+  const ertekeles = !kondenzacio.length ? 'nincs' as const : g60 <= hatar && kiszaradas >= g60 ? 'megengedett' as const : 'nem_megfelelo' as const;
+  return { kiszaradas, hatar, ertekeles, pontok, retegek, sdOssz, pi, pe, kondenzacio, gNap, g60, thetaSi, harmatpontI, fRsi, fRsiMin, feluletiKondenzacio: thetaSi <= harmatpontI, penesz: fRsi < fRsiMin };
 }

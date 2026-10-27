@@ -758,6 +758,17 @@ export const BOVITETT_ANYAGOK: Anyag[] = [
   "megjegyzes": "A gyártó (Preprufe 300R adatlap) λ-t nem deklarál – az anyagra vonatkozó táblázatos tervezési érték. Vastagsága ~1,2 mm, hőtechnikailag elhanyagolható. ρ = 1600 kg/m³"
  },
  {
+  "id": "pvc_vizszig_lemez",
+  "nev": "PVC-P vízszigetelő lemez (lapostető, gyökérálló)",
+  "kategoria": "Fólia",
+  "sraffozas": "folia",
+  "lambda": 0.14,
+  "mu": 100000,
+  "forras": "Horvát épületenergetikai műszaki előírás (valószínűleg 'Tehnički propis o racionalnoj uporabi energije i toplinskoj zaštiti u zgradama') B melléklet (Prilog B), 5. táblázat 'Projektne vrijednosti toplinske provodljivosti λ i ... µ' – a dokumentumon cím/dátum nem látszik; értékei az EN ISO 10456 / EN 1745 táblázatokkal egyeznek – https://www.vguk.hr/multimedia/a3ba58b2856039a133df6cbf8dbda1ae76ab404911eb4aa0e61a87d14a343a3cced6f71d1648636332.pdf – sor 5.05 'PVC-P' (ρ=1200; λ=0,14; μ=100000)",
+  "ellenorzott": true,
+  "megjegyzes": "Táblázatos érték; konkrét termék μ-je ettől eltérhet (gyártói adatlap). ρ = 1200 kg/m³"
+ },
+ {
   "id": "fpo_vizszig_lemez",
   "nev": "FPO / TPO vízszigetelő lemez, visszatapadó (pl. SikaProof A)",
   "kategoria": "Fólia",
