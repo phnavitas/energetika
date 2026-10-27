@@ -8,7 +8,7 @@ import {
   retegrendSzamitas, nyilaszaroAdatok, nyilaszaroGeometria, FOTO_KATEGORIAK, kovetelmenyNev, szabalyozasErtek, hoszuksegletBemenet,
   SZEREP_NEV, type Atalakitas, type Projekt, chiErvenyes } from './modell';
 import { anyag } from './katalogus';
-import { haviMerlegSvg, savokSvg, uErtekSvg } from './jegyzokonyvAbrak';
+import { haviMerlegSvg, savokSvg, uErtekSvg, retegrendSvg } from './jegyzokonyvAbrak';
 import { MAG_VERZIO } from './tarolo-tipusok';
 import { alternativVizsgalat, ALT_NEV, URLAP } from './alternativ';
 
@@ -66,7 +66,7 @@ function tabla(fej: string[], sorok: (string | TableCell)[][], szelessegek?: (st
 
 const megfelel = (ok: boolean | null) => (ok === null ? { text: '–' } : { text: ok ? 'megfelel' : 'nem felel meg', color: ok ? SZIN.jo : SZIN.rossz, bold: true });
 
-export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalakitas, opt: { helyisegLista?: boolean } = {}): Promise<Uint8Array> {
+export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalakitas, opt: { helyisegLista?: boolean; retegrendAbra?: boolean } = {}): Promise<Uint8Array> {
   const pdfMake = (await import('pdfmake/build/pdfmake')).default;
   const vfs = (await import('pdfmake/build/vfs_fonts')).default as unknown as Record<string, string>;
   pdfMake.vfs = vfs;
@@ -203,13 +203,17 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
       ], margin: [0, 4, 0, 2],
     }];
     if (!er) { tartalom.push({ stack: [...blokk, { text: 'Hiányos rétegrend – nem számolható.', color: SZIN.rossz }] }); continue; }
-    blokk.push(tabla(['#', 'Réteg (belülről kifelé)', 'd [cm]', 'λ [W/mK]', 'R [m²K/W]'], [
+    const retegTabla = tabla(['#', 'Réteg (belülről kifelé)', 'd [cm]', 'λ [W/mK]', 'R [m²K/W]'], [
       ...r.retegek.map((x, i) => {
         const a = anyag(x.anyagId);
         return [String(i + 1), x.nev ?? a?.nev ?? '–', f(x.dCm, 1), x.lambda !== undefined ? `${f(x.lambda, 3)}${a ? ' (kézi)' : ''}` : a?.lambda !== undefined ? f(a.lambda, 3) : x.legreteg ? 'légréteg' : 'R', f(er!.retegR[i], 3)];
       }),
       ['', { text: `Rsi + Rse = ${f(er.Rsi)} + ${f(er.Rse)}`, color: SZIN.halk }, '', '', f(er.Rsi + er.Rse, 3)],
-    ], [14, '*', 40, 45, 50], [2, 3, 4]));
+    ], [14, '*', 40, 45, 50], [2, 3, 4]);
+    if (opt.retegrendAbra) {
+      const svg = retegrendSvg(r.retegek.map((x, i) => ({ dCm: x.dCm, R: er!.retegR[i] ?? 0, sraffozas: anyag(x.anyagId)?.sraffozas, legreteg: !!x.legreteg })), er.Rsi, er.Rse, 20, -13, 170, 92, r.szerep === 'padlo' || r.kovetelmenyKod === 'talajjal_erintkezo_fal');
+      blokk.push({ columns: [{ width: '*', stack: [retegTabla] }, { width: 170, svg, margin: [8, 0, 0, 0] }] } as Content);
+    } else blokk.push(retegTabla);
     const min = kn?.ertekelesiSor ? kovetelmeny.szerkezetMinosites(kn.ertekelesiSor, er.U) : null;
     blokk.push(megj([
       { text: `U = 1/ΣR = ${f(er.U, 3)} W/m²K`, bold: true, color: SZIN.tus },
