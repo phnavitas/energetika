@@ -80,7 +80,7 @@ export function EredmenyLepes({ p, e, g, atal, hibak, modosit, rogzit, resz = 'e
           <button class="gomb fo" disabled={pdfFut || !pr.jogosult} title={pr.jogosult ? undefined : ZAR_SZOVEG} onClick={xml}>{pr.jogosult ? '' : '🔒 '}XML előnézet letöltése</button>
           <button class="gomb" disabled={pdfFut || !pr.jogosult} title={pr.jogosult ? undefined : ZAR_SZOVEG} onClick={async () => {
             setXmlHiba(null); setPdfFut(true);
-            try { const b = await jegyzokonyvPdf(p, e!, atal, { helyisegLista }); setXmlHiba(await letolt(`${(p.meta.nev || 'projekt').replace(/[^\p{L}\p{N} _-]/gu, '')}-jegyzokonyv.pdf`, b, 'application/pdf')); }
+            try { const b = await jegyzokonyvPdf(p, e!, atal, { helyisegLista }); setXmlHiba(await letolt(`${(p.meta.nev || 'projekt').replace(/[^\p{L}\p{N} _-]/gu, '')}-energetikai-szamitas.pdf`, b, 'application/pdf')); }
             catch (err) { setXmlHiba(`A jegyzőkönyv nem készült el: ${(err as Error).message}`); }
             finally { setPdfFut(false); }
           }}>{pr.jogosult ? '' : '🔒 '}{pdfFut ? 'Jegyzőkönyv készül…' : 'Számítási jegyzőkönyv (PDF)'}</button>

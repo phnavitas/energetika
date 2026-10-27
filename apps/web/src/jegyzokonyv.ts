@@ -8,6 +8,7 @@ import {
   retegrendSzamitas, nyilaszaroAdatok, nyilaszaroGeometria, FOTO_KATEGORIAK, kovetelmenyNev, szabalyozasErtek, hoszuksegletBemenet,
   SZEREP_NEV, type Atalakitas, type Projekt, chiErvenyes } from './modell';
 import { anyag } from './katalogus';
+import { haviMerlegSvg, savokSvg, uErtekSvg } from './jegyzokonyvAbrak';
 import { MAG_VERZIO } from './tarolo-tipusok';
 import { alternativVizsgalat, ALT_NEV, URLAP } from './alternativ';
 
@@ -102,7 +103,7 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
       {
         width: '*',
         stack: [
-          { text: 'Energetikai számítás – jegyzőkönyv', style: 'cim' },
+          { text: 'Energetikai számítás', style: 'cim' },
           { text: m.nev || 'Névtelen projekt', fontSize: 12, bold: true, margin: [0, 2, 0, 6] },
           {
             columns: [
@@ -241,6 +242,7 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
   if (z) {
     tartalom.push(cim('Transzmissziós hőveszteség elemenként (6.1–6.7 képlet)', 2));
     let sD = 0, sX = 0, sT = 0;
+    const katH = new Map<string, number>();
     // azonos szerkezet, tájolás, U, χ és határ: egy sor (felület és H összegezve)
     const csop = new Map<string, { el: (typeof z.elemek)[number]; db: number; A: number; H: number; Hb: number }>();
     for (const el of z.elemek) {
@@ -271,6 +273,15 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
       else if (hatar && hatar.tipus === 'futetlen_b') bt = hatar.bTel;
       if (hatar && hatar.tipus !== 'kulso') b = f(bt, 2);
       if (el.tipus === 'talaj') { sT += H; b = 'talaj'; } else if (hatar?.tipus === 'kulso') sD += H; else sX += bt * H;
+      {
+        const Hv = H * (el.tipus === 'talaj' ? 1 : bt);
+        const kod = 'kovetelmenyKod' in el ? el.kovetelmenyKod ?? '' : '';
+        const add = (k0: string, v: number) => katH.set(k0, (katH.get(k0) ?? 0) + v);
+        if (el.tipus === 'opak') { const ch = Hv * el.chi / (1 + el.chi); add(/fal/.test(kod) ? 'Falak' : /also|arkad|padlo/.test(kod) ? 'Padló, alsó födém' : /fodem|teto|tető/.test(kod) ? 'Tetők, felső födémek' : 'Egyéb opak', Hv - ch); add('Hőhidak (χ, Ψ)', ch); }
+        else if (el.tipus === 'nyilaszaro') add(/ajto|kapu/.test(kod) ? 'Ajtók, kapuk' : 'Ablakok, üvegezett szerkezetek', Hv);
+        else if (el.tipus === 'talaj') add('Talajjal érintkező szerkezetek', Hv);
+        else add('Hőhidak (χ, Ψ)', Hv);
+      }
       const taj = el.tipus === 'nyilaszaro' ? el.tajolas ?? 'vízsz.' : el.tipus === 'opak' ? el.tajolas ?? '' : '';
       const nev = ('szerkezet' in el && el.szerkezet) || el.nev;
       const tobb = el.tipus === 'nyilaszaro' ? ` · ${db} db` : db > 1 ? ` · ${db} felület` : '';
@@ -281,6 +292,14 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
       [{ text: `HtrD = ${f(sD, 1)} · HtrX = ${f(sX, 1)} · HtrT = ${f(sT, 1)} W/K`, color: SZIN.halk, colSpan: 5 }, '', '', '', '', { text: f(sD + sX + sT, 1), bold: true, alignment: 'right' }],
     ] as TableCell[][], ['*', 55, 55, 50, 38, 48], [1, 2, 3, 4, 5]));
     tartalom.push(megj(`HtrD = Σ A·U·(1+χ) külső levegő felé; HtrX = Σ b·A·U·(1+χ) fűtetlen tér felé (b havonta, itt a téli érték); HtrT a talajjal érintkező szerkezeteké (6.5–6.6), az évi középhőmérséklettel (${f(klima.KULSO_HOMERSEKLET_EVES, 1)} °C) számolva.`));
+    {
+      const Hsz = zr?.havi[0]?.Hszell ?? 0;
+      const KAT = ['Falak', 'Ablakok, üvegezett szerkezetek', 'Ajtók, kapuk', 'Tetők, felső födémek', 'Padló, alsó födém', 'Talajjal érintkező szerkezetek', 'Hőhidak (χ, Ψ)', 'Egyéb opak'];
+      const SZINEK = ['#3E6E8E', '#5B9BC2', '#8FB3C9', '#6D8F5A', '#A3B86C', '#B08B57', '#C2362F', '#9AA5AA'];
+      const sor = KAT.map((n, i) => ({ nev: n, ertek: katH.get(n) ?? 0, szin: SZINEK[i] })).filter((x) => x.ertek > 0.05);
+      if (Hsz > 0) sor.push({ nev: 'Szellőzés (Hszell, fűtési)', ertek: Hsz, szin: '#E3A72F' });
+      tartalom.push({ stack: [{ text: 'Hőveszteség-tényező megoszlása [W/K]', bold: true, fontSize: 8.5, margin: [0, 4, 0, 3] }, { svg: savokSvg(sor, 'W/K', 515, 1) }], unbreakable: true, margin: [0, 0, 0, 6] } as Content);
+    }
   }
 
   tartalom.push(cim('Szerkezetek követelményellenőrzése (1. melléklet)', 2));
@@ -293,6 +312,12 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
     }
     const sorok = [...m.values()].sort((a, b) => (a.s.tipus === 'nyilaszaro' ? 1 : 0) - (b.s.tipus === 'nyilaszaro' ? 1 : 0) || (a.s.szerkezet ?? a.s.nev).localeCompare(b.s.szerkezet ?? b.s.nev, 'hu', { numeric: true }) || ['É', 'ÉK', 'K', 'DK', 'D', 'DNy', 'Ny', 'ÉNy'].indexOf(a.s.tajolas ?? '') - ['É', 'ÉK', 'K', 'DK', 'D', 'DNy', 'Ny', 'ÉNy'].indexOf(b.s.tajolas ?? ''));
     tartalom.push(tabla(['Szerkezet', 'Tájolás', 'Db', 'A [m²]', 'U rétegt.', 'Umax', 'U eredő', 'Minősítés', ''], sorok.map(({ s, A, db }) => [s.szerkezet ?? s.nev, s.tajolas ?? '–', String(db), f(A, 1), f(s.Uelemi, 3), s.Umax !== null ? f(s.Umax, 3) : '–', Math.abs(s.U - s.Uelemi) > 5e-4 ? f(s.U, 3) : '–', s.minosites ? MIN_NEV[s.minosites] : '–', megfelel(s.megfelel)]), ['*', 30, 22, 38, 42, 40, 38, 40, 50], [2, 3, 4, 5, 6]));
+    // ábra: szerkezetenként (típusonként) a legnagyobb rétegtervi U a követelményhez képest
+    const uSor = new Map<string, { nev: string; U: number; Umax: number | null }>();
+    for (const { s: x } of sorok) { const n = x.szerkezet ?? x.nev; const v = uSor.get(n); if (!v || x.Uelemi > v.U) uSor.set(n, { nev: n, U: x.Uelemi, Umax: x.Umax }); }
+    if (uSor.size) {
+      tartalom.push({ stack: [{ text: 'Rétegtervi U a megengedett értékhez képest [W/m²K]', bold: true, fontSize: 8.5, margin: [0, 4, 0, 3] }, { svg: uErtekSvg([...uSor.values()]) }], unbreakable: true, margin: [0, 0, 0, 6] } as Content);
+    }
   }
   tartalom.push(megj('Az elemi követelményt (1. melléklet) a rétegtervi U-ra ellenőrizzük; az eredő U a csatlakozási hőhidakkal (χ) növelt, talajjal érintkező szerkezetnél az egyenértékű érték – a minősítés (176/2008 4. melléklet) ehhez készül.'));
 
@@ -337,10 +362,18 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
         ...sorok,
         [{ text: 'Összesen', bold: true }, '', '', '', '', '', { text: f(sF, 0), bold: true, alignment: 'right' }, { text: f(sE, 0), bold: true, alignment: 'right' }],
       ] as TableCell[][], ['*', 40, 34, 40, 28, 36, 60, 56], [3, 4, 5, 6, 7]));
+      {
+        const TJ = ['É', 'ÉK', 'K', 'DK', 'D', 'DNy', 'Ny', 'ÉNy', 'vízsz.'];
+        const tq = new Map<string, number>();
+        for (const x of egy.values()) { const t = x.el.tajolas ?? 'vízsz.'; tq.set(t, (tq.get(t) ?? 0) + x.QF); }
+        const sorT = TJ.filter((t) => tq.has(t)).map((t) => ({ nev: t === 'vízsz.' ? 'vízszintes' : t, ertek: tq.get(t)!, szin: '#E3A72F' }));
+        if (sorT.length > 1) tartalom.push({ stack: [{ text: 'Szoláris nyereség a fűtési hónapokban, tájolásonként [kWh]', bold: true, fontSize: 8.5, margin: [0, 2, 0, 3] }, { svg: savokSvg(sorT, 'kWh') }], unbreakable: true, margin: [0, 0, 0, 6] } as Content);
+      }
       tartalom.push(megj(`Qsd = Σ Aü · 0,9 · g · F · Gs (Gs a 2. függ. havi sugárzási hozama a tájolás és hajlásszög szerint). Fűtési hónapok: ${HO.filter((_, i) => futesHo[i]).join(', ')}. A hasznosított nyereség (Σ η·Qsd) ${f(zr.QsdHasznositott, 0)} kWh/a.`));
     }
 
     tartalom.push(cim('Havi energiamérleg – fűtés (6.7–6.40 képlet)', 2));
+    tartalom.push({ stack: [{ svg: haviMerlegSvg(zr.havi) }], unbreakable: true, margin: [0, 0, 0, 6] } as Content);
     tartalom.push(tabla(['Hónap', 'θe [°C]', 'Qtr', 'Qszell', 'Qveszt', 'Qsd', 'Qb', 'γ', 'η', 'QF,net'],
       [...zr.havi.map((h, i) => [HO[i]!, f(h.thetaE, 1), f(h.Qtr, 0), f(h.Qszell, 0), f(h.Qveszt, 0), f(h.Qsd, 0), f(h.Qb, 0), f(h.gamma, 2), f(h.eta, 3), f(h.QFnet, 0)]),
         [{ text: 'Év', bold: true }, '', f(zr.havi.reduce((s2, h) => s2 + h.Qtr, 0), 0), f(zr.havi.reduce((s2, h) => s2 + h.Qszell, 0), 0), '', f(zr.havi.reduce((s2, h) => s2 + h.Qsd, 0), 0), f(zr.havi.reduce((s2, h) => s2 + h.Qb, 0), 0), '', '', { text: f(zr.QFnetEv, 0), bold: true, alignment: 'right' }]],
@@ -455,6 +488,12 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
     [...CEL.filter(([c]) => ind.celonkent[c].tot !== 0).map(([c, n]) => [n, f(ind.celonkent[c].nren, 0), f(ind.celonkent[c].ren, 0), f(ind.celonkent[c].tot, 0), f(ind.celonkent[c].CO2, 0)]),
       [{ text: 'Összesen', bold: true }, { text: f(ind.osszes.nren, 0), bold: true, alignment: 'right' }, { text: f(ind.osszes.ren, 0), bold: true, alignment: 'right' }, { text: f(ind.osszes.tot, 0), bold: true, alignment: 'right' }, { text: f(ind.osszes.CO2, 0), bold: true, alignment: 'right' }]],
     ['*', 70, 70, 70, 70], [1, 2, 3, 4]));
+  {
+    const sorC = CEL.filter(([c]) => c !== 'export' && ind.celonkent[c].tot > 0).map(([c, n]) => ({ nev: n, ertek: ind.celonkent[c].tot / g.AN, resz: [[ind.celonkent[c].nren / g.AN, '#3E6E8E'], [ind.celonkent[c].ren / g.AN, '#6FAF5A']] as [number, string][] }));
+    if (sorC.length) {
+      tartalom.push({ stack: [{ text: 'Primerenergia felhasználási célonként [kWh/m²a] – nem megújuló (kék) és megújuló (zöld) rész', bold: true, fontSize: 8.5, margin: [0, 2, 0, 3] }, { svg: savokSvg(sorC, 'kWh/m²a', 515, 1) }], unbreakable: true, margin: [0, 0, 0, 6] } as Content);
+    }
+  }
   tartalom.push(cim('Végenergia energiahordozónként', 2));
   tartalom.push(tabla(['Energiahordozó', 'Végenergia [kWh/a]', 'Fajlagos [kWh/m²a]'], Object.entries(ind.vegenergia).filter(([, Q]) => (Q ?? 0) > 0).map(([eh, Q]) => [ehNev(eh, true), f(Q, 0), f((Q ?? 0) / g.AN, 2)]), ['*', 90, 90], [1, 2]));
   const rf = e.rendszerErtekeles;
@@ -543,7 +582,7 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
 
   const dd: TDocumentDefinitions = {
     pageSize: 'A4', pageMargins: [40, 46, 40, 42],
-    info: { title: `Energetikai számítás – ${m.nev}`, author: p.tanusito.nev || undefined, creator: SZOFTVER, subject: 'Számítási jegyzőkönyv' },
+    info: { title: `Energetikai számítás – ${m.nev}`, author: p.tanusito.nev || undefined, creator: SZOFTVER, subject: 'Energetikai számítás' },
     header: (oldal) => (oldal === 1 ? null : { columns: [{ text: m.nev, color: SZIN.halkabb }, { text: cimSzoveg, color: SZIN.halkabb, alignment: 'right' }], fontSize: 7, margin: [40, 24, 40, 0] }),
     footer: (oldal, osszes) => ({ columns: [{ text: `${SZOFTVER} · ${MODSZER}`, color: SZIN.halkabb }, { text: `${oldal} / ${osszes}`, alignment: 'right', color: SZIN.halkabb, width: 40 }], fontSize: 6.5, margin: [40, 16, 40, 0] }),
     content: tartalom,
