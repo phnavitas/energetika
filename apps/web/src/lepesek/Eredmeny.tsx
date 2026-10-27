@@ -114,6 +114,7 @@ export function EredmenyLepes({ p, e, g, atal, hibak, modosit, rogzit, resz = 'e
             {sor('Összesített energetikai jellemző [kWh/m²a]', sz(ind.fajlagos.EnrenFajl, 2), sz(k.EnrenMax, 2), k.EnrenMegfelel)}
             {e.referenciaEpulet.teljes && <tr><td colSpan={4} class="halkabb">Egyéb rendeltetés: a követelmény az 5. melléklet szerinti referenciaépületből adódik – E<sub>nren,REF</sub> = {sz(e.referenciaEpulet.EnrenFajl, 2)} kWh/m²a, E<sub>CO2,REF</sub> = {sz(e.referenciaEpulet.ECO2Fajl, 2)} kg/m²a; közel nulla: 80%-a (2. melléklet 2.3, 3.3), jelentős felújítás: 100%-a (3. melléklet 2.4).</td></tr>}
             {sor('Fajlagos CO₂-kibocsátás [kg/m²a]', sz(ind.fajlagos.ECO2Fajl, 2), k.ECO2Max !== null ? sz(k.ECO2Max, 2) : '–', k.ECO2Megfelel)}
+            <tr><td>Nettó fűtési energiaigény (tájékoztató)</td><td class="szam">{sz(e.qFnet, 1)} kWh/m²a</td><td class="szam halkabb" colSpan={2}>összesen {sz(e.zonak.reduce((t, z) => t + z.QFnetEv, 0), 0)} kWh/a</td></tr>
             {sor('Nyári hővédelem (mutató)', e.nyariHovedelem.mutato === null ? 'nem kell vizsgálni' : sz(e.nyariHovedelem.mutato, 3), e.nyariHovedelem.mutato === null ? `üvegezés ≤ 8% AN` : '0,300', e.nyariHovedelem.megfelel)}
           </tbody>
         </table>

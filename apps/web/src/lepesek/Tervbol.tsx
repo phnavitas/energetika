@@ -768,6 +768,7 @@ function pecsetAtvesz(q: Projekt, d: PecsetAdat) {
   const epulet = /"([A-Za-zÁÉ0-9]{1,3})"\s*épület/.exec(d.tervNev ?? '')?.[1];
   if (d.projekt) q.meta.nev = `${d.projekt}${d.cim?.telepules ? ` – ${d.cim.telepules}` : ''}${epulet ? `, „${epulet}” épület` : ''}`;
   const megr = d.epitteto ?? d.megrendelo; if (megr) q.meta.megrendelo = megr;
+  if (d.tervezo) { q.meta.tervezo = d.tervezo; q.meta.tervezoNy = d.tervezoNy; }
   if (d.hrsz) q.meta.hrsz = d.hrsz;
   if (d.cim) { q.meta.irsz = d.cim.irsz; q.meta.telepules = d.cim.telepules; q.meta.kozterulet = d.cim.kozterulet; q.meta.kozteruletJelleg = d.cim.jelleg || q.meta.kozteruletJelleg; q.meta.hazszam = d.cim.hazszam; }
   else if (d.helyszin && !q.meta.telepules) q.meta.telepules = d.helyszin;

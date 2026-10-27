@@ -50,6 +50,8 @@ export function EpuletLepes({ p, modosit }: { p: Projekt; modosit: Modosit }) {
         <div class="racs">
           <Mezo cim="Megnevezés" szeles><Szoveg ertek={m.nev} valt={(v) => modosit((q) => { q.meta.nev = v; })} /></Mezo>
           <Mezo cim="Megrendelő"><Szoveg ertek={m.megrendelo} valt={(v) => modosit((q) => { q.meta.megrendelo = v; })} /></Mezo>
+          <Mezo cim="Tervező" sugo="Felelős / vezető tervező a tervlap rajzpecsétjéből"><Szoveg ertek={m.tervezo ?? ''} valt={(v) => modosit((q) => { q.meta.tervezo = v || undefined; })} /></Mezo>
+          <Mezo cim="Tervező névjegyzéki száma"><Szoveg ertek={m.tervezoNy ?? ''} valt={(v) => modosit((q) => { q.meta.tervezoNy = v || undefined; })} /></Mezo>
           <Mezo rovid cim="Irányítószám"><Szoveg ertek={m.irsz} valt={(v) => modosit((q) => { q.meta.irsz = v; })} /></Mezo>
           <Mezo cim="Település"><Szoveg ertek={m.telepules} valt={(v) => modosit((q) => { q.meta.telepules = v; })} /></Mezo>
           <Mezo cim="Közterület"><Szoveg ertek={m.kozterulet} valt={(v) => modosit((q) => { q.meta.kozterulet = v; })} /></Mezo>

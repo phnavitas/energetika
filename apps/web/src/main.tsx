@@ -584,7 +584,7 @@ function App() {
           {e ? (
             <>
               <dl class="mutatok">
-                <dt>Nettó fűtési igény</dt><dd>{sz(e.qFnet, 1)} kWh/m²a</dd>
+                <dt>Nettó fűtési igény</dt><dd>{sz(e.qFnet, 1)} kWh/m²a · {sz(e.zonak.reduce((t, z) => t + z.QFnetEv, 0) / 1000, 1)} MWh/a</dd>
                 <dt>Fajlagos hőveszteség-tényező</dt><dd>{sz(e.qm, 3)} W/m³K</dd>
                 <dt>CO₂-kibocsátás</dt><dd>{sz(e.indikatorok.fajlagos.ECO2Fajl, 1)} kg/m²a</dd>
                 <dt>Hasznos alapterület</dt><dd>{sz(atal.geometria.AN, 1)} m²</dd>

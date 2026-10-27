@@ -186,7 +186,10 @@ export interface VillamosUI {
 export interface Projekt {
   verzio: 2;
   meta: {
-    nev: string; megrendelo: string; irsz: string; telepules: string; kozterulet: string; kozteruletJelleg: string; hazszam: string;
+    nev: string; megrendelo: string;
+    /** Felelős / vezető tervező (a tervlap rajzpecsétjéből) és névjegyzéki száma. */
+    tervezo?: string; tervezoNy?: string;
+    irsz: string; telepules: string; kozterulet: string; kozteruletJelleg: string; hazszam: string;
     hrsz: string; epitesiEv: number;
     /** A nyílászárók cseréjének éve (a kortipikus ablakajánláshoz); üres: az építés éve. */
     nyilaszaroCsereEv?: number;

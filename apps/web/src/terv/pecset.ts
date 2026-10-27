@@ -21,7 +21,9 @@ const CIMKEK: [keyof PecsetAdat, RegExp, 'alatta' | 'mellette'][] = [
   ['epitteto', /^építtető$/, 'alatta'],
   ['megrendelo', /^megrendelő$/, 'alatta'],
   ['iroda', /^(fővállalkozó tervező|generáltervező|tervező iroda|tervező cég)$/, 'alatta'],
-  ['tervezo', /^(felelős építész tervező|vezető tervező|felelős tervező)$/, 'mellette'],
+  ['tervezo', /^(felelős építész tervező|vezető tervező|felelős tervező|vezető építész tervező)$/, 'mellette'],
+  // ennek hiányában a „tervező” / „építész tervező” címke
+  ['tervezo', /^(építész tervező|tervező|építész)$/, 'mellette'],
   ['tervTipus', /^terv ?típusa?$/, 'alatta'],
   ['tervNev', /^(terv neve|rajz neve|tervlap neve|rajz|rajz megnevezése|tervlap)$/, 'alatta'],
   ['datum', /^dátum$/, 'alatta'],
@@ -67,11 +69,11 @@ export function pecsetKinyer(szovegek: Szoveg[]): PecsetAdat {
           if (al) {
             ertek = [al];
             const nyj = vizszintes.find((t) => Math.abs(t.y - al.y) < 1.5 && t.x > al.x && t.x < al.x + al.szel + 40 && /^[A-ZÉ]{1,3}(-[A-Z]{1,2})?\s*\d{2}-\d{3,6}$/.test(t.s.trim()));
-            if (nyj) ki.tervezoNy = nyj.s.trim();
+            if (nyj && !ki.tervezo) ki.tervezoNy = nyj.s.trim();
           }
         }
         const ny = ertek[0] && vizszintes.find((t) => Math.abs(t.x - ertek[0]!.x) < 3 && t.y > ertek[0]!.y + 2 && t.y < ertek[0]!.y + 14);
-        if (ny && /^[A-ZÉ]{1,3}(-[A-Z]{1,2})?\s*\d{2}-\d{3,6}$/.test(ny.s.trim())) ki.tervezoNy = ny.s.trim();
+        if (!ki.tervezo && ny && /^[A-ZÉ]{1,3}(-[A-Z]{1,2})?\s*\d{2}-\d{3,6}$/.test(ny.s.trim())) ki.tervezoNy = ny.s.trim();
       }
       const s = ertek.map((t) => szovegJavit(t.s).trim()).join(' ').replace(/\s+/g, ' ').trim();
       if (s && s !== '-' && !ki[kulcs]) { (ki as Record<string, unknown>)[kulcs] = s; break; }

@@ -86,60 +86,105 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
   const cimlap = fotok.find((x) => x.kategoria === 'CoverPhoto');
 
   // --- Összesítő (1. oldal) ------------------------------------------------------------------
+  // csoportosított, tömör adatblokk: címke-oszlop + érték, csoportfejléccel
+  const csoport = (cim0: string, sorok: [string, string | Content][]): Content => ({
+    stack: [
+      { text: cim0.toUpperCase(), fontSize: 6.5, bold: true, color: SZIN.halkabb, characterSpacing: 0.4, margin: [0, 0, 0, 1] },
+      { table: { widths: [78, '*'], body: sorok.map(([x, y]) => [{ text: x, color: SZIN.halk }, typeof y === 'string' ? { text: y } : y]) }, layout: { defaultBorder: false, paddingTop: () => 0.6, paddingBottom: () => 0.6, paddingLeft: () => 0, paddingRight: () => 4 }, fontSize: 8 },
+    ],
+    margin: [0, 0, 0, 5],
+  } as Content);
+  const tanusitoSor = [p.tanusito.nev, p.tanusito.jogosultsag, p.tanusito.email, p.tanusito.telefon].filter(Boolean).join(' · ') || '–';
+  const tervezoSor = [m.tervezo, m.tervezoNy].filter(Boolean).join(' · ') || '–';
+  const QFnetOssz = e.zonak.reduce((t, zz) => t + zz.QFnetEv, 0);
   tartalom.push({
     columns: [
       {
         width: '*',
         stack: [
           { text: 'Energetikai számítás – jegyzőkönyv', style: 'cim' },
-          { text: m.nev || 'Névtelen projekt', fontSize: 12, bold: true, margin: [0, 2, 0, 8] },
-          adatsor([
-            ['Épület címe', `${cimSzoveg}${m.hrsz ? ` · hrsz. ${m.hrsz}` : ''}`],
-            ['Megrendelő', m.megrendelo || '–'],
-            ['Tanúsító / tervező', [p.tanusito.nev, p.tanusito.jogosultsag, p.tanusito.email, p.tanusito.telefon].filter(Boolean).join(' · ') || '–'],
-            ['Rendeltetés', m.kategoria === 'csaladi_haz' ? 'Lakóépület, családi ház' : 'Lakóépület'],
-            ['Építés éve, szintek', `${m.epitesiEv}${m.nyilaszaroCsereEv ? ` (nyílászárócsere ${m.nyilaszaroCsereEv})` : ''}, ${m.szintek} szint`],
-            ['Követelményszint', m.kovetelmenySzint === 'kozel_nulla' ? 'Közel nulla energiaigényű épület (2. melléklet)' : m.kovetelmenySzint === 'jelentos_felujitas' ? 'Jelentős felújítás (3. melléklet)' : 'Meglévő épület'],
-            ['Dátum', datum],
-          ], 105),
+          { text: m.nev || 'Névtelen projekt', fontSize: 12, bold: true, margin: [0, 2, 0, 6] },
+          {
+            columns: [
+              { width: '*', stack: [
+                csoport('Épület', [
+                  ['Cím', `${cimSzoveg}${m.hrsz ? ` · hrsz. ${m.hrsz}` : ''}`],
+                  ['Rendeltetés', m.rendeltetes === 'egyeb' ? 'Egyéb rendeltetés' : m.kategoria === 'csaladi_haz' ? 'Lakóépület, családi ház' : 'Lakóépület'],
+                  ['Építés éve, szint', `${m.epitesiEv}${m.nyilaszaroCsereEv ? ` (nyílászárócsere ${m.nyilaszaroCsereEv})` : ''} · ${m.szintek} szint`],
+                  ['AN / V / A/V', `${f(g.AN)} m² · ${f(g.V)} m³ · ${f(e.aV, 3)} m²/m³`],
+                ]),
+                csoport('Szereplők', [
+                  ['Megrendelő', m.megrendelo || '–'],
+                  ['Tervező', tervezoSor],
+                  ['Tanúsító', tanusitoSor],
+                ]),
+              ] },
+              { width: 170, stack: [
+                csoport('Számítás', [
+                  ['Követelményszint', m.kovetelmenySzint === 'kozel_nulla' ? 'Közel nulla (2. mell.)' : m.kovetelmenySzint === 'jelentos_felujitas' ? 'Jelentős felújítás (3. mell.)' : 'Meglévő épület'],
+                  ['Dátum', datum],
+                ]),
+              ] },
+            ],
+            columnGap: 10,
+          },
         ],
       },
-      ...(cimlap ? [{ width: 170, image: cimlap.dataUrl, fit: [170, 128] as [number, number], margin: [12, 0, 0, 0] } as Content] : []),
+      ...(cimlap ? [{ width: 150, image: cimlap.dataUrl, fit: [150, 112] as [number, number], margin: [10, 0, 0, 0] } as Content] : []),
     ],
   });
 
   const besor = e.besorolas;
+  // színes osztályskála (SVG), nyíllal jelölve az Ep és a CO₂ szerinti besorolás
+  const skalaSvg = (() => {
+    const sorM = 13, W = 250, fej = 12;
+    const H = fej + OSZTALYOK.length * sorM;
+    const yOf = (o: string) => fej + OSZTALYOK.indexOf(o) * sorM;
+    const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
+    svg += `<text x="160" y="8" font-size="7" font-weight="bold" fill="${SZIN.halkabb}">Ep</text><text x="207" y="8" font-size="7" font-weight="bold" fill="${SZIN.halkabb}">CO2</text>`;
+    OSZTALYOK.forEach((o, i) => {
+      const y = fej + i * sorM, w = 58 + i * 6;
+      svg += `<rect x="0" y="${y}" width="${w}" height="${sorM - 1.5}" fill="${OSZTALY_SZIN[i]}"/><polygon points="${w},${y} ${w + 5},${y + (sorM - 1.5) / 2} ${w},${y + sorM - 1.5}" fill="${OSZTALY_SZIN[i]}"/>`;
+      svg += `<text x="5" y="${y + 8.6}" font-size="8" font-weight="bold" fill="#FFFFFF">${esc(o)}</text>`;
+    });
+    const jel = (x: number, o: string, t: string) => {
+      const y = yOf(o), h = sorM - 1.5, c = y + h / 2;
+      return `<polygon points="${x},${c} ${x + 6},${y} ${x + 44},${y} ${x + 44},${y + h} ${x + 6},${y + h}" fill="${SZIN.tus}"/><text x="${x + 9}" y="${y + 8.6}" font-size="7.5" font-weight="bold" fill="#FFFFFF">${esc(t)}</text>`;
+    };
+    if (OSZTALYOK.includes(besor.energetikai)) svg += jel(152, besor.energetikai, `${besor.energetikai} ${f(besor.energetikaiSzazalek, 0)}%`);
+    if (OSZTALYOK.includes(besor.CO2)) svg += jel(200, besor.CO2, `${besor.CO2} ${f(besor.CO2Szazalek, 0)}%`);
+    return svg + '</svg>';
+  })();
   tartalom.push({
     columns: [
+      { width: 250, svg: skalaSvg } as Content,
       {
-        width: 110,
-        stack: OSZTALYOK.map((o) => ({
-          table: { widths: ['*'], body: [[{ text: o, bold: true, color: '#FFFFFF', fillColor: OSZTALY_SZIN[OSZTALYOK.indexOf(o)], fontSize: o === besor.energetikai ? 10 : 7, margin: [6, o === besor.energetikai ? 1.5 : 0.5, 0, o === besor.energetikai ? 1.5 : 0.5] }]] },
-          layout: 'noBorders', margin: [0, 0, OSZTALYOK.indexOf(o) * 2, 1.2],
-        } as Content)),
-      },
-      {
-        width: '*', margin: [14, 0, 0, 0],
+        width: '*', margin: [12, 0, 0, 0],
         stack: [
-          { text: `${besor.energetikai} – a követelmény ${f(besor.energetikaiSzazalek, 1)}%-a`, fontSize: 13, bold: true, margin: [0, 0, 0, 6] },
-          tabla(['Mutató', 'Számított', 'Követelmény', 'Referencia', ''], [
+          { text: `${besor.energetikai} – a követelmény ${f(besor.energetikaiSzazalek, 1)}%-a`, fontSize: 13, bold: true, margin: [0, 0, 0, 1] },
+          { text: `CO₂ szerint: ${besor.CO2} (${f(besor.CO2Szazalek, 1)}%) · közel nulla követelmény ${e.kovetelmeny.kozelNulla.teljesul ? 'teljesül' : 'nem teljesül'}`, fontSize: 8, color: SZIN.halk, margin: [0, 0, 0, 6] },
+          csoport('Fő mutatók', [
+            ['Ep', `${f(ind.fajlagos.EnrenFajl)} kWh/m²a (≤ ${f(k.EnrenMax)})`],
+            ['CO₂', `${f(ind.fajlagos.ECO2Fajl)} kg/m²a (≤ ${f(k.ECO2Max)})`],
+            ['q', `${f(e.qm, 3)} W/m³K (≤ ${f(k.qmMax, 3)})`],
+          ]),
+          csoport('Nettó fűtési energiaigény', [
+            ['Fajlagos', `${f(e.qFnet, 1)} kWh/m²a`],
+            ['Összes', `${f(QFnetOssz, 0)} kWh/a (${f(QFnetOssz / 1000, 1)} MWh/a)`],
+          ]),
+        ],
+      },
+    ],
+    margin: [0, 6, 0, 6],
+  });
+  tartalom.push(tabla(['Mutató', 'Számított', 'Követelmény', 'Referencia', ''], [
             ['Összesített energetikai jellemző Ep [kWh/m²a]', f(ind.fajlagos.EnrenFajl), f(k.EnrenMax), f(e.referenciaEpulet.teljes ? e.referenciaEpulet.EnrenFajl : kovetelmeny.REFERENCIA_LAKO.EnrenFajl), megfelel(k.EnrenMegfelel)],
             ['Fajlagos CO₂-kibocsátás [kg/m²a]', f(ind.fajlagos.ECO2Fajl), f(k.ECO2Max), f(e.referenciaEpulet.teljes ? e.referenciaEpulet.ECO2Fajl : kovetelmeny.REFERENCIA_LAKO.ECO2Fajl), megfelel(k.ECO2Megfelel)],
             ['Fajlagos hőveszteség-tényező q [W/m³K] (3.4.)', f(e.qm, 3), f(k.qmMax, 3), '–', megfelel(k.qmMegfelel)],
             ['Nyári hővédelmi mutató (3.5.)', e.nyariHovedelem.mutato === null ? 'nem kell' : f(e.nyariHovedelem.mutato, 3), f(kovetelmeny.NYARI_HOVEDELEM.megengedettAtlag, 2), '–', megfelel(e.nyariHovedelem.megfelel)],
             ['Szerkezetek elemi követelménye (2.4.)', `${e.szerkezetek.filter((s) => s.megfelel === false).length} hibás`, '0', '–', megfelel(e.szerkezetek.every((s) => s.megfelel !== false))],
-          ], ['*', 48, 52, 48, 56], [1, 2, 3]),
-          adatsor([
-            ['CO₂ szerinti besorolás', `${besor.CO2} (${f(besor.CO2Szazalek, 1)}%)`],
-            ['AN / V / A/V', `${f(g.AN)} m² / ${f(g.V)} m³ / ${f(e.aV, 3)} m²/m³`],
-            ['Nettó fűtési energiaigény', `${f(e.qFnet, 1)} kWh/m²a`],
-            ['Közel nulla követelmény', e.kovetelmeny.kozelNulla.teljesul ? 'teljesül' : 'nem teljesül'],
-          ], 120),
-        ],
-      },
-    ],
-    margin: [0, 8, 0, 0],
-  });
+          ], ['*', 48, 52, 48, 56], [1, 2, 3]));
 
   // --- Határoló szerkezetek ------------------------------------------------------------------
   tartalom.push(cim('Határoló szerkezetek'));
