@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'preact/hooks';
 import { hoszukseglet as H } from '@mag/index';
 import { Mezo, Szam, Valaszto, sz } from '../ui';
-import { ujId, hoszuksegletBemenet, hszAlapertek, hszUres, HSZ_ALAP, nyilasNapnyereseg, nyilasNapTeljesitmenyJan, SZEREP_NEV, retegrendSzamitas, type Projekt, type Helyiseg, type HelyisegHsz } from '../modell';
+import { ujId, hoszuksegletBemenet, hszAlapertek, hszCsoport, HSZ_CSOPORTOK, hszUres, HSZ_ALAP, nyilasNapnyereseg, nyilasNapTeljesitmenyJan, SZEREP_NEV, retegrendSzamitas, type Projekt, type Helyiseg, type HelyisegHsz } from '../modell';
 
 type Modosit = (fn: (p: Projekt) => void) => void;
 
@@ -56,6 +56,7 @@ export function HoszuksegletLepes({ p, modosit }: { p: Projekt; modosit: Modosit
           <input type="checkbox" checked={!!be.napLevon} onChange={(e) => mb((b) => { b.napLevon = (e.target as HTMLInputElement).checked; })} />
           <span>Szoláris nyereség figyelembevétele: a nyílászárók januári átlagos szoláris teljesítménye (Q<sub>sd,jan</sub> / 744 h) levonódik a hőszükségletből. <span class="halkabb">Az MSZ EN 12831 a méretezési hőszükségletet napnyereség nélkül számítja – csak tájékoztató, a hőtermelőt a levonás nélküli értékre méretezd.</span></span>
         </label>
+        <CsoportHomerseklet p={p} modosit={modosit} />
         {p.gepeszet.szellozes && <p class="halkabb" style="margin-top:8px">Gépi szellőzés hővisszanyeréssel (ηr = {sz(p.gepeszet.szellozes.etaR * 100, 0)}%): a minimális légcserét a befúvás fedezi, (1 − ηr) arányban terhelve.</p>}
       </section>
 
@@ -72,7 +73,7 @@ export function HoszuksegletLepes({ p, modosit }: { p: Projekt; modosit: Modosit
               {futott.map((h) => {
                 const hz = h.hsz ?? hszUres();
                 const r = eredmeny.helyisegek.find((x) => x.id === h.id);
-                const alap = hszAlapertek(h.nev);
+                const alap = hszAlapertek(h.nev, { ...HSZ_ALAP, ...p.hoszukseglet }.csoportTheta);
                 const nyitva = nyitott === h.id;
                 const hossz = hz.kulsoFalak.reduce((s, x) => s + x.hossz, 0);
                 return (
@@ -134,7 +135,7 @@ export function HoszuksegletLepes({ p, modosit }: { p: Projekt; modosit: Modosit
 
 function Reszletek({ h, p, r, mh }: { h: Helyiseg; p: Projekt; r: H.HelyisegHszEredmeny | undefined; mh: (fn: (x: HelyisegHsz, h: Helyiseg) => void) => void }) {
   const hz = h.hsz ?? hszUres();
-  const alap = hszAlapertek(h.nev);
+  const alap = hszAlapertek(h.nev, { ...HSZ_ALAP, ...p.hoszukseglet }.csoportTheta);
   const falak = p.retegrendek.filter((x) => x.szerep === 'fal');
   const tobbiek = p.helyisegek.filter((x) => x.id !== h.id);
   const ablakok = p.feluletek.filter((f) => f.fajta === 'nyilaszaro' && f.helyisegId === h.id);
@@ -183,6 +184,44 @@ function Reszletek({ h, p, r, mh }: { h: Helyiseg; p: Projekt; r: H.HelyisegHszE
         </dl>
       )}
       <p class="halkabb" style="margin-top:6px">{SZEREP_NEV.fal}: U a rétegrendből, a határolásban megadott hőhídtényezővel (χ) növelve. Talaj: az egész padló egyenértékű U-ja (MSZ EN ISO 13370), fg1 = 1,45, fg2 = (θint − θm,e)/(θint − θe).</p>
+    </div>
+  );
+}
+
+/** Belső hőmérséklet helyiségcsoportonként: az átírt értékek az „Újraszámolás” gombra kerülnek a számításba. */
+function CsoportHomerseklet({ p, modosit }: { p: Projekt; modosit: Modosit }) {
+  const ment = { ...HSZ_ALAP, ...p.hoszukseglet }.csoportTheta ?? {};
+  const [vazlat, setVazlat] = useState<Partial<Record<string, number>>>(ment);
+  const [egyediIs, setEgyediIs] = useState(false);
+  const futott = p.helyisegek.filter((h) => h.kategoria !== 'gyengen_kapcsolt');
+  const ertek = (kod: string, def: number, t: Partial<Record<string, number>>) => t[kod] ?? def;
+  const valtozott = HSZ_CSOPORTOK.filter((c) => ertek(c.kod, c.theta, vazlat) !== ertek(c.kod, c.theta, ment)).map((c) => c.kod as string);
+  const egyedi = (kod: string) => futott.filter((h) => hszCsoport(h.nev) === kod && h.hsz?.theta !== undefined).length;
+  const ujraszamol = () => modosit((q) => {
+    const cs: Partial<Record<string, number>> = {};
+    for (const c of HSZ_CSOPORTOK) { const v = vazlat[c.kod]; if (v !== undefined && v !== c.theta) cs[c.kod] = v; }
+    q.hoszukseglet = { ...HSZ_ALAP, ...q.hoszukseglet, csoportTheta: cs };
+    if (egyediIs) for (const h of q.helyisegek) if (h.hsz && valtozott.includes(hszCsoport(h.nev))) delete h.hsz.theta;
+  });
+  return (
+    <div style="margin-top:14px">
+      <h3 style="margin-bottom:6px">Belső hőmérséklet helyiségcsoportonként</h3>
+      <table class="tabla" style="max-width:640px">
+        <thead><tr><th>Helyiségcsoport</th><th class="szam">Helyiség</th><th class="szam">θint</th><th>Egyedi érték</th></tr></thead>
+        <tbody>{HSZ_CSOPORTOK.map((c) => { const db = futott.filter((h) => hszCsoport(h.nev) === c.kod).length; const e = egyedi(c.kod); return (
+          <tr style={db ? '' : 'opacity:.55'}>
+            <td>{c.nev}{ertek(c.kod, c.theta, vazlat) !== c.theta && <small class="halkabb"> (alap {c.theta} °C)</small>}</td>
+            <td class="szam">{db} db</td>
+            <td class="szam" style="width:120px"><Szam cimke={`${c.nev} belső hőmérséklet`} ertek={ertek(c.kod, c.theta, vazlat)} egyseg="°C" valt={(v) => setVazlat({ ...vazlat, [c.kod]: v })} /></td>
+            <td class="halkabb">{e ? `${e} helyiségnél kézzel megadva` : '–'}</td>
+          </tr>
+        ); })}</tbody>
+      </table>
+      <div class="gombsor" style="margin-top:8px;align-items:center;gap:12px">
+        <button class="gomb fo" disabled={!valtozott.length} onClick={ujraszamol}>Újraszámolás{valtozott.length ? ` (${valtozott.length} csoport változott)` : ''}</button>
+        {valtozott.length > 0 && <button class="gomb halk-gomb" onClick={() => setVazlat(ment)}>Elvetés</button>}
+        <label class="jelolo" style="font-size:13px"><input type="checkbox" checked={egyediIs} onChange={(e) => setEgyediIs((e.target as HTMLInputElement).checked)} /> a helyiségenként kézzel megadott értékeket is felülírja</label>
+      </div>
     </div>
   );
 }

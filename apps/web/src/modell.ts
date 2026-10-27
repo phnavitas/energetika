@@ -41,6 +41,8 @@ export interface HoszuksegletBeallitas {
   fRH: number; rhArany?: number;
   /** A passzív szoláris nyereség levonása a hőszükségletből (januári átlagteljesítmény) – az MSZ EN 12831 nem számol vele. */
   napLevon?: boolean;
+  /** Belső méretezési hőmérséklet helyiségcsoportonként (°C) – a helyiségnél kézzel megadott érték felülírja. */
+  csoportTheta?: Partial<Record<string, number>>;
 }
 export const HSZ_ALAP: HoszuksegletBeallitas = { thetaE: -15, n50: 3, vedettseg: 'mersekelt', Gw: 1, fRH: 0 };
 
@@ -712,13 +714,32 @@ export function padloUT(r: Retegrend, f: Felulet, p?: Projekt): number {
 // Helyiségenkénti hőszükséglet
 
 /** Helyiségnév alapján javasolt belső hőmérséklet és minimális légcsere (tervezői alapérték, módosítható). */
-export function hszAlapertek(nev: string): { theta: number; nmin: number; tipus: string } {
+/** Helyiségcsoportok a hőszükséglethez: alapértelmezett belső hőmérséklet (a projektben csoportonként átírható). */
+export const HSZ_CSOPORTOK = [
+  { kod: 'lakoszoba', nev: 'Lakószoba (nappali, szoba, étkező)', theta: 20 },
+  { kod: 'furdo', nev: 'Fürdő, zuhanyzó', theta: 24 },
+  { kod: 'konyha_wc', nev: 'Konyha, WC, mosókonyha', theta: 20 },
+  { kod: 'eloter', nev: 'Előtér, közlekedő, folyosó', theta: 18 },
+  { kod: 'lepcsohaz', nev: 'Lépcsőház', theta: 18 },
+  { kod: 'tarolo', nev: 'Tároló, kamra, gardrób', theta: 18 },
+  { kod: 'egyeb', nev: 'Egyéb helyiség', theta: 20 },
+] as const;
+export type HszCsoport = (typeof HSZ_CSOPORTOK)[number]['kod'];
+export function hszCsoport(nev: string): HszCsoport {
   const n = nev.toLowerCase();
-  if (/fürdő|furdo|zuhany/.test(n)) return { theta: 24, nmin: hoszukseglet.NMIN.konyha_furdo.ertek, tipus: 'fürdő' };
-  if (/nappali|szoba|háló|halo|étkező|etkezo|dolgozó/.test(n)) return { theta: 20, nmin: hoszukseglet.NMIN.lakohelyiseg.ertek, tipus: 'lakóhelyiség' };
-  if (/konyha|wc|mosdó|mosókonyha/.test(n)) return { theta: 20, nmin: hoszukseglet.NMIN.konyha_furdo.ertek, tipus: 'konyha, WC' };
-  if (/közlekedő|kozlekedo|előtér|eloter|folyosó|lépcső|kamra|tároló|gardrób/.test(n)) return { theta: 18, nmin: hoszukseglet.NMIN.lakohelyiseg.ertek, tipus: 'közlekedő, tároló' };
-  return { theta: 20, nmin: hoszukseglet.NMIN.lakohelyiseg.ertek, tipus: 'lakóhelyiség' };
+  if (/fürdő|furdo|zuhany/.test(n)) return 'furdo';
+  if (/nappali|szoba|háló|halo|étkező|etkezo|dolgozó/.test(n)) return 'lakoszoba';
+  if (/konyha|wc|mosdó|mosókonyha/.test(n)) return 'konyha_wc';
+  if (/lépcső|lepcso/.test(n)) return 'lepcsohaz';
+  if (/kamra|tároló|taroló|tarolo|gardrób|gardrob|\btár\.?/.test(n)) return 'tarolo';
+  if (/közlekedő|kozlekedo|közl\.?|előtér|eloter|folyosó|folyoso|szélfogó/.test(n)) return 'eloter';
+  return 'egyeb';
+}
+export function hszAlapertek(nev: string, csoportTheta?: Partial<Record<string, number>>): { theta: number; nmin: number; tipus: string } {
+  const cs = hszCsoport(nev);
+  const def = HSZ_CSOPORTOK.find((x) => x.kod === cs)!;
+  const nmin = cs === 'furdo' || cs === 'konyha_wc' ? hoszukseglet.NMIN.konyha_furdo.ertek : hoszukseglet.NMIN.lakohelyiseg.ertek;
+  return { theta: csoportTheta?.[cs] ?? def.theta, nmin, tipus: def.nev };
 }
 
 export const hszUres = (): HelyisegHsz => ({ kulsoFalak: [], padlas: false, padlo: false, szomszedok: [] });
@@ -751,7 +772,7 @@ export function hoszuksegletBemenet(p: Projekt): { bemenet: hoszukseglet.HszBeme
   const futott = p.helyisegek.filter((h) => h.kategoria !== 'gyengen_kapcsolt');
   const helyisegek = futott.map((h): hoszukseglet.HelyisegHszBemenet => {
     const hz = h.hsz ?? hszUres();
-    const alap = hszAlapertek(h.nev);
+    const alap = hszAlapertek(h.nev, be.csoportTheta);
     const theta = hz.theta ?? alap.theta;
     const elemek: hoszukseglet.HszElem[] = [];
     // nyílászárók a helyiségben
@@ -805,7 +826,7 @@ export function hoszuksegletBemenet(p: Projekt): { bemenet: hoszukseglet.HszBeme
     for (const sz of hz.szomszedok) {
       const m = p.helyisegek.find((x) => x.id === sz.helyisegId);
       if (!m) continue;
-      const tm = m.kategoria === 'gyengen_kapcsolt' ? null : (m.hsz?.theta ?? hszAlapertek(m.nev).theta);
+      const tm = m.kategoria === 'gyengen_kapcsolt' ? null : (m.hsz?.theta ?? hszAlapertek(m.nev, be.csoportTheta).theta);
       if (tm === null) elemek.push({ tipus: 'futetlen', nev: m.nev, A: sz.A, U: sz.U, bu: epuletfizika.B_TENYEZO.futetlen_helyiseg.tel });
       else elemek.push({ tipus: 'szomszed', nev: m.nev, A: sz.A, U: sz.U, thetaSzomszed: tm });
     }
