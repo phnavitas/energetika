@@ -248,13 +248,15 @@ export interface HohidUI {
   eredmeny?: { L2D: number; psiE: number; psiI: number; thetaSiMin: number; fRsi: number; karimak: { nev: string; U: number; lKulso: number; lBelso: number }[] };
 }
 
-export type FotoKategoria = 'CoverPhoto' | 'Facade' | 'CharacteristicOpeningStructure' | 'HeatGeneratorAndHeatStorageSituation' | 'CharacteristicHeatExchanger';
+export type FotoKategoria = 'CoverPhoto' | 'Facade' | 'CharacteristicOpeningStructure' | 'HeatGeneratorAndHeatStorageSituation' | 'CharacteristicHeatExchanger' | 'RenewableSystem';
 export const FOTO_KATEGORIAK: { ertek: FotoKategoria; nev: string }[] = [
   { ertek: 'CoverPhoto', nev: 'Címlapfotó (az épület)' },
   { ertek: 'Facade', nev: 'Homlokzat' },
-  { ertek: 'CharacteristicOpeningStructure', nev: 'Jellemző nyílászáró' },
-  { ertek: 'HeatGeneratorAndHeatStorageSituation', nev: 'Hőtermelő, hőtároló' },
-  { ertek: 'CharacteristicHeatExchanger', nev: 'Jellemző hőleadó' },
+  { ertek: 'CharacteristicOpeningStructure', nev: 'Jellemző ablak' },
+  { ertek: 'HeatGeneratorAndHeatStorageSituation', nev: 'Hőtermelő, hőtároló (beépítési helyzetben)' },
+  { ertek: 'CharacteristicHeatExchanger', nev: 'Jellemző hőleadó és szabályozása' },
+  // az e-tanúsítás XML-ben nincs külön kategóriája – a hőtermelő kategóriával kerül át
+  { ertek: 'RenewableSystem', nev: 'Megújuló energiás rendszer (napelem, napkollektor, hőszivattyú)' },
 ];
 export interface Foto { id: string; kategoria: FotoKategoria; megjegyzes?: string; dataUrl: string; szel: number; mag: number }
 

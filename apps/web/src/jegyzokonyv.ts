@@ -127,49 +127,54 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
   });
   tartalom.push({ canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: SZIN.vonal }], margin: [0, 2, 0, 8] } as Content);
   // címlapfotó: nagy méretben, középen (nem a lap szélén); alatta a számítás eredménye
-  if (cimlap) tartalom.push({ image: cimlap.dataUrl, fit: [400, 230], alignment: 'center', margin: [0, 0, 0, 10] } as Content);
 
   const besor = e.besorolas;
   // színes osztályskála (SVG), nyíllal jelölve az Ep és a CO₂ szerinti besorolás
   const skalaSvg = (() => {
-    const sorM = 13, W = 250, fej = 12;
+    const sorM = 13, W = 228, fej = 12;
     const H = fej + OSZTALYOK.length * sorM;
     const yOf = (o: string) => fej + OSZTALYOK.indexOf(o) * sorM;
     const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
     let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
-    svg += `<text x="160" y="8" font-size="7" font-weight="bold" fill="${SZIN.halkabb}">Ep</text><text x="207" y="8" font-size="7" font-weight="bold" fill="${SZIN.halkabb}">CO2</text>`;
+    svg += `<text x="158" y="8" font-size="6.5" font-weight="bold" fill="${SZIN.halkabb}">Ep</text><text x="194" y="8" font-size="6.5" font-weight="bold" fill="${SZIN.halkabb}">CO2</text>`;
     OSZTALYOK.forEach((o, i) => {
       const y = fej + i * sorM, w = 58 + i * 6;
       svg += `<rect x="0" y="${y}" width="${w}" height="${sorM - 1.5}" fill="${OSZTALY_SZIN[i]}"/><polygon points="${w},${y} ${w + 5},${y + (sorM - 1.5) / 2} ${w},${y + sorM - 1.5}" fill="${OSZTALY_SZIN[i]}"/>`;
       svg += `<text x="5" y="${y + 8.6}" font-size="8" font-weight="bold" fill="#FFFFFF">${esc(o)}</text>`;
     });
     const jel = (x: number, o: string, t: string) => {
-      const y = yOf(o), h = sorM - 1.5, c = y + h / 2;
-      return `<polygon points="${x},${c} ${x + 6},${y} ${x + 44},${y} ${x + 44},${y + h} ${x + 6},${y + h}" fill="${SZIN.tus}"/><text x="${x + 9}" y="${y + 8.6}" font-size="7.5" font-weight="bold" fill="#FFFFFF">${esc(t)}</text>`;
+      // kis nyíl: a sáv magasságánál alacsonyabb, rövid felirattal
+      const y = yOf(o) + 1.5, h = sorM - 4.5, c = y + h / 2;
+      return `<polygon points="${x},${c} ${x + 4.5},${y} ${x + 33},${y} ${x + 33},${y + h} ${x + 4.5},${y + h}" fill="${SZIN.tus}"/><text x="${x + 6.5}" y="${y + 6.4}" font-size="6.2" font-weight="bold" fill="#FFFFFF">${esc(t)}</text>`;
     };
-    if (OSZTALYOK.includes(besor.energetikai)) svg += jel(152, besor.energetikai, `${besor.energetikai} ${f(besor.energetikaiSzazalek, 0)}%`);
-    if (OSZTALYOK.includes(besor.CO2)) svg += jel(200, besor.CO2, `${besor.CO2} ${f(besor.CO2Szazalek, 0)}%`);
+    if (OSZTALYOK.includes(besor.energetikai)) svg += jel(152, besor.energetikai, `${f(besor.energetikaiSzazalek, 0)}%`);
+    if (OSZTALYOK.includes(besor.CO2)) svg += jel(188, besor.CO2, `${f(besor.CO2Szazalek, 0)}%`);
     return svg + '</svg>';
   })();
-  tartalom.push({
+  const eredmenyBlokk: Content[] = [
+    { text: `${besor.energetikai} – a követelmény ${f(besor.energetikaiSzazalek, 1)}%-a`, fontSize: 12.5, bold: true, margin: [0, 4, 0, 1] },
+    { text: `CO₂ szerint: ${besor.CO2} (${f(besor.CO2Szazalek, 1)}%) · közel nulla követelmény ${e.kovetelmeny.kozelNulla.teljesul ? 'teljesül' : 'nem teljesül'}`, fontSize: 8, color: SZIN.halk, margin: [0, 0, 0, 5] },
+    csoport('Fő mutatók', [
+      ['Ep', `${f(ind.fajlagos.EnrenFajl)} kWh/m²a (≤ ${f(k.EnrenMax)})`],
+      ['CO₂', `${f(ind.fajlagos.ECO2Fajl)} kg/m²a (≤ ${f(k.ECO2Max)})`],
+      ['q', `${f(e.qm, 3)} W/m³K (≤ ${f(k.qmMax, 3)})`],
+    ]),
+    csoport('Nettó fűtési energiaigény', [
+      ['Fajlagos', `${f(e.qFnet, 1)} kWh/m²a`],
+      ['Összes', `${f(QFnetOssz, 0)} kWh/a (${f(QFnetOssz / 1000, 1)} MWh/a)`],
+    ]),
+  ];
+  // balra a skála és alatta az eredmény, jobbra a címlapfotó; fotó nélkül az eredmény a skála mellé kerül
+  tartalom.push(cimlap ? {
     columns: [
-      { width: 250, svg: skalaSvg } as Content,
-      {
-        width: '*', margin: [12, 0, 0, 0],
-        stack: [
-          { text: `${besor.energetikai} – a követelmény ${f(besor.energetikaiSzazalek, 1)}%-a`, fontSize: 13, bold: true, margin: [0, 0, 0, 1] },
-          { text: `CO₂ szerint: ${besor.CO2} (${f(besor.CO2Szazalek, 1)}%) · közel nulla követelmény ${e.kovetelmeny.kozelNulla.teljesul ? 'teljesül' : 'nem teljesül'}`, fontSize: 8, color: SZIN.halk, margin: [0, 0, 0, 6] },
-          csoport('Fő mutatók', [
-            ['Ep', `${f(ind.fajlagos.EnrenFajl)} kWh/m²a (≤ ${f(k.EnrenMax)})`],
-            ['CO₂', `${f(ind.fajlagos.ECO2Fajl)} kg/m²a (≤ ${f(k.ECO2Max)})`],
-            ['q', `${f(e.qm, 3)} W/m³K (≤ ${f(k.qmMax, 3)})`],
-          ]),
-          csoport('Nettó fűtési energiaigény', [
-            ['Fajlagos', `${f(e.qFnet, 1)} kWh/m²a`],
-            ['Összes', `${f(QFnetOssz, 0)} kWh/a (${f(QFnetOssz / 1000, 1)} MWh/a)`],
-          ]),
-        ],
-      },
+      { width: 228, stack: [{ svg: skalaSvg } as Content, ...eredmenyBlokk] },
+      { width: '*', stack: [{ image: cimlap.dataUrl, fit: [265, 310], alignment: 'center' } as Content], margin: [14, 2, 0, 0] },
+    ],
+    margin: [0, 6, 0, 6],
+  } : {
+    columns: [
+      { width: 228, svg: skalaSvg } as Content,
+      { width: '*', stack: eredmenyBlokk, margin: [14, 0, 0, 0] },
     ],
     margin: [0, 6, 0, 6],
   });

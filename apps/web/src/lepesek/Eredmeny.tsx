@@ -61,7 +61,7 @@ export function EredmenyLepes({ p, e, g, atal, hibak, modosit, rogzit, resz = 'e
         epitesiEv: p.meta.epitesiEv, vedett: false, szintekSzama: p.meta.szintek, kozforgalmu: false, kozTulajdon: false, onalloRendeltetesiEgyseg: false,
         tanusito: { nev: p.tanusito.nev, cim: p.tanusito.cim ?? { iranyitoszam: '', telepules: '', kozterulet: '', kozteruletJelleg: '', hazszam: '' }, telefon: p.tanusito.telefon, email: p.tanusito.email, jogosultsag: p.tanusito.jogosultsag },
         szoftver: 'ÉKM energetikai számító 0.3 (fejlesztői előnézet)', helysziniSzemle: new Date().toISOString().slice(0, 10),
-        fotok: (p.fotok ?? []).map((f) => ({ kategoria: f.kategoria, jpegBase64: f.dataUrl.slice(f.dataUrl.indexOf(',') + 1) })), jegyzokonyvPdfBase64: pdf, alternativEnergiak: e!.rendszerek.some((r) => r.tetelek.some((t) => t.energiahordozo === 'kornyezeti_ho')) ? ['HeatPump'] : [],
+        fotok: (p.fotok ?? []).map((f) => ({ kategoria: f.kategoria === 'RenewableSystem' ? 'HeatGeneratorAndHeatStorageSituation' : f.kategoria, jpegBase64: f.dataUrl.slice(f.dataUrl.indexOf(',') + 1) })), jegyzokonyvPdfBase64: pdf, alternativEnergiak: e!.rendszerek.some((r) => r.tetelek.some((t) => t.energiahordozo === 'kornyezeti_ho')) ? ['HeatPump'] : [],
       }, { AN: g.AN, V: g.V });
       letolt('tanusitvany-elonezet.xml', x, 'application/xml').then(setXmlHiba);
       setRogzitve(null);

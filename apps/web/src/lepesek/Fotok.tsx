@@ -27,7 +27,7 @@ export function FotokSzakasz({ p, modosit }: { p: Projekt; modosit: Modosit }) {
   const [tolt, setTolt] = useState(false);
   const vanCimlap = fotok.some((f) => f.kategoria === 'CoverPhoto');
 
-  async function hozzaad(lista: FileList | null) {
+  async function hozzaad(lista: FileList | null, kat?: FotoKategoria) {
     if (!lista?.length) return;
     setHiba(''); setTolt(true);
     try {
@@ -37,8 +37,8 @@ export function FotokSzakasz({ p, modosit }: { p: Projekt; modosit: Modosit }) {
         if (!f.type.startsWith('image/')) { setHiba(`„${f.name}” nem kép.`); continue; }
         try {
           const t = await fotoTomorit(f);
-          ujak.push({ id: ujId(), kategoria: elsoCimlap ? 'CoverPhoto' : 'Facade', megjegyzes: f.name.replace(/\.[^.]+$/, ''), ...t });
-          elsoCimlap = false;
+          ujak.push({ id: ujId(), kategoria: kat ?? (elsoCimlap ? 'CoverPhoto' : 'Facade'), megjegyzes: f.name.replace(/\.[^.]+$/, ''), ...t });
+          if (!kat || kat === 'CoverPhoto') elsoCimlap = false;
         } catch { setHiba(`„${f.name}” nem olvasható (HEIC képet előbb JPEG-be kell menteni).`); }
       }
       if (ujak.length) modosit((q) => { (q.fotok ??= []).push(...ujak); });
@@ -52,6 +52,7 @@ export function FotokSzakasz({ p, modosit }: { p: Projekt; modosit: Modosit }) {
     <section class="szakasz">
       <h2>Fotók</h2>
       <p class="halk" style="margin-bottom:12px">A címlapfotó a tanúsítványra és a jegyzőkönyvre kerül; minden fotó bekerül az e-tanúsítás XML-be a kiválasztott kategóriával. A képeket a program {MAX_PX} px-re tömöríti.</p>
+      <FotoCheklista p={p} hozzaad={hozzaad} />
       <label class={`foto-feltolto${tolt ? ' tolt' : ''}`}
         onDragOver={(e) => { e.preventDefault(); }}
         onDrop={(e) => { e.preventDefault(); hozzaad(e.dataTransfer?.files ?? null); }}>
@@ -84,5 +85,48 @@ export function FotokSzakasz({ p, modosit }: { p: Projekt; modosit: Modosit }) {
         <p class="halkabb" style="margin-top:8px">{fotok.length} fotó, összesen {osszKb} kB{!vanCimlap ? ' · nincs címlapfotó kijelölve' : ''}{osszKb > 4000 ? ' · sok fotó lassítja a mentést, érdemes válogatni' : ''}</p>
       </>}
     </section>
+  );
+}
+
+/**
+ * A tanúsítvány kötelező fotódokumentációja – 176/2008. (VI. 30.) Korm. rendelet 6. § (2a): jellegzetes homlokzatok
+ * (egy az összefoglaló lapra), jellemző hőleadó és szabályozása, jellemző ablak, hőtermelő / hőtároló beépítési helyzetben
+ * (egész épületnél, távhő kivételével), megújuló energiás rendszerek (ha vannak).
+ */
+function FotoCheklista({ p, hozzaad }: { p: Projekt; hozzaad: (l: FileList | null, kat?: FotoKategoria) => Promise<void> }) {
+  const fotok = p.fotok ?? [];
+  const db = (k: FotoKategoria[]) => fotok.filter((f) => k.includes(f.kategoria)).length;
+  const gep = JSON.stringify(p.gepeszet);
+  const megujulo = p.gepeszet.napelem.length > 0 || /hoszivattyu":true|napkollektor|kornyezeti_ho|biomassza|napenergia/.test(gep);
+  const tavho = !!p.gepeszet.tavho;
+  const meglevo = p.meta.kovetelmenySzint === 'meglevo';
+  const tetelek: { pont: string; nev: string; kat: FotoKategoria; van: number; kell: boolean; megj?: string }[] = [
+    { pont: 'a)', nev: 'Címlapfotó (az összefoglaló lapra)', kat: 'CoverPhoto', van: db(['CoverPhoto']), kell: true },
+    { pont: 'a)', nev: 'Jellegzetes homlokzatok', kat: 'Facade', van: db(['Facade', 'CoverPhoto']), kell: true, megj: 'minden jellegzetes homlokzatról' },
+    { pont: 'b)', nev: 'Jellemző hőleadó és szabályozása', kat: 'CharacteristicHeatExchanger', van: db(['CharacteristicHeatExchanger']), kell: true },
+    { pont: 'c)', nev: 'Jellemző ablak', kat: 'CharacteristicOpeningStructure', van: db(['CharacteristicOpeningStructure']), kell: true },
+    { pont: 'd)', nev: 'Hőtermelő, hőtároló beépítési helyzetben', kat: 'HeatGeneratorAndHeatStorageSituation', van: db(['HeatGeneratorAndHeatStorageSituation']), kell: !tavho, megj: tavho ? 'távhőnél nem kell' : 'egész épület tanúsításakor' },
+    { pont: 'e)', nev: 'Megújuló energiás rendszerek', kat: 'RenewableSystem', van: db(['RenewableSystem']), kell: megujulo, megj: megujulo ? 'a gépészetben van megújuló rendszer' : 'csak ha van ilyen rendszer' },
+  ];
+  const hiany = tetelek.filter((t) => t.kell && !t.van).length;
+  return (
+    <details class="kartya" open={meglevo || undefined} style="margin-bottom:12px">
+      <summary style="cursor:pointer;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <strong>Kötelező fotódokumentáció</strong>
+        <span class={`jel ${hiany ? 'rossz' : 'jo'}`}>{hiany ? `${hiany} hiányzik` : 'teljes'}</span>
+        <span class="halkabb">176/2008. Korm. rendelet 6. § (2a){meglevo ? ' – meglévő épület tanúsítása' : ''}</span>
+      </summary>
+      <table class="tabla" style="margin-top:8px;max-width:760px">
+        <tbody>{tetelek.map((t) => (
+          <tr style={t.kell ? '' : 'opacity:.6'}>
+            <td style="width:28px">{t.van ? <span class="jel jo">{t.van}</span> : t.kell ? <span class="jel rossz">0</span> : <span class="halkabb">–</span>}</td>
+            <td><span class="halkabb">{t.pont}</span> {t.nev}{t.megj && <small class="halkabb" style="display:block">{t.megj}</small>}</td>
+            <td style="text-align:right;white-space:nowrap">
+              <label class="gomb halk-gomb" style="cursor:pointer">Fotó hozzáadása<input type="file" accept="image/*" multiple capture="environment" style="display:none" onChange={(e) => { const i = e.target as HTMLInputElement; hozzaad(i.files, t.kat).then(() => { i.value = ''; }); }} /></label>
+            </td>
+          </tr>
+        ))}</tbody>
+      </table>
+    </details>
   );
 }
