@@ -350,6 +350,29 @@ export function alaprajzElemez(lap: Lap): AlaprajzEredmeny {
     const k = [...lakasCimkek].sort((a, b) => Math.hypot(a.x - h.x, a.y - h.y) - Math.hypot(b.x - h.x, b.y - h.y))[0]!;
     h.egyseg = k.nev;
   }
+  // elírt egységkód a tervben (pl. az A.25 lakás fürdője „A.19.05”): egyetlen helyiséges egység, amelynek helyisége
+  // egy másik lakás helyiségei között van, és ott épp ez a sorszám hiányzik → a szomszéd lakáshoz soroljuk
+  const mPt = M ? (25.4 / 72) / 1000 * M : null;
+  if (mPt) {
+    const alszam = (h: TervHelyiseg) => h.kod && h.egyseg ? h.kod.replace(/\s/g, '').slice(h.egyseg.length).replace(/^[.\-/]/, '') : undefined;
+    const pecE = helyisegek.filter((h) => h.forras === 'pecset' && h.egyseg);
+    for (const eg of new Set(pecE.map((h) => h.egyseg!))) {
+      const sajat = pecE.filter((h) => h.egyseg === eg);
+      if (sajat.length !== 1) continue;
+      const h = sajat[0]!, sz = alszam(h);
+      if (!sz) continue;
+      const tav = (a: TervHelyiseg) => Math.hypot(a.x - h.x, a.y - h.y) * mPt;
+      const kozeli = pecE.filter((x) => x.egyseg !== eg).sort((a, b) => tav(a) - tav(b));
+      const cel = kozeli[0];
+      if (!cel || tav(cel) > 6) continue;
+      const celHs = pecE.filter((x) => x.egyseg === cel.egyseg);
+      if (celHs.length < 3 || celHs.some((x) => alszam(x) === sz)) continue;
+      // a közeli helyiségek többsége is ehhez az egységhez tartozik
+      if (kozeli.slice(0, 3).filter((x) => x.egyseg === cel.egyseg).length < 2) continue;
+      figy.push(`${h.kod} (${h.nev}): a kód szerint külön egység (${eg}), de a(z) ${cel.egyseg} lakás helyiségei között van, ahonnan épp a(z) ${sz}. sorszám hiányzik – valószínűleg elírás a tervben, a(z) ${cel.egyseg} lakáshoz soroltam.`);
+      h.egyseg = cel.egyseg;
+    }
+  }
   const egysegek = [...new Set(helyisegek.map((h) => h.egyseg).filter((e): e is string => !!e))].sort((a, b) => a.localeCompare(b, 'hu', { numeric: true }));
   const egysegInfo: AlaprajzEredmeny['egysegInfo'] = {};
   for (const eg of egysegek) {
