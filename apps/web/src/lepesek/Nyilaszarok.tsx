@@ -5,7 +5,7 @@ import { useTavoli, KonyvtarbaGomb } from '../fiok';
 import { nyilaszaroKonyvtarba } from '../tarolo';
 import { Mezo, Szam, Szoveg, Valaszto, sz, kov, OsszesTorles } from '../ui';
 import {
-  ujId, nyilaszaroAdatok, nyilaszaroGeometria, psiTablabol, sablonbolNyilaszaro, kovetelmenyNev,
+  ujId, fuggonyfalTipus, nyilaszaroAdatok, nyilaszaroGeometria, psiTablabol, sablonbolNyilaszaro, kovetelmenyNev,
   type Projekt, type NyilaszaroTipus, type NyilaszaroKomponens, type NyilaszaroCsoport, nyilaszaroHibak } from '../modell';
 
 type Modosit = (fn: (p: Projekt) => void) => void;
@@ -16,6 +16,7 @@ const TIPUSOK = [
   { ertek: 'tetosik_ablak', nev: 'Tetősík ablak' },
   { ertek: 'ajto', nev: 'Bejárati vagy fűtetlen tér felé nyíló ajtó' },
   { ertek: 'kapu', nev: 'Kapu' },
+  { ertek: 'fuggonyfal', nev: 'Függönyfal, homlokzati üvegfal' },
 ] as const;
 
 const REDONY_DR: Record<string, number> = { redony: epuletfizika.ARNYEKOLO_TOBBLET_ELLENALLAS[1].dR[0] };
@@ -131,6 +132,7 @@ export function NyilaszarokLepes({ p, modosit }: { p: Projekt; modosit: Modosit 
           <div class="gombsor">
             <button class="gomb" onClick={() => { const id = ujId(); modosit((q) => { (q.nyilaszaroCsoportok ??= []).push({ id, nev: `Csoport ${(q.nyilaszaroCsoportok?.length ?? 0) + 1}` }); }); setKij({ t: 'cs', id }); }}>Új csoport</button>
             <button class="gomb" onClick={() => felvesz(sablonbolNyilaszaro(NS.NYILASZARO_SABLONOK.find((s) => s.kod === 'pvc_3r')!, { id: ujId(), szelesseg: 1.2, magassag: 1.5, kovetelmenyKod: 'ablak_fa_pvc' }))}>Üres (új építésű) ablak</button>
+            <button class="gomb" title="Schüco FW 50+: Uf 1,5 W/m²K, háromrétegű üvegezés Ug 0,6 – átírható" onClick={() => felvesz(fuggonyfalTipus(ujId(), 4, 2.7))}>Függönyfal (Schüco FW 50+)</button>
           </div>
           {tv && tv.konyvtar.nyilaszarok.length > 0 && (
             <Mezo cim="Irodai könyvtárból">
@@ -153,7 +155,7 @@ export function NyilaszarokLepes({ p, modosit }: { p: Projekt; modosit: Modosit 
   );
 }
 
-const ABLAK_KODOK = new Set(['ablak_fa_pvc', 'ablak_fem', 'tetosik_ablak']);
+const ABLAK_KODOK = new Set(['ablak_fa_pvc', 'ablak_fem', 'tetosik_ablak', 'fuggonyfal']);
 /** Üvegezett (ablak, erkélyajtó, tetősík ablak) típus-e – az árnyékoló ezekre értelmes. */
 export const ablakTipusE = (n: NyilaszaroTipus) => ABLAK_KODOK.has(n.kovetelmenyKod ?? '') && (n.gn ?? 0) > 0;
 

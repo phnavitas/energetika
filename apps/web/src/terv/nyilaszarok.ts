@@ -19,7 +19,7 @@ export interface TervNyilas {
   kulso: boolean;
   /** A fal iránya a lapon (a feliratpárból). */
   fal?: 'v' | 'f';
-  fajta: 'ablak' | 'erkelyajto' | 'bejarati_ajto' | 'bejarati_uvegajto' | 'garazskapu' | 'belso_ajto' | 'falfulke';
+  fajta: 'ablak' | 'erkelyajto' | 'bejarati_ajto' | 'bejarati_uvegajto' | 'garazskapu' | 'belso_ajto' | 'falfulke' | 'fuggonyfal';
 }
 
 /** Nyílásméret cm-ben; a „+30” toldás (redőnytok, tokszélesítés) a magasság mellett – a nyílásméret az első szám. */
@@ -271,6 +271,53 @@ export function nyilasokHozzarendel(feliratok: NyilasFelirat[], r: Raszter, neve
     const kapu = kulso && f.pm === null && f.mag >= 1.8 && (garazsban ? f.kapuJelolt || f.szel >= 1.8 : !lako && f.kapuJelolt && f.szel >= 2.2);
     const fajta: TervNyilas['fajta'] = kapu ? 'garazskapu' : !kulso ? 'belso_ajto' : f.pm !== null && f.pm > 0.05 ? 'ablak' : f.pm !== null ? 'erkelyajto' : f.mag >= 1.9 ? (tipusLap || lako ? 'erkelyajto' : 'bejarati_ajto') : 'ablak';
     ki.push({ ...f, helyiseg: p?.h ?? null, irany: p?.irany ?? null, kulso, fajta });
+  }
+  return ki;
+}
+
+/**
+ * Függönyfal / üvegfal (felirat nélküli, széles üvegezett falszakasz) a raszter jelöltjeiből: csak a fűtött helyiség és a
+ * külső tér határán (az egyik oldalon pecsételt helyiség, a másikon külső tér), és ha a sávban nincs méretfeliratos nyílás.
+ * A magasság 0 – átvételkor a belmagasság.
+ */
+export function fuggonyfalak(r: Raszter, feliratos: TervNyilas[], pecsetek: { x: number; y: number }[] = []): TervNyilas[] {
+  const ki: TervNyilas[] = [];
+  const cimke = (x: number, y: number) => {
+    const xi = Math.floor((x - r.x0) * r.mPerPt / r.px), yi = Math.floor((y - r.y0) * r.mPerPt / r.px);
+    return xi < 0 || yi < 0 || xi >= r.w || yi >= r.h ? 1 : r.cimke[yi * r.w + xi]!;
+  };
+  for (const g of r.uvegfalak) {
+    const cx = (g.x0 + g.x1) / 2, cy = (g.y0 + g.y1) / 2;
+    const fel = (g.fuggo ? g.x1 - g.x0 : g.y1 - g.y0) / 2 + 0.35 / r.mPerPt;
+    // két oldal: függőleges elemnél balra / jobbra, vízszintesnél fel / le; a hossz mentén három ponton
+    const oldal = (jel: number) => {
+      const c = [0.25, 0.5, 0.75].map((t) => {
+        const x = g.fuggo ? cx + jel * fel : g.x0 + (g.x1 - g.x0) * t, y = g.fuggo ? g.y0 + (g.y1 - g.y0) * t : cy + jel * fel;
+        return cimke(x, y);
+      });
+      const h = c.filter((v) => v >= 2);
+      if (h.length >= 2) return h.sort((a, b) => c.filter((v) => v === b).length - c.filter((v) => v === a).length)[0]!;
+      if (c.filter((v) => v === 1).length >= 2) return 1;
+      // a raszterben fel nem töltött belső tér (pl. lépcső rajzelemeivel tagolt lépcsőház): a legközelebbi pecsét ezen az oldalon (≤ 6 m)
+      if (c.filter((v) => v === 0).length >= 2) {
+        let leg = -1, d0 = 6 / r.mPerPt;
+        pecsetek.forEach((pp, i) => {
+          const oldalon = g.fuggo ? (pp.x - cx) * jel > 0 : (pp.y - cy) * jel > 0;
+          const d = Math.hypot(pp.x - cx, pp.y - cy);
+          if (oldalon && d < d0) { d0 = d; leg = i; }
+        });
+        if (leg >= 0) return leg + 2;
+      }
+      return -1;
+    };
+    const a = oldal(-1), b = oldal(1);
+    if (!((a >= 2 && b === 1) || (b >= 2 && a === 1))) continue;
+    // méretfeliratos nyílás a sávban → az egy (széles) ablak / ajtó, nem függönyfal
+    const L = g.fuggo ? [g.y0, g.y1] : [g.x0, g.x1];
+    if (feliratos.some((n) => n.kulso && n.helyiseg !== null && (g.fuggo ? Math.abs(n.x - cx) < 1.5 / r.mPerPt && n.y > L[0]! && n.y < L[1]! : Math.abs(n.y - cy) < 1.5 / r.mPerPt && n.x > L[0]! && n.x < L[1]!))) continue;
+    const helyiseg = (a >= 2 ? a : b) - 2;
+    const irany = g.fuggo ? (a === 1 ? 270 : 90) : (a === 1 ? 0 : 180);
+    ki.push({ szel: Math.round(g.hossz * 100) / 100, mag: 0, pm: 0, x: cx, y: cy, helyiseg, irany, kulso: true, fajta: 'fuggonyfal' });
   }
   return ki;
 }

@@ -4,7 +4,7 @@
  */
 import { AJTO_KAPU_SABLONOK } from '../katalogus';
 import type { Projekt, Retegrend, Felulet, NyilaszaroTipus, HelyisegKategoria, Helyiseg } from '../modell';
-import { ujId, sablonbolNyilaszaro, retegrendAutoNev, feluletekOsszevon, SZEREP_ALAP } from '../modell';
+import { ujId, fuggonyfalTipus, sablonbolNyilaszaro, retegrendAutoNev, feluletekOsszevon, SZEREP_ALAP } from '../modell';
 import { nyilaszaroSablon as NS, szerkezetSablon as SS } from '@mag/index';
 import type { Tajolas } from '@mag/tablak/klima';
 import type { TervRetegUI, SzerepBecsles, TervRetegrend } from './metszet';
@@ -22,7 +22,7 @@ export interface AtvettHelyiseg {
 }
 export interface AtvettRetegrend { rr: TervRetegrend; becsles: SzerepBecsles; retegek: TervRetegUI[] }
 export interface AtvettNyilas {
-  fajta: 'ablak' | 'erkelyajto' | 'bejarati_ajto' | 'bejarati_uvegajto' | 'garazskapu';
+  fajta: 'ablak' | 'erkelyajto' | 'bejarati_ajto' | 'bejarati_uvegajto' | 'garazskapu' | 'fuggonyfal';
   szel: number; mag: number; pm: number | null;
   /** Index az `helyisegek` tömbben. */
   helyiseg: number; irany: number;
@@ -58,7 +58,7 @@ export interface TervAtvetel {
 const kerek = (x: number, n = 2) => Math.round(x * 10 ** n) / 10 ** n;
 const sz2 = (x: number) => x.toLocaleString('hu-HU', { maximumFractionDigits: 2 });
 
-const CSOPORT_NEV = { ablak: 'Ablakok', erkelyajto: 'Erkélyajtók', bejarati_ajto: 'Bejárati ajtók', bejarati_uvegajto: 'Bejárati ajtók', garazskapu: 'Garázskapuk' } as const;
+const CSOPORT_NEV = { ablak: 'Ablakok', erkelyajto: 'Erkélyajtók', bejarati_ajto: 'Bejárati ajtók', bejarati_uvegajto: 'Bejárati ajtók', garazskapu: 'Garázskapuk', fuggonyfal: 'Függönyfalak' } as const;
 /** A fajtának megfelelő nyílászáró-csoport (szükség esetén létrehozza). */
 function csoportFajta(p: Projekt, fajta: AtvettNyilas['fajta'], leiras?: string): string {
   const nev = leiras ? `${CSOPORT_NEV[fajta]} – ${leiras.charAt(0).toLowerCase()}${leiras.slice(1)}` : CSOPORT_NEV[fajta];
@@ -73,6 +73,7 @@ function nyilaszaroTipus(p: Projekt, ny: AtvettNyilas): NyilaszaroTipus {
   if (ny.fajta === 'bejarati_ajto') {
     return { id: ujId(), nev: `Bejárati ajtó ${meret}`, kovetelmenyKod: 'ajto', szelesseg: ny.szel, magassag: ny.mag, uwKezi: 1.2, gn: 0, csoportId: csoportFajta(p, 'bejarati_ajto') };
   }
+  if (ny.fajta === 'fuggonyfal') { const t = fuggonyfalTipus(ujId(), ny.szel, ny.mag); t.csoportId = csoportFajta(p, 'fuggonyfal'); return t; }
   if (ny.fajta === 'garazskapu') {
     const k = AJTO_KAPU_SABLONOK.find((x) => x.kod === 'kapu_szekc_42')!;
     return { id: ujId(), nev: `Garázskapu ${meret}`, kovetelmenyKod: 'kapu', szelesseg: ny.szel, magassag: ny.mag, uwKezi: k.U, gn: 0, sablonKod: k.kod, csoportId: csoportFajta(p, 'garazskapu') };
@@ -258,14 +259,16 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
   // nyílászárók: típus méret és fajta szerint, felület helyiség × tájolás × típus szerint darabszámmal
   const tipusok = new Map<string, NyilaszaroTipus>();
   const csoport = new Map<string, { ny: AtvettNyilas; db: number; tipus: NyilaszaroTipus }>();
-  for (const ny of a.nyilasok) {
+  // függönyfal: a magassága a belmagasság (a felirat nélküli üvegfal a szint teljes magasságában fut)
+  const nyilasok = a.nyilasok.map((ny) => (ny.fajta === 'fuggonyfal' && !(ny.mag > 0) ? { ...ny, mag: a.belmagassag } : ny));
+  for (const ny of nyilasok) {
     if (a.helyisegek[ny.helyiseg] && !burok(a.helyisegek[ny.helyiseg]!)) continue;
     const k = `${ny.fajta}|${ny.szel}|${ny.mag}`;
     let t = tipusok.get(k);
     if (!t && !a.csere) {
       // hozzáadáskor a meglévő, azonos méretű és fajtájú típus használható
-      const kk = ny.fajta === 'garazskapu' ? 'kapu' : ny.fajta === 'bejarati_ajto' || ny.fajta === 'bejarati_uvegajto' ? 'ajto' : null;
-      t = p.nyilaszarok.find((x) => Math.abs(x.szelesseg - ny.szel) < 1e-6 && Math.abs(x.magassag - ny.mag) < 1e-6 && (kk ? x.kovetelmenyKod === kk : x.kovetelmenyKod !== 'ajto' && x.kovetelmenyKod !== 'kapu') && (ny.fajta !== 'erkelyajto') === !/^Erkélyajtó/.test(x.nev) && (ny.fajta === 'bejarati_uvegajto') === /üvegezett/.test(x.nev));
+      const kk = ny.fajta === 'garazskapu' ? 'kapu' : ny.fajta === 'fuggonyfal' ? 'fuggonyfal' : ny.fajta === 'bejarati_ajto' || ny.fajta === 'bejarati_uvegajto' ? 'ajto' : null;
+      t = p.nyilaszarok.find((x) => Math.abs(x.szelesseg - ny.szel) < 1e-6 && Math.abs(x.magassag - ny.mag) < 1e-6 && (kk ? x.kovetelmenyKod === kk : x.kovetelmenyKod !== 'ajto' && x.kovetelmenyKod !== 'kapu' && x.kovetelmenyKod !== 'fuggonyfal') && (ny.fajta !== 'erkelyajto') === !/^Erkélyajtó/.test(x.nev) && (ny.fajta === 'bejarati_uvegajto') === /üvegezett/.test(x.nev));
       if (t) tipusok.set(k, t);
     }
     if (!t) { t = nyilaszaroTipus(p, ny); tipusok.set(k, t); p.nyilaszarok.push(t); }

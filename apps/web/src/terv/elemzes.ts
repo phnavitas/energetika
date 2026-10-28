@@ -7,7 +7,7 @@ import { alaprajzElemez, type AlaprajzEredmeny, type TervHelyiseg } from './alap
 import { raszterEpit, type Raszter } from './raszter';
 import { kotaEllenoriz } from './kota';
 import { meretaranyKotabol, automatikusHelyisegek, lakasCsoportok, arnyalatHatarok, type SzurkeKep } from './autohelyiseg';
-import { nyilasFeliratok, nyilasokHozzarendel, falfulkeE, type TervNyilas } from './nyilaszarok';
+import { fuggonyfalak, nyilasFeliratok, nyilasokHozzarendel, falfulkeE, type TervNyilas } from './nyilaszarok';
 import { talajOldal } from './talaj';
 import { retegrendBlokkok, szerepBecsles, retegekEpit, szintekKeres, type TervRetegrend, type SzerepBecsles, type TervRetegUI, type SzintEredmeny } from './metszet';
 import { ujId } from '../modell';
@@ -139,6 +139,8 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
   // falfülke (padlótól induló, sraffozott falszakasz előtti felirat): nem nyílászáró – kimarad az átvételből
   const nyilasok = nyilasokHozzarendel(nyilasFeliratok(lap.szovegek), r, magHelyisegek.map((h) => h.nev), auto)
     .map((n) => (n.fajta !== 'belso_ajto' && falfulkeE(n, r, lap) ? { ...n, fajta: 'falfulke' as const, kulso: false } : n));
+  // felirat nélküli függönyfalak, üvegfalak (széles, üvegezett falszakasz a fűtött helyiség és a külső tér határán)
+  nyilasok.push(...fuggonyfalak(r, nyilasok, magHelyisegek.map((h) => h.mutato ?? h)));
   // lakáson belüli helyiség (előszoba, tároló, kamra, vizes helyiség) mellvéd nélküli ajtaja: a lakás bejárati ajtaja a közös
   // térbe (lépcsőház, folyosó) – akkor is, ha a túloldali tér nincs pecsételve (a rajz szerint „kültér”)
   for (const n of nyilasok) if (n.kulso && n.pm === null && n.fajta === 'bejarati_ajto' && /előszoba|eloszoba|tároló|tarolo|kamra|wc|fürdő|furdo|gardrób|gardrob/i.test(magHelyisegek[n.helyiseg ?? -1]?.nev ?? '')) { n.kulso = false; n.fajta = 'belso_ajto'; }

@@ -55,6 +55,9 @@ export interface Raszter {
   /** Helyiségenként: terület (m²) és határoló falszakaszok. */
   /** Áthidalt nyílások maszkja. */
   nyilas: Uint8Array;
+  /** Felirat nélküli, széles (2,8 m feletti) üvegezett falnyílások – függönyfal, üvegfal: két falvég közti, a fal
+   *  síkjában futó párhuzamos vonalakkal (üvegezés, tok) kitöltött rés. Lapkoordináta (pt), hossz méterben. */
+  uvegfalak: { x0: number; y0: number; x1: number; y1: number; hossz: number; fuggo: boolean }[];
   helyisegek: { A: number; szivarog: boolean; szakaszok: FalSzakasz[] }[];
 }
 
@@ -416,6 +419,84 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
         for (let x = Math.max(0, Math.floor(Math.min(ax, bx))); x <= Math.min(w - 1, Math.ceil(Math.max(ax, bx)) - 1); x++) if (!fal[y * w + x]) nyilas[y * w + x] = 1;
     }
   }
+  // függönyfal / üvegfal: felirat nélküli, a nyílásnál szélesebb (2,8–15 m) elem – legalább két, egymáshoz közeli (≤ 0,12 m)
+  // párhuzamos, tengelyirányú vonal (üvegezés, tok), amelynek mindkét vége falba fut, és közöttük nincs falkitöltés
+  const uvegfalak: Raszter['uvegfalak'] = [];
+  {
+    const szegm: { fuggo: boolean; a: number; b: number; c: number }[] = []; // a..b a hossz mentén, c a keresztirányú helyzet (pt)
+    for (const u of lap.utvonalak) {
+      if (u.muvelet !== 'stroke' || u.bbox[2] < x0 || u.bbox[0] > x1 || u.bbox[3] < y0 || u.bbox[1] > y1) continue;
+      for (const pl of u.pontok) for (let k = 0; k + 3 < pl.length; k += 2) {
+        const ax = pl[k]!, ay = pl[k + 1]!, bx = pl[k + 2]!, by = pl[k + 3]!;
+        const dx = Math.abs(bx - ax), dy = Math.abs(by - ay), L = Math.hypot(dx, dy) * mPerPt;
+        if (L < maxRes * mPerPt || L > 15) continue;
+        if (dy < 0.02 * dx) szegm.push({ fuggo: false, a: Math.min(ax, bx), b: Math.max(ax, bx), c: (ay + by) / 2 });
+        else if (dx < 0.02 * dy) szegm.push({ fuggo: true, a: Math.min(ay, by), b: Math.max(ay, by), c: (ax + bx) / 2 });
+      }
+    }
+    const falE = (h0: number, c: number, fuggo: boolean) => { const [xx, yy] = fuggo ? tr(c, h0) : tr(h0, c); const xi = Math.round(xx), yi = Math.round(yy); return xi >= 0 && yi >= 0 && xi < w && yi < h && !!fal[yi * w + xi]; };
+    // a vég közelében (a végtől kifelé 0,35 m-ig, keresztirányban ±0,3 m-en belül) falkitöltés van
+    const falVeg = (vegpont: number, irany: number, c: number, fuggo: boolean) => {
+      for (let t = -0.05 / mPerPt; t <= 0.35 / mPerPt; t += 0.02 / mPerPt) for (let e = -0.3 / mPerPt; e <= 0.3 / mPerPt; e += 0.05 / mPerPt) if (falE(vegpont + irany * t, c + e, fuggo)) return true;
+      return false;
+    };
+    const hasznalt = new Set<number>();
+    szegm.forEach((S, i) => {
+      if (hasznalt.has(i)) return;
+      const tars = szegm.map((T, j) => ({ T, j })).filter(({ T, j }) => j !== i && T.fuggo === S.fuggo && Math.abs(T.c - S.c) <= 0.12 / mPerPt && Math.abs(T.c - S.c) > 0.004 / mPerPt
+        && Math.min(T.b, S.b) - Math.max(T.a, S.a) >= 0.8 * Math.max(T.b - T.a, S.b - S.a));
+      if (!tars.length) return;
+      const csop = [S, ...tars.map((x) => x.T)];
+      const a0 = Math.max(...csop.map((x) => x.a)), b0 = Math.min(...csop.map((x) => x.b));
+      const c0 = Math.min(...csop.map((x) => x.c)), c1 = Math.max(...csop.map((x) => x.c)), cm = (c0 + c1) / 2;
+      if ((b0 - a0) * mPerPt < maxRes * mPerPt) return;
+      // mindkét vég falba fut, a sáv belseje nem fal
+      if (!falVeg(a0, -1, cm, S.fuggo) || !falVeg(b0, 1, cm, S.fuggo)) return;
+      // a sávban nincs (vastag) fal: a vékony – legfeljebb 0,12 m-es – kitöltés maga az üvegezés / tok
+      let falDb = 0, n = 0;
+      for (let t = a0 + 0.3 / mPerPt; t < b0 - 0.3 / mPerPt; t += 0.1 / mPerPt) {
+        n++; let v = 0;
+        for (let e = -0.3 / mPerPt; e <= 0.3 / mPerPt; e += 0.01 / mPerPt) if (falE(t, cm + e, S.fuggo)) v++;
+        if (v * 0.01 > 0.12) falDb++;
+      }
+      if (!n || falDb / n > 0.15) return;
+      // sraffozott sáv (hőszigetelés, falréteg ferde vonalakkal) nem üvegezés
+      {
+        let ferde = 0; const m0 = 0.02 / mPerPt;
+        const [bx0, by0, bx1, by1] = S.fuggo ? [c0 - m0, a0, c1 + m0, b0] : [a0, c0 - m0, b0, c1 + m0];
+        for (const u of lap.utvonalak) {
+          if (u.bbox[2] < bx0 || u.bbox[0] > bx1 || u.bbox[3] < by0 || u.bbox[1] > by1) continue;
+          for (const pl of u.pontok) for (let k = 0; k + 3 < pl.length; k += 2) {
+            const ax = pl[k]!, ay = pl[k + 1]!, bx = pl[k + 2]!, by = pl[k + 3]!;
+            if (Math.min(ax, bx) < bx0 || Math.max(ax, bx) > bx1 || Math.min(ay, by) < by0 || Math.max(ay, by) > by1) continue;
+            const dx = Math.abs(bx - ax), dy = Math.abs(by - ay), L = Math.hypot(dx, dy);
+            if (L > 0 && dx > 0.3 * L && dy > 0.3 * L) ferde++;
+          }
+        }
+        if (ferde > 3) return;
+      }
+      // a sáv mellett (±0,3 m) falvastagságú kitöltés fut végig (pl. mintázattal rajzolt fal fehér magja) → fal, nem üvegezés
+      {
+        const sav0 = c0 - 0.3 / mPerPt, sav1 = c1 + 0.3 / mPerPt, L = b0 - a0;
+        const falSav = lap.utvonalak.some((u) => {
+          if (u.muvelet === 'stroke' || u.muvelet === 'none') return false;
+          const [ua0, uc0, ua1, uc1] = S.fuggo ? [u.bbox[1], u.bbox[0], u.bbox[3], u.bbox[2]] : u.bbox;
+          const vastag = (uc1 - uc0) * mPerPt;
+          return vastag >= 0.12 && vastag <= maxFal && uc1 > sav0 && uc0 < sav1 && Math.min(ua1, b0) - Math.max(ua0, a0) >= 0.8 * L;
+        });
+        if (falSav) return;
+      }
+      hasznalt.add(i); for (const x of tars) hasznalt.add(x.j);
+      const [ax, ay] = S.fuggo ? [c0, a0] : [a0, c0], [bx, by] = S.fuggo ? [c1, b0] : [b0, c1];
+      if (uvegfalak.some((g) => g.fuggo === S.fuggo && Math.abs((S.fuggo ? g.x0 : g.y0) - c0) < 0.4 / mPerPt && Math.min(S.fuggo ? g.y1 : g.x1, b0) - Math.max(S.fuggo ? g.y0 : g.x0, a0) > 0)) return;
+      uvegfalak.push({ x0: ax, y0: ay, x1: bx, y1: by, hossz: (b0 - a0) * mPerPt, fuggo: S.fuggo });
+      // a sáv lezárása (a helyiség ne folyjon ki rajta)
+      const [px0, py0] = tr(ax, ay), [px1, py1] = tr(bx, by);
+      const pad = Math.max(1, Math.round(0.03 / px));
+      for (let y = Math.max(0, Math.floor(Math.min(py0, py1)) - pad); y <= Math.min(h - 1, Math.ceil(Math.max(py0, py1)) + pad); y++)
+        for (let x = Math.max(0, Math.floor(Math.min(px0, px1)) - pad); x <= Math.min(w - 1, Math.ceil(Math.max(px0, px1)) + pad); x++) if (!fal[y * w + x]) nyilas[y * w + x] = 1;
+    });
+  }
   // falvégi nyílások: a fal vége és egy keresztező fal közti rés (pl. ajtó a sarokban), ha a résben ajtó/ablak rajzeleme van
   const maxVeg = 1.3 / mPerPt;
   for (const q of darabok) {
@@ -583,7 +664,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   }
   return {
     w, h, px, x0, y0, mPerPt, fal, cimke: helyCimke, stilus,
-    nyilas,
+    nyilas, uvegfalak,
     helyisegek: helyisegek.map((H, k) => ({
       A: H.A, szivarog: szivarog[k]!,
       szakaszok: [...H.szak.entries()].map(([k, s]) => { const [ir, t] = k.split('|'); return { irany: Number(ir), tul: t === 'kulso' ? 'kulso' : t === 'ismeretlen' ? 'ismeretlen' : Number(t), hossz: falsikHossz(s.mely, px), nyilasHossz: s.ny.size * px, vastagsag: s.v / s.n, pontok: s.pontok } as FalSzakasz; })

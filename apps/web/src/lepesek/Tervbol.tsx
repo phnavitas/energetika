@@ -20,13 +20,15 @@ const KATEGORIAK: { ertek: HelyisegKategoria; nev: string }[] = [
   { ertek: 'erosen_kapcsolt', nev: 'Fűtetlen, lakótéren belüli' },
   { ertek: 'gyengen_kapcsolt', nev: 'Fűtetlen tér (b tényezővel)' },
 ];
-const FAJTA_NEV = { ablak: 'Ablak', erkelyajto: 'Erkélyajtó', bejarati_ajto: 'Bejárati ajtó', bejarati_uvegajto: 'Bejárati ajtó (üvegezett)', garazskapu: 'Garázskapu', belso_ajto: 'Belső ajtó', falfulke: 'Falfülke (nem nyílászáró)' } as const;
+const FAJTA_NEV = { ablak: 'Ablak', erkelyajto: 'Erkélyajtó', bejarati_ajto: 'Bejárati ajtó', bejarati_uvegajto: 'Bejárati ajtó (üvegezett)', garazskapu: 'Garázskapu', belso_ajto: 'Belső ajtó', falfulke: 'Falfülke (nem nyílászáró)', fuggonyfal: 'Függönyfal, üvegfal' } as const;
 const IRANY_SZIN: Record<number, string> = { 0: '#C2410C', 90: '#2E6DB4', 180: '#15803D', 270: '#A21CAF' };
 const IRANY_NEV: Record<number, string> = { 0: 'lapon fent', 90: 'lapon jobbra', 180: 'lapon lent', 270: 'lapon balra' };
 const norm = (d: number) => ((Math.round(d * 10) / 10) % 360 + 360) % 360;
 
 /** Egy alaprajz kijelölései: átvett egységek, kizárt helyiségek, besorolás-felülírás, kizárt nyílások. */
-interface Kijeloles { egysegek: Set<string>; kizartH: Set<number>; kat: Record<number, HelyisegKategoria>; kizartNy: Set<number>; mindFutott?: boolean }
+interface Kijeloles { egysegek: Set<string>; kizartH: Set<number>; kat: Record<number, HelyisegKategoria>; kizartNy: Set<number>; mindFutott?: boolean;
+  /** Ismeretlen túloldalú falszakaszok, amelyeket a felhasználó külső falnak jelölt („raszterindex|szakaszindex”). */
+  ismKulso?: Set<string> }
 
 /** Alapértelmezett kijelölés a felismerésből (minden egység; a csak jegyzékben szereplő sorok nélkül). */
 function alapKijeloles(al: AlaprajzFeldolgozas): Kijeloles {
@@ -42,7 +44,7 @@ function atvetelReszek(al: AlaprajzFeldolgozas, k: Kijeloles): { helyisegek: Atv
   const valasztott = hs.map((h, i) => egysegben(i) && !h.kulter && !k.kizartH.has(i));
   const kategoria = (i: number): HelyisegKategoria => k.kat[i] ?? (k.mindFutott ? 'kondicionalt' : kategoriaJavaslat(hs[i]!.nev) ?? 'kondicionalt');
   const ri = (i: number) => al.magHelyisegek.indexOf(hs[i]!);
-  const falak = (i: number) => { const x = ri(i); return !al.r || x < 0 ? [] : al.r.helyisegek[x]!.szakaszok.filter((s) => s.tul === 'kulso' && s.hossz >= 0.3); };
+  const falak = (i: number) => { const x = ri(i); return !al.r || x < 0 ? [] : al.r.helyisegek[x]!.szakaszok.filter((s, j) => (s.tul === 'kulso' || (s.tul === 'ismeretlen' && !!k.ismKulso?.has(`${x}|${j}`))) && s.hossz >= 0.3); };
   const kiv = hs.map((h, i) => ({ h, i })).filter(({ i }) => valasztott[i]);
   const index = new Map(kiv.map(({ i }, j) => [i, j]));
   const helyisegek = kiv.map(({ h, i }) => ({
@@ -222,7 +224,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const kategoria = (i: number): HelyisegKategoria => kat[i] ?? (mindFutott ? 'kondicionalt' : kategoriaJavaslat(helyisegek[i]!.nev) ?? 'kondicionalt');
   const falak = (i: number) => {
     const ri = raszterIdx(i); if (!al?.r || ri < 0) return [];
-    return al.r.helyisegek[ri]!.szakaszok.filter((s) => s.tul === 'kulso' && s.hossz >= 0.3);
+    return al.r.helyisegek[ri]!.szakaszok.filter((s, j) => (s.tul === 'kulso' || (s.tul === 'ismeretlen' && !!kj.ismKulso?.has(`${ri}|${j}`))) && s.hossz >= 0.3);
   };
   const nyilasok = (al?.nyilasok ?? []).map((n, k) => ({ n, k })).filter(({ n }) => n.kulso && n.helyiseg !== null && n.irany !== null)
     .map(({ n, k }) => ({ n, k, hi: helyisegek.indexOf(al!.magHelyisegek[n.helyiseg!]!) }))
@@ -233,6 +235,49 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const eszakSz = eszakLap(aIdx, al);
   const kulonE = aIdx in eszakKulon;
   const setEszak = (v: number) => { if (kulonE) setEszakKulon((x) => ({ ...x, [aIdx]: v })); else setEszakKozos(v); };
+  // hőburok-ellenőrzés: ahol a felismerés nem egyértelmű – grafikus jelölés és választási lehetőség
+  type Problema = { tipus: 'nyitott' | 'reszleges' | 'ismeretlen' | 'szomszed'; i: number; szoveg: string; pontok?: [number, number][]; kulcsok?: string[]; szomszed?: number; hossz?: number };
+  const problemak: Problema[] = [];
+  if (al?.r) {
+    helyisegek.forEach((h, i) => {
+      if (!valasztott[i] || kategoria(i) === 'gyengen_kapcsolt') return;
+      const ri = raszterIdx(i); if (ri < 0) return;
+      const R = al.r!.helyisegek[ri]!;
+      if (R.szivarog) problemak.push({ tipus: 'nyitott', i, szoveg: `${h.nev}: a körvonal nem zárt – a fűtött tér határa bizonytalan` });
+      else if (h.A > 3 && R.A < 0.6 * h.A && R.szakaszok.some((sg) => sg.tul === 'kulso')) problemak.push({ tipus: 'reszleges', i, szoveg: `${h.nev}: a rajzból csak ${sz(R.A, 1)} m² ismerhető fel a ${sz(h.A, 1)} m²-ből (pl. lépcső, berendezés tagolja) – a külső falak hiányosak lehetnek` });
+      // helyiségenként összevonva: az ismeretlen túloldalú szakaszok együtt, a ki nem jelölt szomszédok szomszédonként
+      // csak a hőburok szempontjából érdekes ismeretlen szakasz: a túloldalán 1,5 m-en belül külső tér kezdődik (az épület szélén van)
+      const rr = al.r!;
+      const kulsoKozel = (sg: (typeof R.szakaszok)[number]) => {
+        const [dx, dy] = sg.irany === 0 ? [0, -1] : sg.irany === 90 ? [1, 0] : sg.irany === 180 ? [0, 1] : [-1, 0];
+        const minta = sg.pontok.filter((_, q) => q % Math.max(1, Math.floor(sg.pontok.length / 6)) === 0);
+        let db = 0;
+        for (const [x, y] of minta) {
+          for (let t = 0.2; t <= 1.5; t += 0.1) {
+            const xi = Math.floor(((x + dx * t / rr.mPerPt) - rr.x0) * rr.mPerPt / rr.px), yi = Math.floor(((y + dy * t / rr.mPerPt) - rr.y0) * rr.mPerPt / rr.px);
+            if (xi < 0 || yi < 0 || xi >= rr.w || yi >= rr.h) { db++; break; }
+            const c = rr.cimke[yi * rr.w + xi]!;
+            if (c === 1) { db++; break; }
+            if (c >= 2) break;
+          }
+        }
+        return db >= Math.max(1, minta.length / 2);
+      };
+      const ism = R.szakaszok.map((sg, j) => ({ sg, j })).filter(({ sg }) => sg.tul === 'ismeretlen' && sg.hossz >= 0.3 && kulsoKozel(sg));
+      const ismH = ism.reduce((t, { sg }) => t + sg.hossz, 0);
+      if (ismH >= 1) problemak.push({ tipus: 'ismeretlen', i, kulcsok: ism.map(({ j }) => `${ri}|${j}`), pontok: ism.flatMap(({ sg }) => sg.pontok), hossz: ismH, szoveg: `${h.nev}: ${sz(ismH, 2)} m fal, a túloldala nem ismerhető fel (${[...new Set(ism.map(({ sg }) => egtaj(sg.irany, eszakSz)))].join(', ')})` });
+      const szomsz = new Map<number, { h: number; p: [number, number][] }>();
+      for (const sg of R.szakaszok) {
+        if (sg.hossz < 0.3 || typeof sg.tul !== 'number') continue;
+        const mi = helyisegek.indexOf(al.magHelyisegek[sg.tul]!);
+        if (mi < 0 || valasztott[mi] || helyisegek[mi]!.kulter) continue;
+        const x = szomsz.get(mi) ?? { h: 0, p: [] }; x.h += sg.hossz; x.p.push(...sg.pontok); szomsz.set(mi, x);
+      }
+      for (const [mi, x] of szomsz) if (x.h >= 0.5) problemak.push({ tipus: 'szomszed', i, szomszed: mi, pontok: x.p, hossz: x.h, szoveg: `${h.nev}: ${sz(x.h, 2)} m fal a ki nem jelölt „${helyisegek[mi]!.nev}” felé – fűtött vagy fűtetlen tér?` });
+    });
+  }
+  const setIsmKulso = (kulcsok: string[], be: boolean) => kjMod((k) => { const x = new Set(k.ismKulso ?? []); for (const kk of kulcsok) { if (be) x.add(kk); else x.delete(kk); } return { ...k, ismKulso: x }; });
+  const ismBe = (pr: Problema) => !!pr.kulcsok?.length && pr.kulcsok.every((kk) => kj.ismKulso?.has(kk));
 
   // homlokzatonkénti összesítés
   const iranyok = [0, 90, 180, 270].map((ir) => ({
@@ -564,6 +609,10 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
               {helyisegek.map((h, i) => valasztott[i] && falak(i).map((f) => (
                 <path d={f.pontok.map(([x, y]) => `M${(x - 0.45).toFixed(1)} ${(y - 0.45).toFixed(1)}h0.9v0.9h-0.9z`).join('')} fill={IRANY_SZIN[f.irany]} />
               )))}
+              {/* hőburok-problémák: piros – ismeretlen túloldal, sárga – ki nem jelölt szomszéd, piros kör – nyitott / részleges körvonal */}
+              {problemak.map((pr) => pr.pontok ? (
+                <path d={pr.pontok.map(([x, y]) => `M${(x - 1.6).toFixed(1)} ${(y - 1.6).toFixed(1)}h3.2v3.2h-3.2z`).join('')} fill={pr.tipus === 'ismeretlen' ? (ismBe(pr) ? '#16A34A' : '#DC2626') : '#F59E0B'} opacity={0.75}><title>{pr.szoveg}</title></path>
+              ) : (() => { const h = helyisegek[pr.i]!; const pt = h.mutato ?? h; const c = pr.tipus === 'nyitott' ? '#DC2626' : '#F97316'; return <g><circle cx={pt.x} cy={pt.y} r={18} fill={c} fill-opacity={0.15} stroke={c} stroke-width={2.5} stroke-dasharray="5 3" /><text x={pt.x + 16} y={pt.y - 12} font-size={16} font-weight="800" fill={c} font-family="system-ui">!</text><title>{pr.szoveg}</title></g>; })())}
               {helyisegek.map((h, i) => {
                 const pt = h.mutato ?? h; const ki = !valasztott[i];
                 const valt = () => setKizartH((elozo) => { const s = new Set(elozo); if (s.has(i)) s.delete(i); else s.add(i); return s; });
@@ -579,7 +628,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
               {nyilasok.map(({ n, k }) => (
                 <g opacity={kizartNy.has(k) ? 0.3 : 1}>
                   <rect x={n.x - 9} y={n.y - 4} width={18} height={8} rx={1.5} fill={n.fajta === 'ablak' ? '#0EA5E9' : n.fajta === 'erkelyajto' ? '#6366F1' : n.fajta === 'garazskapu' ? '#475569' : '#B45309'} opacity={0.85} />
-                  <text x={n.x} y={n.y + 2.2} font-size={5.5} text-anchor="middle" fill="#fff" font-family="system-ui">{Math.round(n.szel * 100)}×{Math.round(n.mag * 100)}</text>
+                  <text x={n.x} y={n.y + 2.2} font-size={5.5} text-anchor="middle" fill="#fff" font-family="system-ui">{Math.round(n.szel * 100)}×{n.mag > 0 ? Math.round(n.mag * 100) : 'belm.'}</text>
                 </g>
               ))}
               <g transform={`translate(${ejX} ${ejY})`}>
@@ -593,6 +642,28 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             <button class="gomb halk-gomb semleges" onClick={() => setNagyit(!nagyit)}>{nagyit ? 'Teljes lap' : 'Nagyítás az épületre'}</button>
             {[0, 90, 180, 270].map((ir) => <span class="halkabb"><span style={`display:inline-block;width:10px;height:10px;border-radius:2px;background:${IRANY_SZIN[ir]};margin-right:4px`} />{IRANY_NEV[ir]} → {egtaj(ir, eszakSz)}</span>)}
           </div>
+          {problemak.length > 0 && (
+            <details class="kartya" open style="margin-bottom:16px">
+              <summary style="cursor:pointer"><strong>Hőburok-ellenőrzés</strong> <span class="jel figy">{problemak.length} bizonytalan hely</span> <span class="halkabb">– a rajzon jelölve: <span style="color:#DC2626">■</span> ismeretlen túloldal, <span style="color:#F59E0B">■</span> ki nem jelölt szomszéd, <span style="color:#DC2626">◌</span> nyitott / <span style="color:#F97316">◌</span> részlegesen felismert körvonal</span></summary>
+              <table class="tabla" style="margin-top:8px">
+                <tbody>{problemak.map((pr) => (
+                  <tr>
+                    <td style="width:16px"><span style={`color:${pr.tipus === 'szomszed' ? '#F59E0B' : pr.tipus === 'reszleges' ? '#F97316' : ismBe(pr) ? '#16A34A' : '#DC2626'}`}>{pr.pontok ? '■' : '◌'}</span></td>
+                    <td>{pr.szoveg}</td>
+                    <td style="white-space:nowrap;text-align:right">
+                      {pr.tipus === 'ismeretlen' && pr.kulcsok && <label class="jelolo" style="font-size:12px"><input type="checkbox" checked={ismBe(pr)} onChange={(e) => setIsmKulso(pr.kulcsok!, (e.target as HTMLInputElement).checked)} /> külső falként számít</label>}
+                      {pr.tipus === 'szomszed' && pr.szomszed !== undefined && <>
+                        <button class="gomb halk-gomb" onClick={() => { const m = pr.szomszed!; setKizartH((e) => { const x = new Set(e); x.delete(m); return x; }); setKat({ ...kat, [m]: 'kondicionalt' }); }}>fűtött – kijelölöm</button>{' '}
+                        <button class="gomb halk-gomb" onClick={() => { const m = pr.szomszed!; setKizartH((e) => { const x = new Set(e); x.delete(m); return x; }); setKat({ ...kat, [m]: 'gyengen_kapcsolt' }); }}>fűtetlen tér felé</button>
+                      </>}
+                      {(pr.tipus === 'nyitott' || pr.tipus === 'reszleges') && <span class="halkabb" style="font-size:12px">a homlokzati falat a Határolás lépésben ellenőrizd</span>}
+                    </td>
+                  </tr>
+                ))}</tbody>
+              </table>
+              <p class="halkabb" style="margin-top:6px">A fűtetlen tér felé jelölt szomszéd fala b-tényezővel kerül a számításba; a ki nem jelölt szomszéd felé eső fal egyébként kimarad (azonos hőmérsékletűnek veszi).</p>
+            </details>
+          )}
 
           <div class="tabla-gorgeto">
             <table class="tabla">
@@ -695,7 +766,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   <tr style={ki ? 'opacity:.55' : ''}>
                     <td><input type="checkbox" aria-label="Átvétel" checked={!ki} onChange={(e) => { const s = new Set(kizartNy); for (const k of ks) { if ((e.target as HTMLInputElement).checked) s.delete(k); else s.add(k); } setKizartNy(s); }} /></td>
                     <td>{FAJTA_NEV[n.fajta]}</td>
-                    <td class="szam">{Math.round(n.szel * 100)} × {Math.round(n.mag * 100)} cm</td>
+                    <td class="szam">{Math.round(n.szel * 100)} × {n.mag > 0 ? `${Math.round(n.mag * 100)} cm` : 'belmagasság'}</td>
                     <td class="szam">{n.pm === null ? '–' : `${Math.round(n.pm * 100)} cm`}</td>
                     <td>{helyisegek[hi]?.kod} {helyisegek[hi]?.nev}{kategoria(hi) === 'gyengen_kapcsolt' && <small class="halkabb" style="display:block">fűtetlen tér – nem kerül a hőburokba</small>}</td>
                     <td>{egtaj(n.irany!, eszakSz)}</td>
@@ -706,7 +777,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
               </tbody>
               {nyilasok.length > 0 && (() => {
                 const be = nyilasok.filter(({ k }) => !kizartNy.has(k)); const szSz = aIdx >= 0 ? Math.max(1, lapSzintek(aIdx).length) : 1;
-                const A = be.reduce((s, { n }) => s + n.szel * n.mag, 0);
+                const A = be.reduce((s, { n }) => s + n.szel * (n.mag > 0 ? n.mag : bm ?? 2.7), 0);
                 return <tfoot><tr><td colSpan={6}>Átvételre jelölt: {be.length} / {nyilasok.length} db · {sz(A, 2)} m²{szSz > 1 ? ` – ${szSz} szinttel: ${be.length * szSz} db · ${sz(A * szSz, 2)} m²` : ''}</td><td class="szam">{be.length * szSz}</td></tr></tfoot>;
               })()}
             </table>

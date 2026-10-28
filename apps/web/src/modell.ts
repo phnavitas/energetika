@@ -60,7 +60,7 @@ export interface Retegrend {
 }
 
 export interface NyilaszaroTipus {
-  id: string; nev: string; kovetelmenyKod: 'ablak_fa_pvc' | 'ablak_fem' | 'tetosik_ablak' | 'ajto' | 'kapu';
+  id: string; nev: string; kovetelmenyKod: 'ablak_fa_pvc' | 'ablak_fem' | 'tetosik_ablak' | 'ajto' | 'kapu' | 'fuggonyfal';
   szelesseg: number; magassag: number;
   /** Komponensekből (4.16; kapcsolt szárnyaknál 4.17) vagy kézi Uw. */
   komponens?: NyilaszaroKomponens;
@@ -394,6 +394,20 @@ export function nyilaszaroAdatok(n: NyilaszaroTipus) {
 }
 
 /** Nyílászáró-típus kortipikus sablonból (a méret megmarad). */
+/**
+ * Függönyfal (oszlop-fióka rendszerű üvegfal) alapértéke: Schüco FW 50+ – 50 mm-es profilok, Uf 1,5 W/m²K (gyártói adat,
+ * standard hőszigetelésű változat; az .SI változat Uf-je 0,70-ig), háromrétegű üvegezés Ug 0,6, meleg peremű távtartó;
+ * osztás kb. 1,3 m-es oszlop- és 1,5 m-es fiókatávolsággal. Minden érték a Nyílászárók lépésben átírható.
+ */
+export function fuggonyfalTipus(id: string, szel: number, mag: number): NyilaszaroTipus {
+  const komp: NyilaszaroKomponens = {
+    keretMm: 50, osztoMm: 50, oszlop: Math.max(1, Math.round(szel / 1.3)), sor: Math.max(1, Math.round(mag / 1.5)),
+    Ug: 0.6, Uk: 1.5, keretKod: 'fem_eros', tavtarto: 'fejlett', psi: 0,
+  };
+  komp.psi = psiTablabol(komp) ?? 0.08;
+  return { id, nev: `Függönyfal – Schüco FW 50+ ${Math.round(szel * 100)}×${Math.round(mag * 100)}`, kovetelmenyKod: 'fuggonyfal', szelesseg: szel, magassag: mag, komponens: komp, gn: 0.5, sablonKod: 'schuco_fw50' };
+}
+
 export function sablonbolNyilaszaro(s: nyilaszaroSablon.NyilaszaroSablon, alap: Pick<NyilaszaroTipus, 'id' | 'szelesseg' | 'magassag' | 'kovetelmenyKod' | 'arnyekolo'>): NyilaszaroTipus {
   const uveg = epuletfizika.UVEGEZES_TAJEKOZTATO.find((x) => x.kod === s.uveg)!;
   const keret = epuletfizika.KERET_TAJEKOZTATO.find((x) => x.kod === s.keret)!;

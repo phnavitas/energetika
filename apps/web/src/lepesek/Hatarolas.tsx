@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks';
 import { klima } from '@mag/index';
 import { Mezo, Szam, Szoveg, Valaszto, sz, kov, MindJelolo, OsszesTorles } from '../ui';
 import type { EpuletEredmeny } from '@mag/index';
-import { ujId, feluletNettoA, geometria, atlagBelmagassag, padloKerulet, padloPsi, chiErvenyes, azonosFeluletek, feluletekOsszevon, falhosszHelyisegekbol, nyilasNapnyereseg, CHI_VALASZTEK, HATAR_NEV, SZEREP_NEV, type Projekt, type HatarKod, type Felulet, atalakit, feluletHibak } from '../modell';
+import { ujId, fuggonyfalTipus, feluletNettoA, geometria, atlagBelmagassag, padloKerulet, padloPsi, chiErvenyes, azonosFeluletek, feluletekOsszevon, falhosszHelyisegekbol, nyilasNapnyereseg, CHI_VALASZTEK, HATAR_NEV, SZEREP_NEV, type Projekt, type HatarKod, type Felulet, atalakit, feluletHibak } from '../modell';
 import { Fogantyu, huzasProps } from '../huzas';
 import { ARNYEKOLOK } from '../katalogus';
 
@@ -203,6 +203,11 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
           </table>
         </div>
         <button class="gomb" style="margin-top:12px" disabled={!p.nyilaszarok.length} onClick={() => modosit((q) => { q.feluletek.push({ id: ujId(), nev: 'Ablak', fajta: 'nyilaszaro', nyilaszaroId: q.nyilaszarok[0]?.id, hatar: 'kulso', darab: 1, tajolas: 'D', hajlasszog: 90 }); })}>Nyílászáró hozzáadása</button>
+        <button class="gomb" style="margin-top:12px;margin-left:8px" title="Schüco FW 50+ alapértékkel; a típus a Nyílászárók lépésben átírható" onClick={() => modosit((q) => {
+          let t = q.nyilaszarok.find((x) => x.kovetelmenyKod === 'fuggonyfal');
+          if (!t) { t = fuggonyfalTipus(ujId(), 4, atlagBelmagassag(q) || 2.7); q.nyilaszarok.push(t); }
+          q.feluletek.push({ id: ujId(), nev: 'Függönyfal', fajta: 'nyilaszaro', nyilaszaroId: t.id, hatar: 'kulso', darab: 1, tajolas: 'D', hajlasszog: 90 });
+        })}>Függönyfal hozzáadása</button>
         <span style="margin-left:12px"><OsszesTorles db={nyMind.length} mit="nyílászáró-sort" torol={() => modosit((q) => { q.feluletek = q.feluletek.filter((f) => f.fajta !== 'nyilaszaro'); })} /></span>
         {!p.nyilaszarok.length && <span class="halkabb" style="margin-left:8px">Előbb vegyél fel nyílászáró-típust.</span>}
       </section>
