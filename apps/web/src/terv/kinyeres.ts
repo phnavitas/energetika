@@ -3,7 +3,9 @@
  * (pont, bal felső origó, y lefelé). A pdf.js névteret paraméterként kapja, így böngészőben és Node-ban is fut.
  */
 export interface Szoveg { s: string; x: number; y: number; meret: number; szog: number; szel: number }
-export interface Utvonal { pontok: number[][]; zart: boolean[]; muvelet: 'stroke' | 'fill' | 'fillStroke' | 'none'; vastagsag: number; vonalSzin: string; toltoSzin: string; bbox: [number, number, number, number] }
+export interface Utvonal { pontok: number[][]; zart: boolean[]; muvelet: 'stroke' | 'fill' | 'fillStroke' | 'none'; vastagsag: number; vonalSzin: string; toltoSzin: string; bbox: [number, number, number, number];
+  /** Mintázattal (tiling pattern) kitöltött felület. */
+  minta?: boolean }
 export interface Lap { szel: number; mag: number; szovegek: Szoveg[]; utvonalak: Utvonal[] }
 
 type M = [number, number, number, number, number, number];
@@ -34,22 +36,33 @@ export async function lapKinyer(pdfjs: any, page: any): Promise<Lap> {
   const O = pdfjs.OPS;
   const utvonalak: Utvonal[] = [];
   let ctm: M = alap;
-  const verem: { ctm: M; lw: number; vs: string; ts: string }[] = [];
-  let lw = 1, vs = '#000000', ts = '#000000';
+  const verem: { ctm: M; lw: number; vs: string; ts: string; minta: boolean }[] = [];
+  let lw = 1, vs = '#000000', ts = '#000000', minta = false;
   const formVerem: M[] = [];
   for (let i = 0; i < ol.fnArray.length; i++) {
     const fn = ol.fnArray[i], a = ol.argsArray[i];
     switch (fn) {
-      case O.save: verem.push({ ctm, lw, vs, ts }); break;
-      case O.restore: { const s = verem.pop(); if (s) ({ ctm, lw, vs, ts } = s); break; }
+      case O.save: verem.push({ ctm, lw, vs, ts, minta }); break;
+      case O.restore: { const s = verem.pop(); if (s) ({ ctm, lw, vs, ts, minta } = s); break; }
       case O.transform: ctm = szoroz(ctm, a as M); break;
       case O.paintFormXObjectBegin: formVerem.push(ctm); if (a?.[0]) ctm = szoroz(ctm, a[0] as M); break;
       case O.paintFormXObjectEnd: ctm = formVerem.pop() ?? ctm; break;
       case O.setLineWidth: lw = a[0]; break;
       case O.setStrokeRGBColor: case O.setStrokeColor: vs = szin(a); break;
-      case O.setFillRGBColor: case O.setFillColor: ts = szin(a); break;
+      case O.setFillRGBColor: case O.setFillColor: ts = szin(a); minta = false; break;
       case O.setStrokeGray: vs = szin([a[0], a[0], a[0]]); break;
-      case O.setFillGray: ts = szin([a[0], a[0], a[0]]); break;
+      case O.setFillGray: ts = szin([a[0], a[0], a[0]]); minta = false; break;
+      // mintázattal (tiling pattern) kitöltött felület – jellemzően sraffozott falmetszet; a mintázat vonalszíne adja a színt
+      case O.setFillColorN: {
+        if (Array.isArray(a) && a[0] === 'TilingPattern') {
+          const belso = a[2] as { fnArray?: number[]; argsArray?: unknown[] } | undefined;
+          const k = belso?.fnArray?.findIndex((f) => f === O.setStrokeRGBColor || f === O.setStrokeColor || f === O.setFillRGBColor) ?? -1;
+          const c = k >= 0 ? szin(belso!.argsArray![k]) : '#808080';
+          // a mintázat nem egybefüggő kitöltés: a nagyon világos vonalszín is „színes” falmetszetnek számít
+          ts = /^#(f[0-9a-f]){3}$/i.test(c) ? '#d0d0d0' : c; minta = true;
+        } else { ts = szin(a); minta = false; }
+        break;
+      }
       case O.constructPath: {
         const [rajz, [buf]] = a as [number, [ArrayLike<number> | null]];
         if (!buf) break;
@@ -71,7 +84,7 @@ export async function lapKinyer(pdfjs: any, page: any): Promise<Lap> {
         const muvelet = rajz === O.stroke || rajz === O.closeStroke ? 'stroke' : rajz === O.fill || rajz === O.eoFill ? 'fill' : rajz === O.fillStroke || rajz === O.eoFillStroke || rajz === O.closeFillStroke || rajz === O.closeEOFillStroke ? 'fillStroke' : 'none';
         if (muvelet === 'none' || !pontok.length) break;
         const sk = Math.sqrt(Math.abs(ctm[0] * ctm[3] - ctm[1] * ctm[2]));
-        utvonalak.push({ pontok, zart, muvelet, vastagsag: lw * sk, vonalSzin: vs, toltoSzin: ts, bbox: [minx, miny, maxx, maxy] });
+        utvonalak.push({ pontok, zart, muvelet, vastagsag: lw * sk, vonalSzin: vs, toltoSzin: ts, bbox: [minx, miny, maxx, maxy], ...(minta && muvelet !== 'stroke' ? { minta: true } : {}) });
         break;
       }
     }

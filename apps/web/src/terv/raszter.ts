@@ -73,6 +73,8 @@ export function falKitoltes(u: Utvonal, mPerPt: number, maxFal = 0.9): boolean {
   for (const p of u.pontok) { A += poliTerulet(p); K += poliKerulet(p); }
   if (K <= 0 || A <= 0) return false;
   const v = 2 * A / K * mPerPt;
+  // mintázattal kitöltött felület (sraffozott falmetszet, de burkolatminta is lehet): csak vékony, hosszúkás sáv számít falnak
+  if (u.minta) { const hossz = Math.max(u.bbox[2] - u.bbox[0], u.bbox[3] - u.bbox[1]) * mPerPt; return v >= 0.05 && v <= Math.min(maxFal, 0.6) && hossz >= 2.5 * v; }
   if (!feher(u.toltoSzin)) return v <= maxFal && v >= 0.004;
   // fehér kitöltés: a válaszfalak magja gyakran fehér – csak vékony, hosszúkás elem számít falnak
   // (a bútorok – szekrény, pult, kád – 0,5 m-nél mélyebbek vagy rövidek)
