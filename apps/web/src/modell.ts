@@ -157,7 +157,7 @@ export interface NapelemUI {
   /** A legutóbbi PVGIS lekérdezés teljes, igazolásként tárolt eredménye. */
   pvgis?: pvgis.PvgisEredmeny;
 }
-export interface HutesUI extends HutesSablon { id: string; nev: string; szettKod?: string }
+export interface HutesUI extends HutesSablon { id: string; nev: string; szettKod?: string; /** Hűtött alapterület (m²); megadva a lefedés = terület / AN. */ terulet?: number }
 export interface Gepeszet {
   futes: FutesAlrendszerUI[]; hmv: HmvUI; szellozes: SzellozesUI | null; napelem: NapelemUI[]; hutes?: HutesUI[];
   /** Távhőszolgáltató által közzétett súlyozó tényezők (9/2023 ÉKM 8. § (1)); hiányában a 7. melléklet alapértéke. */
@@ -615,7 +615,7 @@ export function atalakit(p: Projekt): Atalakitas {
         ...(p.meta.refHutes ? { hutesSEER: profilok.referenciaSEER(p.meta.refHutes.tipus, p.meta.refHutes.kW) } : {}),
       },
     } : {}),
-    hutes: (gp.hutes ?? []).map(({ id: _i, szettKod: _s, ...h }) => ({ ...structuredClone(h), zona: 'F1' })),
+    hutes: (gp.hutes ?? []).map(({ id: _i, szettKod: _s, terulet, ...h }) => ({ ...structuredClone(h), zona: 'F1', ...(terulet && terulet > 0 && g.AN > 0 ? { lefedes: Math.min(1, terulet / g.AN) } : {}) })),
     napelem: gp.napelem.map((n) => {
       const alap = { nev: n.nev, kWp: n.kWp, tajolas: n.tajolas, hajlasszog: n.hajlasszog };
       if (n.modszer !== 'pvgis') return alap;

@@ -220,7 +220,7 @@ export function GepeszetLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: M
         <p class="halk">Gépi hűtés a 11. fejezet egyszerűsített módszerével: QH,vég = QH,net · cH · εH,szab · εH (11.1), εH = 1/SEER. Hűtési rendszer felvételekor a zóna nettó hűtési igényét (6.8) is számolja a program.{gp.hutes?.length ? ` Nettó hűtési igény: ${sz(QHnet, 0)} kWh/a (${sz(QHnet / (eredmeny?.indikatorok.AN || 1), 1)} kWh/m²a).` : ''}</p>
         <div style="display:flex;flex-direction:column;gap:16px">
           {(gp.hutes ?? []).map((h, i) => (
-            <HutesKartya key={h.id} h={h} tobb={(gp.hutes?.length ?? 0) > 1} r={hutesEredm[i]}
+            <HutesKartya key={h.id} h={h} AN={eredmeny?.indikatorok.AN ?? ANossz} tobb={(gp.hutes?.length ?? 0) > 1} r={hutesEredm[i]}
               m={(fn) => mg((g) => fn(g.hutes![i]!))}
               szett={(kod) => mg((g) => { g.hutes![i] = { ...hutesSzettbol(kod), id: h.id, lefedes: h.lefedes }; })}
               torol={() => mg((g) => { g.hutes!.splice(i, 1); if (g.hutes!.length === 1) delete g.hutes![0]!.lefedes; })} />
@@ -539,14 +539,15 @@ const HUTOGEP_OPC = [
   { ertek: 'passziv_talaj', nev: 'Passzív hűtés talajhőcserélővel (hőszivattyú nélkül)' },
 ];
 
-function HutesKartya({ h, tobb, r, m, szett, torol }: { h: HutesUI; tobb: boolean; r: RendszerEredmeny | undefined; m: (fn: (h: HutesUI) => void) => void; szett: (kod: string) => void; torol: () => void }) {
+function HutesKartya({ h, AN, tobb, r, m, szett, torol }: { h: HutesUI; AN: number; tobb: boolean; r: RendszerEredmeny | undefined; m: (fn: (h: HutesUI) => void) => void; szett: (kod: string) => void; torol: () => void }) {
   const mm = (fn: (h: HutesUI) => void) => m((x) => { fn(x); x.szettKod = undefined; });
   const gepErtek = h.gep.tipus === 'tabla' ? h.gep.kod : h.gep.tipus;
   return (
     <div class="kartya gep-kartya">
       <div class="gep-fej">
         <div style="flex:1;min-width:200px"><Szoveg ertek={h.nev} valt={(v) => m((x) => { x.nev = v; })} /></div>
-        {tobb && <div style="width:160px"><Mezo cim="Lefedés"><Szazalek cimke="Lefedés" ertek={h.lefedes ?? 1} valt={(v) => m((x) => { x.lefedes = Math.min(Math.max(v, 0), 1); })} /></Mezo></div>}
+        <div style="width:170px"><Mezo cim="Hűtött alapterület" sugo={`Üresen: ${tobb ? 'a lefedés szerint' : 'a teljes fűtött alapterület'} (AN ${sz(AN, 1)} m²). Megadva a nettó hűtési igény terület-arányos része számít.`}><Szam cimke="Hűtött alapterület" ertek={h.terulet} egyseg="m²" valt={(v) => m((x) => { if (v > 0) x.terulet = v; else delete x.terulet; })} /></Mezo></div>
+        {tobb && !h.terulet && <div style="width:160px"><Mezo cim="Lefedés"><Szazalek cimke="Lefedés" ertek={h.lefedes ?? 1} valt={(v) => m((x) => { x.lefedes = Math.min(Math.max(v, 0), 1); })} /></Mezo></div>}
         <button class="gomb halk-gomb" onClick={torol}>Eltávolítás</button>
       </div>
       <div class="gep-szett">
