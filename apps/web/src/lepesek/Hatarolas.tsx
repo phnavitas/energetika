@@ -21,6 +21,14 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
   const nyMind = p.feluletek.filter((f) => f.fajta === 'nyilaszaro');
   // nyílászárók szűrése égtáj, szint, épület szerint (ellenőrzéshez)
   const [nySzuro, setNySzuro] = useState({ taj: '', szint: '', epulet: '' });
+  const [ujNy, setUjNy] = useState<{ cs: string; id: string } | null>(null);
+  // a csoport összes darabszámának átírása: a különbség az utolsó sor(ok)nál jelentkezik, soronként legalább 1 db
+  const darabOsszes = (ids: string[], uj: number) => modosit((q) => {
+    const sorok = ids.map((id) => q.feluletek.find((x) => x.id === id)).filter((x): x is Felulet => !!x);
+    let kul = Math.max(uj, sorok.length) - sorok.reduce((a, x) => a + (x.darab ?? 1), 0);
+    if (kul > 0) { const u = sorok[sorok.length - 1]!; u.darab = (u.darab ?? 1) + kul; return; }
+    for (let i = sorok.length - 1; i >= 0 && kul < 0; i--) { const x = sorok[i]!; const le = Math.min((x.darab ?? 1) - 1, -kul); x.darab = (x.darab ?? 1) - le; kul += le; }
+  });
   const nySzint = (f: Felulet) => (f.szintek?.length ? f.szintek : [p.helyisegek.find((h) => h.id === f.helyisegId)?.szint ?? '']);
   const nyEpulet = (f: Felulet) => { const h = p.helyisegek.find((x) => x.id === f.helyisegId); return (h?.egyseg && /^(\S{1,3}) épület/.exec(h.egyseg)?.[1]) ?? (h && /\(([A-ZÁÉ]{1,2})\.[^)]*\)/.exec(h.nev)?.[1]) ?? ''; };
   const ny = nyMind.filter((f) => (!nySzuro.taj || f.tajolas === nySzuro.taj) && (!nySzuro.szint || nySzint(f).includes(nySzuro.szint)) && (!nySzuro.epulet || nyEpulet(f) === nySzuro.epulet));
@@ -159,9 +167,11 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
                       <button class="sor-nyit" aria-expanded={nyitott} title={nyitott ? 'Helyiségek elrejtése' : 'Helyiségek megjelenítése'} onClick={() => setNyNyitva((x) => { const y = new Set(x); if (y.has(k)) y.delete(k); else y.add(k); return y; })}>{nyitott ? '▾' : '▸'}</button>
                       <button class="sor-torol" title={tagok.length > 1 ? `Törlés (mind a ${tagok.length} sor)` : 'Törlés'} aria-label="Törlés" onClick={() => modosit((q) => { q.feluletek = q.feluletek.filter((x) => !ids.has(x.id)); })}>✕</button>
                     </td>
-                    <td style="min-width:150px"><Valaszto cimke="Típus" ertek={f.nyilaszaroId} ures="Válassz…" valt={(v) => fvCs((x) => { x.nyilaszaroId = v; })} opciok={p.nyilaszarok.map((n) => ({ ertek: n.id, nev: n.nev }))} /></td>
+                    <td style="min-width:150px"><NyTipusValaszto p={p} ertek={f.nyilaszaroId} valt={(v) => fvCs((x) => { x.nyilaszaroId = v; })} /></td>
                     <td style="min-width:58px">{tagok.length === 1 && !nySzuro.szint
                       ? <Szam cimke="Darab" ertek={f.darab ?? 1} lepes={1} min={1} valt={(v) => fv(f.id, (x) => { x.darab = Math.max(1, Math.round(v)); })} />
+                      : tagok.every((x) => nyResz(x) === 1)
+                      ? <span title={`Összes darab; változtatáskor a különbség az utolsó helyiségsor(ok)nál jelentkezik (soronként legalább 1 db) – helyiségenként a kibontott sorokban állítható`}><Szam cimke="Darab összesen" ertek={db} lepes={1} min={tagok.length} valt={(v) => darabOsszes([...ids], Math.round(v))} /></span>
                       : <span class="szam" style="display:block;text-align:right" title="A helyiségenkénti darabszám a kibontott sorokban módosítható">{sz(db, Number.isInteger(db) ? 0 : 1)}</span>}</td>
                     <td style="min-width:84px"><Valaszto cimke="Tájolás" ertek={f.tajolas ?? undefined} valt={(v) => fvCs((x) => { x.tajolas = v; })} opciok={TAJOLASOK} /></td>
                     <td style="min-width:124px"><Valaszto cimke="Dőlés" ertek={String(f.hajlasszog ?? 90)} valt={(v) => fvCs((x) => { x.hajlasszog = Number(v) as Felulet['hajlasszog']; })} opciok={HAJLAS} /></td>
@@ -202,7 +212,14 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
             ); })()}
           </table>
         </div>
-        <button class="gomb" style="margin-top:12px" disabled={!p.nyilaszarok.length} onClick={() => modosit((q) => { q.feluletek.push({ id: ujId(), nev: 'Ablak', fajta: 'nyilaszaro', nyilaszaroId: q.nyilaszarok[0]?.id, hatar: 'kulso', darab: 1, tajolas: 'D', hajlasszog: 90 }); })}>Nyílászáró hozzáadása</button>
+        {ujNy ? (
+          <div class="gombsor" style="margin-top:12px;align-items:flex-end">
+            <Mezo cim="Csoport"><Valaszto ertek={ujNy.cs} valt={(v) => setUjNy({ cs: v, id: nyTagok(p, v)[0]?.id ?? '' })} opciok={nyCsoportOpciok(p)} /></Mezo>
+            <Mezo cim="Nyílászáró"><Valaszto ertek={ujNy.id} ures="Válassz…" valt={(v) => setUjNy({ ...ujNy, id: v })} opciok={nyTagok(p, ujNy.cs).map((n) => ({ ertek: n.id, nev: n.nev }))} /></Mezo>
+            <button class="gomb fo" disabled={!ujNy.id} onClick={() => { const n = p.nyilaszarok.find((x) => x.id === ujNy.id); modosit((q) => { q.feluletek.push({ id: ujId(), nev: n?.nev ?? 'Ablak', fajta: 'nyilaszaro', nyilaszaroId: ujNy.id, hatar: 'kulso', darab: 1, tajolas: 'D', hajlasszog: 90 }); }); setUjNy(null); }}>Hozzáad</button>
+            <button class="gomb halk-gomb semleges" onClick={() => setUjNy(null)}>Mégse</button>
+          </div>
+        ) : <button class="gomb" style="margin-top:12px" disabled={!p.nyilaszarok.length} onClick={() => { const c = nyCsoportOpciok(p)[0]!.ertek; setUjNy({ cs: c, id: nyTagok(p, c)[0]?.id ?? '' }); }}>Nyílászáró hozzáadása</button>}
         <button class="gomb" style="margin-top:12px;margin-left:8px" title="Schüco FW 50+ alapértékkel; a típus a Nyílászárók lépésben átírható" onClick={() => modosit((q) => {
           let t = q.nyilaszarok.find((x) => x.kovetelmenyKod === 'fuggonyfal');
           if (!t) { t = fuggonyfalTipus(ujId(), 4, atlagBelmagassag(q) || 2.7); q.nyilaszarok.push(t); }
@@ -318,5 +335,30 @@ function Osszesites({ p, modosit }: { p: Projekt; modosit: Modosit }) {
       )}
       {kotetlen.length > 0 && <div class="figyelmeztetes" style="margin-top:10px">{kotetlen.length} nyílászáró-felület nincs falhoz rendelve, így egyik falból sem vonódik le: {kotetlen.map((f) => f.nev).join(', ')}. A „Falban” oszlopban rendeld a megfelelő falhoz.</div>}
     </section>
+  );
+}
+
+/** Nyílászáró-csoportok a választóhoz („Csoport nélkül” a végén, ha van ilyen típus). */
+function nyCsoportOpciok(p: Projekt): { ertek: string; nev: string }[] {
+  const cs = (p.nyilaszaroCsoportok ?? []).filter((c) => p.nyilaszarok.some((n) => n.csoportId === c.id)).map((c) => ({ ertek: c.id, nev: c.nev }));
+  return nyTagok(p, '').length || !cs.length ? [...cs, { ertek: '', nev: 'Csoport nélkül' }] : cs;
+}
+function nyTagok(p: Projekt, cs: string) {
+  const ids = new Set((p.nyilaszaroCsoportok ?? []).map((c) => c.id));
+  return p.nyilaszarok.filter((n) => (cs ? n.csoportId === cs : !n.csoportId || !ids.has(n.csoportId)));
+}
+
+/** Típusválasztó csoportonként tagolva. */
+function NyTipusValaszto({ p, ertek, valt }: { p: Projekt; ertek: string | undefined; valt: (v: string) => void }) {
+  const cs = nyCsoportOpciok(p);
+  return (
+    <select aria-label="Típus" onChange={(e) => valt((e.target as HTMLSelectElement).value)}>
+      <option value="" selected={!ertek}>Válassz…</option>
+      {cs.map((c) => (
+        <optgroup label={c.nev}>
+          {nyTagok(p, c.ertek).map((n) => <option value={n.id} selected={n.id === ertek}>{n.nev}</option>)}
+        </optgroup>
+      ))}
+    </select>
   );
 }

@@ -130,7 +130,10 @@ export function NyilaszarokLepes({ p, modosit }: { p: Projekt; modosit: Modosit 
           </div>
           <div><OsszesTorles db={p.nyilaszarok.length} mit="nyílászáró-típust" megjegyzes="A határolás nyílászáró-sorai is törlődnek." torol={() => { modosit((q) => { q.nyilaszarok = []; q.nyilaszaroCsoportok = []; q.feluletek = q.feluletek.filter((f) => f.fajta !== 'nyilaszaro'); }); setKij(null); }} /></div>
           <div class="gombsor">
-            <button class="gomb" onClick={() => { const id = ujId(); modosit((q) => { (q.nyilaszaroCsoportok ??= []).push({ id, nev: `Csoport ${(q.nyilaszaroCsoportok?.length ?? 0) + 1}` }); }); setKij({ t: 'cs', id }); }}>Új csoport</button>
+            <button class="gomb" title="Egy alap (új építésű, 120×150-es) ablaktípussal jön létre, így a közös jellemzők azonnal állíthatók" onClick={() => { const id = ujId(); modosit((q) => {
+              (q.nyilaszaroCsoportok ??= []).push({ id, nev: `Csoport ${(q.nyilaszaroCsoportok?.length ?? 0) + 1}` });
+              q.nyilaszarok.push({ ...sablonbolNyilaszaro(NS.NYILASZARO_SABLONOK.find((s) => s.kod === 'pvc_3r')!, { id: ujId(), szelesseg: 1.2, magassag: 1.5, kovetelmenyKod: 'ablak_fa_pvc' }), nev: 'Ablak 120×150', csoportId: id });
+            }); setKij({ t: 'cs', id }); }}>Új csoport</button>
             <button class="gomb" onClick={() => felvesz(sablonbolNyilaszaro(NS.NYILASZARO_SABLONOK.find((s) => s.kod === 'pvc_3r')!, { id: ujId(), szelesseg: 1.2, magassag: 1.5, kovetelmenyKod: 'ablak_fa_pvc' }))}>Üres (új építésű) ablak</button>
             <button class="gomb" title="Schüco FW 50+: Uf 1,5 W/m²K, háromrétegű üvegezés Ug 0,6 – átírható" onClick={() => felvesz(fuggonyfalTipus(ujId(), 4, 2.7))}>Függönyfal (Schüco FW 50+)</button>
           </div>
