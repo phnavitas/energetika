@@ -16,19 +16,23 @@ export function Szoveg(p: { ertek: string; valt: (v: string) => void; hely?: str
 }
 
 /** Tizedesvesszős számmező: gépelés közben a beírt szöveget tartja, elhagyáskor magyar formára alakít. */
-export function Szam(p: { ertek: number | undefined; valt: (v: number) => void; egyseg?: string; lepes?: number; min?: number; cimke?: string }) {
+export function Szam(p: { ertek: number | undefined; valt: (v: number) => void; egyseg?: string; lepes?: number; min?: number; cimke?: string; /** csak kilépéskor / Enterre ír vissza (pl. származtatott összeg) */ kilepeskor?: boolean }) {
   const [szerk, setSzerk] = useState<string | null>(null);
   const megj = p.ertek === undefined || Number.isNaN(p.ertek) ? '' : String(Number(p.ertek.toFixed(6))).replace('.', ',');
+  const ertelmez = (t: string) => parseFloat(t.replace(/\s/g, '').replace(',', '.'));
+  const vegleges = (t: string) => { const v = ertelmez(t); if (!Number.isNaN(v) && t !== megj) p.valt(v); };
   const input = (
     <input
       type="text" inputMode="decimal" aria-label={p.cimke} class="szammezo"
       value={szerk ?? megj}
       onFocus={() => setSzerk(megj)}
-      onBlur={() => setSzerk(null)}
+      onBlur={(e) => { if (p.kilepeskor) vegleges((e.target as HTMLInputElement).value); setSzerk(null); }}
+      onKeyDown={(e) => { if (p.kilepeskor && e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
       onInput={(e) => {
         const t = (e.target as HTMLInputElement).value;
         setSzerk(t);
-        const v = parseFloat(t.replace(/\s/g, '').replace(',', '.'));
+        if (p.kilepeskor) return;
+        const v = ertelmez(t);
         if (!Number.isNaN(v) && (p.min === undefined || v >= p.min)) p.valt(v);
       }}
     />

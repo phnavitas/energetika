@@ -39,10 +39,11 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
   // azonos típusú és elhelyezésű (tájolás, dőlés, fal, árnyékolás) nyílászárók egy sorban, darabszám-összeggel;
   // a kibontott sorokban helyiségenként
   const [nyNyitva, setNyNyitva] = useState<Set<string>>(new Set());
+  const [nyJelzes, setNyJelzes] = useState<{ k: string; uzenet: string; hiba?: boolean } | null>(null);
+  const nyKulcs = (f: Felulet) => { const n = p.nyilaszarok.find((x) => x.id === f.nyilaszaroId); return [n ? `${n.szelesseg}|${n.magassag}` : '', f.nyilaszaroId ?? '', f.tajolas ?? '', f.hajlasszog ?? 90, f.szuloId ?? '', f.arnyekolas ?? 1].join('#'); };
   const nyCsoportok: { k: string; tagok: Felulet[] }[] = [];
   for (const f of ny) {
-    const n = p.nyilaszarok.find((x) => x.id === f.nyilaszaroId);
-    const k = [n ? `${n.szelesseg}|${n.magassag}` : '', f.nyilaszaroId ?? '', f.tajolas ?? '', f.hajlasszog ?? 90, f.szuloId ?? '', f.arnyekolas ?? 1].join('#');
+    const k = nyKulcs(f);
     const c = nyCsoportok.find((x) => x.k === k); if (c) c.tagok.push(f); else nyCsoportok.push({ k, tagok: [f] });
   }
   nyCsoportok.sort((a, b) => {
@@ -147,13 +148,24 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
             <span class="halkabb">{ny.length} / {nyMind.length} sor · {sz(ny.reduce((s, f) => s + (f.darab ?? 1) * nyResz(f), 0), 0)} db · {sz(ny.reduce((s, f) => s + feluletNettoA(p, f) * nyResz(f), 0), 1)} m²{nySzuro.szint ? ' (a szintre eső rész)' : ''}</span>
           </div>
         )}
+        {nyJelzes && <div class={nyJelzes.hiba ? 'hiba-doboz' : 'figyelmeztetes'} style="margin:8px 0;display:flex;gap:12px;align-items:flex-start"><span style="flex:1">{nyJelzes.uzenet}</span><button class="link-gomb" onClick={() => setNyJelzes(null)}>Bezár</button></div>}
         <div class="tabla-gorgeto">
           <table class="tabla">
             <thead><tr><th aria-label="Kibontás és törlés"></th><th>Típus</th><th class="szam">Db</th><th>Tájolás</th><th>Dőlés</th><th>Falban</th><th>Helyiség</th><th class="szam">Felület</th><th>Árnyékoló</th><th class="szam" title="Fűtési idényre vonatkozó árnyékolási tényező: környező beépítés, erkély, előtető, növényzet (1 = nincs)">F<sub>árny</sub></th><th class="szam" title="Passzív szoláris nyereség Qsd = Au · 0,9 · gn · F · Gs">Napnyereség<br /><span class="halkabb">fűtési idény / év</span></th></tr></thead>
             <tbody>
               {nyCsoportok.map(({ k, tagok }) => {
                 const f = tagok[0]!; const ids = new Set(tagok.map((x) => x.id));
-                const fvCs = (fn: (x: Felulet) => void) => modosit((q) => { for (const x of q.feluletek) if (ids.has(x.id)) fn(x); });
+                // a módosítás után a sor egy már meglévő, azonos típusú és elhelyezésű sorral összevonódhat: ezt jelezzük, és a közös sort kibontva kiemeljük
+                const fvCs = (fn: (x: Felulet) => void) => {
+                  const minta = structuredClone(f); fn(minta); const uk = nyKulcs(minta);
+                  const masik = uk !== k ? nyCsoportok.find((c) => c.k === uk) : undefined;
+                  modosit((q) => { for (const x of q.feluletek) if (ids.has(x.id)) fn(x); });
+                  if (masik) {
+                    const ossz = masik.tagok.reduce((a, x) => a + (x.darab ?? 1), 0) + tagok.reduce((a, x) => a + (x.darab ?? 1), 0);
+                    setNyJelzes({ k: uk, uzenet: `A módosított sor (${db} db) összevonódott egy azonos típusú és elhelyezésű (tájolás, dőlés, fal, árnyékolás) meglévő sorral – most együtt ${ossz} db, ${masik.tagok.length + tagok.length} helyiségsorral. A kibontott sorokban külön-külön látszanak; ha nem ezt akartad, állítsd vissza az előző értéket.` });
+                    setNyNyitva((x) => new Set(x).add(uk));
+                  } else setNyJelzes(null);
+                };
                 const nt = p.nyilaszarok.find((x) => x.id === f.nyilaszaroId);
                 const ar = nt?.arnyekolo ? ARNYEKOLOK.find((a) => a.kod === nt.arnyekolo!.kod) : undefined;
                 const napny = tagok.map((x) => { const n = nyilasNapnyereseg(p, x); return n ? { ideny: n.ideny * nyResz(x), ev: n.ev * nyResz(x) } : null; }).reduce<{ ideny: number; ev: number } | null>((a, x) => (x ? { ideny: (a?.ideny ?? 0) + x.ideny, ev: (a?.ev ?? 0) + x.ev } : a), null);
@@ -162,7 +174,7 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
                 const helyNev = (x: Felulet) => p.helyisegek.find((h) => h.id === x.helyisegId)?.nev;
                 const helyek = [...new Set(tagok.map(helyNev).filter(Boolean))];
                 return (<>
-                  <tr>
+                  <tr style={nyJelzes?.k === k ? 'outline:2px solid var(--figyelem, #e0a100);outline-offset:-2px' : ''}>
                     <td style="white-space:nowrap">
                       <button class="sor-nyit" aria-expanded={nyitott} title={nyitott ? 'Helyiségek elrejtése' : 'Helyiségek megjelenítése'} onClick={() => setNyNyitva((x) => { const y = new Set(x); if (y.has(k)) y.delete(k); else y.add(k); return y; })}>{nyitott ? '▾' : '▸'}</button>
                       <button class="sor-torol" title={tagok.length > 1 ? `Törlés (mind a ${tagok.length} sor)` : 'Törlés'} aria-label="Törlés" onClick={() => modosit((q) => { q.feluletek = q.feluletek.filter((x) => !ids.has(x.id)); })}>✕</button>
@@ -171,7 +183,11 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
                     <td style="min-width:58px">{tagok.length === 1 && !nySzuro.szint
                       ? <Szam cimke="Darab" ertek={f.darab ?? 1} lepes={1} min={1} valt={(v) => fv(f.id, (x) => { x.darab = Math.max(1, Math.round(v)); })} />
                       : tagok.every((x) => nyResz(x) === 1)
-                      ? <span title={`Összes darab; változtatáskor a különbség az utolsó helyiségsor(ok)nál jelentkezik (soronként legalább 1 db) – helyiségenként a kibontott sorokban állítható`}><Szam cimke="Darab összesen" ertek={db} lepes={1} min={tagok.length} valt={(v) => darabOsszes([...ids], Math.round(v))} /></span>
+                      ? <span title={`Összes darab; változtatáskor a különbség az utolsó helyiségsor(ok)nál jelentkezik (soronként legalább 1 db) – helyiségenként a kibontott sorokban állítható`}><Szam cimke="Darab összesen" kilepeskor ertek={db} lepes={1} valt={(v) => {
+                        const uj = Math.round(v);
+                        if (uj < tagok.length) { setNyJelzes({ k, hiba: true, uzenet: `${uj} db nem állítható be: a sor ${tagok.length} helyiségsorból áll, mindegyikben legalább 1 db. Csökkentsd vagy töröld a helyiségsorokat a kibontott sorokban (▸).` }); setNyNyitva((x) => new Set(x).add(k)); return; }
+                        setNyJelzes(null); darabOsszes([...ids], uj);
+                      }} /></span>
                       : <span class="szam" style="display:block;text-align:right" title="A helyiségenkénti darabszám a kibontott sorokban módosítható">{sz(db, Number.isInteger(db) ? 0 : 1)}</span>}</td>
                     <td style="min-width:84px"><Valaszto cimke="Tájolás" ertek={f.tajolas ?? undefined} valt={(v) => fvCs((x) => { x.tajolas = v; })} opciok={TAJOLASOK} /></td>
                     <td style="min-width:124px"><Valaszto cimke="Dőlés" ertek={String(f.hajlasszog ?? 90)} valt={(v) => fvCs((x) => { x.hajlasszog = Number(v) as Felulet['hajlasszog']; })} opciok={HAJLAS} /></td>
