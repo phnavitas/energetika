@@ -1,4 +1,4 @@
-# ÉKM energetikai számító és tanúsító
+# Navitherm – épületenergetikai számító és tanúsító
 
 Épületenergetikai számítás, követelményellenőrzés és tanúsítás a **9/2023. (V. 25.) ÉKM rendelet** és a
 **176/2008. (VI. 30.) Korm. rendelet** szerint. Cél: WinWatt-alternatíva, varázslós webes felülettel.

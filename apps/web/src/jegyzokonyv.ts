@@ -2,6 +2,7 @@
  * Számítási jegyzőkönyv PDF-ben (pdfmake, a böngészőben). Az e-tanúsítás XML CalculationsPdfFileContent mezőjébe is
  * ez kerül base64-ben. A pdfmake csak a jegyzőkönyv készítésekor töltődik be.
  */
+import { logoSvg } from './arculat';
 import type { Content, TableCell, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { kovetelmeny, sulyozo, klima, epuletfizika, profilok, hoszukseglet as H, type EpuletEredmeny, type RendszerEredmeny, type NyilaszaroElem } from '@mag/index';
 import {
@@ -12,7 +13,7 @@ import { haviMerlegSvg, savokSvg, uErtekSvg, retegrendSvg } from './jegyzokonyvA
 import { MAG_VERZIO } from './tarolo-tipusok';
 import { alternativVizsgalat, ALT_NEV, URLAP } from './alternativ';
 
-const SZOFTVER = `ÉKM energetikai számító ${MAG_VERZIO}`;
+const SZOFTVER = `Navitherm ${MAG_VERZIO} – épületenergetikai számítás`;
 const MODSZER = '9/2023. (V. 25.) ÉKM rendelet; számítási módszer: kormany.hu, 2023.07.27.; 176/2008. (VI. 30.) Korm. rendelet';
 
 const f = (x: number | null | undefined, t = 2) => (x === null || x === undefined || Number.isNaN(x) ? '–' : x.toLocaleString('hu-HU', { minimumFractionDigits: t, maximumFractionDigits: t }));
@@ -100,7 +101,7 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
   const tervezoSor = [m.tervezo, m.tervezoNy].filter(Boolean).join(' · ') || '–';
   const QFnetOssz = e.zonak.reduce((t, zz) => t + zz.QFnetEv, 0);
   // felső sáv: cím, majd az alapadatok két oszlopban a teljes szélességben
-  tartalom.push({ text: 'Energetikai számítás', style: 'cim' });
+  tartalom.push({ columns: [{ text: 'Energetikai számítás', style: 'cim', width: '*' }, { svg: logoSvg(), width: 104, margin: [0, 2, 0, 0] }] } as Content);
   tartalom.push({ text: m.nev || 'Névtelen projekt', fontSize: 12, bold: true, margin: [0, 2, 0, 52] });
   tartalom.push({
     columns: [

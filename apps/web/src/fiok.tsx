@@ -1,3 +1,4 @@
+import { Logo } from './arculat';
 /**
  * Bejelentkezés, iroda, projektlista és irodai könyvtár nézetei (csak adatbázis-kapcsolattal).
  */
@@ -72,8 +73,8 @@ export function Belepes({ helyi }: { helyi: () => void }) {
     <div class="belepes-keret">
       <form class="belepes kartya" onSubmit={kuld}>
         <div>
-          <h1>Energetikai számítás</h1>
-          <p class="halk" style="margin-top:6px">9/2023 ÉKM, lakó- és egyéb rendeltetésű épületek. Lépj be az irodád projektjeihez és könyvtárához.</p>
+          <h1 style="color:var(--tus)"><Logo magassag={44} /></h1>
+          <p class="halk" style="margin-top:10px">Energetikai számítás a 9/2023 ÉKM szerint, lakó- és egyéb rendeltetésű épületekhez. Lépj be az irodád projektjeihez és könyvtárához.</p>
         </div>
         <div class="fulek" role="tablist">
           {([['belepes', 'Belépés'], ['regisztracio', 'Új fiók'], ['link', 'Belépési link']] as const).map(([k, n]) => (

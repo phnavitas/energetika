@@ -27,5 +27,5 @@ export async function letolt(nev: string, tartalom: string | Uint8Array, tipus: 
 
 /** A projekt mentése .json fájlba (a „Projekt megnyitása fájlból” ezt tölti vissza). */
 export function projektFajlba(p: Projekt): Promise<string | null> {
-  return letolt(`${(p.meta.nev || 'projekt').replace(/[^\p{L}\p{N} _-]/gu, '')}.json`, JSON.stringify(p, null, 1), 'application/json');
+  return letolt(`${(p.meta.nev || 'projekt').replace(/[^\p{L}\p{N} _-]/gu, '')}.navitherm.json`, JSON.stringify(p, null, 1), 'application/json');
 }

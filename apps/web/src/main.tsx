@@ -1,5 +1,6 @@
 import { render } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { Logo } from './arculat';
 import { epuletSzamitas, hoszukseglet, type EpuletEredmeny } from '@mag/index';
 import { atalakit, anyagPillanatkep, projektMigral, hoszuksegletBemenet, retegrendHibak, nyilaszaroHibak, feluletHibak, type Projekt } from './modell';
 import { mintaProjekt, uresProjekt } from './minta';
@@ -104,6 +105,8 @@ function App() {
   // --- Tanúsítói profil (fiókhoz, belépés nélkül a böngészőhöz kötve)
   const [profil, setProfil] = useState<Tanusito | null | undefined>(() => (tavoli ? undefined : helyiProfil() ?? uresTanusito()));
   const profilIdozito = useRef<number | undefined>(undefined);
+  // böngészőfül: a projekt neve és a program neve
+  useEffect(() => { document.title = p.meta.nev ? `${p.meta.nev} – Navitherm` : 'Navitherm – energetikai számítás'; }, [p.meta.nev]);
   useEffect(() => {
     if (!tavoli) { setProfil(helyiProfil() ?? uresTanusito()); return; }
     if (!felh) { setProfil(undefined); return; }
@@ -430,8 +433,8 @@ function App() {
       <div class="keret">
         <nav class="oldalsav" aria-label="Lépések">
           <div class="cim-blokk">
-            <h1>Energetikai számítás</h1>
-            <p>9/2023 ÉKM, {p.meta.rendeltetes === 'egyeb' ? 'egyéb rendeltetés' : 'lakóépület'}</p>
+            <h1 style="color:var(--tus)"><Logo magassag={30} /></h1>
+            <p>Energetikai számítás · 9/2023 ÉKM, {p.meta.rendeltetes === 'egyeb' ? 'egyéb rendeltetés' : 'lakóépület'}</p>
           </div>
           {tavoli && (
             <button class={`projekt-gomb${nezet === 'projektek' ? ' aktiv' : ''}`} onClick={() => setNezet('projektek')}>
