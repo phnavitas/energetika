@@ -1,0 +1,715 @@
+{
+ "verzio": "9.54",
+ "eredmeny": {
+  "Hasznos alapterület": 195.59,
+  "Összesített energetikai jellemző": 45.65,
+  "Fajlagos széndioxid kibocsátás": 9.92,
+  "Enren,fajl": 45.65,
+  "Enren,fajl,max": 76.0,
+  "ECO2,fajl": 9.92,
+  "Enren_tagok": [
+   16.29,
+   28.28,
+   1.08,
+   0.0,
+   0.0,
+   0.0
+  ]
+ },
+ "zonak": {
+  "hasznalati": [
+   {
+    "nev": "Lakóépület egésze",
+    "A": 195.6,
+    "thetaF": 20.0,
+    "thetaH": 26.0,
+    "nSzuks": 0.5,
+    "VLTA": null,
+    "tnap": 24.0,
+    "napEv": 365.0,
+    "MV": 0.0,
+    "qb": 5.0
+   }
+  ],
+  "hoegyensuly": [
+   {
+    "nev": "",
+    "A": 195.6,
+    "CmFajl": 190.0,
+    "nfilt": 0.06,
+    "nEjjel": 6.0,
+    "futesProg": false,
+    "hutesKikapcs": false
+   }
+  ],
+  "szamitasi": [
+   {
+    "jel": "F1",
+    "tipus": "fűtés",
+    "hoegyA": 195.59,
+    "te": 20.0,
+    "A": 195.6,
+    "V": 528.1,
+    "CmFajl": 190.0,
+    "Qnet": 3.16,
+    "qnet": 16.2
+   },
+   {
+    "jel": "H1",
+    "tipus": "hűtés",
+    "hoegyA": 195.59,
+    "te": 26.0,
+    "A": 195.6,
+    "V": 528.1,
+    "CmFajl": 190.0,
+    "Qnet": 0.0,
+    "qnet": 0.0
+   }
+  ],
+  "havi": {
+   "F1": [
+    {
+     "Htr,D": 62.9,
+     "Htr,x": 33.1,
+     "Htr,T": 37.5,
+     "Hszell": 38.8,
+     "Qs": 703.9,
+     "Qb": 727.6,
+     "Qveszt": 2049.8,
+     "Qnyer": 1431.5,
+     "QF,net": 699.6,
+     "ηF/H": 94.3,
+     "τ": 59.9,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 62.9,
+     "Htr,x": 33.1,
+     "Htr,T": 37.5,
+     "Hszell": 38.8,
+     "Qs": 871.6,
+     "Qb": 657.2,
+     "Qveszt": 2050.7,
+     "Qnyer": 1528.8,
+     "QF,net": 630.4,
+     "ηF/H": 92.9,
+     "τ": 59.9,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 62.9,
+     "Htr,x": 33.1,
+     "Htr,T": 37.5,
+     "Hszell": 38.8,
+     "Qs": 901.2,
+     "Qb": 727.6,
+     "Qveszt": 1909.3,
+     "Qnyer": 1628.8,
+     "QF,net": 456.7,
+     "ηF/H": 89.2,
+     "τ": 59.9,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 62.9,
+     "Htr,x": 33.1,
+     "Htr,T": 37.5,
+     "Hszell": 38.8,
+     "Qs": 1504.4,
+     "Qb": 704.1,
+     "Qveszt": 1129.3,
+     "Qnyer": 2208.5,
+     "QF,net": 19.7,
+     "ηF/H": 50.2,
+     "τ": 59.9,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 62.9,
+     "Htr,x": 33.1,
+     "Htr,T": 37.5,
+     "Hszell": 38.8,
+     "Qs": 1850.4,
+     "Qb": 727.6,
+     "Qveszt": 575.1,
+     "Qnyer": 2578.0,
+     "QF,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 59.9,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 62.9,
+     "Htr,x": 33.1,
+     "Htr,T": 37.5,
+     "Hszell": 38.8,
+     "Qs": 1603.3,
+     "Qb": 704.1,
+     "Qveszt": 168.2,
+     "Qnyer": 2307.5,
+     "QF,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 59.9,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 62.9,
+     "Htr,x": 33.1,
+     "Htr,T": 37.5,
+     "Hszell": 38.8,
+     "Qs": 1531.7,
+     "Qb": 727.6,
+     "Qveszt": 63.4,
+     "Qnyer": 2259.3,
+     "QF,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 59.9,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 62.9,
+     "Htr,x": 33.1,
+     "Htr,T": 37.5,
+     "Hszell": 38.8,
+     "Qs": 1706.8,
+     "Qb": 727.6,
+     "Qveszt": 163.8,
+     "Qnyer": 2434.4,
+     "QF,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 59.9,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 62.9,
+     "Htr,x": 33.1,
+     "Htr,T": 37.5,
+     "Hszell": 38.8,
+     "Qs": 1436.4,
+     "Qb": 704.1,
+     "Qveszt": 469.1,
+     "Qnyer": 2140.5,
+     "QF,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 59.9,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 62.9,
+     "Htr,x": 33.1,
+     "Htr,T": 37.5,
+     "Hszell": 38.8,
+     "Qs": 1372.6,
+     "Qb": 727.6,
+     "Qveszt": 1427.8,
+     "Qnyer": 2100.2,
+     "QF,net": 73.9,
+     "ηF/H": 64.5,
+     "τ": 59.9,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 62.9,
+     "Htr,x": 33.1,
+     "Htr,T": 37.5,
+     "Hszell": 38.8,
+     "Qs": 901.9,
+     "Qb": 704.1,
+     "Qveszt": 1449.7,
+     "Qnyer": 1606.1,
+     "QF,net": 184.5,
+     "ηF/H": 78.8,
+     "τ": 59.9,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 62.9,
+     "Htr,x": 33.1,
+     "Htr,T": 37.5,
+     "Hszell": 38.8,
+     "Qs": 471.2,
+     "Qb": 727.6,
+     "Qveszt": 2270.5,
+     "Qnyer": 1198.8,
+     "QF,net": 1095.5,
+     "ηF/H": 98.0,
+     "τ": 59.9,
+     "σ": 1.0
+    }
+   ],
+   "H1": [
+    {
+     "Htr,D": 62.9,
+     "Htr,x": 8.5,
+     "Htr,T": 37.5,
+     "Hszell": 444.6,
+     "Qs": 76.8,
+     "Qb": 727.6,
+     "Qlead": 9595.7,
+     "Qterh": 804.4,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 18.7,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 62.9,
+     "Htr,x": 8.5,
+     "Htr,T": 37.5,
+     "Hszell": 453.0,
+     "Qs": 96.4,
+     "Qb": 657.2,
+     "Qlead": 9577.7,
+     "Qterh": 753.6,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 18.4,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 62.9,
+     "Htr,x": 8.5,
+     "Htr,T": 37.5,
+     "Hszell": 460.0,
+     "Qs": 102.0,
+     "Qb": 727.6,
+     "Qlead": 9317.3,
+     "Qterh": 829.6,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 18.1,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 62.9,
+     "Htr,x": 8.5,
+     "Htr,T": 37.5,
+     "Hszell": 493.4,
+     "Qs": 171.4,
+     "Qb": 704.1,
+     "Qlead": 6547.9,
+     "Qterh": 875.5,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 17.1,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 62.9,
+     "Htr,x": 8.5,
+     "Htr,T": 37.5,
+     "Hszell": 564.1,
+     "Qs": 213.7,
+     "Qb": 727.6,
+     "Qlead": 4771.1,
+     "Qterh": 941.3,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 15.3,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 62.9,
+     "Htr,x": 8.5,
+     "Htr,T": 37.5,
+     "Hszell": 638.5,
+     "Qs": 190.6,
+     "Qb": 704.1,
+     "Qlead": 3065.6,
+     "Qterh": 894.7,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 13.8,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 62.9,
+     "Htr,x": 8.5,
+     "Htr,T": 37.5,
+     "Hszell": 687.3,
+     "Qs": 180.2,
+     "Qb": 727.6,
+     "Qlead": 2735.8,
+     "Qterh": 907.8,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 13.0,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 62.9,
+     "Htr,x": 8.5,
+     "Htr,T": 37.5,
+     "Hszell": 617.2,
+     "Qs": 194.5,
+     "Qb": 727.6,
+     "Qlead": 3034.4,
+     "Qterh": 922.1,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 14.2,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 62.9,
+     "Htr,x": 8.5,
+     "Htr,T": 37.5,
+     "Hszell": 524.4,
+     "Qs": 159.8,
+     "Qb": 704.1,
+     "Qlead": 3968.3,
+     "Qterh": 863.9,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 16.3,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 62.9,
+     "Htr,x": 8.5,
+     "Htr,T": 37.5,
+     "Hszell": 480.0,
+     "Qs": 149.3,
+     "Qb": 727.6,
+     "Qlead": 7682.0,
+     "Qterh": 876.9,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 17.5,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 62.9,
+     "Htr,x": 8.5,
+     "Htr,T": 37.5,
+     "Hszell": 460.4,
+     "Qs": 97.9,
+     "Qb": 704.1,
+     "Qlead": 7452.5,
+     "Qterh": 802.1,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 18.1,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 62.9,
+     "Htr,x": 8.5,
+     "Htr,T": 37.5,
+     "Hszell": 440.6,
+     "Qs": 52.3,
+     "Qb": 727.6,
+     "Qlead": 10363.2,
+     "Qterh": 779.9,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 18.8,
+     "σ": 1.0
+    }
+   ]
+  }
+ },
+ "szerkezetek": [
+  "F01 Külső fal                  külső fal É     0,159 0,159 103,4     -           - 16,44        0,0",
+  "Nyílászáró                     ablak       É    1,18 1,1361    1,8   -           - 2,045        0,9     0,52        0,1",
+  "Bejárati ajtó                  ajtó        É      1,4    1,4   3,6   -           -    5,04      0,0",
+  "Üvegtégla                      különleg É         1,2    1,2   0,7   -           - 0,864        0,7     0,87          1",
+  "Nyílászáró                     ablak       K    0,76 0,74094   7,3   -           - 5,4237       6,4     0,52        0,1",
+  "Nyílászáró                     ablak       K    0,83 0,80745  10,8   -           - 8,7204       8,7     0,52        0,1",
+  "Nyílászáró                     ablak       K    1,03 0,99601   1,4   -           - 1,4343       0,9     0,52        0,1",
+  "Nyílászáró                     ablak       D    0,83 0,80745  14,4   -           - 11,627      11,7     0,52        0,1",
+  "Nyílászáró                     ablak       D    0,88 0,85478   6,8   -           - 5,7698       5,2     0,52        0,1",
+  "Nyílászáró                     ablak       D    0,96 0,93025   1,3   -           - 1,2558       0,9     0,52        0,1",
+  "Nyílászáró                     ablak      NY    1,03 0,99601   4,3   -           - 4,3028       2,8     0,52        0,1",
+  "R02 Padlásfödém                padlásfö         0,14 0,126 195,6     -           - 24,646       0,0",
+  "F03 Fűtetlen fal               belső fal       0,208 0,1872   25,5   -           - 4,7792       0,0",
+  "Ajtó fűtetlen                  ajtó (bels         1,4    0,7   5,3   -           - 3,675        0,0",
+  "R01 Padló talajon              padló (ta       0,162       - 195,6   -        57,7 31,687       0,0"
+ ],
+ "rendszerek": [
+  {
+   "rendszer": "Fűtési rendszer",
+   "alnev": "",
+   "ertekek": {
+    "AN": [
+     195.59
+    ],
+    "QF,net,FR": [
+     3160.0
+    ],
+    "qF,net,FR": [
+     16.16
+    ],
+    "εF": [
+     0.3
+    ],
+    "wF,seg": [
+     0.0
+    ],
+    "QF,vég": [
+     3363.0
+    ],
+    "εF,szab,0": [
+     1.042
+    ],
+    "εF,szab,1": [
+     0.012
+    ],
+    "εF,szab,2": [
+     0.015
+    ],
+    "εF,szab,3": [
+     -0.06
+    ],
+    "εF,szab,4": [
+     0.018
+    ],
+    "εF,szab": [
+     1.027
+    ],
+    "qF,száll": [
+     0.6
+    ],
+    "wF,sziv": [
+     1.93
+    ],
+    "qF,tár": [
+     0.0
+    ],
+    "wF,tár": [
+     0.0
+    ],
+    "WF,vég": [
+     377.0
+    ],
+    "EF,vég": [
+     1009.0,
+     2354.0
+    ],
+    "EF,nren,fajl": [
+     16.29
+    ],
+    "EF,ren,fajl": [
+     14.16
+    ],
+    "EF,tot,fajl": [
+     30.46
+    ],
+    "EF,CO2,fajl": [
+     3.55
+    ]
+   },
+   "szoveg": [
+    "Elektromos üzemű hőszivattyú, levegő hőforrással, fűtővíz hőmérséklet 35/28",
+    "elektromos áram | (energiahordozó típusa)",
+    "2",
+    "Beágyazott fűtőfelülettel rendelkező (padló-, fal-, mennyezetfűtés)",
+    "Központi előremenő hőmérséklet szabályozás helyiségenkénti hőmérséklet szabályozással",
+    "Padlófűtés száraz fektetésű",
+    "MSZ EN 1264-2 szerinti minimális hőszigeteléssel",
+    "különálló, képes önálló be-kikapcsolásra (pl. termosztatikus zónaszelep)",
+    "fűtőfelületenként statikus beállítás, csoportos statikus beszabályozással (pl. strangszabályozó szelepekkel) hőleadók száma",
+    "10 felett",
+    "Elosztó vezetékek a fűtött téren belül, vízhőmérséklet 35/28",
+    "Fordulatszám szabályozású szivattyú, hőlépcső 7 K",
+    "Tárolási veszteség nincs",
+    "Épületenergetikai tanúsítvány | 7",
+    "Energiafelhasználás",
+    "Indikátorok"
+   ],
+   "vegenergia": [
+    {
+     "kulcs": "EF,vég",
+     "Q": 1009.0,
+     "hordozo": "villamos energia"
+    },
+    {
+     "kulcs": "EF,vég",
+     "Q": 2354.0,
+     "hordozo": "környezeti hő"
+    }
+   ]
+  },
+  {
+   "rendszer": "Melegvíz-termelő rendszer",
+   "alnev": "",
+   "ertekek": {
+    "AN": [
+     195.59
+    ],
+    "qHMV": [
+     25.0
+    ],
+    "εHMV": [
+     0.36
+    ],
+    "wHMV,seg": [
+     0.0
+    ],
+    "QHMV,vég": [
+     6430.0
+    ],
+    "qHMV,v": [
+     17.2
+    ],
+    "wHMV,száll": [
+     0.46
+    ],
+    "qHMV,t": [
+     14.3
+    ],
+    "WHMV,vég": [
+     90.0
+    ],
+    "EHMV,vég": [
+     2315.0,
+     4115.0
+    ],
+    "EHMV,nren,fajl": [
+     28.28
+    ],
+    "EHMV,ren,fajl": [
+     24.73
+    ],
+    "EHMV,tot,fajl": [
+     53.0
+    ],
+    "EHMV,CO2,fajl": [
+     6.16
+    ]
+   },
+   "szoveg": [
+    "2",
+    "Elektromos üzemű hőszivattyú, távozó levegő hőforrással",
+    "elektromos áram | (energiahordozó típusa)",
+    "2",
+    "Elosztó vezetékek a fűtött téren belül, cirkulációval",
+    "cirkulációval EEI=0.17",
+    "Elhelyezés a fűtött térben, indirekt fűtésű tároló",
+    "Energiafelhasználás",
+    "Indikátorok",
+    "Épületenergetikai tanúsítvány | 8"
+   ],
+   "vegenergia": [
+    {
+     "kulcs": "EHMV,vég",
+     "Q": 2315.0,
+     "hordozo": "villamos energia"
+    },
+    {
+     "kulcs": "EHMV,vég",
+     "Q": 4115.0,
+     "hordozo": "környezeti hő"
+    }
+   ]
+  },
+  {
+   "rendszer": "Légtechnikai rendszer",
+   "alnev": "",
+   "ertekek": {
+    "ALT": [
+     195.6
+    ],
+    "nLT": [
+     0.5
+    ],
+    "VLT": [
+     264.0,
+     264.0
+    ],
+    "ηr": [
+     70.0
+    ],
+    "fLT": [
+     10.0
+    ],
+    "∆pLT": [
+     0.0
+    ],
+    "ηvent": [
+     50.0
+    ],
+    "∆tLT,a": [
+     8760.0
+    ],
+    "WLT,vég": [
+     92.0
+    ],
+    "ELT,nren,fajl": [
+     1.08
+    ],
+    "ELT,ren,fajl": [
+     0.14
+    ],
+    "ELT,tot,fajl": [
+     1.22
+    ],
+    "ELT,CO2,fajl": [
+     0.21
+    ]
+   },
+   "szoveg": [
+    "20 °C feletti befúvási hőmérséklet, központi előszabályozás",
+    "veszteség)",
+    "Wvent = VLT*∆pLT/3600/ηvent*∆tLT,a/1000",
+    "Wvent = 264 * 0 / 3600 / 0,5 * 8760 / 1000 = 0 kWh/a",
+    "Energiafelhasználás",
+    "Indikátorok",
+    "Épületenergetikai tanúsítvány | 9"
+   ]
+  },
+  {
+   "rendszer": "Hűtési rendszer",
+   "alnev": "",
+   "ertekek": {
+    "Ahű": [
+     195.6
+    ],
+    "QH,net": [
+     0.0
+    ],
+    "εH": [
+     0.33
+    ],
+    "wH,seg": [
+     0.0
+    ],
+    "QH,vég": [
+     0.0
+    ],
+    "εH,szab": [
+     1.0
+    ],
+    "cH": [
+     1.0
+    ],
+    "εH,száll": [
+     1.0
+    ],
+    "EH,nren,fajl": [
+     0.0
+    ],
+    "EH,ren,fajl": [
+     0.0
+    ],
+    "EH,tot,fajl": [
+     0.0
+    ],
+    "EH,CO2,fajl": [
+     0.0
+    ]
+   },
+   "szoveg": [
+    "Léghűtéses kompakt és osztott kivitelű (távkondenzátoros) folyadékhűtő SEER=3,0",
+    "elektromos áram | (energiahordozó típusa)",
+    "2",
+    "Víz hőhordozó közeg;Hűtött víz 16 °C / 18 °C (pl. hűtőmennyezet)",
+    "16/18 °C (pl. klímagerendák)",
+    "Energiafelhasználás",
+    "Indikátorok",
+    "Épülettechnikai rendszerek értékelése:"
+   ]
+  }
+ ],
+ "referencia": null
+}

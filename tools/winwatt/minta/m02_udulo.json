@@ -1,0 +1,300 @@
+{
+ "verzio": "9.17",
+ "eredmeny": {
+  "Összesített energetikai jellemző": 38.25,
+  "Fajlagos széndioxid kibocsátás": 11.07,
+  "Enren,fajl": 38.25,
+  "Enren,fajl,max": 76.0,
+  "ECO2,fajl": 11.07,
+  "Fajlagos hőveszteségtényező": 0.271,
+  "Fajlagos hőveszteségtényező követelményértéke": 0.282,
+  "Épület felület-térfogat aránya": 0.916,
+  "A nyári hővédelemre vonatkozó mutató": 0.219,
+  "Enren_tagok": [
+   38.08,
+   69.0,
+   0.0,
+   0.0,
+   0.0,
+   -68.83
+  ],
+  "Hasznos alapterület": 289.7
+ },
+ "zonak": {
+  "hasznalati": [
+   {
+    "nev": "Lakóépület egésze",
+    "A": 289.7,
+    "thetaF": 20.0,
+    "thetaH": 26.0,
+    "nSzuks": 0.5,
+    "VLTA": null,
+    "tnap": 24.0,
+    "napEv": 365.0,
+    "MV": 0.0,
+    "qb": 5.0
+   }
+  ],
+  "hoegyensuly": [
+   {
+    "nev": "",
+    "A": 289.7,
+    "CmFajl": 560.0,
+    "nfilt": 0.06,
+    "nEjjel": 6.0,
+    "futesProg": false,
+    "hutesKikapcs": false
+   }
+  ],
+  "szamitasi": [
+   {
+    "jel": "F1",
+    "tipus": "fűtés",
+    "hoegyA": 289.72,
+    "te": 20.0,
+    "A": 289.7,
+    "V": 745.6,
+    "CmFajl": 560.0,
+    "Qnet": 17.83,
+    "qnet": 61.5
+   },
+   {
+    "jel": "H1",
+    "tipus": "hűtés",
+    "hoegyA": 289.72,
+    "te": 26.0,
+    "A": 289.7,
+    "V": 745.6,
+    "CmFajl": 560.0,
+    "Qnet": 1.352,
+    "qnet": 4.7
+   }
+  ],
+  "havi": {}
+ },
+ "szerkezetek": [
+  "P3.3 Terasz                                   É        függőleges     0,142   0,142            27,0    -         -      3,8     -   11",
+  "P4.1 Lapostető                                É        függőleges     0,179   0,179            76,5    -         -     13,7     -   32",
+  "F1 Külső fal                                  ÉK       függőleges     0,184   0,184             5,5    -         -      1,0     -    0",
+  "F2 Külső fal lábazati rész                    ÉK       függőleges      0,26    0,26             4,9    -         -      1,3     -    0",
+  "F3 Külső fal HPL                              ÉK       függőleges     0,213   0,213            22,7    -         -      4,8     -    1",
+  "F3 Külső fal HPL vb                           ÉK       függőleges     0,274   0,274             5,6    -         -      1,5     -    2",
+  "Nyílászárók alu                               ÉK       függőleges        1,4   1,34            90,1    -         -    120,7 72,1",
+  "F1 Külső fal                                 DK        függőleges     0,184   0,184            20,4    -         -      3,8     -    1",
+  "F1* Külső falban pillér                      DK        függőleges     0,198   0,198             0,3    -         -      0,1     -    0",
+  "F2 Külső fal lábazati rész                   DK        függőleges      0,26    0,26             4,3    -         -      1,1     -    0",
+  "F2* Külső falban pillér lábazat              DK        függőleges     0,287   0,287             0,3    -         -      0,1     -    0",
+  "F3 Külső fal HPL                             DK        függőleges     0,213   0,213            48,4    -         -     10,3     -    2",
+  "F3 Külső fal HPL vb                          DK        függőleges     0,274   0,274             6,2    -         -      1,7     -    2",
+  "Nyílászárók alu                              DK        függőleges        1,4   1,34            25,8    -         -     34,6 20,6",
+  "F1 Külső fal                                 DNY       függőleges     0,184   0,184            22,3    -         -      4,1     -    1",
+  "F1* Külső falban pillér                      DNY       függőleges     0,198   0,198             3,2    -         -      0,6     -    1",
+  "F2 Külső fal lábazati rész                   DNY       függőleges      0,26    0,26             5,0    -         -      1,3     -    0",
+  "F2* Külső falban pillér lábazat              DNY       függőleges     0,287   0,287             0,4    -         -      0,1     -    0",
+  "F3 Külső fal HPL                             DNY       függőleges     0,213   0,213            67,7    -         -     14,4     -    3",
+  "F3 Külső fal HPL vb                          DNY       függőleges     0,274   0,274             7,1    -         -      2,0     -    3",
+  "Bejárati ajtó                                DNY       függőleges        1,4     1,4           14,3    -         -     20,0     -",
+  "Gép tér ajtó                                 DNY       függőleges        1,4     1,4            2,4    -         -      3,4     -",
+  "Nyílászárók alu                              DNY       függőleges        1,4   1,34            11,0    -         -     14,8   8,8",
+  "F1 Külső fal                                 ÉNY       függőleges     0,184   0,184            41,0    -         -      7,5     -    2",
+  "F1* Külső falban pillér                      ÉNY       függőleges     0,198   0,198             4,8    -         -      1,0     -    2",
+  "F2 Külső fal lábazati rész                   ÉNY       függőleges      0,26    0,26             4,3    -         -      1,1     -    0",
+  "F2* Külső falban pillér lábazat              ÉNY       függőleges     0,287   0,287             0,3    -         -      0,1     -    0",
+  "F3 Külső fal HPL                             ÉNY       függőleges     0,213   0,213            17,2    -         -      3,7     -    0",
+  "F3 Külső fal HPL vb                          ÉNY       függőleges     0,274   0,274             0,8    -         -      0,2     -    0",
+  "Nyílászárók alu                              ÉNY       függőleges        1,4   1,34            36,4    -         -     48,8 29,1",
+  "P1.1 Padló talajon                                                 0,16411         -          107,0    -      64,4     17,6     -   15",
+  "\fÉpületenergetikai számítás                                                                                                          10"
+ ],
+ "rendszerek": [
+  {
+   "rendszer": "Fűtési rendszer",
+   "alnev": "Hőszivattyú",
+   "ertekek": {
+    "AN": [
+     289.72
+    ],
+    "QF,net,FR": [
+     17832.0
+    ],
+    "qF,net,FR": [
+     61.55
+    ],
+    "εF": [
+     0.24
+    ],
+    "wF,seg": [
+     0.0
+    ],
+    "QF,vég": [
+     4379.0
+    ],
+    "εF,szab": [
+     1.015
+    ],
+    "qF,száll": [
+     0.51
+    ],
+    "wF,sziv": [
+     1.44
+    ],
+    "qF,tár": [
+     0.0
+    ],
+    "wF,tár": [
+     0.0
+    ],
+    "WF,vég": [
+     417.0
+    ],
+    "EF,vég": [
+     4379.0,
+     13868.0
+    ],
+    "EF,nren,fajl": [
+     38.08
+    ],
+    "EF,ren,fajl": [
+     52.83
+    ],
+    "EF,tot,fajl": [
+     90.91
+    ],
+    "EF,CO2,fajl": [
+     8.83
+    ]
+   },
+   "szoveg": [
+    "felület hőleadó",
+    "2",
+    "Daikin hőszivattyú",
+    "H hőszivattyús elektromos áram | (energiahordozó típusa)",
+    "Elosztó vezetékek a fűtött téren belül, vízhőmérséklet 35/28",
+    "Fordulatszám szabályozású szivattyú, hőlépcső 7 K",
+    "Tárolási veszteség nincs",
+    "Épületenergetikai számítás | 11",
+    "Energiafelhasználás",
+    "Indikátorok"
+   ],
+   "vegenergia": [
+    {
+     "kulcs": "EF,vég",
+     "Q": 4379.0,
+     "hordozo": "villamos energia"
+    },
+    {
+     "kulcs": "EF,vég",
+     "Q": 13868.0,
+     "hordozo": "környezeti hő"
+    }
+   ]
+  },
+  {
+   "rendszer": "Melegvíz-termelő rendszer",
+   "alnev": "",
+   "ertekek": {
+    "AN": [
+     289.72
+    ],
+    "qHMV": [
+     30.0
+    ],
+    "εHMV": [
+     1.0
+    ],
+    "wHMV,seg": [
+     0.0
+    ],
+    "QHMV,vég": [
+     8692.0
+    ],
+    "qHMV,v": [
+     0.0
+    ],
+    "wHMV,száll": [
+     0.0
+    ],
+    "qHMV,t": [
+     0.0
+    ],
+    "EHMV,vég": [
+     8692.0
+    ],
+    "EHMV,nren,fajl": [
+     69.0
+    ],
+    "EHMV,ren,fajl": [
+     9.0
+    ],
+    "EHMV,tot,fajl": [
+     78.0
+    ],
+    "EHMV,CO2,fajl": [
+     13.65
+    ],
+    "Csúcsteljesítmény": [
+     8.5
+    ],
+    "Dőlésszög": [
+     40.0
+    ],
+    "Tájolás": [
+     225.0
+    ],
+    "Éves energiahozam": [
+     8670.0
+    ],
+    "EPV,vég": [
+     8670.0,
+     8670.0
+    ],
+    "EPV,nren,fajl": [
+     -68.83
+    ],
+    "EPV,ren,fajl": [
+     20.95
+    ],
+    "EPV,tot,fajl": [
+     -47.88
+    ],
+    "EPV,CO2,fajl": [
+     -11.4
+    ]
+   },
+   "szoveg": [
+    "2",
+    "Elektromos átfolyós vízmelegítő, tároló",
+    "elektromos áram | (energiahordozó típusa)",
+    "Nincs elosztási veszteség",
+    "nincs elosztási veszteség",
+    "Nincs tárolási veszteség",
+    "Energiafelhasználás",
+    "Indikátorok",
+    "Nyereségáram forrás",
+    "Egyszerűsített hozamszámítás",
+    "Épületenergetikai számítás | 12",
+    "Energiafelhasználás",
+    "Indikátorok",
+    "Épülettechnikai rendszerek értékelése:"
+   ],
+   "vegenergia": [
+    {
+     "kulcs": "EHMV,vég",
+     "Q": 8692.0,
+     "hordozo": "villamos energia"
+    },
+    {
+     "kulcs": "EPV,vég",
+     "Q": 8670.0,
+     "hordozo": "exportált villamos energia"
+    },
+    {
+     "kulcs": "EPV,vég",
+     "Q": 8670.0,
+     "hordozo": "napenergia (PV villamos)"
+    }
+   ]
+  }
+ ],
+ "referencia": null
+}

@@ -1,0 +1,1858 @@
+{
+ "verzio": "9.36",
+ "eredmeny": {
+  "Hasznos alapterület": 539.62,
+  "Összesített energetikai jellemző": 177.91,
+  "Fajlagos széndioxid kibocsátás": 39.11,
+  "Enren,fajl": 177.91,
+  "Enren,fajl,max": 210.39,
+  "ECO2,fajl": 39.11,
+  "Fajlagos hőveszteségtényező": 0.088,
+  "Fajlagos hőveszteségtényező követelményértéke": 0.293,
+  "Épület felület-térfogat aránya": 0.965,
+  "A nyári hővédelemre vonatkozó mutató": 0.257,
+  "Enren_tagok": [
+   128.29,
+   20.57,
+   0.0,
+   5.66,
+   23.38,
+   0.0
+  ]
+ },
+ "zonak": {
+  "hasznalati": [
+   {
+    "nev": "Menza",
+    "A": 253.1,
+    "thetaF": 20.0,
+    "thetaH": 26.0,
+    "nSzuks": null,
+    "VLTA": 18.0,
+    "tnap": 7.0,
+    "napEv": 250.0,
+    "MV": 200.0,
+    "qb": 12.0
+   },
+   {
+    "nev": "WC és mosdó középületben",
+    "A": 286.5,
+    "thetaF": 20.0,
+    "thetaH": 26.0,
+    "nSzuks": null,
+    "VLTA": 15.0,
+    "tnap": 15.0,
+    "napEv": 365.0,
+    "MV": 200.0,
+    "qb": 0.0
+   }
+  ],
+  "hoegyensuly": [
+   {
+    "nev": "",
+    "A": 539.6,
+    "CmFajl": 560.72,
+    "nfilt": 0.06,
+    "nEjjel": 3.0,
+    "futesProg": false,
+    "hutesKikapcs": false
+   }
+  ],
+  "szamitasi": [
+   {
+    "jel": "F1",
+    "tipus": "fűtés",
+    "hoegyA": 539.62,
+    "te": 20.0,
+    "A": 286.5,
+    "V": 773.5,
+    "CmFajl": 563.0,
+    "Qnet": 81.18,
+    "qnet": 283.4
+   },
+   {
+    "jel": "F2",
+    "tipus": "fűtés",
+    "hoegyA": 539.62,
+    "te": 20.0,
+    "A": 253.1,
+    "V": 683.5,
+    "CmFajl": 558.0,
+    "Qnet": 14.46,
+    "qnet": 57.1
+   },
+   {
+    "jel": "H1",
+    "tipus": "hűtés",
+    "hoegyA": 539.62,
+    "te": 26.0,
+    "A": 286.5,
+    "V": 773.5,
+    "CmFajl": 563.0,
+    "Qnet": 0.0,
+    "qnet": 0.0
+   },
+   {
+    "jel": "H2",
+    "tipus": "hűtés",
+    "hoegyA": 539.62,
+    "te": 26.0,
+    "A": 253.1,
+    "V": 683.5,
+    "CmFajl": 558.0,
+    "Qnet": 4.832,
+    "qnet": 19.0
+   }
+  ],
+  "havi": {
+   "F1": [
+    {
+     "Htr,D": 110.3,
+     "Htr,x": null,
+     "Htr,T": 44.6,
+     "Hszell": 956.3,
+     "Qs": 658.0,
+     "Qb": 0.0,
+     "Qveszt": 14506.4,
+     "Qnyer": 658.0,
+     "QF,net": 13848.4,
+     "ηF/H": 100.0,
+     "τ": 40.3,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 110.3,
+     "Htr,x": null,
+     "Htr,T": 44.6,
+     "Hszell": 956.3,
+     "Qs": 807.5,
+     "Qb": 0.0,
+     "Qveszt": 14679.4,
+     "Qnyer": 807.5,
+     "QF,net": 13871.9,
+     "ηF/H": 100.0,
+     "τ": 40.3,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 110.3,
+     "Htr,x": null,
+     "Htr,T": 44.6,
+     "Hszell": 956.3,
+     "Qs": 845.7,
+     "Qb": 0.0,
+     "Qveszt": 13395.4,
+     "Qnyer": 845.7,
+     "QF,net": 12549.8,
+     "ηF/H": 100.0,
+     "τ": 40.3,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 110.3,
+     "Htr,x": null,
+     "Htr,T": 44.6,
+     "Hszell": 956.3,
+     "Qs": 1438.7,
+     "Qb": 0.0,
+     "Qveszt": 7280.5,
+     "Qnyer": 1438.7,
+     "QF,net": 5844.7,
+     "ηF/H": 99.8,
+     "τ": 40.3,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 110.3,
+     "Htr,x": null,
+     "Htr,T": 44.6,
+     "Hszell": 956.3,
+     "Qs": 1780.2,
+     "Qb": 0.0,
+     "Qveszt": 2841.3,
+     "Qnyer": 1780.2,
+     "QF,net": 1194.6,
+     "ηF/H": 92.5,
+     "τ": 40.3,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 110.3,
+     "Htr,x": null,
+     "Htr,T": 44.6,
+     "Hszell": 956.3,
+     "Qs": 1507.6,
+     "Qb": 0.0,
+     "Qveszt": -322.2,
+     "Qnyer": 1507.6,
+     "QF,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 40.3,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 110.3,
+     "Htr,x": null,
+     "Htr,T": 44.6,
+     "Hszell": 956.3,
+     "Qs": 1448.6,
+     "Qb": 0.0,
+     "Qveszt": -1205.8,
+     "Qnyer": 1448.6,
+     "QF,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 40.3,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 110.3,
+     "Htr,x": null,
+     "Htr,T": 44.6,
+     "Hszell": 956.3,
+     "Qs": 1635.6,
+     "Qb": 0.0,
+     "Qveszt": -412.3,
+     "Qnyer": 1635.6,
+     "QF,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 40.3,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 110.3,
+     "Htr,x": null,
+     "Htr,T": 44.6,
+     "Hszell": 956.3,
+     "Qs": 1380.3,
+     "Qb": 0.0,
+     "Qveszt": 2058.5,
+     "Qnyer": 1380.3,
+     "QF,net": 801.2,
+     "ηF/H": 91.1,
+     "τ": 40.3,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 110.3,
+     "Htr,x": null,
+     "Htr,T": 44.6,
+     "Hszell": 956.3,
+     "Qs": 1302.4,
+     "Qb": 0.0,
+     "Qveszt": 9586.4,
+     "Qnyer": 1302.4,
+     "QF,net": 8284.7,
+     "ηF/H": 99.9,
+     "τ": 40.3,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 110.3,
+     "Htr,x": null,
+     "Htr,T": 44.6,
+     "Hszell": 956.3,
+     "Qs": 844.5,
+     "Qb": 0.0,
+     "Qveszt": 9814.7,
+     "Qnyer": 844.5,
+     "QF,net": 8970.3,
+     "ηF/H": 100.0,
+     "τ": 40.3,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 110.3,
+     "Htr,x": null,
+     "Htr,T": 44.6,
+     "Hszell": 956.3,
+     "Qs": 435.0,
+     "Qb": 0.0,
+     "Qveszt": 16252.2,
+     "Qnyer": 435.0,
+     "QF,net": 15817.2,
+     "ηF/H": 100.0,
+     "τ": 40.3,
+     "σ": 1.0
+    }
+   ],
+   "F2": [
+    {
+     "Htr,D": 140.3,
+     "Htr,x": null,
+     "Htr,T": 42.5,
+     "Hszell": 332.9,
+     "Qs": 1153.1,
+     "Qb": 2260.0,
+     "Qveszt": 6591.1,
+     "Qnyer": 3413.2,
+     "QF,net": 3208.4,
+     "ηF/H": 99.1,
+     "τ": 76.1,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 140.3,
+     "Htr,x": null,
+     "Htr,T": 42.5,
+     "Hszell": 332.9,
+     "Qs": 1588.6,
+     "Qb": 2041.3,
+     "Qveszt": 6653.0,
+     "Qnyer": 3629.9,
+     "QF,net": 3065.2,
+     "ηF/H": 98.8,
+     "τ": 76.1,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 140.3,
+     "Htr,x": null,
+     "Htr,T": 42.5,
+     "Hszell": 332.9,
+     "Qs": 1730.4,
+     "Qb": 2260.0,
+     "Qveszt": 6098.1,
+     "Qnyer": 3990.5,
+     "QF,net": 2218.1,
+     "ηF/H": 97.2,
+     "τ": 76.1,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 140.3,
+     "Htr,x": null,
+     "Htr,T": 42.5,
+     "Hszell": 332.9,
+     "Qs": 3241.0,
+     "Qb": 2187.1,
+     "Qveszt": 3379.7,
+     "Qnyer": 5428.1,
+     "QF,net": 74.3,
+     "ηF/H": 60.9,
+     "τ": 76.1,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 140.3,
+     "Htr,x": null,
+     "Htr,T": 42.5,
+     "Hszell": 332.9,
+     "Qs": 4223.3,
+     "Qb": 2260.0,
+     "Qveszt": 1414.8,
+     "Qnyer": 6483.3,
+     "QF,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 76.1,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 140.3,
+     "Htr,x": null,
+     "Htr,T": 42.5,
+     "Hszell": 332.9,
+     "Qs": 3861.3,
+     "Qb": 2187.1,
+     "Qveszt": 6.1,
+     "Qnyer": 6048.4,
+     "QF,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 76.1,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 140.3,
+     "Htr,x": null,
+     "Htr,T": 42.5,
+     "Hszell": 332.9,
+     "Qs": 3598.5,
+     "Qb": 2260.0,
+     "Qveszt": -381.0,
+     "Qnyer": 5858.5,
+     "QF,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 76.1,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 140.3,
+     "Htr,x": null,
+     "Htr,T": 42.5,
+     "Hszell": 332.9,
+     "Qs": 3815.6,
+     "Qb": 2260.0,
+     "Qveszt": -28.9,
+     "Qnyer": 6075.6,
+     "QF,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 76.1,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 140.3,
+     "Htr,x": null,
+     "Htr,T": 42.5,
+     "Hszell": 332.9,
+     "Qs": 2863.4,
+     "Qb": 2187.1,
+     "Qveszt": 1062.5,
+     "Qnyer": 5050.5,
+     "QF,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 76.1,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 140.3,
+     "Htr,x": null,
+     "Htr,T": 42.5,
+     "Hszell": 332.9,
+     "Qs": 2427.8,
+     "Qb": 2260.0,
+     "Qveszt": 4407.9,
+     "Qnyer": 4687.8,
+     "QF,net": 512.8,
+     "ηF/H": 83.1,
+     "τ": 76.1,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 140.3,
+     "Htr,x": null,
+     "Htr,T": 42.5,
+     "Hszell": 332.9,
+     "Qs": 1489.6,
+     "Qb": 2187.1,
+     "Qveszt": 4504.3,
+     "Qnyer": 3676.8,
+     "QF,net": 1085.8,
+     "ηF/H": 93.0,
+     "τ": 76.1,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 140.3,
+     "Htr,x": null,
+     "Htr,T": 42.5,
+     "Hszell": 332.9,
+     "Qs": 815.2,
+     "Qb": 2260.0,
+     "Qveszt": 7365.8,
+     "Qnyer": 3075.3,
+     "QF,net": 4299.4,
+     "ηF/H": 99.7,
+     "τ": 76.1,
+     "σ": 1.0
+    }
+   ],
+   "H1": [
+    {
+     "Htr,D": 110.3,
+     "Htr,x": null,
+     "Htr,T": 44.6,
+     "Hszell": 1206.0,
+     "Qs": 361.9,
+     "Qb": 0.0,
+     "Qlead": 23908.0,
+     "Qterh": 361.9,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 32.9,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 110.3,
+     "Htr,x": null,
+     "Htr,T": 44.6,
+     "Hszell": 1212.2,
+     "Qs": 444.1,
+     "Qb": 0.0,
+     "Qlead": 23648.8,
+     "Qterh": 444.1,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 32.8,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 110.3,
+     "Htr,x": null,
+     "Htr,T": 44.6,
+     "Hszell": 1217.4,
+     "Qs": 465.1,
+     "Qb": 0.0,
+     "Qlead": 22726.6,
+     "Qterh": 465.1,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 32.6,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 110.3,
+     "Htr,x": null,
+     "Htr,T": 44.6,
+     "Hszell": 1241.8,
+     "Qs": 791.3,
+     "Qb": 0.0,
+     "Qlead": 15185.0,
+     "Qterh": 791.3,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 32.1,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 110.3,
+     "Htr,x": null,
+     "Htr,T": 44.6,
+     "Hszell": 1293.6,
+     "Qs": 979.1,
+     "Qb": 0.0,
+     "Qlead": 10110.4,
+     "Qterh": 979.1,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 30.9,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 110.3,
+     "Htr,x": null,
+     "Htr,T": 44.6,
+     "Hszell": 1348.0,
+     "Qs": 829.2,
+     "Qb": 0.0,
+     "Qlead": 5944.9,
+     "Qterh": 829.2,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 29.8,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 110.3,
+     "Htr,x": null,
+     "Htr,T": 44.6,
+     "Hszell": 1383.8,
+     "Qs": 796.7,
+     "Qb": 0.0,
+     "Qlead": 5058.7,
+     "Qterh": 796.7,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 29.1,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 110.3,
+     "Htr,x": null,
+     "Htr,T": 44.6,
+     "Hszell": 1332.5,
+     "Qs": 899.6,
+     "Qb": 0.0,
+     "Qlead": 5975.6,
+     "Qterh": 899.6,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 30.1,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 110.3,
+     "Htr,x": null,
+     "Htr,T": 44.6,
+     "Hszell": 1264.5,
+     "Qs": 759.2,
+     "Qb": 0.0,
+     "Qlead": 8700.8,
+     "Qterh": 759.2,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 31.6,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 110.3,
+     "Htr,x": null,
+     "Htr,T": 44.6,
+     "Hszell": 1232.0,
+     "Qs": 716.3,
+     "Qb": 0.0,
+     "Qlead": 18177.3,
+     "Qterh": 716.3,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 32.3,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 110.3,
+     "Htr,x": null,
+     "Htr,T": 44.6,
+     "Hszell": 1217.6,
+     "Qs": 464.5,
+     "Qb": 0.0,
+     "Qlead": 18077.4,
+     "Qterh": 464.5,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 32.6,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 110.3,
+     "Htr,x": null,
+     "Htr,T": 44.6,
+     "Hszell": 1203.1,
+     "Qs": 239.3,
+     "Qb": 0.0,
+     "Qlead": 26006.3,
+     "Qterh": 239.3,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 33.0,
+     "σ": 1.0
+    }
+   ],
+   "H2": [
+    {
+     "Htr,D": 140.3,
+     "Htr,x": null,
+     "Htr,T": 42.5,
+     "Hszell": 553.6,
+     "Qs": 634.2,
+     "Qb": 2260.0,
+     "Qlead": 12818.2,
+     "Qterh": 2894.3,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 53.3,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 140.3,
+     "Htr,x": null,
+     "Htr,T": 42.5,
+     "Hszell": 559.1,
+     "Qs": 873.7,
+     "Qb": 2041.3,
+     "Qlead": 12699.4,
+     "Qterh": 2915.0,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 52.9,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 140.3,
+     "Htr,x": null,
+     "Htr,T": 42.5,
+     "Hszell": 563.7,
+     "Qs": 951.7,
+     "Qb": 2260.0,
+     "Qlead": 12262.9,
+     "Qterh": 3211.8,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 52.6,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 140.3,
+     "Htr,x": null,
+     "Htr,T": 42.5,
+     "Hszell": 585.2,
+     "Qs": 1782.5,
+     "Qb": 2187.1,
+     "Qlead": 8351.0,
+     "Qterh": 3969.7,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 51.1,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 140.3,
+     "Htr,x": null,
+     "Htr,T": 42.5,
+     "Hszell": 631.0,
+     "Qs": 2322.8,
+     "Qb": 2260.0,
+     "Qlead": 5757.6,
+     "Qterh": 4582.9,
+     "QH,net": 513.4,
+     "ηF/H": 70.7,
+     "τ": 48.2,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 140.3,
+     "Htr,x": null,
+     "Htr,T": 42.5,
+     "Hszell": 679.1,
+     "Qs": 2123.7,
+     "Qb": 2187.1,
+     "Qlead": 3530.6,
+     "Qterh": 4310.8,
+     "QH,net": 1230.3,
+     "ηF/H": 87.3,
+     "τ": 45.5,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 140.3,
+     "Htr,x": null,
+     "Htr,T": 42.5,
+     "Hszell": 710.7,
+     "Qs": 1979.2,
+     "Qb": 2260.0,
+     "Qlead": 3074.0,
+     "Qterh": 4239.2,
+     "QH,net": 1465.8,
+     "ηF/H": 90.2,
+     "τ": 43.9,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 140.3,
+     "Htr,x": null,
+     "Htr,T": 42.5,
+     "Hszell": 665.4,
+     "Qs": 2098.6,
+     "Qb": 2260.0,
+     "Qlead": 3535.2,
+     "Qterh": 4358.6,
+     "QH,net": 1256.7,
+     "ηF/H": 87.7,
+     "τ": 46.3,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 140.3,
+     "Htr,x": null,
+     "Htr,T": 42.5,
+     "Hszell": 605.3,
+     "Qs": 1574.8,
+     "Qb": 2187.1,
+     "Qlead": 4918.5,
+     "Qterh": 3762.0,
+     "QH,net": 365.6,
+     "ηF/H": 69.1,
+     "τ": 49.8,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 140.3,
+     "Htr,x": null,
+     "Htr,T": 42.5,
+     "Hszell": 576.6,
+     "Qs": 1335.3,
+     "Qb": 2260.0,
+     "Qlead": 9918.6,
+     "Qterh": 3595.3,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 51.7,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 140.3,
+     "Htr,x": null,
+     "Htr,T": 42.5,
+     "Hszell": 563.9,
+     "Qs": 819.3,
+     "Qb": 2187.1,
+     "Qlead": 9792.0,
+     "Qterh": 3006.4,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 52.6,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 140.3,
+     "Htr,x": null,
+     "Htr,T": 42.5,
+     "Hszell": 551.1,
+     "Qs": 448.4,
+     "Qb": 2260.0,
+     "Qlead": 13904.3,
+     "Qterh": 2708.4,
+     "QH,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 53.5,
+     "σ": 1.0
+    }
+   ]
+  }
+ },
+ "szerkezetek": [
+  "Homlokzati fal                                É        függőleges   0,186   0,186             32,3     -          -      6,0      -",
+  "Tetőfödém                                     É        függőleges   0,143   0,143            539,6     -          -     77,2      -",
+  "Nyílászáró                                    É        függőleges    0,81   0,788              4,9     -          -      3,8   4,2 0,52 0,55",
+  "Nyílászáró                                    É        függőleges    0,84   0,817              7,5     -          -      6,1   6,3 0,52 0,55",
+  "Nyílászáró                                    É        függőleges    0,92   0,893              7,3     -          -      6,5   5,8 0,52 0,55",
+  "Nyílászáró                                    É        függőleges    0,99   0,958              1,9     -          -      1,8   1,4 0,52 0,55",
+  "Nyílászáró                                    É        függőleges    1,16    1,12              1,2     -          -      1,4   0,8 0,52 0,55",
+  "Homlokzati fal                                K        függőleges   0,186   0,186             40,5     -          -      7,5      -",
+  "Nyílászáró                                    K        függőleges    0,81   0,788             29,2     -          -     23,0 25,4 0,52 0,55",
+  "Nyílászáró                                    K        függőleges    0,84   0,817              3,7     -          -      3,0   3,1 0,52 0,55",
+  "Nyílászáró                                    K        függőleges    0,92   0,893             12,1     -          -     10,8   9,6 0,52 0,55",
+  "Nyílászáró                                    K        függőleges    0,96    0,93              2,1     -          -      1,9   1,6 0,52 0,55",
+  "Nyílászáró                                    K        függőleges    1,16    1,12              6,1     -          -      6,8   3,8 0,52 0,55",
+  "Bejárati ajtó                                 K        függőleges      1,4     1,4             4,9     -          -      6,8      -",
+  "Homlokzati fal                                D        függőleges   0,186   0,186             28,3     -          -      5,3      -",
+  "Nyílászáró                                    D        függőleges    0,81   0,788             14,4     -          -     11,3 12,5 0,52 0,55",
+  "Nyílászáró                                    D        függőleges    0,82   0,798              4,2     -          -      3,3   3,6 0,52 0,55",
+  "Nyílászáró                                    D        függőleges    0,84   0,817              3,8     -          -      3,1   3,3 0,52 0,55",
+  "Nyílászáró                                    D        függőleges    0,92   0,893              9,7     -          -      8,7   7,7 0,52 0,55",
+  "Nyílászáró                                    D        függőleges    0,96    0,93              2,1     -          -      2,0   1,6 0,52 0,55",
+  "Nyílászáró                                    D        függőleges    0,99   0,958              1,9     -          -      1,8   1,4 0,52 0,55",
+  "Nyílászáró                                    D        függőleges    1,16    1,12              1,2     -          -      1,4   0,8 0,52 0,55",
+  "Homlokzati fal                               NY        függőleges   0,186   0,186             67,9     -          -     12,6      -",
+  "Nyílászáró                                   NY        függőleges    0,81   0,788              9,7     -          -      7,7   8,5 0,52 0,55",
+  "Nyílászáró                                   NY        függőleges    0,84   0,817              7,7     -          -      6,3   6,5 0,52 0,55",
+  "Nyílászáró                                   NY        függőleges    0,92   0,893             14,6     -          -     13,0 11,5 0,52 0,55",
+  "Nyílászáró                                   NY        függőleges    1,16    1,12              2,4     -          -      2,7   1,5 0,52 0,55",
+  "Kapu                                         NY        függőleges      1,8     1,8             4,9     -          -      8,7      -",
+  "Fsz padozat                                                         0,135        -           286,5     -       57,8     38,7      -",
+  "Fsz padozat                                                         0,142        -           153,6     -       36,9     21,8      -",
+  "Fsz padozat                                                         0,145        -            99,5     -       26,2     14,4      -"
+ ],
+ "rendszerek": [
+  {
+   "rendszer": "Fűtési rendszer",
+   "alnev": "",
+   "ertekek": {
+    "AN": [
+     539.62
+    ],
+    "QF,net,FR": [
+     95647.0
+    ],
+    "qF,net,FR": [
+     177.25
+    ],
+    "εF": [
+     0.3
+    ],
+    "wF,seg": [
+     0.0
+    ],
+    "QF,vég": [
+     29980.0
+    ],
+    "εF,szab,0": [
+     1.042
+    ],
+    "εF,szab": [
+     1.042
+    ],
+    "qF,száll": [
+     0.5
+    ],
+    "wF,sziv": [
+     0.22
+    ],
+    "qF,tár": [
+     0.0
+    ],
+    "wF,tár": [
+     0.0
+    ],
+    "WF,vég": [
+     120.0
+    ],
+    "EF,vég": [
+     29980.0,
+     69954.0
+    ],
+    "EF,nren,fajl": [
+     128.29
+    ],
+    "EF,ren,fajl": [
+     146.37
+    ],
+    "EF,tot,fajl": [
+     274.66
+    ],
+    "EF,CO2,fajl": [
+     28.88
+    ]
+   },
+   "szoveg": [
+    "Levegő – víz hőszivattyú, hőleadóók fan-coilok + padlófűtés",
+    "Elektromos üzemű hőszivattyú, levegő hőforrással, fűtővíz hőmérséklet 35/28",
+    "H hőszivattyús elektromos áram | (energiahordozó típusa)",
+    "2",
+    "Közvetlen helyiséglevegő fűtések",
+    "Levegőfűtés (indukciós berendezéssel, fan coillal) a belső hőmérséklet folytonos PI vagy PID szabályozása",
+    "Elosztó vezetékek a fűtött téren belül, vízhőmérséklet 35/28",
+    "Épületenergetikai számítás | 8",
+    "Elektronikusan szabályzott, állandó mágneses motorral, EEI=0,17",
+    "Tárolási veszteség nincs",
+    "Energiafelhasználás",
+    "Indikátorok"
+   ],
+   "vegenergia": [
+    {
+     "kulcs": "EF,vég",
+     "Q": 29980.0,
+     "hordozo": "villamos energia"
+    },
+    {
+     "kulcs": "EF,vég",
+     "Q": 69954.0,
+     "hordozo": "környezeti hő"
+    }
+   ]
+  },
+  {
+   "rendszer": "Melegvíz-termelő rendszer",
+   "alnev": "",
+   "ertekek": {
+    "AN": [
+     539.62
+    ],
+    "qHMV": [
+     20.29
+    ],
+    "εHMV": [
+     0.36
+    ],
+    "wHMV,seg": [
+     0.0
+    ],
+    "QHMV,vég": [
+     4711.0
+    ],
+    "qHMV,v": [
+     12.8
+    ],
+    "wHMV,száll": [
+     0.21
+    ],
+    "qHMV,t": [
+     6.7
+    ],
+    "WHMV,vég": [
+     114.0
+    ],
+    "EHMV,vég": [
+     4711.0,
+     8375.0
+    ],
+    "EHMV,nren,fajl": [
+     20.57
+    ],
+    "EHMV,ren,fajl": [
+     18.2
+    ],
+    "EHMV,tot,fajl": [
+     38.77
+    ],
+    "EHMV,CO2,fajl": [
+     4.49
+    ]
+   },
+   "szoveg": [
+    "HMV: levegő – víz hőszivattyú, 2 db 1500 literes indirekt fűtésű tárolón keresztül",
+    "2",
+    "30 * 0.40 adagonként = 12.00 kWh/napMenza",
+    "10 * 1.80 fejenként = 18.00 kWh/napIpari épület (zuhanyzással)",
+    "Elektromos üzemű hőszivattyú, távozó levegő hőforrással",
+    "H hőszivattyús elektromos áram | (energiahordozó típusa)",
+    "Elosztó vezetékek a fűtött téren belül, cirkulációval",
+    "cirkulációval EEI=0.17",
+    "Elhelyezés a fűtött térben, indirekt fűtésű tároló",
+    "Energiafelhasználás",
+    "Indikátorok",
+    "Épületenergetikai számítás | 9"
+   ],
+   "vegenergia": [
+    {
+     "kulcs": "EHMV,vég",
+     "Q": 4711.0,
+     "hordozo": "villamos energia"
+    },
+    {
+     "kulcs": "EHMV,vég",
+     "Q": 8375.0,
+     "hordozo": "környezeti hő"
+    }
+   ]
+  },
+  {
+   "rendszer": "Hűtési rendszer",
+   "alnev": "",
+   "ertekek": {
+    "Ahű": [
+     539.6
+    ],
+    "QH,net": [
+     4831.9
+    ],
+    "εH": [
+     0.2
+    ],
+    "wH,seg": [
+     0.0
+    ],
+    "QH,vég": [
+     1329.0
+    ],
+    "εH,szab": [
+     1.1
+    ],
+    "cH": [
+     1.25
+    ],
+    "εH,száll": [
+     1.0
+    ],
+    "EH,vég": [
+     1329.0
+    ],
+    "EH,nren,fajl": [
+     5.66
+    ],
+    "EH,ren,fajl": [
+     0.74
+    ],
+    "EH,tot,fajl": [
+     6.4
+    ],
+    "EH,CO2,fajl": [
+     1.12
+    ]
+   },
+   "szoveg": [
+    "Vízhűtéses folyadékhűtők (csavar kompresszor) EER=5,0",
+    "elektromos áram | (energiahordozó típusa)",
+    "2",
+    "Víz hőhordozó közeg;Hűtött víz 8 °C / 14 °C (pl. fan coil)",
+    "6/12 °C (pl. fan-coil készülék)",
+    "Energiafelhasználás",
+    "Indikátorok"
+   ],
+   "vegenergia": [
+    {
+     "kulcs": "EH,vég",
+     "Q": 1329.0,
+     "hordozo": "villamos energia"
+    }
+   ]
+  },
+  {
+   "rendszer": "Világítási rendszer",
+   "alnev": "",
+   "ertekek": {
+    "AN": [
+     539.62
+    ],
+    "MV": [
+     200.0
+    ],
+    "FH": [
+     120.0
+    ],
+    "ηvil": [
+     0.5
+    ],
+    "Ffe": [
+     1.0
+    ],
+    "Fkihaszn": [
+     0.0
+    ],
+    "Fszab": [
+     1.0
+    ],
+    "tnappal": [
+     3000.0
+    ],
+    "téjjel": [
+     2000.0
+    ],
+    "Fnappal": [
+     0.35
+    ],
+    "EV,vég": [
+     5486.0
+    ],
+    "EV,nren,fajl": [
+     23.38
+    ],
+    "EV,ren,fajl": [
+     3.05
+    ],
+    "EV,tot,fajl": [
+     26.43
+    ],
+    "EV,CO2,fajl": [
+     4.63
+    ]
+   },
+   "szoveg": [
+    "Energiafelhasználás",
+    "Indikátorok",
+    "Épületenergetikai számítás | 10",
+    "Épülettechnikai rendszerek értékelése:"
+   ],
+   "vegenergia": [
+    {
+     "kulcs": "EV,vég",
+     "Q": 5486.0,
+     "hordozo": "villamos energia"
+    }
+   ]
+  }
+ ],
+ "referencia": {
+  "zonak": {
+   "hasznalati": [],
+   "hoegyensuly": [],
+   "szamitasi": [
+    {
+     "jel": "F1",
+     "tipus": "fűtés",
+     "hoegyA": 539.62,
+     "te": 20.0,
+     "A": 286.5,
+     "V": 773.5,
+     "CmFajl": 563.0,
+     "Qnet": 86.8,
+     "qnet": 303.0
+    },
+    {
+     "jel": "F2",
+     "tipus": "fűtés",
+     "hoegyA": 539.62,
+     "te": 20.0,
+     "A": 253.1,
+     "V": 683.5,
+     "CmFajl": 558.0,
+     "Qnet": 18.98,
+     "qnet": 75.0
+    },
+    {
+     "jel": "H1",
+     "tipus": "hűtés",
+     "hoegyA": 539.62,
+     "te": 26.0,
+     "A": 286.5,
+     "V": 773.5,
+     "CmFajl": 563.0,
+     "Qnet": 0.0,
+     "qnet": 0.0
+    },
+    {
+     "jel": "H2",
+     "tipus": "hűtés",
+     "hoegyA": 539.62,
+     "te": 26.0,
+     "A": 253.1,
+     "V": 683.5,
+     "CmFajl": 558.0,
+     "Qnet": 6.703,
+     "qnet": 26.0
+    }
+   ],
+   "havi": {
+    "F1": [
+     {
+      "Htr,D": 151.3,
+      "Htr,x": null,
+      "Htr,T": 91.7,
+      "Hszell": 956.3,
+      "Qs": 696.0,
+      "Qb": 0.0,
+      "Qveszt": 15371.1,
+      "Qnyer": 696.0,
+      "QF,net": 14675.1,
+      "ηF/H": 100.0,
+      "τ": 37.3,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 151.3,
+      "Htr,x": null,
+      "Htr,T": 91.7,
+      "Hszell": 956.3,
+      "Qs": 854.1,
+      "Qb": 0.0,
+      "Qveszt": 15521.0,
+      "Qnyer": 854.1,
+      "QF,net": 14666.9,
+      "ηF/H": 100.0,
+      "τ": 37.3,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 151.3,
+      "Htr,x": null,
+      "Htr,T": 91.7,
+      "Hszell": 956.3,
+      "Qs": 894.5,
+      "Qb": 0.0,
+      "Qveszt": 14217.5,
+      "Qnyer": 894.5,
+      "QF,net": 13323.1,
+      "ηF/H": 100.0,
+      "τ": 37.3,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 151.3,
+      "Htr,x": null,
+      "Htr,T": 91.7,
+      "Hszell": 956.3,
+      "Qs": 1521.7,
+      "Qb": 0.0,
+      "Qveszt": 7857.7,
+      "Qnyer": 1521.7,
+      "QF,net": 6340.0,
+      "ηF/H": 99.7,
+      "τ": 37.3,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 151.3,
+      "Htr,x": null,
+      "Htr,T": 91.7,
+      "Hszell": 956.3,
+      "Qs": 1882.9,
+      "Qb": 0.0,
+      "Qveszt": 3257.9,
+      "Qnyer": 1882.9,
+      "QF,net": 1503.3,
+      "ηF/H": 93.2,
+      "τ": 37.3,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 151.3,
+      "Htr,x": null,
+      "Htr,T": 91.7,
+      "Hszell": 956.3,
+      "Qs": 1594.6,
+      "Qb": 0.0,
+      "Qveszt": -36.9,
+      "Qnyer": 1594.6,
+      "QF,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 37.3,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 151.3,
+      "Htr,x": null,
+      "Htr,T": 91.7,
+      "Hszell": 956.3,
+      "Qs": 1532.2,
+      "Qb": 0.0,
+      "Qveszt": -944.6,
+      "Qnyer": 1532.2,
+      "QF,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 37.3,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 151.3,
+      "Htr,x": null,
+      "Htr,T": 91.7,
+      "Hszell": 956.3,
+      "Qs": 1729.9,
+      "Qb": 0.0,
+      "Qveszt": -120.6,
+      "Qnyer": 1729.9,
+      "QF,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 37.3,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 151.3,
+      "Htr,x": null,
+      "Htr,T": 91.7,
+      "Hszell": 956.3,
+      "Qs": 1460.0,
+      "Qb": 0.0,
+      "Qveszt": 2435.1,
+      "Qnyer": 1460.0,
+      "QF,net": 1084.2,
+      "ηF/H": 92.5,
+      "τ": 37.3,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 151.3,
+      "Htr,x": null,
+      "Htr,T": 91.7,
+      "Hszell": 956.3,
+      "Qs": 1377.6,
+      "Qb": 0.0,
+      "Qveszt": 10262.1,
+      "Qnyer": 1377.6,
+      "QF,net": 8885.6,
+      "ηF/H": 99.9,
+      "τ": 37.3,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 151.3,
+      "Htr,x": null,
+      "Htr,T": 91.7,
+      "Hszell": 956.3,
+      "Qs": 893.3,
+      "Qb": 0.0,
+      "Qveszt": 10489.3,
+      "Qnyer": 893.3,
+      "QF,net": 9596.2,
+      "ηF/H": 100.0,
+      "τ": 37.3,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 151.3,
+      "Htr,x": null,
+      "Htr,T": 91.7,
+      "Hszell": 956.3,
+      "Qs": 460.1,
+      "Qb": 0.0,
+      "Qveszt": 17183.9,
+      "Qnyer": 460.1,
+      "QF,net": 16723.8,
+      "ηF/H": 100.0,
+      "τ": 37.3,
+      "σ": 1.0
+     }
+    ],
+    "F2": [
+     {
+      "Htr,D": 189.5,
+      "Htr,x": null,
+      "Htr,T": 82.3,
+      "Hszell": 332.9,
+      "Qs": 1219.7,
+      "Qb": 2260.0,
+      "Qveszt": 7515.0,
+      "Qnyer": 3479.7,
+      "QF,net": 4066.4,
+      "ηF/H": 99.1,
+      "τ": 64.9,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 189.5,
+      "Htr,x": null,
+      "Htr,T": 82.3,
+      "Hszell": 332.9,
+      "Qs": 1680.2,
+      "Qb": 2041.3,
+      "Qveszt": 7560.1,
+      "Qnyer": 3721.6,
+      "QF,net": 3882.3,
+      "ηF/H": 98.8,
+      "τ": 64.9,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 189.5,
+      "Htr,x": null,
+      "Htr,T": 82.3,
+      "Hszell": 332.9,
+      "Qs": 1830.3,
+      "Qb": 2260.0,
+      "Qveszt": 6970.8,
+      "Qnyer": 4090.3,
+      "QF,net": 2982.7,
+      "ηF/H": 97.5,
+      "τ": 64.9,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 189.5,
+      "Htr,x": null,
+      "Htr,T": 82.3,
+      "Hszell": 332.9,
+      "Qs": 3427.9,
+      "Qb": 2187.1,
+      "Qveszt": 3962.2,
+      "Qnyer": 5615.1,
+      "QF,net": 204.5,
+      "ηF/H": 66.9,
+      "τ": 64.9,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 189.5,
+      "Htr,x": null,
+      "Htr,T": 82.3,
+      "Hszell": 332.9,
+      "Qs": 4467.0,
+      "Qb": 2260.0,
+      "Qveszt": 1800.8,
+      "Qnyer": 6727.0,
+      "QF,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 64.9,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 189.5,
+      "Htr,x": null,
+      "Htr,T": 82.3,
+      "Hszell": 332.9,
+      "Qs": 4084.0,
+      "Qb": 2187.1,
+      "Qveszt": 238.0,
+      "Qnyer": 6271.2,
+      "QF,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 64.9,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 189.5,
+      "Htr,x": null,
+      "Htr,T": 82.3,
+      "Hszell": 332.9,
+      "Qs": 3806.1,
+      "Qb": 2260.0,
+      "Qveszt": -181.7,
+      "Qnyer": 6066.1,
+      "QF,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 64.9,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 189.5,
+      "Htr,x": null,
+      "Htr,T": 82.3,
+      "Hszell": 332.9,
+      "Qs": 4035.7,
+      "Qb": 2260.0,
+      "Qveszt": 207.0,
+      "Qnyer": 6295.8,
+      "QF,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 64.9,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 189.5,
+      "Htr,x": null,
+      "Htr,T": 82.3,
+      "Hszell": 332.9,
+      "Qs": 3028.5,
+      "Qb": 2187.1,
+      "Qveszt": 1404.1,
+      "Qnyer": 5215.7,
+      "QF,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 64.9,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 189.5,
+      "Htr,x": null,
+      "Htr,T": 82.3,
+      "Hszell": 332.9,
+      "Qs": 2567.9,
+      "Qb": 2260.0,
+      "Qveszt": 5104.9,
+      "Qnyer": 4827.9,
+      "QF,net": 931.2,
+      "ηF/H": 86.4,
+      "τ": 64.9,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 189.5,
+      "Htr,x": null,
+      "Htr,T": 82.3,
+      "Hszell": 332.9,
+      "Qs": 1575.6,
+      "Qb": 2187.1,
+      "Qveszt": 5203.6,
+      "Qnyer": 3762.7,
+      "QF,net": 1653.3,
+      "ηF/H": 94.4,
+      "τ": 64.9,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 189.5,
+      "Htr,x": null,
+      "Htr,T": 82.3,
+      "Hszell": 332.9,
+      "Qs": 862.3,
+      "Qb": 2260.0,
+      "Qveszt": 8370.1,
+      "Qnyer": 3122.3,
+      "QF,net": 5258.1,
+      "ηF/H": 99.7,
+      "τ": 64.9,
+      "σ": 1.0
+     }
+    ],
+    "H1": [
+     {
+      "Htr,D": 151.3,
+      "Htr,x": null,
+      "Htr,T": 91.7,
+      "Hszell": 956.3,
+      "Qs": 379.6,
+      "Qb": 0.0,
+      "Qlead": 20724.7,
+      "Qterh": 379.6,
+      "QH,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 37.3,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 151.3,
+      "Htr,x": null,
+      "Htr,T": 91.7,
+      "Hszell": 956.3,
+      "Qs": 465.9,
+      "Qb": 0.0,
+      "Qlead": 20356.5,
+      "Qterh": 465.9,
+      "QH,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 37.3,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 151.3,
+      "Htr,x": null,
+      "Htr,T": 91.7,
+      "Hszell": 956.3,
+      "Qs": 487.9,
+      "Qb": 0.0,
+      "Qlead": 19571.1,
+      "Qterh": 487.9,
+      "QH,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 37.3,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 151.3,
+      "Htr,x": null,
+      "Htr,T": 91.7,
+      "Hszell": 956.3,
+      "Qs": 830.0,
+      "Qb": 0.0,
+      "Qlead": 13038.7,
+      "Qterh": 830.0,
+      "QH,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 37.3,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 151.3,
+      "Htr,x": null,
+      "Htr,T": 91.7,
+      "Hszell": 956.3,
+      "Qs": 1027.0,
+      "Qb": 0.0,
+      "Qlead": 8611.6,
+      "Qterh": 1027.0,
+      "QH,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 37.3,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 151.3,
+      "Htr,x": null,
+      "Htr,T": 91.7,
+      "Hszell": 956.3,
+      "Qs": 869.8,
+      "Qb": 0.0,
+      "Qlead": 5144.0,
+      "Qterh": 869.8,
+      "QH,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 37.3,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 151.3,
+      "Htr,x": null,
+      "Htr,T": 91.7,
+      "Hszell": 956.3,
+      "Qs": 835.7,
+      "Qb": 0.0,
+      "Qlead": 4409.0,
+      "Qterh": 835.7,
+      "QH,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 37.3,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 151.3,
+      "Htr,x": null,
+      "Htr,T": 91.7,
+      "Hszell": 956.3,
+      "Qs": 943.6,
+      "Qb": 0.0,
+      "Qlead": 5233.1,
+      "Qterh": 943.6,
+      "QH,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 37.3,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 151.3,
+      "Htr,x": null,
+      "Htr,T": 91.7,
+      "Hszell": 956.3,
+      "Qs": 796.4,
+      "Qb": 0.0,
+      "Qlead": 7616.1,
+      "Qterh": 796.4,
+      "QH,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 37.3,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 151.3,
+      "Htr,x": null,
+      "Htr,T": 91.7,
+      "Hszell": 956.3,
+      "Qs": 751.4,
+      "Qb": 0.0,
+      "Qlead": 15615.8,
+      "Qterh": 751.4,
+      "QH,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 37.3,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 151.3,
+      "Htr,x": null,
+      "Htr,T": 91.7,
+      "Hszell": 956.3,
+      "Qs": 487.2,
+      "Qb": 0.0,
+      "Qlead": 15670.2,
+      "Qterh": 487.2,
+      "QH,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 37.3,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 151.3,
+      "Htr,x": null,
+      "Htr,T": 91.7,
+      "Hszell": 956.3,
+      "Qs": 251.0,
+      "Qb": 0.0,
+      "Qlead": 22537.6,
+      "Qterh": 251.0,
+      "QH,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 37.3,
+      "σ": 1.0
+     }
+    ],
+    "H2": [
+     {
+      "Htr,D": 189.5,
+      "Htr,x": null,
+      "Htr,T": 82.3,
+      "Hszell": 332.9,
+      "Qs": 665.3,
+      "Qb": 2260.0,
+      "Qlead": 10214.5,
+      "Qterh": 2925.3,
+      "QH,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 64.9,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 189.5,
+      "Htr,x": null,
+      "Htr,T": 82.3,
+      "Hszell": 332.9,
+      "Qs": 916.5,
+      "Qb": 2041.3,
+      "Qlead": 9998.4,
+      "Qterh": 2957.8,
+      "QH,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 64.9,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 189.5,
+      "Htr,x": null,
+      "Htr,T": 82.3,
+      "Hszell": 332.9,
+      "Qs": 998.3,
+      "Qb": 2260.0,
+      "Qlead": 9670.3,
+      "Qterh": 3258.4,
+      "QH,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 64.9,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 189.5,
+      "Htr,x": null,
+      "Htr,T": 82.3,
+      "Hszell": 332.9,
+      "Qs": 1869.8,
+      "Qb": 2187.1,
+      "Qlead": 6574.6,
+      "Qterh": 4056.9,
+      "QH,net": 124.5,
+      "ηF/H": 59.8,
+      "τ": 64.9,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 189.5,
+      "Htr,x": null,
+      "Htr,T": 82.3,
+      "Hszell": 332.9,
+      "Qs": 2436.5,
+      "Qb": 2260.0,
+      "Qlead": 4500.3,
+      "Qterh": 4696.6,
+      "QH,net": 829.1,
+      "ηF/H": 85.9,
+      "τ": 64.9,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 189.5,
+      "Htr,x": null,
+      "Htr,T": 82.3,
+      "Hszell": 332.9,
+      "Qs": 2227.7,
+      "Qb": 2187.1,
+      "Qlead": 2850.4,
+      "Qterh": 4414.8,
+      "QH,net": 1669.1,
+      "ηF/H": 96.3,
+      "τ": 64.9,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 189.5,
+      "Htr,x": null,
+      "Htr,T": 82.3,
+      "Hszell": 332.9,
+      "Qs": 2076.0,
+      "Qb": 2260.0,
+      "Qlead": 2517.8,
+      "Qterh": 4336.1,
+      "QH,net": 1878.5,
+      "ηF/H": 97.6,
+      "τ": 64.9,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 189.5,
+      "Htr,x": null,
+      "Htr,T": 82.3,
+      "Hszell": 332.9,
+      "Qs": 2201.3,
+      "Qb": 2260.0,
+      "Qlead": 2906.5,
+      "Qterh": 4461.3,
+      "QH,net": 1665.5,
+      "ηF/H": 96.2,
+      "τ": 64.9,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 189.5,
+      "Htr,x": null,
+      "Htr,T": 82.3,
+      "Hszell": 332.9,
+      "Qs": 1651.9,
+      "Qb": 2187.1,
+      "Qlead": 4016.5,
+      "Qterh": 3839.1,
+      "QH,net": 536.0,
+      "ηF/H": 82.2,
+      "τ": 64.9,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 189.5,
+      "Htr,x": null,
+      "Htr,T": 82.3,
+      "Hszell": 332.9,
+      "Qs": 1400.6,
+      "Qb": 2260.0,
+      "Qlead": 7804.4,
+      "Qterh": 3660.7,
+      "QH,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 64.9,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 189.5,
+      "Htr,x": null,
+      "Htr,T": 82.3,
+      "Hszell": 332.9,
+      "Qs": 859.4,
+      "Qb": 2187.1,
+      "Qlead": 7816.0,
+      "Qterh": 3046.5,
+      "QH,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 64.9,
+      "σ": 1.0
+     },
+     {
+      "Htr,D": 189.5,
+      "Htr,x": null,
+      "Htr,T": 82.3,
+      "Hszell": 332.9,
+      "Qs": 470.3,
+      "Qb": 2260.0,
+      "Qlead": 11069.6,
+      "Qterh": 2730.4,
+      "QH,net": 0.0,
+      "ηF/H": 100.0,
+      "τ": 64.9,
+      "σ": 1.0
+     }
+    ]
+   }
+  },
+  "eredmeny": {
+   "Enren,fajl": 262.98,
+   "ECO2,fajl": 68.38,
+   "Enren_tagok": [
+    201.27,
+    27.71,
+    0.0,
+    10.62,
+    23.38,
+    0.0
+   ]
+  }
+ }
+}

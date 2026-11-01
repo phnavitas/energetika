@@ -168,7 +168,17 @@ function uvegFelulet(n: NyilaszaroElem): number {
   return n.Au ?? n.A * (1 - (n.keretarany ?? 0.3));
 }
 
-export function zonaHaviMerleg(z: ZonaBemenet, opciok?: { QsdFelulbiralas?: readonly number[] }): ZonaEredmeny {
+/** Tesztelési felülbírálások (pl. WinWatt-jegyzőkönyv havi köztes értékeivel való összevetéshez). */
+export interface MerlegFelulbiralas {
+  QsdFelulbiralas?: readonly number[];
+  QsdHFelulbiralas?: readonly number[];
+  HszellFFelulbiralas?: readonly number[];
+  HszellHFelulbiralas?: readonly number[];
+  /** Hűtési módban a fűtetlen terek felé (Htr,x) – havonta. */
+  HtrXHFelulbiralas?: readonly number[];
+}
+
+export function zonaHaviMerleg(z: ZonaBemenet, opciok?: MerlegFelulbiralas): ZonaEredmeny {
   const fw: Figyelmeztetes[] = [];
   const CmEff = z.CmEff ?? (z.CmEffFajl ?? HOTAROLO_KEPESSEG.kozepes.ertek) * z.AN;
   if (z.CmEff === undefined && z.CmEffFajl === undefined) {
@@ -224,9 +234,11 @@ export function zonaHaviMerleg(z: ZonaBemenet, opciok?: { QsdFelulbiralas?: read
       }
     }
     if (opciok?.QsdFelulbiralas) { Qsd = opciok.QsdFelulbiralas[m]!; }
+    if (opciok?.QsdHFelulbiralas) { QsdH = opciok.QsdHFelulbiralas[m]!; }
+    if (opciok?.HtrXHFelulbiralas) { HtrX_H = opciok.HtrXHFelulbiralas[m]!; }
 
     // Fűtés
-    const HszellF = HszellFHavi(m);
+    const HszellF = opciok?.HszellFFelulbiralas?.[m] ?? HszellFHavi(m);
     const Qtr = ((HtrD + HtrX) * (z.thetaF - thetaE) + HtrT * (z.thetaF - KULSO_HOMERSEKLET_EVES)) * dt / 1000; // 6.7
     const Qszell = HszellF * (z.thetaF - thetaE) * dt / 1000; // 6.20
     const tau = CmEff / 3.6 / (HtrD + HtrX + HtrT + HszellF); // 6.34
@@ -242,7 +254,7 @@ export function zonaHaviMerleg(z: ZonaBemenet, opciok?: { QsdFelulbiralas?: read
 
     // Hűtés (nyári b, nyári éjszakai szellőztetés máj–szept, társított napvédő)
     const nyar = m >= 4 && m <= 8;
-    const HszellH = HszellTermHavi(m) + (nyar && z.nEjjel ? 0.35 * B_EJJEL * (7 / 24) * z.nEjjel * z.V : 0); // 6.11
+    const HszellH = opciok?.HszellHFelulbiralas?.[m] ?? HszellTermHavi(m) + (nyar && z.nEjjel ? 0.35 * B_EJJEL * (7 / 24) * z.nEjjel * z.V : 0); // 6.11
     const Qlead = (((HtrD_H + HtrX_H) * (z.thetaH - thetaE) + HtrT * (z.thetaH - KULSO_HOMERSEKLET_EVES)) + HszellH * (z.thetaH - thetaE)) * dt / 1000;
     const Qterh = QsdH + Qb;
     const gammaH = Qterh / Qlead;

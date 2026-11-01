@@ -368,6 +368,10 @@ function FutesKartya({ f, tobb, r, m, torol, szett, AN }: { f: FutesAlrendszerUI
             <Mezo cim="Keringtető szivattyú">
               <Valaszto ertek={f.szivattyu ?? 'nincs'} valt={(v) => m((x) => { x.szivattyu = v === 'nincs' ? null : v as NonNullable<FutesAlrendszerUI['szivattyu']>; x.szettKod = undefined; })} opciok={[{ ertek: 'nincs', nev: 'Nincs (pl. kazánba épített)' }, ...C.opciok(C.SZIVATTYU_NEV)]} />
             </Mezo>
+            <Mezo cim="Fan-coil ventilátor" sugo="8.17. táblázat – egész éves (fűtési és hűtési) üzem, egyszer számolva">
+              <Valaszto ertek={f.fancoil ?? 'nincs'} valt={(v) => m((x) => { if (v === 'nincs') delete x.fancoil; else x.fancoil = v as NonNullable<FutesAlrendszerUI['fancoil']>; x.szettKod = undefined; })}
+                opciok={[{ ertek: 'nincs', nev: 'Nincs fan-coil' }, { ertek: 'padlon_oldalfali_mennyezet_alatti', nev: 'Padlón álló, oldalfali, mennyezet alatti – 2,0 kWh/m²a' }, { ertek: 'almennyezeti', nev: 'Álmennyezetbe telepített – 2,4 kWh/m²a' }, { ertek: 'legcsatornazhato', nev: 'Légcsatornázható – 2,8 kWh/m²a' }, { ertek: 'negy_iranyban_fuvo', nev: 'Négy irányban fúvó – 4,4 kWh/m²a' }]} />
+            </Mezo>
           </>}
         </Csoport>
       </div>

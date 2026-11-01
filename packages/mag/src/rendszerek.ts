@@ -106,6 +106,8 @@ export interface FutesiAlrendszer {
   tarolo: null | { hely: 'belul' | 'kivul'; elore: number; vissza: number };
   /** Keringtető szivattyú oszlopa a 8.16. táblázatban; null: nincs (pl. egyedi fűtés). */
   szivattyu: null | Exclude<keyof typeof T.FUTES_SZIVATTYU, 'forras' | 'A'>;
+  /** Fan-coil hőleadók ventilátora (8.17. táblázat, egész éves üzem – fűtés és hűtés együtt, itt egyszer számolva). */
+  fancoil?: keyof typeof T.FANCOIL_SEGED | null;
 }
 
 /** Hőfoklépcső szerinti interpoláció a közepes hőmérsékletkülönbségen (7. fejezet). */
@@ -153,6 +155,9 @@ export function futesiRendszer(a: FutesiAlrendszer, QFnetZona: number, AN: numbe
   const wSziv = a.szivattyu ? interpolal(oszlop(T.FUTES_SZIVATTYU, a.szivattyu), a.Arszr, fw) : 0;
   const WSziv = wSziv * a.Arszr * lef;
   const WTerm = h.WtermFajl * a.Arszr * lef + h.WtermAbsz * lef;
+  // 8.17: fan coil ventilátor segédenergiája (a 8.16. keringtetés mellett)
+  const wFC = a.fancoil ? T.FANCOIL_SEGED[a.fancoil] : 0;
+  const WFC = wFC * a.Arszr * lef;
 
   // 8.2
   const Qleadott = QFnetFR * a.epszilonSzab + QSzall + QTar;
@@ -164,12 +169,12 @@ export function futesiRendszer(a: FutesiAlrendszer, QFnetZona: number, AN: numbe
     if (h.eps <= 0.37) tetelek.push({ energiahordozo: 'kornyezeti_ho', Q: Qkorny, jelleg: 'kornyezeti', megnevezes: 'Fűtés – hőszivattyú környezeti hő' });
     else fw.push({ kod: 'HSZ_NEM_MEGUJULO', uzenet: `εF = ${h.eps.toFixed(3)} > 0,37: a hőszivattyú környezeti hője nem vehető figyelembe megújulóként.`, forras: '1. függ. 14.3' });
   }
-  const WFveg = WSziv + WTar + WTerm;
+  const WFveg = WSziv + WTar + WTerm + WFC;
   if (WFveg > 0) tetelek.push({ energiahordozo: 'villamos', Q: WFveg, jelleg: 'seged', megnevezes: 'Fűtés – villamos segédenergia' });
 
   return {
     nev: a.nev, cel: 'futes', tetelek, figyelmeztetesek: fw,
-    reszletek: { QFnetFR, epszilonSzab: a.epszilonSzab, qSzall, QSzall, qTar, QTar, epszilonF: h.eps, Qleadott, QFveg, wSziv, WSziv, WTar, WTerm, WFveg, AN },
+    reszletek: { QFnetFR, epszilonSzab: a.epszilonSzab, qSzall, QSzall, qTar, QTar, epszilonF: h.eps, Qleadott, QFveg, wSziv, WSziv, WTar, WTerm, wFC, WFC, WFveg, AN },
   };
 }
 

@@ -1,0 +1,485 @@
+{
+ "verzio": "9.57",
+ "eredmeny": {
+  "Hasznos alapterület": 107.73,
+  "Összesített energetikai jellemző": 46.21,
+  "Fajlagos széndioxid kibocsátás": 10.08,
+  "Enren,fajl": 46.21,
+  "Enren,fajl,max": 76.0,
+  "ECO2,fajl": 10.08,
+  "Fajlagos hőveszteségtényező": 0.146,
+  "Fajlagos hőveszteségtényező követelményértéke": 0.312,
+  "Épület felület-térfogat aránya": 1.046,
+  "A nyári hővédelemre vonatkozó mutató": 0.079,
+  "Enren_tagok": [
+   17.62,
+   27.51,
+   1.08,
+   0.0,
+   0.0,
+   0.0
+  ]
+ },
+ "zonak": {
+  "hasznalati": [
+   {
+    "nev": "Lakóépület egésze",
+    "A": 107.7,
+    "thetaF": 20.0,
+    "thetaH": 26.0,
+    "nSzuks": 0.5,
+    "VLTA": null,
+    "tnap": 24.0,
+    "napEv": 365.0,
+    "MV": 0.0,
+    "qb": 5.0
+   }
+  ],
+  "hoegyensuly": [
+   {
+    "nev": "",
+    "A": 107.7,
+    "CmFajl": 198.0,
+    "nfilt": 0.06,
+    "nEjjel": 6.0,
+    "futesProg": false,
+    "hutesKikapcs": false
+   }
+  ],
+  "szamitasi": [
+   {
+    "jel": "F1",
+    "tipus": "fűtés",
+    "hoegyA": 107.73,
+    "te": 20.0,
+    "A": 107.7,
+    "V": 290.9,
+    "CmFajl": 198.0,
+    "Qnet": 1.808,
+    "qnet": 16.8
+   }
+  ],
+  "havi": {
+   "F1": [
+    {
+     "Htr,D": 60.4,
+     "Htr,x": null,
+     "Htr,T": 12.3,
+     "Hszell": 13.7,
+     "Qs": 293.7,
+     "Qb": 400.8,
+     "Qveszt": 1070.2,
+     "Qnyer": 694.4,
+     "QF,net": 399.1,
+     "ηF/H": 96.6,
+     "τ": 68.5,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 60.4,
+     "Htr,x": null,
+     "Htr,T": 12.3,
+     "Hszell": 13.7,
+     "Qs": 354.7,
+     "Qb": 362.0,
+     "Qveszt": 1076.2,
+     "Qnyer": 716.6,
+     "QF,net": 386.4,
+     "ηF/H": 96.3,
+     "τ": 68.5,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 60.4,
+     "Htr,x": null,
+     "Htr,T": 12.3,
+     "Hszell": 13.7,
+     "Qs": 386.5,
+     "Qb": 400.8,
+     "Qveszt": 993.0,
+     "Qnyer": 787.2,
+     "QF,net": 263.0,
+     "ηF/H": 92.7,
+     "τ": 68.5,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 60.4,
+     "Htr,x": null,
+     "Htr,T": 12.3,
+     "Hszell": 13.7,
+     "Qs": 671.9,
+     "Qb": 387.8,
+     "Qveszt": 566.0,
+     "Qnyer": 1059.7,
+     "QF,net": 8.2,
+     "ηF/H": 52.6,
+     "τ": 68.5,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 60.4,
+     "Htr,x": null,
+     "Htr,T": 12.3,
+     "Hszell": 13.7,
+     "Qs": 837.8,
+     "Qb": 400.8,
+     "Qveszt": 259.5,
+     "Qnyer": 1238.5,
+     "QF,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 68.5,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 60.4,
+     "Htr,x": null,
+     "Htr,T": 12.3,
+     "Hszell": 13.7,
+     "Qs": 725.1,
+     "Qb": 387.8,
+     "Qveszt": 37.6,
+     "Qnyer": 1113.0,
+     "QF,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 68.5,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 60.4,
+     "Htr,x": null,
+     "Htr,T": 12.3,
+     "Hszell": 13.7,
+     "Qs": 690.3,
+     "Qb": 400.8,
+     "Qveszt": -21.8,
+     "Qnyer": 1091.0,
+     "QF,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 68.5,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 60.4,
+     "Htr,x": null,
+     "Htr,T": 12.3,
+     "Hszell": 13.7,
+     "Qs": 766.5,
+     "Qb": 400.8,
+     "Qveszt": 33.4,
+     "Qnyer": 1167.3,
+     "QF,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 68.5,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 60.4,
+     "Htr,x": null,
+     "Htr,T": 12.3,
+     "Hszell": 13.7,
+     "Qs": 627.5,
+     "Qb": 387.8,
+     "Qveszt": 203.1,
+     "Qnyer": 1015.3,
+     "QF,net": 0.0,
+     "ηF/H": 100.0,
+     "τ": 68.5,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 60.4,
+     "Htr,x": null,
+     "Htr,T": 12.3,
+     "Hszell": 13.7,
+     "Qs": 572.3,
+     "Qb": 400.8,
+     "Qveszt": 728.3,
+     "Qnyer": 973.0,
+     "QF,net": 42.9,
+     "ηF/H": 70.4,
+     "τ": 68.5,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 60.4,
+     "Htr,x": null,
+     "Htr,T": 12.3,
+     "Hszell": 13.7,
+     "Qs": 374.1,
+     "Qb": 387.8,
+     "Qveszt": 742.1,
+     "Qnyer": 761.9,
+     "QF,net": 105.0,
+     "ηF/H": 83.6,
+     "τ": 68.5,
+     "σ": 1.0
+    },
+    {
+     "Htr,D": 60.4,
+     "Htr,x": null,
+     "Htr,T": 12.3,
+     "Hszell": 13.7,
+     "Qs": 194.0,
+     "Qb": 400.8,
+     "Qveszt": 1191.5,
+     "Qnyer": 594.8,
+     "QF,net": 603.1,
+     "ηF/H": 98.9,
+     "τ": 68.5,
+     "σ": 1.0
+    }
+   ]
+  }
+ },
+ "szerkezetek": [
+  "\fÉpületenergetikai minőségtanúsítvány                                                                                                         5",
+  "Külső fal vakolt              külső fal É     0,166 0,166 154,5     -                         - 25,65    0,0",
+  "Bejárati ajtó                 ajtó       É       1,4    1,4  2,4    -                         -    3,36  0,0",
+  "Nyílászáró                    ablak     ÉK     0,84 0,80532  3,1    -                         - 2,5367   2,5            0,52           0,1",
+  "Nyílászáró                    ablak     ÉK     1,04 0,98852  1,3    -                         - 1,2455   0,8            0,52           0,1",
+  "Nyílászáró                    ablak     ÉK     1,06 1,0067   0,9    -                         - 0,90602  0,6            0,52           0,1",
+  "Nyílászáró                    ablak     DK     0,77 0,74052  6,2    -                         - 4,6208   5,4            0,52           0,1",
+  "Nyílászáró                    ablak     DK     0,81 0,77759  4,2    -                         - 3,2659   3,5            0,52           0,1",
+  "Nyílászáró kism               ablak     DK     0,99 0,95846  1,1    -                         - 1,0351   0,7            0,52          0,95",
+  "Nyílászáró kism               ablak     DK     1,08 1,0428   0,7    -                         - 0,75084  0,4            0,52          0,95",
+  "Nyílászáró                    ablak            0,88 0,84218  2,3    -                         - 1,8949   1,7            0,52           0,1",
+  "Nyílászáró                    ablak            0,99 0,94298  1,2    -                         - 1,1316   0,8            0,52           0,1",
+  "Nyílászáró kism               ablak     ÉNY    1,11 1,0709   0,5    -                         - 0,57826  0,3            0,52          0,95",
+  "Tető                          tető       É    0,192 0,192   68,5    -                         - 13,149   0,0",
+  "Árkádfödém                    árkád fel        0,12    0,12  2,2    -                         - 0,25956  0,0",
+  "Padló talajon                 padló (ta       0,165       - 55,3    -                      31,4 9,1196   0,0"
+ ],
+ "rendszerek": [
+  {
+   "rendszer": "Fűtési rendszer",
+   "alnev": "",
+   "ertekek": {
+    "AN": [
+     107.73
+    ],
+    "QF,net,FR": [
+     1808.0
+    ],
+    "qF,net,FR": [
+     16.78
+    ],
+    "εF": [
+     0.24
+    ],
+    "wF,seg": [
+     0.0
+    ],
+    "QF,vég": [
+     1936.0
+    ],
+    "εF,szab,0": [
+     1.042
+    ],
+    "εF,szab,1": [
+     0.021
+    ],
+    "εF,szab,2": [
+     0.015
+    ],
+    "εF,szab,3": [
+     -0.06
+    ],
+    "εF,szab,4": [
+     0.012
+    ],
+    "εF,szab": [
+     1.03
+    ],
+    "qF,száll": [
+     0.69
+    ],
+    "wF,sziv": [
+     3.35
+    ],
+    "qF,tár": [
+     0.0
+    ],
+    "wF,tár": [
+     0.0
+    ],
+    "WF,vég": [
+     361.0
+    ],
+    "EF,vég": [
+     465.0,
+     1471.0
+    ],
+    "EF,nren,fajl": [
+     17.62
+    ],
+    "EF,ren,fajl": [
+     15.95
+    ],
+    "EF,tot,fajl": [
+     33.57
+    ],
+    "EF,CO2,fajl": [
+     3.85
+    ]
+   },
+   "szoveg": [
+    "9 kw-os Midea hőszivattyú",
+    "Épületenergetikai minőségtanúsítvány | 7",
+    "Elektromos üzemű hőszivattyú, távozó levegő hőforrással, fűtővíz hőmérséklet 35/28",
+    "elektromos áram | (energiahordozó típusa)",
+    "2",
+    "Beágyazott fűtőfelülettel rendelkező (padló-, fal-, mennyezetfűtés)",
+    "Központi előremenő hőmérséklet szabályozás helyiségenkénti hőmérséklet szabályozással",
+    "Padlófűtés nedves fektetésű",
+    "MSZ EN 1264-2 szerinti minimális hőszigeteléssel",
+    "különálló, képes önálló be-kikapcsolásra (pl. termosztatikus zónaszelep)",
+    "fűtőfelületenként statikus beállítás, csoportos statikus beszabályozással (pl. strangszabályozó szelepekkel) hőleadók száma",
+    "max. 10",
+    "Elosztó vezetékek a fűtött téren belül, vízhőmérséklet 35/28",
+    "Fordulatszám szabályozású szivattyú, hőlépcső 7 K",
+    "Tárolási veszteség nincs",
+    "Energiafelhasználás",
+    "Indikátorok",
+    "Épületenergetikai minőségtanúsítvány | 8"
+   ],
+   "vegenergia": [
+    {
+     "kulcs": "EF,vég",
+     "Q": 465.0,
+     "hordozo": "villamos energia"
+    },
+    {
+     "kulcs": "EF,vég",
+     "Q": 1471.0,
+     "hordozo": "környezeti hő"
+    }
+   ]
+  },
+  {
+   "rendszer": "Melegvíz-termelő rendszer",
+   "alnev": "",
+   "ertekek": {
+    "AN": [
+     107.73
+    ],
+    "qHMV": [
+     25.0
+    ],
+    "εHMV": [
+     0.36
+    ],
+    "wHMV,seg": [
+     0.0
+    ],
+    "QHMV,vég": [
+     3579.0
+    ],
+    "qHMV,v": [
+     10.0
+    ],
+    "wHMV,száll": [
+     0.0
+    ],
+    "qHMV,t": [
+     22.9
+    ],
+    "EHMV,vég": [
+     1289.0,
+     2291.0
+    ],
+    "EHMV,nren,fajl": [
+     27.51
+    ],
+    "EHMV,ren,fajl": [
+     24.85
+    ],
+    "EHMV,tot,fajl": [
+     52.36
+    ],
+    "EHMV,CO2,fajl": [
+     6.02
+    ]
+   },
+   "szoveg": [
+    "Elektromos üzemű hőszivattyú, távozó levegő hőforrással",
+    "elektromos áram | (energiahordozó típusa)",
+    "2",
+    "Elosztó vezetékek a fűtött téren belül, cirkuláció nélkül",
+    "nincs segédenergia igény",
+    "Elhelyezés a fűtött térben, indirekt fűtésű tároló",
+    "Energiafelhasználás",
+    "Indikátorok",
+    "Épületenergetikai minőségtanúsítvány | 9"
+   ],
+   "vegenergia": [
+    {
+     "kulcs": "EHMV,vég",
+     "Q": 1289.0,
+     "hordozo": "villamos energia"
+    },
+    {
+     "kulcs": "EHMV,vég",
+     "Q": 2291.0,
+     "hordozo": "környezeti hő"
+    }
+   ]
+  },
+  {
+   "rendszer": "Légtechnikai rendszer",
+   "alnev": "",
+   "ertekek": {
+    "ALT": [
+     107.7
+    ],
+    "nLT": [
+     0.5
+    ],
+    "VLT": [
+     145.4,
+     145.4
+    ],
+    "ηr": [
+     85.0
+    ],
+    "fLT": [
+     0.0
+    ],
+    "∆pLT": [
+     0.0
+    ],
+    "ηvent": [
+     50.0
+    ],
+    "∆tLT,a": [
+     8760.0
+    ],
+    "WLT,vég": [
+     51.0
+    ],
+    "ELT,nren,fajl": [
+     1.08
+    ],
+    "ELT,ren,fajl": [
+     0.14
+    ],
+    "ELT,tot,fajl": [
+     1.22
+    ],
+    "ELT,CO2,fajl": [
+     0.21
+    ]
+   },
+   "szoveg": [
+    "Stiebel Eltron hővisszanyerős szellőztetőgép",
+    "veszteség)",
+    "Wvent = VLT*∆pLT/3600/ηvent*∆tLT,a/1000",
+    "Wvent = 145,4 * 0 / 3600 / 0,5 * 8760 / 1000 = 0 kWh/a",
+    "Energiafelhasználás",
+    "Indikátorok",
+    "Épülettechnikai rendszerek értékelése:"
+   ]
+  }
+ ],
+ "referencia": null
+}
