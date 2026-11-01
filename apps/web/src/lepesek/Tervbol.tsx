@@ -539,6 +539,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
 
   const vb = al?.r ? [al.r.x0, al.r.y0, al.r.w * al.r.px / al.r.mPerPt, al.r.h * al.r.px / al.r.mPerPt] : aLap ? [0, 0, aLap.lap.szel, aLap.lap.mag] : [0, 0, 1, 1];
   const nezet = nagyit ? vb : aLap ? [0, 0, aLap.lap.szel, aLap.lap.mag] : vb;
+  // a fogópontok mérete képernyő-pixelben ~ (a nézet szélessége ~900 px-en)
+  const fogo = (nezet[2] ?? 900) / 900;
   const nyilHossz = nezet[2]! * 0.05;
   const ej = al?.e.eszak;
   const ejX = ej && ej.x > nezet[0]! && ej.x < nezet[0]! + nezet[2]! && ej.y > nezet[1]! && ej.y < nezet[1]! + nezet[3]! ? ej.x : nezet[0]! + nezet[2]! - nyilHossz * 1.6;
@@ -643,29 +645,6 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   </table>
                 </div>
               );
-            })()}
-            {(() => {
-              // hőburok térben: minden átvételre jelölt alaprajz körvonala a szintje szerint, a lapok eltolását a falak illesztése adja
-              const sor = alaprajzLapok.filter(({ i }) => !kimarad(i) && typeof elemzesek[i] === 'object' && (elemzesek[i] as AlaprajzFeldolgozas).r);
-              if (!sor.length) return null;
-              const alap = (elemzesek[sor[0]!.i] as AlaprajzFeldolgozas).r!;
-              const emelet = (bm ?? 2.7) + 0.35;
-              const szint3: Burok3DSzint[] = [];
-              const jelen = [...new Set(sor.flatMap(({ i }) => (lapSzintek(i).length ? lapSzintek(i) : ['F'])))].sort((x, y) => SZINT_SOR.indexOf(x) - SZINT_SOR.indexOf(y));
-              const nulla = jelen.indexOf('F') >= 0 ? jelen.indexOf('F') : jelen.findIndex((x) => x !== 'P');
-              for (const { i } of sor) {
-                const a = elemzesek[i] as AlaprajzFeldolgozas, r = a.r!, k = kijeloles(i, a);
-                const el = i === sor[0]!.i ? { dx: 0, dy: 0 } : eltolas(alap, r) ?? { dx: 0, dy: 0 };
-                const m = (x: number, y: number): [number, number] => [(x - el.dx) * r.mPerPt, (y - el.dy) * r.mPerPt];
-                const pol = (k.burok ?? burok3dCache(i, r, futottRiK(a, k))).map((q) => q.map(([x, y]) => m(x, y)));
-                const ny = burokNyilasokPt(a, k, pol.length ? (k.burok ?? burok3dCache(i, r, futottRiK(a, k))) : []).map((n) => { const [x, y] = m(n.x, n.y); return { x, y, szel: n.szel, mag: n.mag, pm: n.pm ?? 0 }; });
-                const szk = lapSzintek(i).length ? lapSzintek(i) : ['F'];
-                for (const sz0 of szk) {
-                  const sorszam = jelen.indexOf(sz0) - Math.max(0, nulla);
-                  szint3.push({ nev: szintNev(sz0), poligonok: pol, z0: sorszam * emelet, h: emelet - 0.35, nyilasok: ny });
-                }
-              }
-              return <details class="kartya" style="margin-top:12px;padding:10px 12px"><summary style="cursor:pointer"><strong>Hőburok térben (3D)</strong> <span class="halkabb">– a lapok hőburok-körvonala szintenként, a nyílászárókkal</span></summary><div style="margin-top:8px"><Burok3D szintek={szint3} eszakSzog={eszakSz} /></div></details>;
             })()}
             <div class="gombsor" style="margin-top:8px">
               <button class="gomb fo" disabled={osszesFut || alaprajzLapok.some(({ i }) => elemzesek[i] === undefined) || !alaprajzLapok.some(({ i }) => !kimarad(i) && !atvett.has(i))} onClick={osszesAtvesz}>
@@ -772,15 +751,17 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
               {/* hőburok: vastag vonal; szerkesztéskor a csúcsok húzhatók, az élfelezőkkel új pont szúrható be, dupla kattintás törli a csúcsot */}
               {burok.map((q, pi) => (
                 <g>
-                  <polygon points={q.map(([x, y]) => `${x},${y}`).join(' ')} fill="#7C3AED" fill-opacity={0.06} stroke="#7C3AED" stroke-width={kj.burok ? 3.2 : 2.4} stroke-linejoin="round" stroke-dasharray={kj.burok ? undefined : '0'} pointer-events="none" />
+                  {/* a vonal a nagyítástól függetlenül vastag (képernyő-pixelben): fehér kontúr + lila */}
+                  <polygon points={q.map(([x, y]) => `${x},${y}`).join(' ')} fill="none" stroke="#fff" stroke-width={10} vector-effect="non-scaling-stroke" stroke-linejoin="round" pointer-events="none" opacity={0.9} />
+                  <polygon points={q.map(([x, y]) => `${x},${y}`).join(' ')} fill="#7C3AED" fill-opacity={0.1} stroke="#7C3AED" stroke-width={kj.burok ? 7 : 6} vector-effect="non-scaling-stroke" stroke-linejoin="round" pointer-events="none" />
                   {burokSzerk && q.map(([x, y], vi) => { const [x2, y2] = q[(vi + 1) % q.length]!; return (
-                    <rect x={(x + x2) / 2 - 2.2} y={(y + y2) / 2 - 2.2} width={4.4} height={4.4} fill="#fff" stroke="#7C3AED" stroke-width={0.9} style="cursor:copy"
+                    <rect x={(x + x2) / 2 - 5 * fogo} y={(y + y2) / 2 - 5 * fogo} width={10 * fogo} height={10 * fogo} fill="#fff" stroke="#7C3AED" stroke-width={2} vector-effect="non-scaling-stroke" style="cursor:copy"
                       onPointerDown={(e) => { e.stopPropagation(); (e.currentTarget as SVGGraphicsElement).ownerSVGElement?.setPointerCapture?.(e.pointerId); const u = burok.map((z) => z.map((v) => [...v] as [number, number])); u[pi]!.splice(vi + 1, 0, [(x + x2) / 2, (y + y2) / 2]); setBurokVazlat(u); setHuz({ p: pi, v: vi + 1 }); }}>
                       <title>Új pont beszúrása (húzd)</title>
                     </rect>
                   ); })}
                   {burokSzerk && q.map(([x, y], vi) => (
-                    <circle cx={x} cy={y} r={3.6} fill="#7C3AED" stroke="#fff" stroke-width={1} style="cursor:move"
+                    <circle cx={x} cy={y} r={7 * fogo} fill="#7C3AED" stroke="#fff" stroke-width={2} vector-effect="non-scaling-stroke" style="cursor:move"
                       onPointerDown={(e) => { e.stopPropagation(); (e.currentTarget as SVGGraphicsElement).ownerSVGElement?.setPointerCapture?.(e.pointerId); setHuz({ p: pi, v: vi }); }}
                       onDblClick={(e) => { e.stopPropagation(); if (q.length <= 3) return; burokMent(burok.map((z, zi) => (zi === pi ? z.filter((_, j) => j !== vi) : z))); }}>
                       <title>Húzd a pontot; dupla kattintás: pont törlése</title>
@@ -805,9 +786,32 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             <button class="gomb halk-gomb semleges" onClick={() => setNagyit(!nagyit)}>{nagyit ? 'Teljes lap' : 'Nagyítás az épületre'}</button>
             <button class={`gomb halk-gomb${burokSzerk ? '' : ' semleges'}`} aria-pressed={burokSzerk} onClick={() => { setBurokSzerk(!burokSzerk); if (!burokSzerk) setNagyit(true); }}>{burokSzerk ? 'Hőburok szerkesztése kész' : 'Hőburok szerkesztése'}</button>
             {kj.burok && <button class="gomb halk-gomb semleges" onClick={() => burokMent(undefined)}>Hőburok: vissza a felismertre</button>}
-            <span class="halkabb"><span style="display:inline-block;width:18px;height:4px;background:#7C3AED;vertical-align:middle;margin-right:4px" />hőburok {kj.burok ? '(szerkesztett – a homlokzati falak és a külső nyílászárók ebből)' : '(felismert)'}</span>
+            <span class="halkabb"><span style="display:inline-block;width:22px;height:6px;background:#7C3AED;vertical-align:middle;margin-right:4px;border-radius:2px" />hőburok {kj.burok ? '(szerkesztett – a homlokzati falak és a külső nyílászárók ebből)' : '(felismert)'}</span>
             {[0, 90, 180, 270].map((ir) => <span class="halkabb"><span style={`display:inline-block;width:10px;height:10px;border-radius:2px;background:${IRANY_SZIN[ir]};margin-right:4px`} />{IRANY_NEV[ir]} → {egtaj(ir, eszakSz)}</span>)}
           </div>
+          {(() => {
+              // hőburok térben: minden átvételre jelölt alaprajz körvonala a szintje szerint, a lapok eltolását a falak illesztése adja
+              const sor = alaprajzLapok.filter(({ i }) => !kimarad(i) && typeof elemzesek[i] === 'object' && (elemzesek[i] as AlaprajzFeldolgozas).r);
+              if (!sor.length) return null;
+              const alap = (elemzesek[sor[0]!.i] as AlaprajzFeldolgozas).r!;
+              const emelet = (bm ?? 2.7) + 0.35;
+              const szint3: Burok3DSzint[] = [];
+              const jelen = [...new Set(sor.flatMap(({ i }) => (lapSzintek(i).length ? lapSzintek(i) : ['F'])))].sort((x, y) => SZINT_SOR.indexOf(x) - SZINT_SOR.indexOf(y));
+              const nulla = jelen.indexOf('F') >= 0 ? jelen.indexOf('F') : jelen.findIndex((x) => x !== 'P');
+              for (const { i } of sor) {
+                const a = elemzesek[i] as AlaprajzFeldolgozas, r = a.r!, k = kijeloles(i, a);
+                const el = i === sor[0]!.i ? { dx: 0, dy: 0 } : eltolas(alap, r) ?? { dx: 0, dy: 0 };
+                const m = (x: number, y: number): [number, number] => [(x - el.dx) * r.mPerPt, (y - el.dy) * r.mPerPt];
+                const pol = (k.burok ?? burok3dCache(i, r, futottRiK(a, k))).map((q) => q.map(([x, y]) => m(x, y)));
+                const ny = burokNyilasokPt(a, k, pol.length ? (k.burok ?? burok3dCache(i, r, futottRiK(a, k))) : []).map((n) => { const [x, y] = m(n.x, n.y); return { x, y, szel: n.szel, mag: n.mag, pm: n.pm ?? 0 }; });
+                const szk = lapSzintek(i).length ? lapSzintek(i) : ['F'];
+                for (const sz0 of szk) {
+                  const sorszam = jelen.indexOf(sz0) - Math.max(0, nulla);
+                  szint3.push({ nev: szintNev(sz0), poligonok: pol, z0: sorszam * emelet, h: emelet - 0.35, nyilasok: ny });
+                }
+              }
+              return <details class="kartya" open style="margin:0 0 16px;padding:10px 12px"><summary style="cursor:pointer"><strong>Hőburok térben (3D)</strong> <span class="halkabb">– a lapok hőburok-körvonala szintenként, a nyílászárókkal</span></summary><div style="margin-top:8px"><Burok3D szintek={szint3} eszakSzog={eszakSz} /></div></details>;
+          })()}
           {problemak.length > 0 && (
             <details class="kartya" open style="margin-bottom:16px">
               <summary style="cursor:pointer"><strong>Hőburok-ellenőrzés</strong> <span class="jel figy">{problemak.length} bizonytalan hely</span> <span class="halkabb">– a rajzon jelölve: <span style="color:#DC2626">■</span> ismeretlen túloldal, <span style="color:#F59E0B">■</span> ki nem jelölt szomszéd, <span style="color:#DC2626">◌</span> nyitott / <span style="color:#F97316">◌</span> részlegesen felismert körvonal</span></summary>

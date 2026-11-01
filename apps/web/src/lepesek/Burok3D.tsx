@@ -63,19 +63,22 @@ export function Burok3D({ szintek, eszakSzog }: { szintek: Burok3DSzint[]; eszak
     }
   }
   lapok.sort((x, y) => x.mely - y.mely);
-  const xs = lapok.flatMap((l) => l.pts.map((p) => p[0])), ys = lapok.flatMap((l) => l.pts.map((p) => p[1]));
-  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
-  const pad = Math.max(maxX - minX, maxY - minY) * 0.06;
   // északjel a lap síkjában: az eszakSzog a lapon felfelé mért irány
   const er = (eszakSzog * Math.PI) / 180, ex = Math.sin(er), ey = -Math.cos(er);
-  const e0 = vet([cx, cy, 0]), e1 = vet([cx + ex * 3, cy + ey * 3, 0]);
+  // az északjel az épület mellett (a bal alsó sarok előtt), nem a közepén
+  const minX = Math.min(...pts.map((p) => p[0])), maxY = Math.max(...pts.map((p) => p[1]));
+  const ax = minX - 3, ay = maxY + 3;
+  const e0 = vet([ax, ay, 0]), e1 = vet([ax + ex * 3, ay + ey * 3, 0]);
+  const xs = lapok.flatMap((l) => l.pts.map((p) => p[0])), ys = lapok.flatMap((l) => l.pts.map((p) => p[1]));
+  const vx0 = Math.min(...xs, e0[0], e1[0]) , vx1 = Math.max(...xs, e0[0], e1[0]), vy0 = Math.min(...ys, e0[1], e1[1]), vy1 = Math.max(...ys, e0[1], e1[1]);
+  const pad = Math.max(vx1 - vx0, vy1 - vy0) * 0.06;
   return (
     <div class="kartya" style="padding:8px">
       <div class="gombsor" style="justify-content:space-between;align-items:center">
         <strong>Hőburok térben</strong>
         <span class="halkabb" style="font-size:12px">Húzással forgatható · {szintek.length} szint · lila: födém / tető, kék: nyílászárók</span>
       </div>
-      <svg viewBox={`${minX - pad} ${minY - pad} ${maxX - minX + 2 * pad} ${maxY - minY + 2 * pad}`} style="width:100%;height:auto;max-height:520px;touch-action:none;cursor:grab;background:#FAFAF9"
+      <svg viewBox={`${vx0 - pad} ${vy0 - pad} ${vx1 - vx0 + 2 * pad} ${vy1 - vy0 + 2 * pad}`} style="width:100%;height:auto;max-height:520px;touch-action:none;cursor:grab;background:#FAFAF9"
         onPointerDown={(e) => { (e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId); setHuz({ x: e.clientX, y: e.clientY, f: forg, d: dol }); }}
         onPointerMove={(e) => { if (!huz) return; setForg(huz.f + (e.clientX - huz.x) * 0.5); setDol(Math.max(5, Math.min(85, huz.d - (e.clientY - huz.y) * 0.3))); }}
         onPointerUp={() => setHuz(null)}>
