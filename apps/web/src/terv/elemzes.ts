@@ -59,12 +59,21 @@ function szurkeKep(c: HTMLCanvasElement, scale: number): SzurkeKep | undefined {
   } catch { return undefined; }
 }
 
-export function lapSzerep(lap: Lap): { szerep: TervLap['szerep']; cim: string } {
+/** Lapcím-jelölt: rövid felirat, amelyben önálló szóként szerepel a lap fajtája („Földszinti alaprajz”, „A-A metszet”,
+ * „Keresztmetszetek”, „Homlokzatok”) – nem szóösszetétel része („keresztmetszetű”, „homlokzati”, „homlokzaton”). */
+const CIM_SZO = /(alaprajz(?:ok)?|(?:kereszt|hossz)?metszet(?:ek)?|homlokzat(?:ok)?|helyszínrajz|tetőfelülnézet)(?![\p{L}])/iu;
+
+export function lapSzerep(lap: Lap, fajlnev = ''): { szerep: TervLap['szerep']; cim: string } {
   const sz = lap.szovegek.map((t) => t.s).join(' \n ');
-  const cim = lap.szovegek.filter((t) => t.meret >= 12 && /alaprajz|metszet|homlokzat|helyszínrajz|tetőfelülnézet/i.test(t.s)).map((t) => t.s.trim())[0] ?? '';
-  if (/metszet/i.test(cim)) return { szerep: 'metszet', cim };
-  if (/alaprajz/i.test(cim)) return { szerep: 'alaprajz', cim };
-  if (/homlokzat/i.test(cim)) return { szerep: 'homlokzat', cim };
+  // a legnagyobb betűméretű cím-jelölt (a rajzpecsét lapcíme vagy a rajz alatti felirat)
+  const jeloltek = lap.szovegek.filter((t) => t.s.trim().length <= 70 && CIM_SZO.test(t.s) && !/szerint|lásd|ld\./i.test(t.s));
+  // elsőként a rajzpecsét nagy (≥ 12 pt) lapcíme; ha nincs, a legnagyobb cím-jelölt(ek) – több rajz egy lapon: mind
+  const nagy = jeloltek.find((t) => t.meret >= 12);
+  const legnagyobb = Math.max(0, ...jeloltek.map((t) => t.meret));
+  const cim = nagy ? nagy.s.trim() : [...new Set(jeloltek.filter((t) => t.meret >= legnagyobb - 0.5).map((t) => t.s.trim()))].join(' · ');
+  const fajta = (x: string) => (/metszet/i.test(x) ? 'metszet' : /alaprajz/i.test(x) ? 'alaprajz' : /homlokzat/i.test(x) ? 'homlokzat' : null);
+  const f = fajta(cim) ?? fajta(fajlnev.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ').normalize('NFC'));
+  if (f) return { szerep: f, cim: cim || fajlnev.replace(/\.pdf$/i, '') };
   if (/rétegrend/i.test(sz) && /[±+]\d,\d{2}/.test(sz)) return { szerep: 'metszet', cim: cim || 'Metszet' };
   if (/\d+[,.]\d{2}\s*m(²|2)/.test(sz)) return { szerep: 'alaprajz', cim: cim || 'Alaprajz' };
   // típusalaprajz-lap pecsét nélkül: sok nyílásfelirat („pm 90”, „P 90”) és „…típusok” felirat
@@ -87,7 +96,7 @@ export async function pdfLapok(f: File, kepSzel = 2000, halad?: (kesz: number, o
     const c = document.createElement('canvas'); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
     const ctx = c.getContext('2d')!; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
     await page.render({ canvasContext: ctx, viewport: vp, canvas: c }).promise;
-    const { szerep, cim } = lapSzerep(lap);
+    const { szerep, cim } = lapSzerep(lap, f.name);
     ki.push({ fajl: f.name, oldal: n, szerep, cim, lap, kep: c.toDataURL('image/jpeg', 0.82), kepSzel: c.width, kepMag: c.height, szurke: szurkeKep(c, scale) });
     page.cleanup();
     halad?.(n, ossz);
