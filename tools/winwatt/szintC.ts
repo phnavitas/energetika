@@ -36,7 +36,8 @@ for (const f of readdirSync(DIR).filter((x) => x.endsWith('.json')).sort()) {
       const sv = /EEI=0,(17|23)/.exec(sz) ? `epm_EEI_0${/EEI=0,(17|23)/.exec(sz)![1]}`
         : /Fordulatszám szabályozású szivattyú, hőlépcső (\d+) K/.exec(sz) ? (() => { const k = /hőlépcső (\d+) K/.exec(sz)![1]; return k === '7' ? 'fordulatszam_beagyazott_7K' : `fordulatszam_szabad_${k}K`; })()
         : /Állandó fordulatszámú szivattyú, hőlépcső (\d+) K/.exec(sz) ? (() => { const k = /hőlépcső (\d+) K/.exec(sz)![1]; return k === '7' ? 'allando_beagyazott_7K' : `allando_szabad_${k}K`; })() : null;
-      if (sv) cmp(`wF,sziv (${sv})`, r.ertekek['wF,sziv']?.[0], ip(T.FUTES_SZIVATTYU as unknown as Oszl, sv, AN));
+      const fc = /Fan-coil, álmennyezetben/i.test(sz) ? T.FANCOIL_SEGED.almennyezeti : /Fan-coil, légcsatornázható/i.test(sz) ? T.FANCOIL_SEGED.legcsatornazhato : /Fan-coil, négy irányban/i.test(sz) ? T.FANCOIL_SEGED.negy_iranyban_fuvo : /; Fan-coil/i.test(sz) ? T.FANCOIL_SEGED.padlon_oldalfali_mennyezet_alatti : 0;
+      if (sv) cmp(`wF,sziv (${sv}${fc ? ` + fan-coil ${fc}` : ''})`, r.ertekek['wF,sziv']?.[0], ip(T.FUTES_SZIVATTYU as unknown as Oszl, sv, AN) + fc);
       const tm = /Elhelyezés a fűtött téren (belül|kívül), vízhőmérséklet (\d+)\/(\d+)/.exec(sz);
       if (tm) {
         const t = T.FUTES_TAROLO as unknown as Oszl; const hely = tm[1] === 'belül' ? 'belul' : 'kivul';

@@ -1,0 +1,65 @@
+{
+ "m01_csaladi_haz.json": {
+  "hianyzoTajolas": "DNy",
+  "tetoablakDoles": null,
+  "arnyekolasF": 0.668,
+  "haviHibaF1": 0.48931642382777873,
+  "haviHiba": 0.01433915384878874
+ },
+ "m03_porta_menza.json": {
+  "hianyzoTajolas": null,
+  "tetoablakDoles": null,
+  "arnyekolasF": 1.009,
+  "haviHibaF1": 0.009272795541032042,
+  "haviHiba": 0.0032337657943036576
+ },
+ "m04_csaladi_haz.json": {
+  "hianyzoTajolas": null,
+  "tetoablakDoles": null,
+  "arnyekolasF": 0.944,
+  "haviHibaF1": 0.0525250038020222,
+  "haviHiba": 0.016832818144948802
+ },
+ "m05_hotel.json": {
+  "hianyzoTajolas": "DNy",
+  "tetoablakDoles": 60,
+  "arnyekolasF": 0.982,
+  "haviHibaF1": 0.019189774540697105,
+  "haviHiba": 0.002749748467118365
+ },
+ "m06_iroda.json": {
+  "hianyzoTajolas": null,
+  "tetoablakDoles": null,
+  "arnyekolasF": 0.97,
+  "haviHibaF1": 0.02912587220146896,
+  "haviHiba": 0.01510704654254024
+ },
+ "m07_tarsashaz.json": {
+  "hianyzoTajolas": null,
+  "tetoablakDoles": 60,
+  "arnyekolasF": 0.738,
+  "haviHibaF1": 0.31636849468091216,
+  "haviHiba": 0.09615219779710821
+ },
+ "m08_lakas_a.json": {
+  "hianyzoTajolas": "D",
+  "tetoablakDoles": null,
+  "arnyekolasF": 0.976,
+  "haviHibaF1": 0.03146877389109097,
+  "haviHiba": 0.011846510091397278
+ },
+ "m09_lakas_b.json": {
+  "hianyzoTajolas": "D",
+  "tetoablakDoles": null,
+  "arnyekolasF": 0.978,
+  "haviHibaF1": 0.03148385886016639,
+  "haviHiba": 0.013905664441310795
+ },
+ "m10_lakas_c.json": {
+  "hianyzoTajolas": "D",
+  "tetoablakDoles": null,
+  "arnyekolasF": 0.978,
+  "haviHibaF1": 0.03148385886016639,
+  "haviHiba": 0.013905664441310795
+ }
+}

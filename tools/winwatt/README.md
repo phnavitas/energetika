@@ -30,8 +30,15 @@ Regressziós teszt: `packages/mag/test/winwatt-osszevetes.test.ts` (A és D szin
   egyszerűsített módszere május–szeptember, béjjel = 1,5. Nálunk az egyszerűsített módszer.
 - **Társított árnyékoló hűtési módban:** a WinWatt hűtésnél is a 4.18 szerinti (redőnnyel javított) U-t használja;
   a rendelet (6.1.1, 4.3.3) a többlet-hőszigetelést a fűtési energiaigényhez engedi.
-- **„> 500 m²” táblázatsor (pl. 9.9. HMV-tárolás):** a WinWatt 500 és 750 m² között interpolál, nálunk 500 m² felett
-  a „> 500” sor állandó értéke.
+- **„> 500 m²” táblázatsor (8.8., 8.9., 9.9.):** a WinWatt-tal azonosan 500 és 750 m² között interpolálunk, 750 m² felett
+  állandó (korábban 500 m² felett ugrásszerűen a „> 500” sor értéke volt).
+
+## Hiányzó ablakadatok pótlása
+
+`npx tsx tools/winwatt/ablakIllesztes.ts` → `ablak-potlas.json`: a szerkezettáblából hiányzó tájolás és tetőablak-dőlés
+a havi Qs-táblához illesztve, valamint egy közös árnyékolási tényező. Ahol a WinWatt-ban nincs külső árnyékolás
+(m03), a havi Qs 1 %-on belül egyezik – a Gs-tábla és a 6.27 képlet tehát azonos. A többi mintában a WinWatt-ban
+megadott (a PDF-ben nem szereplő) külső árnyékolás okozza a különbséget (m07: évszakfüggő, loggia/erkély).
 
 ## Talált és javított hibák
 

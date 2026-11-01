@@ -5,7 +5,8 @@
  */
 
 const A_KAZAN = [100, 150, 200, 300, 500, 750, 1000, 1500, 2500, 5000, 10000] as const;
-const A_ELOSZTAS = [100, 150, 200, 300, 500, 501] as const; // „> 500” sor: 500 felett állandó
+// „> 500” sor: 500 és 750 m² között interpolálva, 750 m² felett állandó (a WinWatt-tal azonos, ugrásmentes értelmezés)
+const A_ELOSZTAS = [100, 150, 200, 300, 500, 750] as const;
 const A_SZIV = A_KAZAN;
 
 // --- 8.3 Hőtermelők -----------------------------------------------------------------------------
@@ -226,7 +227,7 @@ export const TAVHO_HMV = { epszilon: 1.01, segedenergiaHokozpontonkentKWh: 265 }
 /** 9.9. és 9.10. táblázat – HMV tárolás vesztesége a nettó HMV igény %-ában. */
 export const HMV_TAROLO = {
   forras: '1. függ. 9.9.–9.10. táblázat',
-  A_belul: [100, 150, 200, 300, 500, 501],
+  A_belul: [100, 150, 200, 300, 500, 750], // „> 500”: 750 m²-nél, közte interpolálva
   belul: {
     indirekt: [24, 17, 14, 10, 7, 5],
     el_csucson_kivul: [20, 16, 14, 12, 8, 6],
