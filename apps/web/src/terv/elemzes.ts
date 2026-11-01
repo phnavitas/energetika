@@ -7,7 +7,7 @@ import { alaprajzElemez, type AlaprajzEredmeny, type TervHelyiseg } from './alap
 import { raszterEpit, type Raszter } from './raszter';
 import { kotaEllenoriz } from './kota';
 import { meretaranyKotabol, automatikusHelyisegek, lakasCsoportok, arnyalatHatarok, type SzurkeKep } from './autohelyiseg';
-import { fuggonyfalak, nyilasFeliratok, nyilasokHozzarendel, falfulkeE, type TervNyilas } from './nyilaszarok';
+import { fuggonyfalak, nyilasFeliratok, nyilasokHozzarendel, falfulkeE, type TervNyilas, type NyilasFelirat } from './nyilaszarok';
 import { talajOldal } from './talaj';
 import { retegrendBlokkok, szerepBecsles, retegekEpit, szintekKeres, type TervRetegrend, type SzerepBecsles, type TervRetegUI, type SzintEredmeny } from './metszet';
 import { ujId } from '../modell';
@@ -111,6 +111,8 @@ export interface AlaprajzFeldolgozas {
   magHelyisegek: TervHelyiseg[];
   r: Raszter | null;
   nyilasok: TervNyilas[];
+  /** Falhoz nem rendelt nyílásfeliratok (méret, mellvéd, hely). */
+  arvaFeliratok?: NyilasFelirat[];
   /** Pecsét nélküli lap: a helyiségek automatikusan felismert zárt terek. */
   auto?: boolean;
 }
@@ -146,7 +148,8 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
     }
   }
   // falfülke (padlótól induló, sraffozott falszakasz előtti felirat): nem nyílászáró – kimarad az átvételből
-  const nyilasok = nyilasokHozzarendel(nyilasFeliratok(lap.szovegek), r, magHelyisegek.map((h) => h.nev), auto)
+  const feliratok = nyilasFeliratok(lap.szovegek);
+  const nyilasok = nyilasokHozzarendel(feliratok, r, magHelyisegek.map((h) => h.nev), auto)
     .map((n) => (n.fajta !== 'belso_ajto' && falfulkeE(n, r, lap) ? { ...n, fajta: 'falfulke' as const, kulso: false } : n));
   // felirat nélküli függönyfalak, üvegfalak (széles, üvegezett falszakasz a fűtött helyiség és a külső tér határán)
   nyilasok.push(...fuggonyfalak(r, nyilasok, magHelyisegek.map((h) => h.mutato ?? h)));
@@ -171,7 +174,9 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
     const ajto = bejaratos.reduce((a, b) => (b.szel > a.szel ? b : a));
     for (const n of l) n.fajta = n === ajto ? 'bejarati_uvegajto' : 'ablak';
   }
-  return { e, magHelyisegek, r, nyilasok, auto };
+  // falhoz nem rendelt nyílásfeliratok (pl. a raszterben nem lezárt, üvegfalas helyiség homlokzatán): a szerkesztett hőburok használja
+  const arva = feliratok.filter((f) => !nyilasok.some((n) => Math.hypot(n.x - f.x, n.y - f.y) < 2));
+  return { e, magHelyisegek, r, nyilasok, auto, arvaFeliratok: arva };
 }
 
 export interface MetszetFeldolgozas {

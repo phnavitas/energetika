@@ -8,10 +8,13 @@ import { pecsetKinyer, type PecsetAdat } from '../terv/pecset';
 import { HomlokzatEllenorzes } from './TervHomlokzat';
 import type { SzurkeKep } from '../terv/autohelyiseg';
 import { eltolas, fedettArany } from '../terv/fedes';
+import { burokAuto, burokFalak, nyilasEl, bennE, type Poligon } from '../terv/burok';
+import type { TervNyilas } from '../terv/nyilaszarok';
 import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, eszakJavitas, eszakJavitasMent, type TervLap, type AlaprajzFeldolgozas } from '../terv/elemzes';
 import { egtaj, szintekCimbol, szintNev } from '../terv/alaprajz';
 import { tervAtvesz, type AtvettNyilas, type AtvettHelyiseg } from '../terv/atvetel';
 import { MintaLakasok } from './MintaLakasok';
+import { Burok3D, type Burok3DSzint } from './Burok3D';
 
 type Modosit = (f: (q: Projekt) => void) => void;
 
@@ -28,13 +31,69 @@ const norm = (d: number) => ((Math.round(d * 10) / 10) % 360 + 360) % 360;
 /** Egy alaprajz kijelölései: átvett egységek, kizárt helyiségek, besorolás-felülírás, kizárt nyílások. */
 interface Kijeloles { egysegek: Set<string>; kizartH: Set<number>; kat: Record<number, HelyisegKategoria>; kizartNy: Set<number>; mindFutott?: boolean;
   /** Ismeretlen túloldalú falszakaszok, amelyeket a felhasználó külső falnak jelölt („raszterindex|szakaszindex”). */
-  ismKulso?: Set<string> }
+  ismKulso?: Set<string>;
+  /** A felhasználó által szerkesztett hőburok-körvonal (pt): ha megadott, a homlokzati falak és a külső nyílászárók ebből. */
+  burok?: Poligon[] }
+
+/** A kijelölt fűtött (nem gyengén kapcsolt) helyiségek raszterindexei. */
+function futottRiK(al: AlaprajzFeldolgozas, k: Kijeloles): Set<number> {
+  const hs = al.e.helyisegek;
+  const egysegben = (i: number) => !al.e.egysegek.length || !hs[i]!.egyseg || k.egysegek.has(hs[i]!.egyseg!);
+  const ki = new Set<number>();
+  hs.forEach((h, i) => {
+    if (!egysegben(i) || h.kulter || k.kizartH.has(i)) return;
+    if ((k.kat[i] ?? (k.mindFutott ? 'kondicionalt' : kategoriaJavaslat(h.nev) ?? 'kondicionalt')) === 'gyengen_kapcsolt') return;
+    const x = al.magHelyisegek.indexOf(h); if (x >= 0) ki.add(x);
+  });
+  return ki;
+}
+/** A raszterhelyiségek pecsétpontjai (pt). */
+const pecsetPontok = (al: AlaprajzFeldolgozas) => new Map(al.magHelyisegek.map((h, i) => [i, { x: h.x, y: h.y }] as [number, { x: number; y: number }]));
 
 /** Alapértelmezett kijelölés a felismerésből (minden egység; a csak jegyzékben szereplő sorok nélkül). */
 function alapKijeloles(al: AlaprajzFeldolgozas): Kijeloles {
   const vanPecset = al.e.helyisegek.some((h) => h.forras === 'pecset');
   const kizartH = new Set(al.auto ? al.e.helyisegek.map((h, i) => (al.e.egysegek.length && h.egyseg ? -1 : i)).filter((i) => i >= 0) : vanPecset ? al.e.helyisegek.map((h, i) => (h.forras === 'jegyzek' ? i : -1)).filter((i) => i >= 0) : []);
   return { egysegek: new Set(al.e.egysegek), kizartH, kat: {}, kizartNy: new Set() };
+}
+
+/** A külső nyílászárók: szerkesztett hőburoknál a körvonal közelében (≤ 1,3 m) lévők, az él irányával. */
+function burokNyilasok(al: AlaprajzFeldolgozas, k: Kijeloles) {
+  const l = al.nyilasok.map((n, kk) => ({ n, kk }));
+  if (!k.burok || !al.r) return l.filter(({ n }) => n.kulso && n.helyiseg !== null && n.irany !== null);
+  const r = al.r, b = k.burok;
+  const fut = futottRiK(al, k), pp = pecsetPontok(al);
+  // helyiség nélküli nyílás: a legközelebbi, a burkon belüli fűtött helyiség pecsétje
+  const kozeli = (x: number, y: number) => [...pp.entries()].filter(([ri, q]) => fut.has(ri) && b.some((p) => bennE(p, q.x, q.y))).sort((u, v) => Math.hypot(u[1].x - x, u[1].y - y) - Math.hypot(v[1].x - x, v[1].y - y))[0]?.[0] ?? null;
+  return l.flatMap(({ n, kk }) => {
+    if (n.fajta === 'belso_ajto' && !n.kulso) return [];
+    // a burkon kívül írt felirat (homlokzati nyílás) 2,5 m-ig, belül csak a raszter szerint is külső nyílás, 1,5 m-ig
+    const kint = !b.some((p) => bennE(p, n.x, n.y));
+    if (!kint && !n.kulso) return [];
+    const ir = nyilasEl(r, b, n.x, n.y, kint ? 2.5 : 1.5); if (ir === null) return [];
+    const h = n.helyiseg !== null && fut.has(n.helyiseg) ? n.helyiseg : kozeli(n.x, n.y); if (h === null) return [];
+    return [{ n: { ...n, irany: ir, kulso: true, helyiseg: h }, kk }];
+  }).concat((al.arvaFeliratok ?? []).flatMap((f, j) => {
+    // falhoz nem rendelt felirat a burok mentén: nyílászáróként (mellvéd nélkül, legalább 2 m magas: erkélyajtó)
+    if (b.some((p) => bennE(p, f.x, f.y))) return [];
+    const ir = nyilasEl(r, b, f.x, f.y, 2.5); if (ir === null) return [];
+    const h = kozeli(f.x, f.y); if (h === null) return [];
+    const ajto = (f.pm === null || f.pm <= 0.05) && f.mag >= 2;
+    return [{ n: { szel: f.szel, mag: f.mag, pm: f.pm, x: f.x, y: f.y, helyiseg: h, irany: ir, kulso: true, fajta: (ajto ? 'erkelyajto' : 'ablak') as TervNyilas['fajta'] }, kk: 10000 + j }];
+  }));
+}
+
+/** Automatikus hőburok lapokra gyorstárazva (a 3D ábrához). */
+const burok3dTar = new Map<string, Poligon[]>();
+function burok3dCache(i: number, r: NonNullable<AlaprajzFeldolgozas['r']>, fut: Set<number>): Poligon[] {
+  const kulcs = `${i}|${r.w}x${r.h}|${[...fut].sort((a, b) => a - b).join(',')}`;
+  let v = burok3dTar.get(kulcs); if (!v) { v = burokAuto(r, fut); burok3dTar.set(kulcs, v); }
+  return v;
+}
+/** A burok menti nyílászárók a megadott körvonalhoz (pt). */
+function burokNyilasokPt(al: AlaprajzFeldolgozas, k: Kijeloles, b: Poligon[]) {
+  if (!b.length) return [];
+  return burokNyilasok(al, { ...k, burok: b }).map(({ n }) => n);
 }
 
 /** Egy alaprajz átvehető helyiségei (külső falakkal) és nyílászárói a kijelölés szerint. */
@@ -44,16 +103,17 @@ function atvetelReszek(al: AlaprajzFeldolgozas, k: Kijeloles): { helyisegek: Atv
   const valasztott = hs.map((h, i) => egysegben(i) && !h.kulter && !k.kizartH.has(i));
   const kategoria = (i: number): HelyisegKategoria => k.kat[i] ?? (k.mindFutott ? 'kondicionalt' : kategoriaJavaslat(hs[i]!.nev) ?? 'kondicionalt');
   const ri = (i: number) => al.magHelyisegek.indexOf(hs[i]!);
-  const falak = (i: number) => { const x = ri(i); return !al.r || x < 0 ? [] : al.r.helyisegek[x]!.szakaszok.filter((s, j) => (s.tul === 'kulso' || (s.tul === 'ismeretlen' && !!k.ismKulso?.has(`${x}|${j}`))) && s.hossz >= 0.3); };
+  const bf = k.burok && al.r ? burokFalak(al.r, k.burok, futottRiK(al, k), pecsetPontok(al)) : null;
+  const falak = (i: number) => { const x = ri(i); if (bf) return x < 0 ? [] : (bf.get(x) ?? []).filter((f) => f.hossz >= 0.3); return !al.r || x < 0 ? [] : al.r.helyisegek[x]!.szakaszok.filter((s, j) => (s.tul === 'kulso' || (s.tul === 'ismeretlen' && !!k.ismKulso?.has(`${x}|${j}`))) && s.hossz >= 0.3); };
   const kiv = hs.map((h, i) => ({ h, i })).filter(({ i }) => valasztott[i]);
   const index = new Map(kiv.map(({ i }, j) => [i, j]));
   const helyisegek = kiv.map(({ h, i }) => ({
-    kod: h.kod, nev: h.nev, burkolat: h.burkolat, A: h.A, kategoria: kategoria(i), egyseg: h.egyseg ? (al.e.egysegInfo[h.egyseg]?.nev ?? h.egyseg) : undefined, falak: falak(i).map((f) => ({ irany: f.irany, hossz: f.hossz, ...(f.talaj ? { talaj: true } : {}) })),
+    kod: h.kod, nev: h.nev, burkolat: h.burkolat, A: h.A, kategoria: kategoria(i), egyseg: h.egyseg ? (al.e.egysegInfo[h.egyseg]?.nev ?? h.egyseg) : undefined, falak: falak(i).map((f) => ({ irany: f.irany, hossz: f.hossz, ...("talaj" in f && f.talaj ? { talaj: true } : {}) })),
     // fal fűtetlen (gyengén kapcsolt) helyiség felé, pl. garázs
     futetlenFalak: (() => { const x = ri(i); if (!al.r || x < 0) return []; return al.r.helyisegek[x]!.szakaszok.filter((s) => typeof s.tul === 'number' && s.hossz >= 0.3).flatMap((s) => {
       const mi = hs.indexOf(al.magHelyisegek[s.tul as number]!); return mi >= 0 && valasztott[mi] && kategoria(mi) === 'gyengen_kapcsolt' && kategoria(i) !== 'gyengen_kapcsolt' ? [{ hossz: s.hossz, fele: hs[mi]!.nev }] : []; }); })(),
   }));
-  const nyilasok = al.nyilasok.map((n, kk) => ({ n, kk })).filter(({ n }) => n.kulso && n.helyiseg !== null && n.irany !== null)
+  const nyilasok = burokNyilasok(al, k)
     .map(({ n, kk }) => ({ n, kk, hi: hs.indexOf(al.magHelyisegek[n.helyiseg!]!) }))
     .filter(({ hi, kk }) => hi >= 0 && valasztott[hi] && !k.kizartNy.has(kk))
     .map(({ n, hi }): AtvettNyilas => ({ fajta: n.fajta as AtvettNyilas['fajta'], szel: n.szel, mag: n.mag, pm: n.pm, helyiseg: index.get(hi)!, irany: n.irany! }));
@@ -226,7 +286,15 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     const ri = raszterIdx(i); if (!al?.r || ri < 0) return [];
     return al.r.helyisegek[ri]!.szakaszok.filter((s, j) => (s.tul === 'kulso' || (s.tul === 'ismeretlen' && !!kj.ismKulso?.has(`${ri}|${j}`))) && s.hossz >= 0.3);
   };
-  const nyilasok = (al?.nyilasok ?? []).map((n, k) => ({ n, k })).filter(({ n }) => n.kulso && n.helyiseg !== null && n.irany !== null)
+  // hőburok-körvonal: a felismert (fűtött helyiségek összevonva), vagy a felhasználó által szerkesztett
+  const futottKulcs = al ? [...futottRiK(al, kj)].sort((a, b) => a - b).join(',') : '';
+  const burokFelismert = useMemo(() => (al?.r ? burokAuto(al.r, futottRiK(al, kj)) : []), [al, futottKulcs]);
+  const [burokVazlat, setBurokVazlat] = useState<Poligon[] | null>(null);
+  const [burokSzerk, setBurokSzerk] = useState(false);
+  const [huz, setHuz] = useState<{ p: number; v: number } | null>(null);
+  const burok = burokVazlat ?? kj.burok ?? burokFelismert;
+  const burokMent = (b: Poligon[] | undefined) => kjMod((k) => { const u = { ...k }; if (b) u.burok = b; else delete u.burok; return u; });
+  const nyilasok = (al ? burokNyilasok(al, kj) : []).map(({ n, kk }) => ({ n, k: kk }))
     .map(({ n, k }) => ({ n, k, hi: helyisegek.indexOf(al!.magHelyisegek[n.helyiseg!]!) }))
     .filter(({ hi }) => hi >= 0 && valasztott[hi]);
   const belsoAjtok = (al?.nyilasok ?? []).filter((n) => !n.kulso).length;
@@ -531,6 +599,29 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                 </div>
               );
             })()}
+            {(() => {
+              // hőburok térben: minden átvételre jelölt alaprajz körvonala a szintje szerint, a lapok eltolását a falak illesztése adja
+              const sor = alaprajzLapok.filter(({ i }) => !kimarad(i) && typeof elemzesek[i] === 'object' && (elemzesek[i] as AlaprajzFeldolgozas).r);
+              if (!sor.length) return null;
+              const alap = (elemzesek[sor[0]!.i] as AlaprajzFeldolgozas).r!;
+              const emelet = (bm ?? 2.7) + 0.35;
+              const szint3: Burok3DSzint[] = [];
+              const jelen = [...new Set(sor.flatMap(({ i }) => (lapSzintek(i).length ? lapSzintek(i) : ['F'])))].sort((x, y) => SZINT_SOR.indexOf(x) - SZINT_SOR.indexOf(y));
+              const nulla = jelen.indexOf('F') >= 0 ? jelen.indexOf('F') : jelen.findIndex((x) => x !== 'P');
+              for (const { i } of sor) {
+                const a = elemzesek[i] as AlaprajzFeldolgozas, r = a.r!, k = kijeloles(i, a);
+                const el = i === sor[0]!.i ? { dx: 0, dy: 0 } : eltolas(alap, r) ?? { dx: 0, dy: 0 };
+                const m = (x: number, y: number): [number, number] => [(x - el.dx) * r.mPerPt, (y - el.dy) * r.mPerPt];
+                const pol = (k.burok ?? burok3dCache(i, r, futottRiK(a, k))).map((q) => q.map(([x, y]) => m(x, y)));
+                const ny = burokNyilasokPt(a, k, pol.length ? (k.burok ?? burok3dCache(i, r, futottRiK(a, k))) : []).map((n) => { const [x, y] = m(n.x, n.y); return { x, y, szel: n.szel, mag: n.mag, pm: n.pm ?? 0 }; });
+                const szk = lapSzintek(i).length ? lapSzintek(i) : ['F'];
+                for (const sz0 of szk) {
+                  const sorszam = jelen.indexOf(sz0) - Math.max(0, nulla);
+                  szint3.push({ nev: szintNev(sz0), poligonok: pol, z0: sorszam * emelet, h: emelet - 0.35, nyilasok: ny });
+                }
+              }
+              return <details class="kartya" style="margin-top:12px;padding:10px 12px"><summary style="cursor:pointer"><strong>Hőburok térben (3D)</strong> <span class="halkabb">– a lapok hőburok-körvonala szintenként, a nyílászárókkal</span></summary><div style="margin-top:8px"><Burok3D szintek={szint3} eszakSzog={eszakSz} /></div></details>;
+            })()}
             <div class="gombsor" style="margin-top:8px">
               <button class="gomb fo" disabled={osszesFut || alaprajzLapok.some(({ i }) => elemzesek[i] === undefined) || !alaprajzLapok.some(({ i }) => !kimarad(i) && !atvett.has(i))} onClick={osszesAtvesz}>
                 {alaprajzLapok.some(({ i }) => elemzesek[i] === undefined) ? `Feldolgozás… (${alaprajzLapok.filter(({ i }) => elemzesek[i] !== undefined).length} / ${alaprajzLapok.length})` : `Összes kijelölt alaprajz átvétele (${alaprajzLapok.filter(({ i }) => !kimarad(i)).length} lap)`}
@@ -604,7 +695,15 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
           </div>
 
           <div class="kartya" style="padding:0;overflow:auto;max-height:80vh">
-            <svg viewBox={nezet.join(' ')} style="display:block;width:100%;height:auto;background:#fff" role="img" aria-label="Az alaprajz a felismert elemekkel">
+            <svg viewBox={nezet.join(' ')} style={`display:block;width:100%;height:auto;background:#fff;${burokSzerk ? 'touch-action:none' : ''}`} role="img" aria-label="Az alaprajz a felismert elemekkel"
+              onPointerMove={(e) => {
+                if (!huz) return;
+                const svg = e.currentTarget as SVGSVGElement; const m = svg.getScreenCTM(); if (!m) return;
+                const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
+                setBurokVazlat((b) => { const u = (b ?? burok).map((q) => q.map((v) => [...v] as [number, number])); u[huz.p]![huz.v] = [Math.round(pt.x * 10) / 10, Math.round(pt.y * 10) / 10]; return u; });
+              }}
+              onPointerUp={() => { if (huz) { if (burokVazlat) burokMent(burokVazlat); setBurokVazlat(null); setHuz(null); } }}
+              onPointerLeave={() => { if (huz) { if (burokVazlat) burokMent(burokVazlat); setBurokVazlat(null); setHuz(null); } }}>
               <image href={aLap.kep} x={0} y={0} width={aLap.lap.szel} height={aLap.lap.mag} />
               {helyisegek.map((h, i) => valasztott[i] && falak(i).map((f) => (
                 <path d={f.pontok.map(([x, y]) => `M${(x - 0.45).toFixed(1)} ${(y - 0.45).toFixed(1)}h0.9v0.9h-0.9z`).join('')} fill={IRANY_SZIN[f.irany]} />
@@ -625,6 +724,25 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   </g>
                 );
               })}
+              {/* hőburok: vastag vonal; szerkesztéskor a csúcsok húzhatók, az élfelezőkkel új pont szúrható be, dupla kattintás törli a csúcsot */}
+              {burok.map((q, pi) => (
+                <g>
+                  <polygon points={q.map(([x, y]) => `${x},${y}`).join(' ')} fill="#7C3AED" fill-opacity={0.06} stroke="#7C3AED" stroke-width={kj.burok ? 3.2 : 2.4} stroke-linejoin="round" stroke-dasharray={kj.burok ? undefined : '0'} pointer-events="none" />
+                  {burokSzerk && q.map(([x, y], vi) => { const [x2, y2] = q[(vi + 1) % q.length]!; return (
+                    <rect x={(x + x2) / 2 - 2.2} y={(y + y2) / 2 - 2.2} width={4.4} height={4.4} fill="#fff" stroke="#7C3AED" stroke-width={0.9} style="cursor:copy"
+                      onPointerDown={(e) => { e.stopPropagation(); (e.currentTarget as SVGGraphicsElement).ownerSVGElement?.setPointerCapture?.(e.pointerId); const u = burok.map((z) => z.map((v) => [...v] as [number, number])); u[pi]!.splice(vi + 1, 0, [(x + x2) / 2, (y + y2) / 2]); setBurokVazlat(u); setHuz({ p: pi, v: vi + 1 }); }}>
+                      <title>Új pont beszúrása (húzd)</title>
+                    </rect>
+                  ); })}
+                  {burokSzerk && q.map(([x, y], vi) => (
+                    <circle cx={x} cy={y} r={3.6} fill="#7C3AED" stroke="#fff" stroke-width={1} style="cursor:move"
+                      onPointerDown={(e) => { e.stopPropagation(); (e.currentTarget as SVGGraphicsElement).ownerSVGElement?.setPointerCapture?.(e.pointerId); setHuz({ p: pi, v: vi }); }}
+                      onDblClick={(e) => { e.stopPropagation(); if (q.length <= 3) return; burokMent(burok.map((z, zi) => (zi === pi ? z.filter((_, j) => j !== vi) : z))); }}>
+                      <title>Húzd a pontot; dupla kattintás: pont törlése</title>
+                    </circle>
+                  ))}
+                </g>
+              ))}
               {nyilasok.map(({ n, k }) => (
                 <g opacity={kizartNy.has(k) ? 0.3 : 1}>
                   <rect x={n.x - 9} y={n.y - 4} width={18} height={8} rx={1.5} fill={n.fajta === 'ablak' ? '#0EA5E9' : n.fajta === 'erkelyajto' ? '#6366F1' : n.fajta === 'garazskapu' ? '#475569' : '#B45309'} opacity={0.85} />
@@ -640,6 +758,9 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
           </div>
           <div class="gombsor" style="margin:8px 0 16px;gap:16px;flex-wrap:wrap">
             <button class="gomb halk-gomb semleges" onClick={() => setNagyit(!nagyit)}>{nagyit ? 'Teljes lap' : 'Nagyítás az épületre'}</button>
+            <button class={`gomb halk-gomb${burokSzerk ? '' : ' semleges'}`} aria-pressed={burokSzerk} onClick={() => { setBurokSzerk(!burokSzerk); if (!burokSzerk) setNagyit(true); }}>{burokSzerk ? 'Hőburok szerkesztése kész' : 'Hőburok szerkesztése'}</button>
+            {kj.burok && <button class="gomb halk-gomb semleges" onClick={() => burokMent(undefined)}>Hőburok: vissza a felismertre</button>}
+            <span class="halkabb"><span style="display:inline-block;width:18px;height:4px;background:#7C3AED;vertical-align:middle;margin-right:4px" />hőburok {kj.burok ? '(szerkesztett – a homlokzati falak és a külső nyílászárók ebből)' : '(felismert)'}</span>
             {[0, 90, 180, 270].map((ir) => <span class="halkabb"><span style={`display:inline-block;width:10px;height:10px;border-radius:2px;background:${IRANY_SZIN[ir]};margin-right:4px`} />{IRANY_NEV[ir]} → {egtaj(ir, eszakSz)}</span>)}
           </div>
           {problemak.length > 0 && (
