@@ -8,6 +8,7 @@ export * as klima from './tablak/klima.js';
 export * as epuletfizika from './tablak/epuletfizika.js';
 export * as gepeszet from './tablak/gepeszet.js';
 export * as kovetelmeny from './tablak/kovetelmeny.js';
+export * as arnyekolas from './tablak/arnyekolas.js';
 export * as sulyozo from './tablak/sulyozo.js';
 export * as panel from './tablak/panel.js';
 export * from './szettek.js';

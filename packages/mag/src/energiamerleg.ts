@@ -49,6 +49,8 @@ export interface NyilaszaroElem {
   garnyH?: number;
   /** Külső akadályok összesített árnyékoltsági tényezője havonta (Fh·Fv·Ff), alapérték 1. */
   Farny?: readonly number[];
+  /** Hűtési módban alkalmazott árnyékoltsági tényező havonta (6.25 utáni szabály); ha nincs, Farny. */
+  FarnyH?: readonly number[];
   kovetelmenyKod?: string;
 }
 
@@ -220,10 +222,10 @@ export function zonaHaviMerleg(z: ZonaBemenet, opciok?: MerlegFelulbiralas): Zon
         else { HtrX += bHonap(e.hatar, m) * HF; HtrX_H += bHonap(e.hatar, m) * HH; }
         if (e.hatar.tipus === 'kulso') {
           const Gs = sugarzasiHozam(e.tajolas, e.hajlasszog, m);
-          const F = e.Farny?.[m] ?? 1;
+          const F = e.Farny?.[m] ?? 1, FH = e.FarnyH?.[m] ?? F;
           const Au = uvegFelulet(e);
           Qsd += Au * F_UVEGEZES_BEESESI * (e.gnFutes ?? e.gn) * 1 * F * Gs;
-          QsdH += Au * F_UVEGEZES_BEESESI * e.gn * (e.garnyH ?? 1) * F * Gs;
+          QsdH += Au * F_UVEGEZES_BEESESI * e.gn * (e.garnyH ?? 1) * FH * Gs;
         }
       } else if (e.tipus === 'vonal') {
         const H = e.l * e.psi;

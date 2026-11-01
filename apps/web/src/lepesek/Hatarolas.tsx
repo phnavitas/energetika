@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks';
 import { klima } from '@mag/index';
 import { Mezo, Szam, Szoveg, Valaszto, sz, kov, MindJelolo, OsszesTorles } from '../ui';
 import type { EpuletEredmeny } from '@mag/index';
-import { ujId, fuggonyfalTipus, feluletNettoA, geometria, atlagBelmagassag, padloKerulet, padloPsi, chiErvenyes, azonosFeluletek, feluletekOsszevon, falhosszHelyisegekbol, nyilasNapnyereseg, CHI_VALASZTEK, HATAR_NEV, SZEREP_NEV, type Projekt, type HatarKod, type Felulet, atalakit, feluletHibak } from '../modell';
+import { ujId, fuggonyfalTipus, feluletNettoA, geometria, atlagBelmagassag, padloKerulet, padloPsi, chiErvenyes, azonosFeluletek, feluletekOsszevon, falhosszHelyisegekbol, nyilasNapnyereseg, nyilasArnyek, CHI_VALASZTEK, HATAR_NEV, SZEREP_NEV, type Projekt, type HatarKod, type Felulet, atalakit, feluletHibak } from '../modell';
 import { Fogantyu, huzasProps } from '../huzas';
 import { ARNYEKOLOK } from '../katalogus';
 
@@ -39,8 +39,9 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
   // azonos típusú és elhelyezésű (tájolás, dőlés, fal, árnyékolás) nyílászárók egy sorban, darabszám-összeggel;
   // a kibontott sorokban helyiségenként
   const [nyNyitva, setNyNyitva] = useState<Set<string>>(new Set());
+  const [arnyNyitva, setArnyNyitva] = useState<string | null>(null);
   const [nyJelzes, setNyJelzes] = useState<{ k: string; uzenet: string; hiba?: boolean } | null>(null);
-  const nyKulcs = (f: Felulet) => { const n = p.nyilaszarok.find((x) => x.id === f.nyilaszaroId); return [n ? `${n.szelesseg}|${n.magassag}` : '', f.nyilaszaroId ?? '', f.tajolas ?? '', f.hajlasszog ?? 90, f.szuloId ?? '', f.arnyekolas ?? 1].join('#'); };
+  const nyKulcs = (f: Felulet) => { const n = p.nyilaszarok.find((x) => x.id === f.nyilaszaroId); return [n ? `${n.szelesseg}|${n.magassag}` : '', f.nyilaszaroId ?? '', f.tajolas ?? '', f.hajlasszog ?? 90, f.szuloId ?? '', f.arnyekolas ?? 1, JSON.stringify(f.arnyekvetok ?? {})].join('#'); };
   const nyCsoportok: { k: string; tagok: Felulet[] }[] = [];
   for (const f of ny) {
     const k = nyKulcs(f);
@@ -151,7 +152,7 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
         {nyJelzes && <div class={nyJelzes.hiba ? 'hiba-doboz' : 'figyelmeztetes'} style="margin:8px 0;display:flex;gap:12px;align-items:flex-start"><span style="flex:1">{nyJelzes.uzenet}</span><button class="link-gomb" onClick={() => setNyJelzes(null)}>Bezár</button></div>}
         <div class="tabla-gorgeto">
           <table class="tabla">
-            <thead><tr><th aria-label="Kibontás és törlés"></th><th>Típus</th><th class="szam">Db</th><th>Tájolás</th><th>Dőlés</th><th>Falban</th><th>Helyiség</th><th class="szam">Felület</th><th>Árnyékoló</th><th class="szam" title="Fűtési idényre vonatkozó árnyékolási tényező: környező beépítés, erkély, előtető, növényzet (1 = nincs)">F<sub>árny</sub></th><th class="szam" title="Passzív szoláris nyereség Qsd = Au · 0,9 · gn · F · Gs">Napnyereség<br /><span class="halkabb">fűtési idény / év</span></th></tr></thead>
+            <thead><tr><th aria-label="Kibontás és törlés"></th><th>Típus</th><th class="szam">Db</th><th>Tájolás</th><th>Dőlés</th><th>Falban</th><th>Helyiség</th><th class="szam">Felület</th><th>Árnyékoló</th><th class="szam" title="Külső akadályok miatti árnyékoltsági tényező (6.25: Fh · Fv · Ff), a fűtési hónapok átlaga – kattintásra az árnyékvetők szöge adható meg">F<sub>árny</sub></th><th class="szam" title="Passzív szoláris nyereség Qsd = Au · 0,9 · gn · F · Gs">Napnyereség<br /><span class="halkabb">fűtési idény / év</span></th></tr></thead>
             <tbody>
               {nyCsoportok.map(({ k, tagok }) => {
                 const f = tagok[0]!; const ids = new Set(tagok.map((x) => x.id));
@@ -195,9 +196,29 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
                     <td class="halkabb" style="min-width:90px">{helyek.length === 1 ? helyek[0] : helyek.length ? `${helyek.length} helyiség` : '–'}</td>
                     <td class="szam">{sz(tagok.reduce((s2, x) => s2 + feluletNettoA(p, x) * nyResz(x), 0), 2)} m²</td>
                     <td class="halkabb" style="min-width:64px">{ar ? ar.megnevezes : 'nincs'}</td>
-                    <td style="width:64px"><Szam cimke="Árnyékolási tényező" ertek={f.arnyekolas ?? 1} lepes={0.05} min={0} valt={(v) => fvCs((x) => { x.arnyekolas = Math.min(1, Math.max(0, v)); if (x.arnyekolas === 1) delete x.arnyekolas; })} /></td>
+                    <td style="width:64px;text-align:right">{(() => { const a = nyilasArnyek(f); const Ft = a ? [9, 10, 11, 0, 1, 2, 3].reduce((s2, m) => s2 + a.F[m]!, 0) / 7 : 1; return <button class="link-gomb" title="Árnyékvetők (horizont, erkély/előtető, oldalfal) megadása" onClick={() => setArnyNyitva(arnyNyitva === k ? null : k)}>{sz(Ft, 2)}{f.arnyekvetok ? ' ◔' : ''}</button>; })()}</td>
                     <td class="szam" style="white-space:nowrap">{napny ? <>{sz(napny.ideny, 0)} / {sz(napny.ev, 0)} kWh</> : '–'}</td>
                   </tr>
+                  {arnyNyitva === k && (() => {
+                    const a = f.arnyekvetok ?? {};
+                    const all = (mez: 'horizont' | 'vizszintes' | 'fuggoleges', v: number) => fvCs((x) => { const u = { ...(x.arnyekvetok ?? {}) }; if (v > 0) u[mez] = Math.min(90, v); else delete u[mez]; if (Object.keys(u).length) x.arnyekvetok = u; else delete x.arnyekvetok; });
+                    const t = nyilasArnyek(f);
+                    const fut = [9, 10, 11, 0, 1, 2, 3], nyar = [4, 5, 6, 7, 8];
+                    const atl = (l: number[] | undefined, h: number[]) => (l ? h.reduce((s2, m) => s2 + l[m]!, 0) / h.length : 1);
+                    const fugg = (f.hajlasszog ?? 90) === 90;
+                    return (
+                      <tr class="alsor"><td /><td colSpan={10}>
+                        <div class="gombsor" style="align-items:flex-end;gap:12px;flex-wrap:wrap">
+                          <Mezo rovid cim="Horizont szöge" sugo="Szemközti épület, terep: az üvegezés alsó síkjától mért takarási szög (1.1. ábra)"><Szam ertek={a.horizont ?? 0} egyseg="°" valt={(v) => all('horizont', v)} /></Mezo>
+                          {fugg && <Mezo rovid cim="Vízszintes árnyékvető" sugo="Erkélylemez, előtető, loggia födéme: az üvegezés felső síkjától mért szög (1.2. ábra)"><Szam ertek={a.vizszintes ?? 0} egyseg="°" valt={(v) => all('vizszintes', v)} /></Mezo>}
+                          {fugg && <Mezo rovid cim="Függőleges árnyékvető" sugo="Oldalfal, kiugró épületrész: az üvegezés oldalsó síkjától mért szög (1.3. ábra)"><Szam ertek={a.fuggoleges ?? 0} egyseg="°" valt={(v) => all('fuggoleges', v)} /></Mezo>}
+                          <Mezo rovid cim="További tényező" sugo="Pl. növényzet; az árnyékvetők tényezőjével szorzódik (1 = nincs)"><Szam ertek={f.arnyekolas ?? 1} lepes={0.05} min={0} valt={(v) => fvCs((x) => { x.arnyekolas = Math.min(1, Math.max(0, v)); if (x.arnyekolas === 1) delete x.arnyekolas; })} /></Mezo>
+                          <span class="halkabb" style="flex:1;min-width:220px">2. függ. 1.3. táblázatai, 6.25: F<sub>árny</sub> = F<sub>h</sub>·F<sub>v</sub>·F<sub>f</sub> havonta. Fűtési hónapok átlaga <strong>{sz(atl(t?.F, fut), 2)}</strong>, nyári (hűtési) <strong>{sz(atl(t?.FH, nyar), 2)}</strong> – hűtésnél {fugg ? 'a meglévő árnyékvetők tényezői közül a legnagyobb' : 'dőlt nyílászárónál csak a horizont'} számít.</span>
+                          <button class="gomb halk-gomb semleges" onClick={() => setArnyNyitva(null)}>Kész</button>
+                        </div>
+                      </td></tr>
+                    );
+                  })()}
                   {nyitott && tagok.map((x) => (
                     <tr class="alsor">
                       <td style="text-align:right"><button class="sor-torol" title="Törlés" aria-label={`${x.nev} törlése`} onClick={() => torol(x.id)}>✕</button></td>

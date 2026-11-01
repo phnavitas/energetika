@@ -5,7 +5,7 @@
  */
 import {
   retegrendU, talajonFekvoPadlo, futottPinceFal, osztottAblak, kapcsoltLegretegR, kethejuNyilaszaroU, nyilaszaroU, nyilaszaroArnyekoloval, nyilaszaroSablon,
-  epuletfizika, kovetelmeny, klima, hoszukseglet, GEPESZETI_SZETTEK, FUTES_SZETTEK, HMV_SZETTEK, SZELLOZES_SZETTEK, HUTES_SZETTEK, szabalyozasiTenyezo, pvgis, profilok,
+  epuletfizika, kovetelmeny, klima, hoszukseglet, GEPESZETI_SZETTEK, FUTES_SZETTEK, HMV_SZETTEK, SZELLOZES_SZETTEK, HUTES_SZETTEK, szabalyozasiTenyezo, pvgis, profilok, arnyekolas,
   type EpuletBemenet, type HataroloElem, type Reteg, type Hatar, type FutesiHotermelo, type HmvHotermelo,
   type FutesSablon, type HmvSablon, type HutesSablon, type SzellozesRendszer,
 } from '@mag/index';
@@ -111,8 +111,10 @@ export interface Felulet {
   meret?: { hossz: number; magassag: number };
   /** A nyílászáró ebből a falból vonódik le. */
   szuloId?: string;
-  /** Nyílászáró: fűtési idényre vonatkozó árnyékolási tényező (környező beépítés, erkély, előtető, növényzet; 1 = nincs árnyékolás). */
+  /** Nyílászáró: további (kézi) árnyékolási tényező, pl. növényzet – az árnyékvetők tényezőjével szorzódik (1 = nincs). */
   arnyekolas?: number;
+  /** Nyílászáró: külső árnyékvetők szöge (2. függ. 1.3. pont, 6.25): horizont, vízszintes (erkély, előtető), függőleges. */
+  arnyekvetok?: arnyekolas.Arnyekvetok;
   chi?: number;
   /** Vegyes hőhíd-módban: e felület csatlakozási hőhídjait a Ψ·l tagok veszik figyelembe, a χ nem számít. */
   chiPsi?: boolean;
@@ -479,14 +481,23 @@ export const FUTESI_HONAPOK = [0, 1, 2, 3, 9, 10, 11];
  * Nyílászáró-felület passzív szoláris nyeresége (6.29: Qsd = Au · 0,9 · gn · F · Gs), kWh – a fűtési idényre és egész évre.
  * Gs a 2. függ. 1.6. táblázat havi sugárzási hozama a tájolás és dőlés szerint; F a felülethez megadott árnyékolási tényező.
  */
+/** A nyílászáró havi árnyékoltsági tényezői (fűtés F, hűtés FH): árnyékvetők (6.25) × kézi tényező; null, ha nincs árnyékolás. */
+export function nyilasArnyek(f: Felulet): { F: number[]; FH: number[] } | null {
+  const a = f.arnyekvetok, k = f.arnyekolas !== undefined && f.arnyekolas < 1 ? Math.max(0, f.arnyekolas) : 1;
+  const van = a && ((a.horizont ?? 0) > 0 || (a.vizszintes ?? 0) > 0 || (a.fuggoleges ?? 0) > 0);
+  if (!van && k === 1) return null;
+  const t = van ? arnyekolas.arnyekoltsag(a!, f.tajolas ?? null, f.hajlasszog ?? 90) : { F: Array(12).fill(1), FH: Array(12).fill(1) };
+  return { F: t.F.map((x) => x * k), FH: t.FH.map((x) => x * k) };
+}
+
 export function nyilasNapnyereseg(p: Projekt, f: Felulet): { ideny: number; ev: number } | null {
   if (f.fajta !== 'nyilaszaro' || f.hatar !== 'kulso') return null;
   const n = p.nyilaszarok.find((x) => x.id === f.nyilaszaroId); if (!n) return null;
   const d = nyilaszaroAdatok(n); const Au = d.Au * (f.darab ?? 1);
-  const F = f.arnyekolas ?? 1;
+  const Fh = nyilasArnyek(f)?.F;
   let ideny = 0, ev = 0;
   for (let m = 0; m < 12; m++) {
-    const q = Au * epuletfizika.F_UVEGEZES_BEESESI * n.gn * F * klima.sugarzasiHozam(f.tajolas ?? null, f.hajlasszog ?? 90, m);
+    const q = Au * epuletfizika.F_UVEGEZES_BEESESI * n.gn * (Fh?.[m] ?? 1) * klima.sugarzasiHozam(f.tajolas ?? null, f.hajlasszog ?? 90, m);
     ev += q; if (FUTESI_HONAPOK.includes(m)) ideny += q;
   }
   return { ideny, ev };
@@ -497,7 +508,7 @@ export function nyilasNapTeljesitmenyJan(p: Projekt, f: Felulet): number {
   if (f.fajta !== 'nyilaszaro' || f.hatar !== 'kulso') return 0;
   const n = p.nyilaszarok.find((x) => x.id === f.nyilaszaroId); if (!n) return 0;
   const Au = nyilaszaroAdatok(n).Au * (f.darab ?? 1);
-  return (Au * epuletfizika.F_UVEGEZES_BEESESI * n.gn * (f.arnyekolas ?? 1) * klima.sugarzasiHozam(f.tajolas ?? null, f.hajlasszog ?? 90, 0) * 1000) / klima.HONAP_ORAK[0]!;
+  return (Au * epuletfizika.F_UVEGEZES_BEESESI * n.gn * (nyilasArnyek(f)?.F[0] ?? 1) * klima.sugarzasiHozam(f.tajolas ?? null, f.hajlasszog ?? 90, 0) * 1000) / klima.HONAP_ORAK[0]!;
 }
 
 export function atalakit(p: Projekt): Atalakitas {
@@ -518,7 +529,7 @@ export function atalakit(p: Projekt): Atalakitas {
           tipus: 'nyilaszaro', nev: f.nev, szerkezet: n.nev, darab: db, A: d.A * db, U: d.U, UFutes: d.UFutes, hatar: hatar(f.hatar),
           tajolas: f.tajolas ?? null, hajlasszog: f.hajlasszog ?? 90, Au: d.Au * db, gn: n.gn,
           garnyH: n.arnyekolo?.garnyH, kovetelmenyKod: n.kovetelmenyKod,
-          ...(f.arnyekolas !== undefined && f.arnyekolas < 1 ? { Farny: Array(12).fill(Math.max(0, f.arnyekolas)) } : {}),
+          ...(() => { const a = nyilasArnyek(f); return a ? { Farny: a.F, FarnyH: a.FH } : {}; })(),
         });
       } else if (f.fajta === 'padlo') {
         const r = p.retegrendek.find((x) => x.id === f.retegrendId);
@@ -640,7 +651,7 @@ export function uvegezesiAranyP(p: Projekt): number | null {
 export function feluletKulcs(f: Felulet): string | null {
   if (f.fajta === 'opak') return ['o', f.retegrendId, f.hatar, f.tajolas ?? '-', f.hajlasszog ?? '-', f.chiKod ?? f.chi ?? '-', f.chiPsi ? 1 : 0].join('|');
   if (f.fajta === 'padlo') return f.padlo ? ['p', f.retegrendId, f.hatar, f.padlo.dfCm, f.padlo.z, f.padlo.psiPF, JSON.stringify(f.padlo.perem ?? null)].join('|') : null;
-  return ['n', f.nyilaszaroId, f.hatar, f.tajolas ?? '-', f.hajlasszog ?? '-', f.szuloId ?? '-', f.helyisegId ?? '-', f.arnyekolas ?? '-'].join('|');
+  return ['n', f.nyilaszaroId, f.hatar, f.tajolas ?? '-', f.hajlasszog ?? '-', f.szuloId ?? '-', f.helyisegId ?? '-', f.arnyekolas ?? '-', JSON.stringify(f.arnyekvetok ?? null)].join('|');
 }
 
 /** Az azonos (azonos szerkezetű, határú, tájolású) felületek csoportjai. */

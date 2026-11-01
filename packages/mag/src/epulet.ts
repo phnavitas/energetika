@@ -217,7 +217,7 @@ function nyariHovedelem(zonak: ZonaBemenet[], AN: number) {
   let szamlalo = 0, nevezo = 0;
   for (const e of erintett) {
     const Au = e.Au ?? e.A * (1 - (e.keretarany ?? 0.3));
-    const F = e.Farny ? Math.max(...e.Farny.slice(4, 9)) : 1;
+    const Fs = e.FarnyH ?? e.Farny; const F = Fs ? Math.max(...Fs.slice(4, 9)) : 1;
     szamlalo += Au * F_UVEGEZES_BEESESI * e.gn * (e.garnyH ?? 1) * F;
     nevezo += Au;
   }
