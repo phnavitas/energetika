@@ -60,7 +60,21 @@ function alapKijeloles(al: AlaprajzFeldolgozas): Kijeloles {
 /** A külső nyílászárók: szerkesztett hőburoknál a körvonal közelében (≤ 1,3 m) lévők, az él irányával. */
 function burokNyilasok(al: AlaprajzFeldolgozas, k: Kijeloles) {
   const l = al.nyilasok.map((n, kk) => ({ n, kk }));
-  if (!k.burok || !al.r) return l.filter(({ n }) => n.kulso && n.helyiseg !== null && n.irany !== null);
+  if (!al.r) return l.filter(({ n }) => n.kulso && n.helyiseg !== null && n.irany !== null);
+  if (!k.burok) {
+    // felismert burok: a raszter szerinti külső nyílások, és a falhoz nem rendelt, a burkon kívül 1,5 m-en belül írt feliratok
+    const fut0 = futottRiK(al, k), ab = burokAutoTar(al.r, fut0), pp0 = pecsetPontok(al), r0 = al.r;
+    const alap = l.filter(({ n }) => n.kulso && n.helyiseg !== null && n.irany !== null);
+    if (!ab.length) return alap;
+    const koz = (x: number, y: number) => [...pp0.entries()].filter(([ri, q]) => fut0.has(ri) && ab.some((p) => bennE(p, q.x, q.y))).sort((u, v) => Math.hypot(u[1].x - x, u[1].y - y) - Math.hypot(v[1].x - x, v[1].y - y))[0]?.[0] ?? null;
+    return alap.concat((al.arvaFeliratok ?? []).flatMap((f, j) => {
+      if (ab.some((p) => bennE(p, f.x, f.y))) return [];
+      const ir = nyilasEl(r0, ab, f.x, f.y, 1.5); if (ir === null) return [];
+      const h = koz(f.x, f.y); if (h === null) return [];
+      const ajto = (f.pm === null || f.pm <= 0.05) && f.mag >= 2;
+      return [{ n: { szel: f.szel, mag: f.mag, pm: f.pm, x: f.x, y: f.y, helyiseg: h, irany: ir, kulso: true, fajta: (ajto ? 'erkelyajto' : 'ablak') as TervNyilas['fajta'] }, kk: 10000 + j }];
+    }));
+  }
   const r = al.r, b = k.burok;
   const fut = futottRiK(al, k), pp = pecsetPontok(al);
   // helyiség nélküli nyílás: a legközelebbi, a burkon belüli fűtött helyiség pecsétje
@@ -81,6 +95,15 @@ function burokNyilasok(al: AlaprajzFeldolgozas, k: Kijeloles) {
     const ajto = (f.pm === null || f.pm <= 0.05) && f.mag >= 2;
     return [{ n: { szel: f.szel, mag: f.mag, pm: f.pm, x: f.x, y: f.y, helyiseg: h, irany: ir, kulso: true, fajta: (ajto ? 'erkelyajto' : 'ablak') as TervNyilas['fajta'] }, kk: 10000 + j }];
   }));
+}
+
+/** Automatikus hőburok rasztertől és fűtött halmaztól függően gyorstárazva. */
+const burokAutoGy = new WeakMap<object, Map<string, Poligon[]>>();
+function burokAutoTar(r: NonNullable<AlaprajzFeldolgozas['r']>, fut: Set<number>): Poligon[] {
+  let m = burokAutoGy.get(r); if (!m) { m = new Map(); burokAutoGy.set(r, m); }
+  const kulcs = [...fut].sort((a, b) => a - b).join(',');
+  let v = m.get(kulcs); if (!v) { v = burokAuto(r, fut); m.set(kulcs, v); }
+  return v;
 }
 
 /** Automatikus hőburok lapokra gyorstárazva (a 3D ábrához). */
@@ -288,7 +311,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   };
   // hőburok-körvonal: a felismert (fűtött helyiségek összevonva), vagy a felhasználó által szerkesztett
   const futottKulcs = al ? [...futottRiK(al, kj)].sort((a, b) => a - b).join(',') : '';
-  const burokFelismert = useMemo(() => (al?.r ? burokAuto(al.r, futottRiK(al, kj)) : []), [al, futottKulcs]);
+  const burokFelismert = useMemo(() => (al?.r ? burokAutoTar(al.r, futottRiK(al, kj)) : []), [al, futottKulcs]);
   const [burokVazlat, setBurokVazlat] = useState<Poligon[] | null>(null);
   const [burokSzerk, setBurokSzerk] = useState(false);
   const [huz, setHuz] = useState<{ p: number; v: number } | null>(null);

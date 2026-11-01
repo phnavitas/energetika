@@ -57,7 +57,7 @@ export interface Raszter {
   nyilas: Uint8Array;
   /** Felirat nélküli, széles (2,8 m feletti) üvegezett falnyílások – függönyfal, üvegfal: két falvég közti, a fal
    *  síkjában futó párhuzamos vonalakkal (üvegezés, tok) kitöltött rés. Lapkoordináta (pt), hossz méterben. */
-  uvegfalak: { x0: number; y0: number; x1: number; y1: number; hossz: number; fuggo: boolean }[];
+  uvegfalak: { x0: number; y0: number; x1: number; y1: number; hossz: number; fuggo: boolean; /** különálló ablakmodulok sora (a modulok feliratosak lehetnek) */ modulok?: boolean }[];
   helyisegek: { A: number; szivarog: boolean; szakaszok: FalSzakasz[] }[];
 }
 
@@ -137,6 +137,52 @@ function szukit(m: Uint8Array, w: number, h: number, r: number): Uint8Array {
   return t;
 }
 
+/**
+ * A rács széléig kifutó (a homlokzaton „kiszivárgó”) helyiség – pl. üvegfal, oszlopok közti üvegezés, amelyet a rajz
+ * vékony vonallal ábrázol: a gátat fokozatosan (0,3–1 m-rel, azaz ≤ 2 m-es réseket) tágítva újra elárasztjuk a pecséttől, és ha a tér
+ * bezárul, a tágítás mértékéig visszanövesztjük. Elfogadjuk, ha a terület a pecsét szerinti 60–140 %-a.
+ */
+function szivargoPotlas(cimke: Int32Array, gat: Uint8Array, magok: { x: number; y: number; A?: number }[], w: number, h: number, px: number, tr: (x: number, y: number) => [number, number]) {
+  const kifut = new Set<number>();
+  for (let x = 0; x < w; x++) for (const y of [0, h - 1]) if (cimke[y * w + x]! >= 2) kifut.add(cimke[y * w + x]!);
+  for (let y = 0; y < h; y++) for (const x of [0, w - 1]) if (cimke[y * w + x]! >= 2) kifut.add(cimke[y * w + x]!);
+  for (const c of kifut) {
+    const m = magok[c - 2]!; const A = m.A ?? 0; if (!(A >= 4)) continue;
+    let [cx, cy] = tr(m.x, m.y); cx = Math.round(cx); cy = Math.round(cy);
+    for (const Rm of [0.3, 0.6, 1.0]) {
+      const R = Math.max(1, Math.round(Rm / px));
+      const tg = tagit(gat, w, h, R);
+      // a mag (vagy a legközelebbi szabad cella)
+      let s = -1;
+      for (let r = 0; r < 4 * R && s < 0; r++) for (let dy = -r; dy <= r && s < 0; dy++) for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const x = cx + dx, y = cy + dy; if (x < 0 || y < 0 || x >= w || y >= h) continue;
+        const i = y * w + x; if (!tg[i] && (cimke[i] === 0 || kifut.has(cimke[i]!))) { s = i; break; }
+      }
+      if (s < 0) break;
+      const reg = new Uint8Array(w * h); const sor = [s]; reg[s] = 1; let szel = false; const maxN = 3 * A / (px * px);
+      for (let k = 0; k < sor.length && !szel && sor.length < maxN; k++) {
+        const q = sor[k]!, x = q % w, y = (q / w) | 0;
+        if (x === 0 || y === 0 || x === w - 1 || y === h - 1) { szel = true; break; }
+        for (const n of [q - 1, q + 1, q - w, q + w]) if (!reg[n] && !tg[n] && (cimke[n] === 0 || kifut.has(cimke[n]!))) { reg[n] = 1; sor.push(n); }
+      }
+      if (szel || sor.length >= maxN) continue;
+      // visszanövesztés legfeljebb R cellával, a gáton és más helyiségen át nem
+      let front = sor.slice();
+      for (let l = 0; l < R && front.length; l++) {
+        const uj: number[] = [];
+        for (const q of front) { const x = q % w; for (const n of [x > 0 ? q - 1 : -1, x < w - 1 ? q + 1 : -1, q - w, q + w]) if (n >= 0 && n < w * h && !reg[n] && !gat[n] && (cimke[n] === 0 || kifut.has(cimke[n]!))) { reg[n] = 1; uj.push(n); } }
+        front = uj;
+      }
+      let n = 0; for (let i = 0; i < w * h; i++) if (reg[i]) n++;
+      const Ak = n * px * px;
+      if (Ak < 0.6 * A || Ak > 1.4 * A) continue;
+      for (let i = 0; i < w * h; i++) { if (cimke[i] === c && !reg[i]) cimke[i] = 0; else if (reg[i]) cimke[i] = c; }
+      break;
+    }
+  }
+}
+
 /** Többforrású szélességi elárasztás: a szabad (szabad[i] = 1) cellákat a legközelebbi címke kapja. */
 function araszt(cimke: Int32Array, szabad: Uint8Array, w: number, h: number) {
   let sor: number[] = [];
@@ -201,13 +247,14 @@ function nyitas(c: Int32Array, w: number, h: number, r: number): Uint8Array {
 /**
  * Raszter felépítése. `magok`: a helyiségpecsétek középpontjai (pt). A rács a magok köré, `margo` méterrel bővítve készül.
  */
-export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: number }[], b: RaszterBeallitas = {}, margo = 6): Raszter {
+export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: number; A?: number }[], b: RaszterBeallitas = {}, margo = 6): Raszter {
   const px = b.px ?? 0.025, maxFal = b.maxFal ?? 0.9;
   const ptPx = mPerPt / px; // 1 pt hány pixel
   const kp = b.kulsoPontok ?? [];
-  const xs = [...magok, ...kp].map((m) => m.x), ys = [...magok, ...kp].map((m) => m.y);
-  const mPt = margo / mPerPt;
-  const x0 = Math.min(...xs) - mPt, y0 = Math.min(...ys) - mPt, x1 = Math.max(...xs) + mPt, y1 = Math.max(...ys) + mPt;
+  // a rács a pecsétek körül: legalább `margo`, nagy helyiségnél (a pecsét a terem közepén) a terület gyökével arányosan több
+  const mg = (m: { A?: number }) => Math.min(20, Math.max(margo, Math.sqrt(m.A ?? 0) + 2)) / mPerPt;
+  const pk = [...magok.map((m) => ({ x: m.x, y: m.y, d: mg(m) })), ...kp.map((m) => ({ x: m.x, y: m.y, d: margo / mPerPt }))];
+  const x0 = Math.min(...pk.map((p) => p.x - p.d)), y0 = Math.min(...pk.map((p) => p.y - p.d)), x1 = Math.max(...pk.map((p) => p.x + p.d)), y1 = Math.max(...pk.map((p) => p.y + p.d));
   const w = Math.ceil((x1 - x0) * ptPx), h = Math.ceil((y1 - y0) * ptPx);
   const tr = (x: number, y: number): [number, number] => [(x - x0) * ptPx, (y - y0) * ptPx];
   const fal = new Uint8Array(w * h);
@@ -498,6 +545,95 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       for (let y = Math.max(0, Math.floor(Math.min(py0, py1)) - pad); y <= Math.min(h - 1, Math.ceil(Math.max(py0, py1)) + pad); y++)
         for (let x = Math.max(0, Math.floor(Math.min(px0, px1)) - pad); x <= Math.min(w - 1, Math.ceil(Math.max(px0, px1)) + pad); x++) if (!fal[y * w + x]) nyilas[y * w + x] = 1;
     });
+    // ablaksor: egymás mellé sorolt, egyenként keskeny ablakmodulok (tokvonal-párokkal), együtt ≥ 1,2 m, a sor mindkét vége
+    // falba (pillérbe) fut, vagy ajtón át falba – pl. üvegezett homlokzat oszlopok között; bizonyíték: a mellvédfeliratok
+    {
+      const rov: { fuggo: boolean; a: number; b: number; c: number }[] = [];
+      const jeloltek: { fuggo: boolean; a0: number; b0: number; c0: number; c1: number; n: number }[] = [];
+      for (const u of lap.utvonalak) {
+        if (u.muvelet !== 'stroke' || u.bbox[2] < x0 || u.bbox[0] > x1 || u.bbox[3] < y0 || u.bbox[1] > y1) continue;
+        for (const pl of u.pontok) for (let k = 0; k + 3 < pl.length; k += 2) {
+          const ax = pl[k]!, ay = pl[k + 1]!, bx = pl[k + 2]!, by = pl[k + 3]!;
+          const dx = Math.abs(bx - ax), dy = Math.abs(by - ay), L = Math.hypot(dx, dy) * mPerPt;
+          if (L < 0.3 || L > maxRes * mPerPt) continue;
+          if (dy < 0.02 * dx) rov.push({ fuggo: false, a: Math.min(ax, bx), b: Math.max(ax, bx), c: (ay + by) / 2 });
+          else if (dx < 0.02 * dy) rov.push({ fuggo: true, a: Math.min(ay, by), b: Math.max(ay, by), c: (ax + bx) / 2 });
+        }
+      }
+      for (const fuggo of [false, true]) {
+        const l = rov.filter((S) => S.fuggo === fuggo).sort((p, q) => p.c - q.c);
+        // tokkal keretezett szakasz: van párja 4–120 mm-re, a hossz ≥ 80 %-án átfedve
+        const keret = l.filter((S) => l.some((T) => T !== S && Math.abs(T.c - S.c) <= 0.12 / mPerPt && Math.abs(T.c - S.c) > 0.004 / mPerPt
+          && Math.min(T.b, S.b) - Math.max(T.a, S.a) >= 0.8 * Math.max(T.b - T.a, S.b - S.a)));
+        // keresztirányú sávok (≤ 0,15 m-es ugrásokkal), azon belül hossz menti futamok (≤ 0,35 m-es hézaggal)
+        const savok: (typeof keret)[] = [];
+        for (const S of keret) { const u = savok[savok.length - 1]; if (u && S.c - u[u.length - 1]!.c <= 0.15 / mPerPt) u.push(S); else savok.push([S]); }
+        for (const sav of savok) {
+          const f = [...sav].sort((p, q) => p.a - q.a);
+          const futamok: (typeof f)[] = [];
+          let akt: typeof f = [], veg = -Infinity;
+          for (const S of f) { if (S.a - veg > 0.35 / mPerPt && akt.length) { futamok.push(akt); akt = []; } akt.push(S); veg = Math.max(akt.length > 1 ? veg : -Infinity, S.b); }
+          if (akt.length) futamok.push(akt);
+          // a modulsorok közti ajtó (≤ 2,5 m, a résben nyílászáró rajzelemével – pl. kifelé nyíló kétszárnyú ajtó íve) összeköti a futamokat
+          for (let i = futamok.length - 2; i >= 0; i--) {
+            const A = futamok[i]!, B = futamok[i + 1]!;
+            const ab = Math.max(...A.map((x) => x.b)), ba = Math.min(...B.map((x) => x.a));
+            if ((ba - ab) * mPerPt > 2.5) continue;
+            const c0 = Math.min(...A.map((x) => x.c), ...B.map((x) => x.c)) - 1 / mPerPt, c1 = Math.max(...A.map((x) => x.c), ...B.map((x) => x.c)) + 1 / mPerPt;
+            if (nyilasbanElemek(fuggo ? [c0, ab, c1, ba] : [ab, c0, ba, c1]) < 2) continue;
+            futamok.splice(i, 2, [...A, ...B]);
+          }
+          for (const fu of futamok) {
+            let a0 = Math.min(...fu.map((x) => x.a)), b0 = Math.max(...fu.map((x) => x.b));
+            if ((b0 - a0) * mPerPt < 1.2 || (b0 - a0) * mPerPt > 30) continue;
+            // legalább két modul (különálló elemek) – egy hosszú elem a fenti üvegfal-szabály dolga
+            const kezd = new Set(fu.map((x) => Math.round(x.a * mPerPt * 10))); if (kezd.size < 2) continue;
+            const c0 = Math.min(...fu.map((x) => x.c)), c1 = Math.max(...fu.map((x) => x.c)), cm = (c0 + c1) / 2;
+            // ablak-bizonyíték: mellvédfelirat („pm 0”, „mv 90”) a sor mentén, a sávtól ≤ 1,5 m-re (a zuhanyfal, bútorsor nem ilyen)
+            const pmT = lap.szovegek.filter((t) => /^(?:pm|ph|mv|p\.m\.?|mellvéd|parapet)\s*[.:=]?\s*[+-]?\d/i.test(t.s.trim())
+              && (fuggo ? Math.abs(t.x - cm) : Math.abs(t.y - cm)) * mPerPt <= 1.5 && (fuggo ? t.y : t.x) >= a0 - 0.3 / mPerPt && (fuggo ? t.y : t.x) <= b0 + 0.3 / mPerPt);
+            // a feliratok a sor hosszában eloszolva (2 m-es szakaszok legalább 40 %-ában) – nem egy keresztező fal feliratai
+            const szakDb = new Set(pmT.map((t) => Math.floor(((fuggo ? t.y : t.x) - a0) * mPerPt))).size;
+            if (pmT.length < 2 || szakDb < Math.max(2, 0.4 * (b0 - a0) * mPerPt / 2)) continue;
+            // a sor végén ajtó (≤ 2,5 m rés, nyílászáró rajzelemével), utána fal: a sor az ajtón át a falig tart
+            const kiterj = (veg: number, irany: number) => {
+              if (falVeg(veg, irany, cm, fuggo)) return veg;
+              for (let d = 0.4 / mPerPt; d <= 2.5 / mPerPt; d += 0.05 / mPerPt) {
+                const v = veg + irany * d;
+                if (!falE(v + irany * 0.1 / mPerPt, cm, fuggo) && !falVeg(v, irany, cm, fuggo)) continue;
+                const [p0, p1] = [Math.min(veg, v), Math.max(veg, v)];
+                if (nyilasbanElemek(fuggo ? [cm - 1 / mPerPt, p0, cm + 1 / mPerPt, p1] : [p0, cm - 1 / mPerPt, p1, cm + 1 / mPerPt]) < 2) return null;
+                return v;
+              }
+              return null;
+            };
+            { const a1 = kiterj(a0, -1), b1 = kiterj(b0, 1); if (a1 === null || b1 === null) continue; a0 = a1; b0 = b1; }
+            if (!falVeg(a0, -1, cm, fuggo) || !falVeg(b0, 1, cm, fuggo)) continue;
+            // a sávban nincs vastag falkitöltés
+            let falDb = 0, n = 0;
+            for (let t = a0 + 0.3 / mPerPt; t < b0 - 0.3 / mPerPt; t += 0.1 / mPerPt) {
+              n++; let v = 0;
+              for (let e = -0.3 / mPerPt; e <= 0.3 / mPerPt; e += 0.01 / mPerPt) if (falE(t, cm + e, fuggo)) v++;
+              if (v * 0.01 > 0.12) falDb++;
+            }
+            if (!n || falDb / n > 0.3) continue;
+            jeloltek.push({ fuggo, a0, b0, c0, c1, n: fu.length });
+          }
+        }
+      }
+      // átfedő, egymáshoz közeli (≤ 0,6 m) sorok közül a több elemből állót tartjuk meg (a fal menti bútor-, székvonal nem ablak)
+      jeloltek.sort((p, q) => q.n - p.n);
+      for (const J of jeloltek) {
+        const { fuggo, a0, b0, c0, c1 } = J;
+        if (uvegfalak.some((g) => g.fuggo === fuggo && Math.abs((fuggo ? g.x0 : g.y0) - c0) < 0.6 / mPerPt && Math.min(fuggo ? g.y1 : g.x1, b0) - Math.max(fuggo ? g.y0 : g.x0, a0) > 0)) continue;
+        const [ax, ay] = fuggo ? [c0, a0] : [a0, c0], [bx, by] = fuggo ? [c1, b0] : [b0, c1];
+        uvegfalak.push({ x0: ax, y0: ay, x1: bx, y1: by, hossz: (b0 - a0) * mPerPt, fuggo, modulok: true });
+        const [px0, py0] = tr(ax, ay), [px1, py1] = tr(bx, by);
+        const pad = Math.max(1, Math.round(0.03 / px));
+        for (let y = Math.max(0, Math.floor(Math.min(py0, py1)) - pad); y <= Math.min(h - 1, Math.ceil(Math.max(py0, py1)) + pad); y++)
+          for (let x = Math.max(0, Math.floor(Math.min(px0, px1)) - pad); x <= Math.min(w - 1, Math.ceil(Math.max(px0, px1)) + pad); x++) if (!fal[y * w + x]) nyilas[y * w + x] = 1;
+      }
+    }
   }
   // falvégi nyílások: a fal vége és egy keresztező fal közti rés (pl. ajtó a sarokban), ha a résben ajtó/ablak rajzeleme van
   const maxVeg = 1.3 / mPerPt;
@@ -552,6 +688,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
     if (legjobb >= 0) helyCimke[legjobb] = 2 + k;
   });
   araszt(helyCimke, szabadKicsi, w, h);
+  szivargoPotlas(helyCimke, gat, magok, w, h, px, tr);
   if (sraffMod) {
     // a rács széléig kifutó „helyiség” (pl. a pecsétje a külső térben van: fedett bejáró, kukatároló) a külső tér része
     const kifut = new Set<number>();
@@ -565,7 +702,8 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   for (let x = 0; x < w; x++) for (const y of [0, h - 1]) if (szabad[y * w + x] && !helyCimke[y * w + x]) kulsoMag[y * w + x] = 1;
   for (let y = 0; y < h; y++) for (const x of [0, w - 1]) if (szabad[y * w + x] && !helyCimke[y * w + x]) kulsoMag[y * w + x] = 1;
   const nemHely = new Uint8Array(w * h);
-  for (let i = 0; i < w * h; i++) nemHely[i] = szabad[i] && !helyCimke[i] ? 1 : 0;
+  // (a falak menti hajszálrés – a tágított gát sávja – nem vezeti a külső teret a helyiségek köré)
+  for (let i = 0; i < w * h; i++) nemHely[i] = szabadKicsi[i] && !helyCimke[i] ? 1 : 0;
   // külső tér feliratai (lapostető, terasz…): a körülzárt terük is külső tér
   for (const m of kp) {
     const [cx, cy] = tr(m.x, m.y).map(Math.round) as [number, number];
