@@ -18,7 +18,7 @@ export interface TervRetegrend {
   x: number; y: number;
 }
 
-const FEJLEC_KOD = /^[A-ZÁÉ]{1,3}[-.]?\d{1,3}[a-z]?[*'’]{0,3}$/;
+const FEJLEC_KOD = /^[A-ZÁÉ]{1,3}[-. ]?\d{1,3}(?:\.\d{1,2})?[a-z]?[*'’]{0,3}$/;
 const FEJLEC_CIM = /rétegrend|rétegfelépítés|réteg-?rend/i;
 /** Szerkezetnév a rétegrend-fejlécben („homlokzati fal”, „emelet födém”, „zöldtető”). */
 const SZERKEZET_SZO = /fal\b|fal |padló|padlo|födém|fodem|tető|teto|lemez|aljzat|szerkezet|rétegrend/i;
@@ -124,6 +124,11 @@ export function retegrendBlokkok(sz: Szoveg[]): TervRetegrend[] {
     }
     const retegek: TervReteg[] = [];
     let elozoY = kod.y;
+    // jelölt táblázat: minden réteg sora a vastagság-oszlopban kezdődik („8 cm”, „1 rtg”, vagy „-” vastagság nélkül);
+    // ilyenkor a jelölés nélküli sor mindig az előző réteg leírásának folytatása
+    const jeloltSor = (r: Szoveg[]) => r.some((t) => t.x < xL - kod.meret * 0.3 && /^(?:-{1,3}|–|\d+(?:[,.]\d+)?\s*(?:cm|mm|m)|\d+\s*rtg\.?)$/i.test(t.s.trim()));
+    const kotojeles = sorok.filter((r) => r.some((t) => t.x < xL - kod.meret * 0.3 && /^(-{1,3}|–)$/.test(t.s.trim()))).length;
+    const jelolt = kotojeles >= 2;
     for (const r of sorok) {
       const y = r[0]!.y;
       if (y - elozoY > kod.meret * 2.6) break; // a blokk vége
@@ -138,15 +143,20 @@ export function retegrendBlokkok(sz: Szoveg[]): TervRetegrend[] {
       const leiras = sorFuz(jobbR).replace(/^[.,]$/, '').replace(/\)\s*\)$/, ')');
       if (!v && /:$/.test(leiras)) continue; // „vizeshelyiségben:” – feltétel-felirat
       if (!leiras && !v) continue;
+      if (jelolt && !jeloltSor(r) && retegek.length) { retegek.at(-1)!.leiras += ' ' + leiras; continue; }
       if (v) retegek.push({ ...v, leiras });
       else if (balraKezd) retegek.push({ dCm: null, leiras });
       else if (retegek.length && retegek.at(-1)!.leiras.endsWith(',')) retegek.at(-1)!.leiras += ' ' + leiras;
       else if (retegek.length && /^[a-záéíóöőúüű(]/.test(leiras)) retegek.at(-1)!.leiras += ' ' + leiras;
+      // számmal kezdődő folytatás („0,034 W/mK hővezetési tényezővel …”, „20 cm-rel túlfuttatott …”)
+      else if (retegek.length && /^\d+(?:[,.]\d+)?\s*(?:W\/mK|cm-|mm-|kg|°|%)/.test(leiras)) retegek.at(-1)!.leiras += ' ' + leiras;
       else retegek.push({ dCm: null, leiras });
     }
     // valódi rétegrend-tábla: legalább két réteg vastagsággal (a rajzon álló szerkezetjelölő felirat nem ilyen)
     // (kifejezetten „rétegrend” fejlécű táblánál egy is elég)
-    if (retegek.filter((r) => r.dCm !== null || r.rtg).length >= (FEJLEC_CIM.test(cim.s) ? 1 : 2)) ki.push({ kod: kod.s.trim(), cim: sorFuz([cim]).replace(/\s*rétegrend(je)?\s*$/i, '').trim(), retegek, x: kod.x, y: kod.y });
+    // szerkezetnevű fejlécnél (pl. „homlokzati falszerkezet”) egy vastagságos réteg is elég, ha a blokk legalább 3 soros
+    const egyEleg = FEJLEC_CIM.test(cim.s) || (SZERKEZET_SZO.test(cim.s) && retegek.length >= 3);
+    if (retegek.filter((r) => r.dCm !== null || r.rtg).length >= (egyEleg ? 1 : 2)) ki.push({ kod: kod.s.trim(), cim: sorFuz([cim]).replace(/\s*rétegrend(je)?\s*$/i, '').trim(), retegek, x: kod.x, y: kod.y });
   }
   return ki;
 }
@@ -315,12 +325,18 @@ export interface TervRetegUI extends RetegUI { forras: string; kimarad?: string;
 export function retegekEpit(rr: TervRetegrend, sz: SzerepBecsles, ujId: () => string): TervRetegUI[] {
   const ki: TervRetegUI[] = [];
   for (const r of rr.retegek) {
-    const k = anyagKepez(r.leiras, r.dCm, sz.szerep);
+    // a leírásban említett kiegészítő szerkezetek („vasbeton merevítő szerkezetekkel”, „áthidalók”) nem a réteg anyaga
+    const fo = r.leiras.replace(/[^,;.]*(merevítő|koszorú|áthidaló|pillér|túlfuttat)[^,;.]*/gi, ' ');
+    const k = anyagKepez(fo.trim() ? fo : r.leiras, r.dCm, sz.szerep);
+    // a leírásban megadott hővezetési tényező („0,08 W/mK hővezetési tényezőjű”) – az első említés a réteg anyagáé
+    const lm = /(\d+[,.]\d+)\s*W\s*\/\s*m\s*K/i.exec(r.leiras);
+    const lambda = lm ? Number(lm[1]!.replace(',', '.')) : undefined;
     const leirasVastag = r.dCm === null && !r.rtg ? /^(\d+(?:[,.]\d+)?)\s*cm\b/.exec(r.leiras) : null;
     let dCm = r.dCm ?? (leirasVastag ? Number(leirasVastag[1]!.replace(',', '.')) : k.anyagId && r.rtg ? (RTG_CM[k.anyagId] ?? 0) * r.rtg : 0);
     if (k.anyagId === 'pe_folia' && r.dCm === null) dCm = 0.02;
     const forras = `${r.dCm !== null ? `${String(r.dCm).replace('.', ',')} cm` : r.rtg ? `${r.rtg} rtg.` : '–'} ${r.leiras}`;
-    ki.push({ id: ujId(), anyagId: k.kimarad ? undefined : k.anyagId, nev: k.anyagId ? undefined : r.leiras, dCm: Math.round(dCm * 100) / 100, legreteg: k.legreteg, forras, kimarad: k.kimarad, megjegyzes: k.megjegyzes });
+    const sajatL = !k.kimarad && lambda !== undefined && lambda >= 0.01 && lambda <= 3 && dCm > 0 ? { lambda } : {};
+    ki.push({ id: ujId(), anyagId: k.kimarad ? undefined : k.anyagId, nev: k.anyagId ? undefined : r.leiras, dCm: Math.round(dCm * 100) / 100, legreteg: k.legreteg, forras, kimarad: k.kimarad, ...sajatL, megjegyzes: lambda !== undefined && sajatL.lambda ? [k.megjegyzes, `λ a tervből: ${String(lambda).replace('.', ',')} W/mK`].filter(Boolean).join(' · ') : k.megjegyzes });
   }
   // A tervlapok a rétegeket általában belülről kifelé (falnál) ill. felülről lefelé (padló, födém) sorolják.
   // A program rétegsorrendje: belső oldaltól a külső felé – padlónál és padlásfödémnél ez megegyezik a felülről/alulról olvasással:
@@ -354,7 +370,7 @@ export interface SzintEredmeny {
   figyelmeztetes: string[];
 }
 
-const SZINT = /^([±+\-−–]?)\s?(\d{1,3}[,.]\d{2,3})$/;
+const SZINT = /^([±+\-−–]?)\s?(\d{1,3}[,.]\d{2,3})(?:\s*=\s*[\d.,\s]+m\s*Bf\.?)?$/i;
 
 export function szintekKeres(sz: Szoveg[]): SzintEredmeny {
   const jelek = sz.filter((t) => Math.abs(t.szog) < 2).map((t) => ({ t, m: SZINT.exec(szovegJavit(t.s)) })).filter((x) => x.m && (x.m[1] || /,\d{2}$/.test(x.m[2]!)))

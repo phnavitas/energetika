@@ -179,8 +179,18 @@ export interface MetszetFeldolgozas {
   szintek: SzintEredmeny;
 }
 
+/**
+ * Egy rétegrendbe írt „tetőfedés + fűtetlen padlástér + padlásfödém” (pl. „magastető belső tér felett”): a hőburok
+ * a padlástér alatti rész, ezért a padlástér-sor utáni rétegek padlásfödémként kerülnek át.
+ */
+function padlasBontas(rr: TervRetegrend): TervRetegrend {
+  const i = rr.retegek.findIndex((r) => r.dCm === null && !r.rtg && /^(fűtetlen |hideg |átszellőz\S* )?(padlás)?tér$|padlástér|^légtér$/i.test(r.leiras.trim()));
+  if (i < 0 || i >= rr.retegek.length - 1 || !/tető|teto/i.test(rr.cim)) return rr;
+  return { ...rr, cim: `${rr.cim} – padlásfödém (a padlástér alatt)`, retegek: rr.retegek.slice(i + 1) };
+}
+
 export function metszetFeldolgoz(lap: Lap): MetszetFeldolgozas {
-  const b = retegrendBlokkok(lap.szovegek);
+  const b = retegrendBlokkok(lap.szovegek).map(padlasBontas);
   return {
     blokkok: b.map((rr) => { const becsles = szerepBecsles(rr, b); return { rr, becsles, retegek: retegekEpit(rr, becsles, ujId) }; }),
     szintek: szintekKeres(lap.szovegek),

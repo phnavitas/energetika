@@ -44,7 +44,26 @@ function geom(t: Szoveg) {
 
 export interface NyilasFelirat { szel: number; mag: number; pm: number | null; x: number; y: number; /** A fal iránya a lapon: vízszintes / függőleges. */ fal: 'v' | 'f'; /** Méterben írt, kapuméretű feliratpár: csak garázs jellegű helyiségben, falnyíláshoz kötve fogadjuk el. */ kapuJelolt?: boolean }
 
-export function nyilasFeliratok(sz: Szoveg[]): NyilasFelirat[] {
+/** Méret szövegből cm-ben: „75” → 75, „2,40” → 240. */
+const cmErtek = (v: string) => (v.includes(',') || v.includes('.') ? Math.round(Number(v.replace(',', '.')) * 100) : Number(v));
+/**
+ * Falnyílás- és tokméret egy feliratban: „2,60 (2,40)”, „(1,80) 1,80”, „75 (75)”, „pm -20 (0)”, „pm 1,75 (1,80)” –
+ * a zárójeles érték a nyílászáró (tok) mérete, a másik a falnyílásé. Az energetikai számításhoz a tokméret kell,
+ * ezért a feliratot a zárójeles értékre (cm) cseréljük.
+ */
+function tokMeret(t: Szoveg): Szoveg {
+  const s = t.s.trim();
+  const SZ = '([+-]?\\d{1,3}(?:,\\d{1,2})?)';
+  const pm = new RegExp(`^(pm|ph|mv)\\s*${SZ}\\s*\\(${SZ}\\)$`, 'i').exec(s);
+  if (pm) return { ...t, s: `pm ${cmErtek(pm[3]!)}` };
+  const m = new RegExp(`^(?:${SZ}\\s*\\(${SZ}\\)|\\(${SZ}\\)\\s*${SZ})$`).exec(s);
+  if (!m) return t;
+  const v = cmErtek(m[2] ?? m[3]!);
+  return v >= 30 && v <= 600 ? { ...t, s: String(v) } : t;
+}
+
+export function nyilasFeliratok(sz0: Szoveg[]): NyilasFelirat[] {
+  const sz = sz0.map(tokMeret);
   const szamok = sz.filter((t) => SZAM.test(t.s.trim()) && szamCm(t.s) >= 30 && szamCm(t.s) <= 600);
   const pmek = sz.map((t) => ({ t, m: PM.exec(szovegJavit(t.s)) })).filter((x) => x.m);
   // „pm” és a szám külön szövegelemben
@@ -81,6 +100,14 @@ export function nyilasFeliratok(sz: Szoveg[]): NyilasFelirat[] {
       const g = geom(q.t); const dx = g.cx - x, dy = g.cy - y;
       const menti = Math.abs(dx * ga.fel[0] + dy * ga.fel[1]), keresztben = Math.abs(dx * ga.dir[0] + dy * ga.dir[1]);
       if (menti > a.meret * 1.2 || keresztben > a.meret * 4.8) continue;
+      if (keresztben < pmT) { pmT = keresztben; pm = q; }
+    }
+    // a fal túloldalára, a nyílás tengelyébe írt mellvéd („pm -20 (0)” a helyiség felőli oldalon): tágabb keresés
+    if (!pm) for (const q of pmek) {
+      if (pmHasznalt.has(q.t)) continue;
+      const g = geom(q.t); const dx = g.cx - x, dy = g.cy - y;
+      const menti = Math.abs(dx * ga.fel[0] + dy * ga.fel[1]), keresztben = Math.abs(dx * ga.dir[0] + dy * ga.dir[1]);
+      if (menti > a.meret * 2.2 || keresztben > a.meret * 11) continue;
       if (keresztben < pmT) { pmT = keresztben; pm = q; }
     }
     if (pm) pmHasznalt.add(pm.t);
