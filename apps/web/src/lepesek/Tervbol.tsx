@@ -328,6 +328,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const [burokVazlat, setBurokVazlat] = useState<Poligon[] | null>(null);
   const [burokSzerk, setBurokSzerk] = useState(false);
   const [huz, setHuz] = useState<{ p: number; v: number } | null>(null);
+  /** Kézi hőburok-rajzolás: a lerakott pontok (pt); null: nincs rajzolás. */
+  const [rajzol, setRajzol] = useState<[number, number][] | null>(null);
   const burok = burokVazlat ?? kj.burok ?? burokFelismert;
   const burokMent = (b: Poligon[] | undefined) => kjMod((k) => { const u = { ...k }; if (b) u.burok = b; else delete u.burok; return u; });
   const nyilasok = (al ? burokNyilasok(al, kj) : []).map(({ n, kk }) => ({ n, k: kk }))
@@ -719,13 +721,23 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
           </div>
 
           <div class="kartya" style="padding:0;overflow:auto;max-height:80vh">
-            <svg viewBox={nezet.join(' ')} style={`display:block;width:100%;height:auto;background:#fff;${burokSzerk ? 'touch-action:none' : ''}`} role="img" aria-label="Az alaprajz a felismert elemekkel"
+            <svg viewBox={nezet.join(' ')} style={`display:block;width:100%;height:auto;background:#fff;${burokSzerk || rajzol ? 'touch-action:none;' : ''}${rajzol ? 'cursor:crosshair' : ''}`} role="img" aria-label="Az alaprajz a felismert elemekkel"
               onPointerMove={(e) => {
                 if (!huz) return;
                 const svg = e.currentTarget as SVGSVGElement; const m = svg.getScreenCTM(); if (!m) return;
                 const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
                 setBurokVazlat((b) => { const u = (b ?? burok).map((q) => q.map((v) => [...v] as [number, number])); u[huz.p]![huz.v] = [Math.round(pt.x * 10) / 10, Math.round(pt.y * 10) / 10]; return u; });
               }}
+              onClick={(e) => {
+                if (!rajzol) return;
+                const svg = e.currentTarget as SVGSVGElement; const m = svg.getScreenCTM(); if (!m) return;
+                const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
+                const p0 = rajzol[0];
+                // az első pontra kattintva (vagy dupla kattintással) a körvonal bezárul
+                if (p0 && rajzol.length >= 3 && Math.hypot(pt.x - p0[0], pt.y - p0[1]) < 12 * fogo) { burokMent([...(kj.burok ?? burokFelismert), rajzol]); setRajzol(null); return; }
+                setRajzol([...rajzol, [Math.round(pt.x * 10) / 10, Math.round(pt.y * 10) / 10]]);
+              }}
+              onDblClick={() => { if (rajzol && rajzol.length >= 3) { burokMent([...(kj.burok ?? burokFelismert), rajzol]); setRajzol(null); } }}
               onPointerUp={() => { if (huz) { if (burokVazlat) burokMent(burokVazlat); setBurokVazlat(null); setHuz(null); } }}
               onPointerLeave={() => { if (huz) { if (burokVazlat) burokMent(burokVazlat); setBurokVazlat(null); setHuz(null); } }}>
               <image href={aLap.kep} x={0} y={0} width={aLap.lap.szel} height={aLap.lap.mag} />
@@ -769,6 +781,12 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   ))}
                 </g>
               ))}
+              {rajzol && rajzol.length > 0 && (
+                <g pointer-events="none">
+                  <polyline points={rajzol.map(([x, y]) => `${x},${y}`).join(' ')} fill="none" stroke="#7C3AED" stroke-width={5} vector-effect="non-scaling-stroke" stroke-dasharray="8 5" />
+                  {rajzol.map(([x, y], i) => <circle cx={x} cy={y} r={(i === 0 ? 9 : 6) * fogo} fill={i === 0 ? '#fff' : '#7C3AED'} stroke="#7C3AED" stroke-width={2} vector-effect="non-scaling-stroke" />)}
+                </g>
+              )}
               {nyilasok.map(({ n, k }) => (
                 <g opacity={kizartNy.has(k) ? 0.3 : 1}>
                   <rect x={n.x - 9} y={n.y - 4} width={18} height={8} rx={1.5} fill={n.fajta === 'ablak' ? '#0EA5E9' : n.fajta === 'erkelyajto' ? '#6366F1' : n.fajta === 'garazskapu' ? '#475569' : '#B45309'} opacity={0.85} />
@@ -786,13 +804,16 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             <button class="gomb halk-gomb semleges" onClick={() => setNagyit(!nagyit)}>{nagyit ? 'Teljes lap' : 'Nagyítás az épületre'}</button>
             <button class={`gomb halk-gomb${burokSzerk ? '' : ' semleges'}`} aria-pressed={burokSzerk} onClick={() => { setBurokSzerk(!burokSzerk); if (!burokSzerk) setNagyit(true); }}>{burokSzerk ? 'Hőburok szerkesztése kész' : 'Hőburok szerkesztése'}</button>
             {kj.burok && <button class="gomb halk-gomb semleges" onClick={() => burokMent(undefined)}>Hőburok: vissza a felismertre</button>}
+            <button class={`gomb halk-gomb${rajzol ? '' : ' semleges'}`} aria-pressed={!!rajzol} onClick={() => { if (rajzol) setRajzol(null); else { setRajzol([]); setBurokSzerk(false); setNagyit(true); } }}>{rajzol ? 'Rajzolás megszakítása' : 'Hőburok rajzolása'}</button>
+            {rajzol && <span class="figyelmeztetes" style="margin:0">Kattints a hőburok sarokpontjaira a hőszigetelt fal külső síkján körbe; az első pontra kattintva (vagy dupla kattintással) a körvonal bezárul.</span>}
+            {!burok.length && !rajzol && <span class="figyelmeztetes" style="margin:0">Zárt fűtött körvonalat nem ismertem fel ezen a lapon – a „Hőburok rajzolása” gombbal rajzold meg (ebből számolom a homlokzati falakat és a 3D nézetet).</span>}
             <span class="halkabb"><span style="display:inline-block;width:22px;height:6px;background:#7C3AED;vertical-align:middle;margin-right:4px;border-radius:2px" />hőburok {kj.burok ? '(szerkesztett – a homlokzati falak és a külső nyílászárók ebből)' : '(felismert)'}</span>
             {[0, 90, 180, 270].map((ir) => <span class="halkabb"><span style={`display:inline-block;width:10px;height:10px;border-radius:2px;background:${IRANY_SZIN[ir]};margin-right:4px`} />{IRANY_NEV[ir]} → {egtaj(ir, eszakSz)}</span>)}
           </div>
           {(() => {
               // hőburok térben: minden átvételre jelölt alaprajz körvonala a szintje szerint, a lapok eltolását a falak illesztése adja
               const sor = alaprajzLapok.filter(({ i }) => !kimarad(i) && typeof elemzesek[i] === 'object' && (elemzesek[i] as AlaprajzFeldolgozas).r);
-              if (!sor.length) return null;
+              if (!sor.length) return <div class="kartya halkabb" style="margin:0 0 16px;padding:10px 12px"><strong>Hőburok térben (3D)</strong> – a 3D nézethez a lap léptéke és a felismert falak kellenek (add meg a méretarányt).</div>;
               const alap = (elemzesek[sor[0]!.i] as AlaprajzFeldolgozas).r!;
               const emelet = (bm ?? 2.7) + 0.35;
               const szint3: Burok3DSzint[] = [];
@@ -810,7 +831,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   szint3.push({ nev: szintNev(sz0), poligonok: pol, z0: sorszam * emelet, h: emelet - 0.35, nyilasok: ny });
                 }
               }
-              return <details class="kartya" open style="margin:0 0 16px;padding:10px 12px"><summary style="cursor:pointer"><strong>Hőburok térben (3D)</strong> <span class="halkabb">– a lapok hőburok-körvonala szintenként, a nyílászárókkal</span></summary><div style="margin-top:8px"><Burok3D szintek={szint3} eszakSzog={eszakSz} /></div></details>;
+              const vanPol = szint3.some((x) => x.poligonok.length);
+              return <details class="kartya" open style="margin:0 0 16px;padding:10px 12px"><summary style="cursor:pointer"><strong>Hőburok térben (3D)</strong> <span class="halkabb">– a lapok hőburok-körvonala szintenként, a nyílászárókkal</span></summary><div style="margin-top:8px">{vanPol ? <Burok3D szintek={szint3} eszakSzog={eszakSz} /> : <div class="halkabb">Még nincs hőburok-körvonal – a fenti alaprajzon a „Hőburok rajzolása” gombbal megrajzolhatod.</div>}</div></details>;
           })()}
           {problemak.length > 0 && (
             <details class="kartya" open style="margin-bottom:16px">
