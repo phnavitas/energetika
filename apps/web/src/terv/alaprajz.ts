@@ -121,6 +121,8 @@ export function pecsetek(sz: Szoveg[]): TervHelyiseg[] {
     }
     if (!nevResz.length) continue;
     const nev = nevResz.join(' ').replace(/\s*\/\s*/g, ' / ');
+    // betű nélküli „név” (lejtés „3%”, szám): burkolt külső felület területfelirata, nem helyiségpecsét
+    if (!/\p{L}{2}/u.test(nev)) continue;
     const ys = [...sorok, a].map((t) => t.y);
     const bal = Math.min(...[...sorok, a].map((t) => t.x)), jobb = Math.max(...[...sorok, a].map((t) => t.x + t.szel));
     const bbox: [number, number, number, number] = [bal, Math.min(...ys) - a.meret, jobb, Math.max(...ys) + a.meret * 0.25];
@@ -175,8 +177,19 @@ export function jegyzekSorok(sz: Szoveg[]): TervHelyiseg[] {
     if (!/^\d{1,4}[,.]\d{1,2}$/.test(utolso)) continue;
     // a kód az első egy-két elemből áll össze („L01.” + „01”)
     let kod = ''; let i = 0;
-    while (i < r.length - 1 && ((/^[A-ZÁÉ]{0,3}\.?\d{0,3}[.\-/]?\s?\d{0,3}\.?$/.test(r[i]!.s) && /\d/.test(r[i]!.s)) || tagoltKod(r[i]!.s)) && kod.length < 16) { kod += r[i]!.s.replace(/\s/g, ''); i++; }
+    // több épület azonos helyiségei egy sorban: „Cfsz01 Bfsz01 Afsz01 előszoba 3,89” – minden kód külön sor
+    const ONALLO = /^[A-ZÁÉ][A-Za-zÁÉáé]{0,4}\d{1,3}$/;
+    const kodok: string[] = [];
+    while (i < r.length - 2 && ONALLO.test(r[i]!.s.trim()) && ONALLO.test(r[i + 1]!.s.trim())) { kodok.push(r[i]!.s.trim()); i++; }
+    if (kodok.length) { kodok.push(r[i]!.s.trim()); i++; }
+    else while (i < r.length - 1 && ((/^[A-ZÁÉ][A-Za-zÁÉáé]{0,4}\.?\d{0,3}[.\-/]?\s?\d{0,3}\.?$|^\d{1,3}[.\-/]?\s?\d{0,3}\.?$/.test(r[i]!.s) && /\d/.test(r[i]!.s)) || tagoltKod(r[i]!.s)) && kod.length < 16) { kod += r[i]!.s.replace(/\s/g, ''); i++; }
     const kozepso = r.slice(i, -1).map((t) => t.s);
+    if (kodok.length) {
+      const nevK = kozepso.join(' ');
+      if (!/\p{L}{2}/u.test(nevK) || /összesen|össz\.|sum/i.test(nevK)) continue;
+      for (const k of kodok) ki.push({ kod: k, nev: nagybetuJavit(nevK), A: szamErtek(utolso), x: kozep(r[0]!), y: r[0]!.y, forras: 'jegyzek', kulter: kulterE(nevK), egyseg: egysegKod(k) });
+      continue;
+    }
     if (!kozepso.length || !kod) continue;
     let burkolat: string | undefined; const nevResz: string[] = [];
     for (const t of kozepso) { if (!burkolat && nevResz.length && BURKOLAT.test(t)) burkolat = t; else nevResz.push(t); }
@@ -336,6 +349,14 @@ export function alaprajzElemez(lap: Lap): AlaprajzEredmeny {
     const p = parja(j);
     if (p) { p.jegyzekA = j.A; if (Math.abs(p.A - j.A) > 0.011) figy.push(`${p.kod ?? p.nev}: a pecsét ${p.A.toFixed(2)} m², a jegyzék ${j.A.toFixed(2)} m² – ellenőrizd.`); if (!p.burkolat && j.burkolat) p.burkolat = j.burkolat; continue; }
     if (helyisegek.some((h) => h.forras === 'jegyzek' && kodN(h.kod) === kodN(j.kod) && Math.abs(h.A - j.A) < 0.011)) continue;
+    // terület nélküli pecsét: a rajzon csak a helyiségkód áll („Afsz03”) – a helye onnan, a neve és területe a jegyzékből
+    const kodFel = j.kod ? lap.szovegek.filter((t) => kodN(szovegJavit(t.s).trim()) === kodN(j.kod) && Math.abs(t.y - j.y) > t.meret * 1.5) : [];
+    if (kodFel.length === 1 && helyisegek.some((h) => h.forras === 'pecset' && kodN(h.kod) === kodN(j.kod))) continue;
+    if (kodFel.length === 1) {
+      const t = kodFel[0]!;
+      helyisegek.push({ ...j, x: t.x + t.szel / 2, y: t.y, forras: 'pecset', kulter: j.kulter, egyseg: j.egyseg ?? (j.kod ? egysegKod(j.kod) : undefined) });
+      continue;
+    }
     helyisegek.push(j); if (pec.length) csakJegyzek++;
   }
   if (csakJegyzek) figy.push(`${csakJegyzek} helyiség csak a jegyzékben szerepel (pecsétje nem található) – alapból nem kerül át, ellenőrizd.`);

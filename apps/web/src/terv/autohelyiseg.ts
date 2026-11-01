@@ -100,13 +100,15 @@ export function automatikusHelyisegek(lap: Lap, mPerPt: number, kep?: SzurkeKep)
   const { w, h, cimke } = r;
   const latott = new Uint8Array(w * h);
   const ki: TervHelyiseg[] = [];
+  // jelölt cella: külső térként címkézett, vagy (sraffozott falas rajzon) címkézetlen, szabad zseb
+  const jelolt = (i: number) => cimke[i] === 1 || (cimke[i] === 0 && !r.fal[i] && !r.nyilas[i]);
   for (let i = 0; i < w * h; i++) {
-    if (cimke[i] !== 1 || latott[i]) continue;
+    if (!jelolt(i) || latott[i]) continue;
     const komp: number[] = [i]; latott[i] = 1; let szel = false;
     for (let k = 0; k < komp.length; k++) {
       const q = komp[k]!, x = q % w, y = (q / w) | 0;
       if (x === 0 || y === 0 || x === w - 1 || y === h - 1) szel = true;
-      for (const n of [x > 0 ? q - 1 : -1, x < w - 1 ? q + 1 : -1, q - w, q + w]) if (n >= 0 && n < w * h && cimke[n] === 1 && !latott[n]) { latott[n] = 1; komp.push(n); }
+      for (const n of [x > 0 ? q - 1 : -1, x < w - 1 ? q + 1 : -1, q - w, q + w]) if (n >= 0 && n < w * h && jelolt(n) && !latott[n]) { latott[n] = 1; komp.push(n); }
     }
     const A = komp.length * px * px;
     if (szel || A < 1 || A > 120) continue;
