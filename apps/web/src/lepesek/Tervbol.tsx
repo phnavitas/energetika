@@ -15,6 +15,8 @@ import { egtaj, szintekCimbol, szintNev } from '../terv/alaprajz';
 import { tervAtvesz, type AtvettNyilas, type AtvettHelyiseg } from '../terv/atvetel';
 import { MintaLakasok } from './MintaLakasok';
 import { Burok3D, type Burok3DSzint } from './Burok3D';
+import { homlokzatRajzok, mertMagassagok, type HomlokzatRajz, type MertMagassag } from '../terv/homlokzatIllesztes';
+import type { Lap } from '../terv/kinyeres';
 
 type Modosit = (f: (q: Projekt) => void) => void;
 
@@ -97,6 +99,12 @@ function burokNyilasok(al: AlaprajzFeldolgozas, k: Kijeloles) {
   }));
 }
 
+/** Homlokzati rajzok (keretekkel) lapcsoportonként gyorstárazva. */
+const homlokzatGy = new WeakMap<object, HomlokzatRajz[]>();
+function homlokzatRajzTar(lapok: Lap[]): HomlokzatRajz[] {
+  return lapok.flatMap((l) => { let v = homlokzatGy.get(l); if (!v) { try { v = homlokzatRajzok(l); } catch { v = []; } homlokzatGy.set(l, v); } return v; });
+}
+
 /** Automatikus hőburok rasztertől és fűtött halmaztól függően gyorstárazva. */
 const burokAutoGy = new WeakMap<object, Map<string, Poligon[]>>();
 function burokAutoTar(r: NonNullable<AlaprajzFeldolgozas['r']>, fut: Set<number>): Poligon[] {
@@ -120,7 +128,7 @@ function burokNyilasokPt(al: AlaprajzFeldolgozas, k: Kijeloles, b: Poligon[]) {
 }
 
 /** Egy alaprajz átvehető helyiségei (külső falakkal) és nyílászárói a kijelölés szerint. */
-function atvetelReszek(al: AlaprajzFeldolgozas, k: Kijeloles): { helyisegek: AtvettHelyiseg[]; nyilasok: AtvettNyilas[]; ri: number[] } {
+function atvetelReszek(al: AlaprajzFeldolgozas, k: Kijeloles, mert?: Map<TervNyilas, MertMagassag>): { helyisegek: AtvettHelyiseg[]; nyilasok: AtvettNyilas[]; ri: number[] } {
   const hs = al.e.helyisegek;
   const egysegben = (i: number) => !al.e.egysegek.length || !hs[i]!.egyseg || k.egysegek.has(hs[i]!.egyseg!);
   const valasztott = hs.map((h, i) => egysegben(i) && !h.kulter && !k.kizartH.has(i));
@@ -139,7 +147,12 @@ function atvetelReszek(al: AlaprajzFeldolgozas, k: Kijeloles): { helyisegek: Atv
   const nyilasok = burokNyilasok(al, k)
     .map(({ n, kk }) => ({ n, kk, hi: hs.indexOf(al.magHelyisegek[n.helyiseg!]!) }))
     .filter(({ hi, kk }) => hi >= 0 && valasztott[hi] && !k.kizartNy.has(kk))
-    .map(({ n, hi }): AtvettNyilas => ({ fajta: n.fajta as AtvettNyilas['fajta'], szel: n.szel, mag: n.mag, pm: n.pm, helyiseg: index.get(hi)!, irany: n.irany! }));
+    .map(({ n, hi }): AtvettNyilas => {
+      // méretfelirat nélküli nyílás: a magasság a homlokzatról (vagy becsült); padlóig érő → erkélyajtó
+      const m = n.mert ? mert?.get(n) ?? { mag: n.szel >= 1.6 ? 2.4 : 1.5 } : null;
+      if (m) return { fajta: m.mag >= 2 ? 'erkelyajto' : 'ablak', szel: n.szel, mag: m.mag, pm: m.mag >= 2 ? 0 : 0.9, helyiseg: index.get(hi)!, irany: n.irany! };
+      return { fajta: n.fajta as AtvettNyilas['fajta'], szel: n.szel, mag: n.mag, pm: n.pm, helyiseg: index.get(hi)!, irany: n.irany! };
+    });
   return { helyisegek, nyilasok, ri: kiv.map(({ i }) => ri(i)) };
 }
 
@@ -381,15 +394,24 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   function egyAtvetel(q: Projekt, a: AlaprajzFeldolgozas, k: Kijeloles, o: { csere: boolean; padloAt: boolean; tetoAt: boolean; eszak: number; szintek: string[]; fajl?: string }): string[] {
     // terepszint alatti szint (pince, alagsor): a feltételes rétegrendek (pincefal, pincepadló) is átkerülnek
     const terepAlatt = o.szintek.includes('P');
+    const extraUz: string[] = [];
     const blokkok = (me?.blokkok ?? []).filter((b) => rrKi[b.rr.kod] || (terepAlatt && b.becsles.feltetel === 'terepAlatt'));
-    const { helyisegek: hs, nyilasok: ny } = atvetelReszek(a, k);
+    // méretfelirat nélküli nyílások magassága a homlokzati lapokról (a lap szintjének sorszáma alulról)
+    const szintSor = [...new Set(alaprajzLapok.flatMap(({ i }) => lapSzintek(i)))].sort((x, y) => SZINT_SOR.indexOf(x) - SZINT_SOR.indexOf(y));
+    const mert = a.r && a.e.mPerPt && a.nyilasok.some((n) => n.mert) ? mertMagassagok(a.nyilasok, a.e.mPerPt, o.eszak, homlokzatRajzTar(homlokzatLapok.map(({ l }) => l.lap)), Math.max(0, szintSor.indexOf(o.szintek[0] ?? 'F')), szintSor.length) : undefined;
+    const { helyisegek: hs, nyilasok: ny } = atvetelReszek(a, k, mert);
+    const mertDb = ny.length && mert ? [...mert.values()] : [];
+    if (mertDb.length) {
+      const h = mertDb.filter((x) => x.forras === 'homlokzat').length, sz = mertDb.filter((x) => x.forras === 'szelesseg').length, b = mertDb.filter((x) => x.forras === 'becsult').length;
+      extraUz.push(`${mertDb.length} méretfelirat nélküli nyílás: szélesség az alaprajzról mérve; magasság ${[h ? `${h} a homlokzatról (helyzet szerint)` : '', sz ? `${sz} a homlokzat azonos szélességű kereteiből` : '', b ? `${b} becsült (1,50 / 2,40 m)` : ''].filter(Boolean).join(', ')} – ellenőrizd a Határolás lépésben.`);
+    }
     return tervAtvesz(q, {
       helyisegek: hs, retegrendek: blokkok, nyilasok: ny,
       eszakSzog: o.eszak, belmagassag: bm ?? 2.7, szintszam: szintszam ?? 1, csere: o.csere, padloAt: o.padloAt, tetoAt: o.tetoAt,
       ...(mintaFajta === 'blokkos' ? { alapFalSablon: 'fal_blokk_kohosalak' } : {}),
       forras: [o.fajl, mLap?.fajl].filter(Boolean).join(', '), szintek: o.szintek,
       ...(terepAlatt ? { terepAlatt: true, ...(pinceMelyseg ? { terepMelyseg: pinceMelyseg } : {}) } : {}),
-    }).uzenetek;
+    }).uzenetek.concat(extraUz);
   }
 
   function atvesz() {
@@ -769,7 +791,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
               {nyilasok.map(({ n, k }) => (
                 <g opacity={kizartNy.has(k) ? 0.3 : 1}>
                   <rect x={n.x - 9} y={n.y - 4} width={18} height={8} rx={1.5} fill={n.fajta === 'ablak' ? '#0EA5E9' : n.fajta === 'erkelyajto' ? '#6366F1' : n.fajta === 'garazskapu' ? '#475569' : '#B45309'} opacity={0.85} />
-                  <text x={n.x} y={n.y + 2.2} font-size={5.5} text-anchor="middle" fill="#fff" font-family="system-ui">{Math.round(n.szel * 100)}×{n.mag > 0 ? Math.round(n.mag * 100) : 'belm.'}</text>
+                  <text x={n.x} y={n.y + 2.2} font-size={5.5} text-anchor="middle" fill="#fff" font-family="system-ui">{Math.round(n.szel * 100)}×{n.mag > 0 ? Math.round(n.mag * 100) : n.mert ? '?' : 'belm.'}</text>
                 </g>
               ))}
               <g transform={`translate(${ejX} ${ejY})`}>

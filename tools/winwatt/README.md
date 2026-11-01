@@ -43,3 +43,11 @@ megadott (a PDF-ben nem szereplő) külső árnyékolás okozza a különbséget
 ## Talált és javított hibák
 
 - Fan-coil ventilátor segédenergiája (8.17. táblázat) nem számított bele a fűtés segédenergiájába – javítva.
+
+## Méretellenőrzés (tervbeolvasás vs. WinWatt)
+
+A mintaprojektek terveit a programmal beolvasva a felületek összevethetők a WinWatt szerkezettáblájával
+(AN, V, külső fal, nyílászáró, padló, tető). Méretfelirat nélküli (csak típusjeles) nyílászárónál a szélességet az
+alaprajzi falnyílásból mérjük, a magasságot a homlokzati rajz kereteiből (helyzet szerinti illesztéssel, ennek
+hiányában az azonos szélességű keretekből), végső esetben becsüljük (1,50 / 2,40 m); az átvételi üzenet jelzi, melyik.
+Ismert eltérés: a homlokzaton mért tokmagasság jellemzően 5–7 %-kal kisebb az alaprajzi falnyílás-feliratnál.

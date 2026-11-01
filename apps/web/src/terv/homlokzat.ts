@@ -40,7 +40,8 @@ export function homlokzatIrany(cim: string): Tajolas | null {
   const m = /(?:^|[^A-ZÁÉÍÓÖŐÚÜŰ])(ÉNY|ÉK|DNY|DK|É|K|D|NY)\s*[-–]?\s*I?\s*HOMLOKZAT/.exec(cim.toUpperCase());
   if (m) return IRANY[m[1]!] ?? null;
   const sz: [RegExp, Tajolas][] = [[/északnyugati/i, 'ÉNy'], [/északkeleti/i, 'ÉK'], [/délnyugati/i, 'DNy'], [/délkeleti/i, 'DK'], [/északi/i, 'É'], [/déli/i, 'D'], [/keleti/i, 'K'], [/nyugati/i, 'Ny']];
-  for (const [re, t] of sz) if (re.test(cim)) return t;
+  const c = cim.replace(/(dél|észak)\s*[-–]\s*(?=kelet|nyugat)/gi, '$1');
+  for (const [re, t] of sz) if (re.test(c)) return t;
   return null;
 }
 
@@ -128,4 +129,92 @@ export function homlokzatElemez(lap: Lap): HomlokzatEredmeny {
   const panelA = Math.round(egyedi.reduce((s, c) => s + w(c) * h(c), 0) * mPerPt * mPerPt * 10) / 10;
   if (ablakok.some((a) => a.takart)) figy.push(`${ablakok.filter((a) => a.takart).length} nyílászáró alsó része takart (korlát, attika mögött) – a magasságuk becsült.`);
   return { irany: null, mPerPt, ablakok, panelA, uvegSzin, keretSzin, figyelmeztetesek: figy };
+}
+
+/**
+ * Vonalas (színezés nélküli) homlokzat nyílászáró-kereteinek indexe: a tengelyirányú vonalak egy vonalba eső darabjai
+ * összefűzve. A nyílászáró magasságát egy (alaprajzon mért) szélességhez keressük: két függőleges vonal a szélesség
+ * távolságában, és köztük legalább két vízszintes vonal, amely pontosan a két függőlegesig tart (tok felső és alsó éle).
+ */
+export interface VonalIndex { mPerPt: number; fugg: { x: number; a: number; b: number }[]; vizsz: { y: number; a: number; b: number }[] }
+
+export function vonalIndex(lap: Lap): VonalIndex | null {
+  const M = meretaranyKeres(lap.szovegek);
+  if (!M) return null;
+  const mPerPt = (25.4 / 72) / 1000 * M;
+  const jm = lap.szovegek.filter((t) => /^(megjegyzések|anyagjelölések|homlokzati anyagok|felületek|építtető|megrendelő|tervező)\b/i.test(t.s.trim())).map((t) => t.x);
+  const xmax = jm.length ? Math.min(...jm) - 10 : lap.szel;
+  const min = 0.25 / mPerPt;
+  const v = new Map<number, [number, number][]>(), hz = new Map<number, [number, number][]>();
+  for (const u of lap.utvonalak) {
+    if (u.muvelet === 'none' || u.bbox[0] > xmax) continue;
+    for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) {
+      const ax = p[i]!, ay = p[i + 1]!, bx = p[i + 2]!, by = p[i + 3]!;
+      if (Math.abs(ax - bx) < 0.05 && Math.abs(ay - by) >= min) { const k = Math.round(ax * 4); const l = v.get(k) ?? []; l.push([Math.min(ay, by), Math.max(ay, by)]); v.set(k, l); }
+      else if (Math.abs(ay - by) < 0.05 && Math.abs(ax - bx) >= min * 0.5) { const k = Math.round(ay * 4); const l = hz.get(k) ?? []; l.push([Math.min(ax, bx), Math.max(ax, bx)]); hz.set(k, l); }
+    }
+  }
+  const fuz = (l: [number, number][]) => { l.sort((a, b) => a[0] - b[0]); const o: [number, number][] = []; for (const s of l) { const u = o[o.length - 1]; if (u && s[0] <= u[1] + 0.03 / mPerPt) u[1] = Math.max(u[1], s[1]); else o.push([...s]); } return o; };
+  const fugg: VonalIndex['fugg'] = [], vizsz: VonalIndex['vizsz'] = [];
+  for (const [k, l] of v) for (const [a, b] of fuz(l)) fugg.push({ x: k / 4, a, b });
+  for (const [k, l] of hz) for (const [a, b] of fuz(l)) vizsz.push({ y: k / 4, a, b });
+  fugg.sort((p, q) => p.x - q.x); vizsz.sort((p, q) => p.y - q.y);
+  return { mPerPt, fugg, vizsz };
+}
+
+export interface HomlokzatKeret { x0: number; x1: number; y0: number; y1: number; szel: number; mag: number; takart: boolean }
+
+/**
+ * Nyílászárókeretek a vonalas homlokzaton: egy vízszintes (a tok felső éle), amelynek mindkét végénél egy onnan lefelé
+ * induló függőleges van; belül (2–15 cm-re) mindkét oldalon újabb függőleges (szárny / üvegléc – a korlát üvegtáblája,
+ * a burkolati panel egyszerű téglalap); alul a függőlegeseket záró vízszintes, vagy ha a keret alja takart (elöl korlát,
+ * mellvéd), a takarás alatti első, a szélességet ≥ 90 %-ban lefedő vízszintes. Az egymásba ágyazott keretekből a külső.
+ */
+export function keretek(ix: VonalIndex): HomlokzatKeret[] {
+  const { mPerPt, fugg, vizsz } = ix;
+  const vt = 0.06 / mPerPt;
+  const also = (x: number) => { let lo = 0, hi = fugg.length; while (lo < hi) { const m = (lo + hi) >> 1; if (fugg[m]!.x < x) lo = m + 1; else hi = m; } return lo; };
+  const alsoY = (y: number) => { let lo = 0, hi = vizsz.length; while (lo < hi) { const m = (lo + hi) >> 1; if (vizsz[m]!.y < y) lo = m + 1; else hi = m; } return lo; };
+  const indulo = (x: number, y: number) => { let leg: VonalIndex['fugg'][number] | null = null; for (let k = also(x - vt); k < fugg.length && fugg[k]!.x <= x + vt; k++) { const F = fugg[k]!; if (Math.abs(F.a - y) <= vt && (!leg || F.b > leg.b)) leg = F; } return leg; };
+  const ki: HomlokzatKeret[] = [];
+  for (const T of vizsz) {
+    const W = (T.b - T.a) * mPerPt; if (W < 0.35 || W > 6) continue;
+    const A = indulo(T.a, T.y), B = indulo(T.b, T.y); if (!A || !B) continue;
+    const y0 = T.y, yb = Math.min(A.b, B.b); if ((yb - y0) * mPerPt < 0.3) continue;
+    let y1: number | null = null, takart = false;
+    // záró vízszintes a függőlegesek végénél
+    for (let k = alsoY(yb - vt); k < vizsz.length && vizsz[k]!.y <= yb + vt; k++) { const H = vizsz[k]!; if (Math.abs(H.a - A.x) <= vt && Math.abs(H.b - B.x) <= vt) y1 = H.y; }
+    if (y1 === null) {
+      let tak = false;
+      for (let k = alsoY(yb - vt); k < vizsz.length && vizsz[k]!.y <= yb + vt; k++) { const H = vizsz[k]!; if (H.a <= A.x - 0.1 / mPerPt && H.b >= B.x + 0.1 / mPerPt) tak = true; }
+      if (!tak) continue;
+      for (let k = alsoY(yb + 0.3 / mPerPt); k < vizsz.length && vizsz[k]!.y <= yb + 1.4 / mPerPt && y1 === null; k++) {
+        const y = vizsz[k]!.y; const sz: [number, number][] = [];
+        for (let q = k; q < vizsz.length && vizsz[q]!.y <= y + 0.5; q++) { const H = vizsz[q]!; const a = Math.max(H.a, A.x), b = Math.min(H.b, B.x); if (b > a) sz.push([a, b]); }
+        sz.sort((p, q) => p[0] - q[0]); let fed = 0, veg = A.x; for (const [a, b] of sz) { if (b > veg) { fed += b - Math.max(a, veg); veg = b; } }
+        if (fed >= 0.9 * (B.x - A.x)) y1 = y;
+      }
+      if (y1 === null) continue;
+      takart = true;
+    }
+    const lat = Math.min(y1, yb);
+    const belso = (x0: number, irany: number) => {
+      const lo = Math.min(x0 + irany * 0.02 / mPerPt, x0 + irany * 0.15 / mPerPt), hi = Math.max(x0 + irany * 0.02 / mPerPt, x0 + irany * 0.15 / mPerPt);
+      for (let k = also(lo); k < fugg.length && fugg[k]!.x <= hi; k++) { const F = fugg[k]!; if (Math.min(F.b, lat) - Math.max(F.a, y0) >= 0.6 * (lat - y0)) return true; }
+      return false;
+    };
+    if (!belso(A.x, 1) || !belso(B.x, -1)) continue;
+    const mag = (y1 - y0) * mPerPt; if (mag < 0.3 || mag > 3.3) continue;
+    ki.push({ x0: A.x, x1: B.x, y0, y1, szel: Math.round(W * 100) / 100, mag: Math.round(mag * 100) / 100, takart });
+  }
+  // egymásba ágyazott keretek (tok → szárny) és ismétlődések: a külső marad
+  const e = 0.02 / mPerPt;
+  return ki.filter((k, i) => !ki.some((m, j) => j !== i && m.x0 <= k.x0 + e && m.x1 >= k.x1 - e && m.y0 <= k.y0 + e && m.y1 >= k.y1 - e && ((m.x1 - m.x0) * (m.y1 - m.y0) > (k.x1 - k.x0) * (k.y1 - k.y0) + e || j < i)));
+}
+
+/** A szélességhez (m) illő keretek magasságai (m), gyakoriság szerint. */
+export function keretMagassagok(ix: VonalIndex, szel: number): { mag: number; db: number }[] {
+  const db = new Map<number, number>();
+  for (const k of keretek(ix)) if (Math.abs(k.szel - szel) <= 0.04) { const r = Math.round(k.mag * 20) / 20; db.set(r, (db.get(r) ?? 0) + 1); }
+  return [...db.entries()].map(([mag, n]) => ({ mag, db: n })).sort((a, b) => b.db - a.db || b.mag - a.mag);
 }

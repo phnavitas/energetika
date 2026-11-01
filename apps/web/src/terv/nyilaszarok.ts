@@ -20,6 +20,8 @@ export interface TervNyilas {
   /** A fal iránya a lapon (a feliratpárból). */
   fal?: 'v' | 'f';
   fajta: 'ablak' | 'erkelyajto' | 'bejarati_ajto' | 'bejarati_uvegajto' | 'garazskapu' | 'belso_ajto' | 'falfulke' | 'fuggonyfal';
+  /** Méretfelirat nélküli nyílás: a szélesség az alaprajzon mért falnyílás, a magasság a homlokzatról (vagy becsült). */
+  mert?: { magForras: 'homlokzat' | 'homlokzat_takart' | 'becsult' };
 }
 
 /** Nyílásméret cm-ben; a „+30” toldás (redőnytok, tokszélesítés) a magasság mellett – a nyílásméret az első szám. */
@@ -345,6 +347,46 @@ export function fuggonyfalak(r: Raszter, feliratos: TervNyilas[], pecsetek: { x:
     const helyiseg = (a >= 2 ? a : b) - 2;
     const irany = g.fuggo ? (a === 1 ? 270 : 90) : (a === 1 ? 0 : 180);
     ki.push({ szel: Math.round(g.hossz * 100) / 100, mag: 0, pm: 0, x: cx, y: cy, helyiseg, irany, kulso: true, fajta: 'fuggonyfal' });
+  }
+  return ki;
+}
+
+/**
+ * Méretfelirat nélküli nyílások (pl. csak típusjellel – „AB-05A” – jelölt ablak, amelynek mérete a konszignációban van):
+ * a raszter áthidalt falnyílása a fűtött helyiség és a külső tér határán. A szélesség a falnyílás mért hossza, a magasság
+ * 0 – átvételkor a homlokzatról mérjük, ennek hiányában becsüljük. Ami mellett méretfeliratos nyílás vagy függönyfal van,
+ * az nem kerül ide.
+ */
+export function jeloletlenNyilasok(r: Raszter, meglevo: TervNyilas[]): TervNyilas[] {
+  const { w, h, px } = r; const ki: TervNyilas[] = [];
+  const latott = new Uint8Array(w * h);
+  const lapX = (gx: number) => r.x0 + gx * px / r.mPerPt, lapY = (gy: number) => r.y0 + gy * px / r.mPerPt;
+  const cimke = (gx: number, gy: number) => { const x = Math.round(gx), y = Math.round(gy); return x < 0 || y < 0 || x >= w || y >= h ? 1 : r.cimke[y * w + x]!; };
+  for (let i = 0; i < w * h; i++) {
+    if (!r.nyilas[i] || latott[i]) continue;
+    const komp = [i]; latott[i] = 1; let x0 = i % w, x1 = x0, y0 = (i / w) | 0, y1 = y0;
+    for (let k = 0; k < komp.length; k++) {
+      const q = komp[k]!, x = q % w, y = (q / w) | 0;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      for (const n of [x > 0 ? q - 1 : -1, x < w - 1 ? q + 1 : -1, q - w, q + w]) if (n >= 0 && n < w * h && r.nyilas[n] && !latott[n]) { latott[n] = 1; komp.push(n); }
+    }
+    const szx = (x1 - x0 + 1) * px, szy = (y1 - y0 + 1) * px;
+    const fuggo = szy > szx; const L = Math.max(szx, szy), v = Math.min(szx, szy);
+    if (L < 0.5 || L > 6 || v > 0.9) continue;
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, fel = v / 2 / px + 0.35 / px;
+    const oldal = (jel: number) => {
+      const c = [0.25, 0.5, 0.75].map((t) => (fuggo ? cimke(cx + jel * fel, y0 + (y1 - y0) * t) : cimke(x0 + (x1 - x0) * t, cy + jel * fel)));
+      const hh = c.filter((q) => q >= 2); if (hh.length >= 2) return hh[0]!;
+      return c.filter((q) => q === 1).length >= 2 ? 1 : -1;
+    };
+    const a = oldal(-1), b = oldal(1);
+    if (!((a >= 2 && b === 1) || (b >= 2 && a === 1))) continue;
+    const X = lapX(cx + 0.5), Y = lapY(cy + 0.5), fl = (L / 2 + 0.3) / r.mPerPt, ke = 1.5 / r.mPerPt;
+    if (meglevo.some((n) => n.kulso && (fuggo ? Math.abs(n.x - X) < ke && Math.abs(n.y - Y) < fl : Math.abs(n.y - Y) < ke && Math.abs(n.x - X) < fl))) continue;
+    if (r.uvegfalak.some((g) => g.fuggo === fuggo && (fuggo ? Math.abs((g.x0 + g.x1) / 2 - X) < ke && Y > g.y0 && Y < g.y1 : Math.abs((g.y0 + g.y1) / 2 - Y) < ke && X > g.x0 && X < g.x1))) continue;
+    const helyiseg = (a >= 2 ? a : b) - 2;
+    const irany = fuggo ? (a === 1 ? 270 : 90) : (a === 1 ? 0 : 180);
+    ki.push({ szel: Math.round(L * 100) / 100, mag: 0, pm: null, x: X, y: Y, helyiseg, irany, kulso: true, fajta: 'ablak', mert: { magForras: 'becsult' } });
   }
   return ki;
 }

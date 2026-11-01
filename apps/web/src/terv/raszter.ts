@@ -310,7 +310,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   // a falsík vonala külön szakasz): a sűrű, rövid, ferde vékony vonalak mezője a fal. Csak akkor, ha a kitöltésekből
   // alig van fal – a kitöltött falas rajzon a sraffozás amúgy is a falon belül van.
   {
-    const sr = new Uint8Array(w * h); let db = 0;
+    const sr = new Uint8Array(w * h); let db = 0; const srSzeg: [number, number, number, number, number, number, number][] = [];
     for (const u of lap.utvonalak) {
       if (u.muvelet !== 'stroke' || u.vastagsag > 0.35 || feher(u.vonalSzin)) continue;
       if (u.bbox[2] < x0 || u.bbox[0] > x1 || u.bbox[3] < y0 || u.bbox[1] > y1) continue;
@@ -323,12 +323,38 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
         const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) * 2));
         for (let k = 0; k <= n; k++) { const x = Math.round(ax + (bx - ax) * k / n), y = Math.round(ay + (by - ay) * k / n); if (x >= 0 && y >= 0 && x < w && y < h) sr[y * w + x] = 1; }
         db++;
+        if (l >= 0.1) srSzeg.push([(p[i]! + p[i + 2]!) / 2 * mPerPt, (p[i + 1]! + p[i + 3]!) / 2 * mPerPt, sz, p[i]!, p[i + 1]!, p[i + 2]!, p[i + 3]!]);
       }
     }
     if (db > 200) {
-      // zárás (a sraffvonalak közének kitöltése, ~10 cm), majd nyitás (a magányos ferde vonal – méretjel, mutató – kiesik)
-      const r = Math.max(1, Math.round(0.05 / px));
-      const zart = szukit(tagit(sr, w, h, r), w, h, r);
+      // a sraffvonalak jellemző (medián) távolsága: a párhuzamos szomszédig mért merőleges távolság
+      // a sraffvonalak sávjának kitöltése vonalanként: a vonalat a párhuzamos szomszédjáig mért (≤ 0,3 m) távolság felével
+      // vastagítjuk – a ritka (20–25 cm-es) falsraffozás is összefüggő sáv lesz, a magányos ferde vonal (méretjel) nem
+      const RR = 0.5, idx = new Map<string, number[]>();
+      srSzeg.forEach((q, i) => { const k = `${Math.floor(q[0] / RR)},${Math.floor(q[1] / RR)}`; const l = idx.get(k); if (l) l.push(i); else idx.set(k, [i]); });
+      const zart = szukit(tagit(sr, w, h, Math.max(1, Math.round(0.05 / px))), w, h, Math.max(1, Math.round(0.05 / px)));
+      srSzeg.forEach(([qx, qy, qs, ax, ay, bx, by], i) => {
+        const nx = -Math.sin(qs * Math.PI / 180), ny = Math.cos(qs * Math.PI / 180);
+        let leg = Infinity, bal = 0, jobb = 0;
+        const L = Math.hypot(bx - ax, by - ay) * mPerPt;
+        for (let gx = Math.floor(qx / RR) - 1; gx <= Math.floor(qx / RR) + 1; gx++) for (let gy = Math.floor(qy / RR) - 1; gy <= Math.floor(qy / RR) + 1; gy++)
+          for (const j of idx.get(`${gx},${gy}`) ?? []) {
+            if (j === i) continue; const q = srSzeg[j]!; if (Math.abs(q[2] - qs) > 5) continue;
+            // a szomszéd a vonal hosszában is mellette fekszik (nem egy távoli folytatás)
+            const tx = (q[0] - qx) * ny - (q[1] - qy) * nx; if (Math.abs(tx) > L) continue;
+            const ds = (q[0] - qx) * nx + (q[1] - qy) * ny, d = Math.abs(ds); if (d > 0.01 && d < leg) leg = d;
+            if (d > 0.01 && d <= 0.3) { if (ds > 0) jobb++; else bal++; }
+          }
+        // sraffmező belseje: mindkét oldalán van párhuzamos szomszéd (a két vonalból álló jel, bútor nem ilyen)
+        if (!(leg <= 0.3) || !bal || !jobb) return;
+        const fel = leg / 2 + 0.01;
+        for (let o = -fel; o <= fel; o += px / 2) {
+          const ox = nx * o / mPerPt, oy = ny * o / mPerPt;
+          const [cx0, cy0] = tr(ax + ox, ay + oy), [cx1, cy1] = tr(bx + ox, by + oy);
+          const n = Math.max(1, Math.ceil(Math.hypot(cx1 - cx0, cy1 - cy0) * 2));
+          for (let k = 0; k <= n; k++) { const x = Math.round(cx0 + (cx1 - cx0) * k / n), y = Math.round(cy0 + (cy1 - cy0) * k / n); if (x >= 0 && y >= 0 && x < w && y < h) zart[y * w + x] = 1; }
+        }
+      });
       const tiszta = tagit(szukit(zart, w, h, 1), w, h, 1);
       let falPx = 0, srPx = 0;
       for (let i = 0; i < w * h; i++) { if (fal[i]) falPx++; if (tiszta[i]) srPx++; }
@@ -594,7 +620,11 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
               && (fuggo ? Math.abs(t.x - cm) : Math.abs(t.y - cm)) * mPerPt <= 1.5 && (fuggo ? t.y : t.x) >= a0 - 0.3 / mPerPt && (fuggo ? t.y : t.x) <= b0 + 0.3 / mPerPt);
             // a feliratok a sor hosszában eloszolva (2 m-es szakaszok legalább 40 %-ában) – nem egy keresztező fal feliratai
             const szakDb = new Set(pmT.map((t) => Math.floor(((fuggo ? t.y : t.x) - a0) * mPerPt))).size;
-            if (pmT.length < 2 || szakDb < Math.max(2, 0.4 * (b0 - a0) * mPerPt / 2)) continue;
+            // vagy nyílászáró-típusjel („AB-05A”, „AT-04”) a sor mellett (≤ 2 m), legalább 5 m-enként egy
+            const kodDb = lap.szovegek.filter((t) => /^[A-Z]{1,3}\s*[-–]\s*\d{1,3}[A-Z]?$/.test(t.s.trim())
+              && (fuggo ? Math.abs(t.x - cm) : Math.abs(t.y - cm)) * mPerPt <= 2 && (fuggo ? t.y : t.x) >= a0 - 0.5 / mPerPt && (fuggo ? t.y : t.x) <= b0 + 0.5 / mPerPt).length;
+            const pmJo = pmT.length >= 2 && szakDb >= Math.max(2, 0.4 * (b0 - a0) * mPerPt / 2);
+            if (!pmJo && kodDb < Math.max(1, Math.round((b0 - a0) * mPerPt / 5))) continue;
             // a sor végén ajtó (≤ 2,5 m rés, nyílászáró rajzelemével), utána fal: a sor az ajtón át a falig tart
             const kiterj = (veg: number, irany: number) => {
               if (falVeg(veg, irany, cm, fuggo)) return veg;
@@ -608,6 +638,9 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
               return null;
             };
             { const a1 = kiterj(a0, -1), b1 = kiterj(b0, 1); if (a1 === null || b1 === null) continue; a0 = a1; b0 = b1; }
+            // a sor a fal síkjában fut: mindkét vége mögött egy vonalban (±10 cm) fal / pillér (a fal mellé állított bútorsor nem ilyen)
+            const egyvonal = (veg: number, irany: number) => { for (let t = 0.02 / mPerPt; t <= 0.5 / mPerPt; t += 0.02 / mPerPt) for (let e = -0.1 / mPerPt; e <= 0.1 / mPerPt; e += 0.02 / mPerPt) if (falE(veg + irany * t, cm + e, fuggo)) return true; return false; };
+            if (!egyvonal(a0, -1) || !egyvonal(b0, 1)) continue;
             if (!falVeg(a0, -1, cm, fuggo) || !falVeg(b0, 1, cm, fuggo)) continue;
             // a sávban nincs vastag falkitöltés
             let falDb = 0, n = 0;
