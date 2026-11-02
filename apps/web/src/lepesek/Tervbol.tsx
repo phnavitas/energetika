@@ -469,15 +469,16 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     const uz: string[] = [];
     const szintA = new Map<string, number>();
     // laponként: a projektbe került helyiségek helye (szintenként azonos sorrendben) a szintek egymásra vetítéséhez
-    const lapAdat: { a: AlaprajzFeldolgozas; sz: string[]; reszek: ReturnType<typeof atvetelReszek>; kezd: number }[] = [];
+    const lapAdat: { a: AlaprajzFeldolgozas; sz: string[]; reszek: ReturnType<typeof atvetelReszek>; kezd: number; felIds: Set<string> }[] = [];
     modosit((q) => {
       sor.forEach(({ l, i }, n) => {
         const a = elemzesek[i] as AlaprajzFeldolgozas;
         // a megnyitott lapnál a kézi kijelölés, a többinél az alapértelmezett
         const k = i === aIdx ? kj : kijeloles(i, a);
         const sz = lapSzintek(i);
+        const elotteF = new Set(q.feluletek.map((f) => f.id));
         const u = egyAtvetel(q, a, k, { csere: n === 0 ? csere : false, padloAt: !!futott.length && sz.includes(futott[0]!), tetoAt: !!futott.length && sz.includes(futott.at(-1)!), eszak: eszakLap(i, a), szintek: sz, fajl: l.fajl });
-        { const reszek = atvetelReszek(a, k); lapAdat.push({ a, sz, reszek, kezd: q.helyisegek.length - reszek.helyisegek.length * Math.max(1, sz.length) }); }
+        { const reszek = atvetelReszek(a, k); lapAdat.push({ a, sz, reszek, kezd: q.helyisegek.length - reszek.helyisegek.length * Math.max(1, sz.length), felIds: new Set(q.feluletek.filter((f) => !elotteF.has(f.id)).map((f) => f.id)) }); }
         uz.push(`${l.cim || l.fajl}: ${atvetelReszek(a, k).helyisegek.length} helyiség${sz.length > 1 ? ` × ${sz.length} szint` : ''}`, ...u.filter((x) => !/azonos felület összevonva/.test(x)));
         for (const s0 of sz) if (s0 !== 'P') szintA.set(s0, (szintA.get(s0) ?? 0) + atvetelReszek(a, k).helyisegek.filter((h) => h.kategoria !== 'gyengen_kapcsolt').reduce((t, h) => t + h.A, 0));
       });
@@ -488,22 +489,42 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
         const pk = pinceLap.i === aIdx ? kj : kijeloles(pinceLap.i, pa);
         const pinceFutott = atvetelReszek(pa, pk).helyisegek.filter((h) => h.kategoria !== 'gyengen_kapcsolt').reduce((t, h) => t + h.A, 0);
         const fod = q.feluletek.find((f) => /^Födém – fűtetlen (pince|garázs) felett/.test(f.nev) && f.hatar !== 'kulso');
-        // helyiségenként: a földszint alaprajzát a pincéére vetítve, ami fűtött pincehelyiség felett van, az nem hőburok
+        // helyiségenként: a földszint alaprajzát a pincéére vetítve, ami fűtött pincehelyiség felett van, az nem hőburok –
+        // a földszint padlója akár pincefödém, akár (rétegrend híján) talajon fekvő padlóként került át
         const fsz = lapAdat.find((x) => x.sz.includes('F')), pl = lapAdat.find((x) => x.sz.includes('P'));
-        const el = fod && fsz?.a.r && pl?.a.r ? eltolas(fsz.a.r, pl.a.r) : null;
-        if (fod && fsz && pl && el && pinceFutott > 0.5) {
+        const fszH = fsz ? fsz.reszek.helyisegek.map((h, j) => ({ h, j, hz: q.helyisegek[fsz.kezd + fsz.sz.indexOf('F') * fsz.reszek.helyisegek.length + j]?.hsz })) : [];
+        // a földszint (rétegrend híján) talajon fekvő padlóként átvett felülete(i)
+        const talajF = fsz ? q.feluletek.filter((f) => fsz.felIds.has(f.id) && f.fajta === 'padlo' && /^Talajon fekvő padló/.test(f.nev)) : [];
+        const el = (fod || talajF.length) && fsz?.a.r && pl?.a.r ? eltolas(fsz.a.r, pl.a.r) : null;
+        if (fsz && pl && el && pinceFutott > 0.5) {
           const fut = new Set(pl.reszek.ri.filter((v, j) => v >= 0 && pl.reszek.helyisegek[j]!.kategoria !== 'gyengen_kapcsolt'));
-          let uj = 0;
-          fsz.reszek.helyisegek.forEach((h, j) => {
-            const ri = fsz.reszek.ri[j]!; const hz = q.helyisegek[fsz.kezd + fsz.sz.indexOf('F') * fsz.reszek.helyisegek.length + j]?.hsz;
-            if (h.kategoria === 'gyengen_kapcsolt' || !hz || hz.padloFeluletId !== fod.id) return;
+          let uj = 0, fedettA = 0, elotte = 0;
+          for (const { h, j, hz } of fszH) {
+            if (h.kategoria === 'gyengen_kapcsolt') continue;
+            const ri = fsz.reszek.ri[j]!;
             const fedett = ri >= 0 ? fedettArany(fsz.a.r!, ri, pl.a.r!, fut, el) : 0;
-            const Ar = Math.round(h.A * (1 - fedett) * 100) / 100;
-            if (Ar < 0.5 || fedett > 0.95) { hz.padlo = false; delete hz.padloFeluletId; delete hz.padloA; } else { if (fedett > 0.05) hz.padloA = Ar; uj += Ar; }
-          });
-          uj = Math.round(uj * 100) / 100;
-          uz.push(`Pince feletti födém: a földszint helyiségei közül a fűtött pincehelyiségek (${sz2(pinceFutott)} m²) felett lévő rész nem hőburok → ${sz2(uj)} m² (az alaprajzok egymásra vetítéséből).`);
-          if (uj > 0) fod.A = uj; else q.feluletek = q.feluletek.filter((f) => f !== fod);
+            if (fod && hz?.padloFeluletId === fod.id) {
+              const Ar = Math.round(h.A * (1 - fedett) * 100) / 100; elotte += h.A;
+              if (Ar < 0.5 || fedett > 0.95) { hz.padlo = false; delete hz.padloFeluletId; delete hz.padloA; } else { if (fedett > 0.05) hz.padloA = Ar; uj += Ar; }
+            } else if (talajF.length) fedettA += h.A * (fedett > 0.95 ? 1 : fedett);
+          }
+          if (fod) {
+            uj = Math.round(uj * 100) / 100;
+            uz.push(`Pince feletti födém: a földszint helyiségei közül a fűtött pincehelyiségek (${sz2(pinceFutott)} m²) felett lévő rész nem hőburok → ${sz2(elotte)} m² helyett ${sz2(uj)} m² (az alaprajzok egymásra vetítéséből).`);
+            if (uj > 0) fod.A = uj; else q.feluletek = q.feluletek.filter((f) => f !== fod);
+          }
+          if (talajF.length && fedettA > 0.5) {
+            // a fűtött pince feletti rész nem talajon fekvő padló: a földszinti padló(k) területe ennyivel kisebb,
+            // a kitett kerület a megmaradó terület arányában (közelítés – a Határolás lépésben pontosítható)
+            const ossz = talajF.reduce((t, f) => t + (f.A ?? 0), 0);
+            for (const f of talajF) {
+              const A0 = f.A ?? 0, A = Math.max(0, Math.round((A0 - fedettA * A0 / ossz) * 100) / 100);
+              if (A < 0.5) { q.feluletek = q.feluletek.filter((x) => x !== f); continue; }
+              if (f.padlo && A0 > 0) f.padlo.P = Math.round(f.padlo.P * A / A0 * 100) / 100;
+              f.A = A;
+            }
+            uz.push(`Pince feletti padló: a földszint ${sz2(fedettA)} m²-e fűtött pincehelyiségek felett van – nem talajon fekvő padló (az alaprajzok egymásra vetítéséből); a földszinti talajon fekvő padló ${sz2(ossz)} m² helyett ${sz2(Math.max(0, ossz - fedettA))} m².`);
+          }
         } else if (fod && pinceFutott > 0.5) {
           const uj = Math.max(0, Math.round(((fod.A ?? 0) - pinceFutott) * 100) / 100);
           uz.push(`Pince feletti födém: ${sz2(fod.A ?? 0)} m² (földszint, fűtött) − ${sz2(pinceFutott)} m² (pince, fűtött) = ${sz2(uj)} m².`);

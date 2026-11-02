@@ -719,7 +719,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   // sraffozott falaknál a nyílások (ablak, ajtó) rajzeleme nem kitöltés – a falsávban lévő réseket zárjuk (≤ 2,7 m)
   const resM = b.resZaras ?? (sraffMod || tintaDb * px * px > 2 ? 2.7 : 0);
   // (sraffozott falnál a nyílások közti falpillér gyakran különálló folt – ott nem kell azonos falhálózat)
-  if (resM) resZar(fal, nyilas, w, h, Math.round(resM / px), Math.round(0.6 / px), sraffMod && !b.resZaras ? new Int32Array(w * h).fill(1) : falKomponensek(fal, w, h), Math.max(2, Math.round(0.25 / px)));
+  if (resM) resZar(fal, nyilas, w, h, Math.round(resM / px), Math.round(0.6 / px), sraffMod && !b.resZaras ? new Int32Array(w * h).fill(1) : falKomponensek(fal, w, h), Math.max(2, Math.round(0.25 / px)), Math.round(0.18 / px), Math.round(1.2 / px));
   const gat = new Uint8Array(w * h);
   for (let i = 0; i < w * h; i++) gat[i] = fal[i] || nyilas[i] ? 1 : 0;
   // helyiségek: a pecsétekből indított versengő elárasztás a (hajszálrésekre kissé tágított) gáton belül
@@ -922,7 +922,7 @@ function falKomponensek(fal: Uint8Array, w: number, h: number): Int32Array {
   return komp;
 }
 
-function resZar(fal: Uint8Array, nyilas: Uint8Array, w: number, h: number, maxRes: number, maxSav: number, komp: Int32Array, minFut = 5) {
+function resZar(fal: Uint8Array, nyilas: Uint8Array, w: number, h: number, maxRes: number, maxSav: number, komp: Int32Array, minFut = 5, fokMin = Infinity, fokRes = 0) {
   for (const fuggo of [false, true]) {
     const W = fuggo ? h : w, H = fuggo ? w : h;
     const idx = (a: number, b: number) => (fuggo ? a * w + b : b * w + a);
@@ -947,13 +947,25 @@ function resZar(fal: Uint8Array, nyilas: Uint8Array, w: number, h: number, maxRe
     for (const [kulcs, sorok] of jelolt) {
       const [k0, k1] = kulcs.split('|').map(Number) as [number, number];
       sorok.sort((p, q) => p - q);
+      const savok: [number, number][] = [];
       let i = 0;
       while (i < sorok.length) {
         let j = i; while (j + 1 < sorok.length && sorok[j + 1] === sorok[j]! + 1) j++;
         const vastag = j - i + 1;
-        if (vastag <= maxSav && vastag >= 2) for (let b = sorok[i]!; b <= sorok[j]!; b++) for (let a = k0; a < k1; a++) nyilas[idx(a, b)] = 1;
+        if (vastag <= maxSav && vastag >= 2) savok.push([sorok[i]!, sorok[j]!]);
         i = j + 1;
       }
+      // lépcső: azonos fesztávú, sűrűn (≤ maxSav) egymást követő sávok legalább 1,2 m hosszú sora, benne legalább 3 fokmélységű (≥ 0,18 m)
+      // (lépcsőfokok a lépcsőházfalak között) – nem falnyílások; az ablakkeret vonalai által tagolt vékony sávok igen
+      const lepcso = new Set<number>();
+      const fok = (k: number) => (savok[k]![1] - savok[k]![0] + 1) >= fokMin;
+      for (let k = 0; k < savok.length; k++) {
+        let m = k; while (m + 1 < savok.length && savok[m + 1]![0] - savok[m]![1] <= maxSav) m++;
+        let db = 0; for (let q = k; q <= m; q++) if (fok(q)) db++;
+        if (db >= 3 && savok[m]![1] - savok[k]![0] >= fokRes) for (let q = k; q <= m; q++) lepcso.add(q);
+        k = m;
+      }
+      savok.forEach(([b0, b1], k) => { if (!lepcso.has(k)) for (let b = b0; b <= b1; b++) for (let a = k0; a < k1; a++) nyilas[idx(a, b)] = 1; });
     }
   }
 }
