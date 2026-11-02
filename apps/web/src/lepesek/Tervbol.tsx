@@ -102,9 +102,15 @@ function burokNyilasok(al: AlaprajzFeldolgozas, k: Kijeloles) {
 /** A homlokzati rajzokból becsült északirány alaprajzonként gyorstárazva. */
 const eszakHomGy = new WeakMap<object, number | null>();
 /** Homlokzati rajzok (keretekkel) lapcsoportonként gyorstárazva. */
-const homlokzatGy = new WeakMap<object, HomlokzatRajz[]>();
-function homlokzatRajzTar(lapok: Lap[]): HomlokzatRajz[] {
-  return lapok.flatMap((l) => { let v = homlokzatGy.get(l); if (!v) { try { v = homlokzatRajzok(l); } catch { v = []; } homlokzatGy.set(l, v); } return v; });
+const homlokzatGy = new WeakMap<object, Map<number, HomlokzatRajz[]>>();
+/** `M`: tartalék lépték (az alaprajzé), ha a homlokzati lapon nincs, vagy hibás a léptékfelirat. */
+function homlokzatRajzTar(lapok: Lap[], M?: number | null): HomlokzatRajz[] {
+  return lapok.flatMap((l) => {
+    let m = homlokzatGy.get(l); if (!m) { m = new Map(); homlokzatGy.set(l, m); }
+    const k = M ?? 0; let v = m.get(k);
+    if (!v) { try { v = homlokzatRajzok(l, M ?? undefined); } catch { v = []; } m.set(k, v); }
+    return v;
+  });
 }
 
 /** Automatikus hőburok rasztertől és fűtött halmaztól függően gyorstárazva. */
@@ -344,7 +350,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const eszakHom = (a: AlaprajzFeldolgozas | null | undefined): number | null => {
     if (!a || a.e.eszak || !a.e.mPerPt || !homlokzatLapok.length) return null;
     if (eszakHomGy.has(a)) return eszakHomGy.get(a)!;
-    let v: number | null = null; try { v = eszakHomlokzatbol(a.nyilasok, a.e.mPerPt, homlokzatRajzTar(homlokzatLapok.map(({ l }) => l.lap))); } catch { v = null; }
+    let v: number | null = null; try { v = eszakHomlokzatbol(a.nyilasok, a.e.mPerPt, homlokzatRajzTar(homlokzatLapok.map(({ l }) => l.lap), a.e.meretarany)); } catch { v = null; }
     eszakHomGy.set(a, v); return v;
   };
   const eszakFelismert = (a: AlaprajzFeldolgozas | null | undefined) => (a?.e.eszak ? norm(a.e.eszak.szog + eszakJavitas(a.e.eszak.alairas)) : eszakHom(a) ?? 0);
@@ -411,7 +417,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     const blokkok = (me?.blokkok ?? []).filter((b) => rrKi[b.rr.kod] || (terepAlatt && b.becsles.feltetel === 'terepAlatt'));
     // méretfelirat nélküli nyílások magassága a homlokzati lapokról (a lap szintjének sorszáma alulról)
     const szintSor = [...new Set(alaprajzLapok.flatMap(({ i }) => lapSzintek(i)))].sort((x, y) => SZINT_SOR.indexOf(x) - SZINT_SOR.indexOf(y));
-    const mert = a.r && a.e.mPerPt && a.nyilasok.some((n) => n.mert) ? mertMagassagok(a.nyilasok, a.e.mPerPt, o.eszak, homlokzatRajzTar(homlokzatLapok.map(({ l }) => l.lap)), Math.max(0, szintSor.indexOf(o.szintek[0] ?? 'F')), szintSor.length) : undefined;
+    const mert = a.r && a.e.mPerPt && a.nyilasok.some((n) => n.mert) ? mertMagassagok(a.nyilasok, a.e.mPerPt, o.eszak, homlokzatRajzTar(homlokzatLapok.map(({ l }) => l.lap), a.e.meretarany), Math.max(0, szintSor.indexOf(o.szintek[0] ?? 'F')), szintSor.length) : undefined;
     const { helyisegek: hs, nyilasok: ny } = atvetelReszek(a, k, mert);
     const mertDb = ny.length && mert ? [...mert.values()] : [];
     if (mertDb.length) {

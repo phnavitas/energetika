@@ -9,6 +9,7 @@
  */
 import type { Lap } from './kinyeres';
 import { meretaranyKeres } from './alaprajz';
+import { meretaranyKotabol } from './autohelyiseg';
 import type { klima } from '@mag/index';
 
 type Tajolas = (typeof klima.TAJOLASOK)[number];
@@ -138,8 +139,9 @@ export function homlokzatElemez(lap: Lap): HomlokzatEredmeny {
  */
 export interface VonalIndex { mPerPt: number; fugg: { x: number; a: number; b: number }[]; vizsz: { y: number; a: number; b: number }[] }
 
-export function vonalIndex(lap: Lap): VonalIndex | null {
-  const M = meretaranyKeres(lap.szovegek);
+export function vonalIndex(lap: Lap, tartalekM?: number): VonalIndex | null {
+  // lépték a feliratból; hibás / hiányzó felirat („M 1:00”) esetén a méretláncokból, végül a tervcsomag alaprajzi léptéke
+  const M = meretaranyKeres(lap.szovegek) || meretaranyKotabol(lap.szovegek, lap.utvonalak) || tartalekM || null;
   if (!M) return null;
   const mPerPt = (25.4 / 72) / 1000 * M;
   const jm = lap.szovegek.filter((t) => /^(megjegyzések|anyagjelölések|homlokzati anyagok|felületek|építtető|megrendelő|tervező)\b/i.test(t.s.trim())).map((t) => t.x);

@@ -16,17 +16,25 @@ const szogKul = (a: number, b: number) => { const d = Math.abs((((a - b) % 360) 
 export interface HomlokzatRajz { az: number; mPerPt: number; keretek: HomlokzatKeret[] }
 
 /** Egy homlokzati lap rajzai (címenként) a kereteikkel. */
-export function homlokzatRajzok(lap: Lap): HomlokzatRajz[] {
-  const ix = vonalIndex(lap); if (!ix) return [];
+export function homlokzatRajzok(lap: Lap, tartalekM?: number): HomlokzatRajz[] {
+  const ix = vonalIndex(lap, tartalekM); if (!ix) return [];
   const cimek = lap.szovegek.flatMap((t) => { if (!/homlokzat/i.test(t.s)) return []; const ir = homlokzatIrany(t.s); return ir ? [{ x: t.x, y: t.y, az: AZ[ir]! }] : []; });
   if (!cimek.length) return [];
-  const ki = cimek.map((c) => ({ az: c.az, mPerPt: ix.mPerPt, keretek: [] as HomlokzatKeret[] }));
-  for (const k of keretek(ix)) {
-    let leg = -1, pont = Infinity;
-    cimek.forEach((c, i) => { const dy = c.y - k.y1; if (dy < 0) return; const p = dy + 0.5 * Math.abs(c.x - (k.x0 + k.x1) / 2); if (p < pont) { pont = p; leg = i; } });
-    if (leg >= 0) ki[leg]!.keretek.push(k);
-  }
-  return ki.filter((r) => r.keretek.length);
+  // a rajzcím a rajz alatt vagy fölött áll (lapon belül egységesen): mindkét elrendezéssel hozzárendeljük a kereteket
+  // a legközelebbi címhez, és az a változat érvényes, amelyben a keretek összesen közelebb esnek a címükhöz
+  const kk = keretek(ix);
+  const rendel = (alatta: boolean) => {
+    const ki = cimek.map((c) => ({ az: c.az, mPerPt: ix.mPerPt, keretek: [] as HomlokzatKeret[] }));
+    let ossz = 0;
+    for (const k of kk) {
+      let leg = -1, pont = Infinity;
+      cimek.forEach((c, i) => { const dy = alatta ? c.y - k.y1 : k.y0 - c.y; if (dy < 0) return; const p = dy + 0.5 * Math.abs(c.x - (k.x0 + k.x1) / 2); if (p < pont) { pont = p; leg = i; } });
+      if (leg >= 0) { ki[leg]!.keretek.push(k); ossz += pont; } else ossz += 1e4;
+    }
+    return { ki, ossz };
+  };
+  const a = rendel(true), f = rendel(false);
+  return (f.ossz < a.ossz ? f : a).ki.filter((r) => r.keretek.length);
 }
 
 export interface MertMagassag { mag: number; takart: boolean; /** homlokzat: helyzet szerint illesztett keret; szelesseg: azonos szélességű keretek leggyakoribb magassága; becsult: alapérték */ forras: 'homlokzat' | 'szelesseg' | 'becsult' }
