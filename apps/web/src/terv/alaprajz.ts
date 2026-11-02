@@ -301,6 +301,43 @@ export function eszakjelKeres(lap: Lap, kizar: [number, number, number, number][
     bJeloltek.push({ e: { szog: lapSzog(bx - cx, by - cy), x: cx, y: cy, meret: Math.max(bb[2] - bb[0], bb[3] - bb[1]), forras: 'betu', bizonytalan: false, bbox: bb }, pont: 1 });
   }
   if (bJeloltek.length) return bJeloltek.reduce((a, c) => (c.pont > a.pont ? c : a)).e;
+  // 1b) betű nélküli kör egyetlen sugárvonallal (a középpontból a körívig): a sugár iránya az észak
+  {
+    const korok: { cx: number; cy: number; r: number }[] = [];
+    for (const u of utvonalak) {
+      const w = u.bbox[2] - u.bbox[0], h = u.bbox[3] - u.bbox[1];
+      if (w < 20 || w > 200 || Math.abs(w - h) > 0.06 * w) continue;
+      const cx = (u.bbox[0] + u.bbox[2]) / 2, cy = (u.bbox[1] + u.bbox[3]) / 2, r = (w + h) / 4;
+      if (kizar.some((k) => cx > k[0] && cx < k[2] && cy > k[1] && cy < k[3])) continue;
+      const pts: number[] = []; for (const p of u.pontok) pts.push(...p);
+      if (pts.length < 8) continue; // a kör 4 Bézier-ívből: csak a végpontok (a tengelyek végén) maradnak meg
+      let jo = true; for (let i = 0; i + 1 < pts.length; i += 2) if (Math.abs(Math.hypot(pts[i]! - cx, pts[i + 1]! - cy) - r) > 0.06 * r) { jo = false; break; }
+      if (!jo) continue;
+      // betű / szám a körben (metszetjel, tengelyjel, szintjel) – nem északjel
+      if (szovegek.some((t) => Math.hypot(t.x + t.szel / 2 - cx, t.y - t.meret / 2 - cy) < r)) continue;
+      korok.push({ cx, cy, r });
+    }
+    const talalt: Eszakjel[] = [];
+    for (const k of korok) {
+      const sugarak: [number, number][] = [];
+      let egyeb = 0;
+      for (const u of utvonalak) {
+        if (u.bbox[2] < k.cx - k.r * 1.1 || u.bbox[0] > k.cx + k.r * 1.1 || u.bbox[3] < k.cy - k.r * 1.1 || u.bbox[1] > k.cy + k.r * 1.1) continue;
+        for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) {
+          const ax = p[i]!, ay = p[i + 1]!, bx = p[i + 2]!, by = p[i + 3]!;
+          const da = Math.hypot(ax - k.cx, ay - k.cy), db = Math.hypot(bx - k.cx, by - k.cy);
+          if (Math.abs(da - k.r) < 0.06 * k.r && Math.abs(db - k.r) < 0.06 * k.r) continue; // a kör íve
+          if (da < 0.08 * k.r && db > 0.85 * k.r && db < 1.15 * k.r) sugarak.push([bx - k.cx, by - k.cy]);
+          else if (db < 0.08 * k.r && da > 0.85 * k.r && da < 1.15 * k.r) sugarak.push([ax - k.cx, ay - k.cy]);
+          else if (Math.min(da, db) < k.r) egyeb++;
+        }
+      }
+      if (sugarak.length !== 1 || egyeb > 2) continue;
+      const [dx, dy] = sugarak[0]!;
+      talalt.push({ szog: lapSzog(dx, dy), x: k.cx, y: k.cy, meret: 2 * k.r, forras: 'alak', bizonytalan: false, bbox: [k.cx - k.r, k.cy - k.r, k.cx + k.r, k.cy + k.r] });
+    }
+    if (talalt.length === 1 || (talalt.length > 1 && talalt.every((t) => Math.abs(szogNorm(t.szog - talalt[0]!.szog + 180) - 180) < 2))) return talalt[0]!;
+  }
   // 2) önálló, kompakt kitöltött alakzat (nyíl / egyedi jel)
   const betuJel = szovegek.filter((t) => /^[A-Z]$/.test(t.s.trim()) && t.meret > 8);
   const nemFeher = (u: Utvonal) => u.muvelet !== 'stroke' && !/^#(f[0-9a-f]){3}$/i.test(u.toltoSzin);
@@ -368,16 +405,20 @@ export function alaprajzElemez(lap: Lap): AlaprajzEredmeny {
   const parja = (j: TervHelyiseg) => pec.find((h) => j.kod && h.kod && kodN(h.kod) === kodN(j.kod) && (kodSzam.get(kodN(h.kod)) === 1 || (!h.jegyzekA && Math.abs(h.A - j.A) < 0.011)))
     ?? pec.find((h) => !h.jegyzekA && Math.abs(h.A - j.A) < 0.011 && (nevN(h.nev).includes(nevN(j.nev)) || nevN(j.nev).includes(nevN(h.nev))) && (!h.egyseg || !j.egyseg || kodN(h.egyseg) === kodN(j.egyseg)));
   let csakJegyzek = 0;
+  // a jegyzék (táblázat) kódcellája: mellette (≤ 3 betűméret) másik jegyzékbeli kód áll – a rajzon a pecsétkód magában van
+  const jKodok = new Set(jegy.map((j) => kodN(j.kod)).filter((k) => k));
+  const kodSzovegek = lap.szovegek.filter((t) => jKodok.has(kodN(szovegJavit(t.s).trim())));
+  const tablaban = (t: { x: number; y: number; meret: number }) => kodSzovegek.some((u) => u !== t && Math.hypot(u.x - t.x, u.y - t.y) < 3 * t.meret);
   for (const j of jegy) {
     const p = parja(j);
     if (p) { p.jegyzekA = j.A; if (Math.abs(p.A - j.A) > 0.011) figy.push(`${p.kod ?? p.nev}: a pecsét ${p.A.toFixed(2)} m², a jegyzék ${j.A.toFixed(2)} m² – ellenőrizd.`); if (!p.burkolat && j.burkolat) p.burkolat = j.burkolat; continue; }
     if (helyisegek.some((h) => h.forras === 'jegyzek' && kodN(h.kod) === kodN(j.kod) && Math.abs(h.A - j.A) < 0.011)) continue;
     // terület nélküli pecsét: a rajzon csak a helyiségkód áll („Afsz03”) – a helye onnan, a neve és területe a jegyzékből
-    const kodFel = j.kod ? lap.szovegek.filter((t) => kodN(szovegJavit(t.s).trim()) === kodN(j.kod) && Math.abs(t.y - j.y) > t.meret * 1.5) : [];
+    const kodFel = j.kod ? lap.szovegek.filter((t) => kodN(szovegJavit(t.s).trim()) === kodN(j.kod) && Math.abs(t.y - j.y) > t.meret * 1.5 && !tablaban(t)) : [];
     if (kodFel.length === 1 && helyisegek.some((h) => h.forras === 'pecset' && kodN(h.kod) === kodN(j.kod))) continue;
     if (kodFel.length === 1) {
       const t = kodFel[0]!;
-      helyisegek.push({ ...j, x: t.x + t.szel / 2, y: t.y, forras: 'pecset', kulter: j.kulter, egyseg: j.egyseg ?? (j.kod ? egysegKod(j.kod) : undefined) });
+      helyisegek.push({ ...j, x: t.x + t.szel / 2, y: t.y, forras: 'pecset', jegyzekA: j.A, kulter: j.kulter, egyseg: j.egyseg ?? (j.kod ? egysegKod(j.kod) : undefined) });
       continue;
     }
     helyisegek.push(j); if (pec.length) csakJegyzek++;
@@ -460,4 +501,12 @@ export function szintekCimbol(cim: string): string[] {
   // sorszám nélküli „emelet” (egyetlen emelet: földszint + emelet)
   if (/emelet/.test(c) && !/\d/.test(c)) return ['1'];
   return [];
+}
+
+/** A helyiségjegyzéket vezető tervben a jegyzékből hiányzó, kód nélküli (nem külső téri) pecsétek indexei. */
+export function jegyzekenKivul(hl: TervHelyiseg[]): number[] {
+  const pec = hl.filter((h) => h.forras === 'pecset' && !h.kulter);
+  const paros = pec.filter((h) => h.jegyzekA !== undefined).length;
+  if (pec.length < 4 || paros < 0.7 * pec.length) return [];
+  return hl.map((h, i) => (h.forras === 'pecset' && !h.kulter && !h.kod && h.jegyzekA === undefined ? i : -1)).filter((i) => i >= 0);
 }

@@ -17,7 +17,8 @@ for m,z in MAP.items():
   e=[x for f in z for x in json.load(open(f))['elemek']]
   if not os.path.exists(f'{PJ}{m}.json'): continue
   fal=[x for x in e if x['dol']==90 and FAL.search(x['nev']) and not NY.search(x['nev']) and not re.search('fűtött tér|pince|terepszint',x['nev'],re.I)]
-  ny=[x for x in e if x['dol']>=60 and NY.search(x['nev'])]
+  # nyílászáró: a tetősík ablak (ferde) is; a „tetőterasz” nevű födém nem
+  ny=[x for x in e if x['dol']>=30 and NY.search(x['nev']) and not re.match(r'FÖ|PA|TE\b',x['nev']) and not re.search('födém|tetőterasz',x['nev'],re.I)]
   p=json.load(open(f'{PJ}{m}.json'))
   NYT={n['id']:n for n in p['nyilaszarok']}
   for s in p['feluletek']:
@@ -34,4 +35,7 @@ for m,z in MAP.items():
   o={}
   for x in ny: o.setdefault(EG.get(x['az'],x['az']),[0,0])[0]+=x['A']
   for s in mny: o.setdefault(s.get('tajolas') or '?',[0,0])[1]+=s['A']
+  # tájolás-egyezés: az égtájanként közös felület a kisebbik összfelülethez viszonyítva (az összfelület eltérését nem bünteti)
+  kozos=sum(min(a,b) for a,b in o.values()); kisebb=min(WNY,MNY)
+  print(f"  tájolás-egyezés {kozos/kisebb*100:5.1f}%" if kisebb else "  tájolás-egyezés -")
   print('   ', '  '.join(f"{k}: {a:.1f}/{b:.1f}" for k,(a,b) in sorted(o.items(),key=lambda kv:str(kv[0]))))

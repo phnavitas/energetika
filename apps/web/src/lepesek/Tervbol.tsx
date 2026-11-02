@@ -11,7 +11,7 @@ import { eltolas, fedettArany } from '../terv/fedes';
 import { burokAuto, burokFalak, burokMeres, nyilasEl, bennE, type Poligon } from '../terv/burok';
 import type { TervNyilas } from '../terv/nyilaszarok';
 import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, eszakJavitas, eszakJavitasMent, type TervLap, type AlaprajzFeldolgozas } from '../terv/elemzes';
-import { egtaj, szintekCimbol, szintNev } from '../terv/alaprajz';
+import { egtaj, jegyzekenKivul, szintekCimbol, szintNev } from '../terv/alaprajz';
 import { tervAtvesz, type AtvettNyilas, type AtvettHelyiseg } from '../terv/atvetel';
 import { MintaLakasok } from './MintaLakasok';
 import { Burok3D, type Burok3DSzint } from './Burok3D';
@@ -56,6 +56,8 @@ const pecsetPontok = (al: AlaprajzFeldolgozas) => new Map(al.magHelyisegek.map((
 function alapKijeloles(al: AlaprajzFeldolgozas): Kijeloles {
   const vanPecset = al.e.helyisegek.some((h) => h.forras === 'pecset');
   const kizartH = new Set(al.auto ? al.e.helyisegek.map((h, i) => (al.e.egysegek.length && h.egyseg ? -1 : i)).filter((i) => i >= 0) : vanPecset ? al.e.helyisegek.map((h, i) => (h.forras === 'jegyzek' ? i : -1)).filter((i) => i >= 0) : []);
+  // a helyiségjegyzékből hiányzó, kód nélküli pecsét (pl. kívül álló tároló, hulladéktároló), ha a pecsétek nagy része (≥ 70 %) a jegyzékben szerepel
+  for (const i of jegyzekenKivul(al.e.helyisegek)) kizartH.add(i);
   return { egysegek: new Set(al.e.egysegek), kizartH, kat: {}, kizartNy: new Set() };
 }
 

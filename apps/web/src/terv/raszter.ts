@@ -533,6 +533,10 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       if ((b0 - a0) * mPerPt < maxRes * mPerPt) return;
       // mindkét vég falba fut, a sáv belseje nem fal
       if (!falVeg(a0, -1, cm, S.fuggo) || !falVeg(b0, 1, cm, S.fuggo)) return;
+      // az üvegezés a fal síkjában fut: mindkét vége közelében keresztirányban ±0,2 m-en belül fal / pillér – a fal előtt
+      // (0,3 m-nél messzebb) futó párkány-, pergola- vagy ereszvonal nem ilyen
+      const egyvonalU = (veg: number, irany: number) => { for (let t = -0.05 / mPerPt; t <= 0.35 / mPerPt; t += 0.02 / mPerPt) for (let e = -0.2 / mPerPt; e <= 0.2 / mPerPt; e += 0.02 / mPerPt) if (falE(veg + irany * t, cm + e, S.fuggo)) return true; return false; };
+      if (!egyvonalU(a0, -1) || !egyvonalU(b0, 1)) return;
       // a sávban nincs (vastag) fal: a vékony – legfeljebb 0,12 m-es – kitöltés maga az üvegezés / tok
       let falDb = 0, n = 0;
       for (let t = a0 + 0.3 / mPerPt; t < b0 - 0.3 / mPerPt; t += 0.1 / mPerPt) {
