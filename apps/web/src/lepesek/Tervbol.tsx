@@ -15,7 +15,7 @@ import { egtaj, jegyzekenKivul, szintekCimbol, szintNev } from '../terv/alaprajz
 import { tervAtvesz, type AtvettNyilas, type AtvettHelyiseg } from '../terv/atvetel';
 import { MintaLakasok } from './MintaLakasok';
 import { Burok3D, type Burok3DSzint } from './Burok3D';
-import { homlokzatRajzok, mertMagassagok, eszakHomlokzatbol, tetoAblakokHomlokzatrol, type HomlokzatRajz, type MertMagassag } from '../terv/homlokzatIllesztes';
+import { homlokzatRajzok, mertMagassagok, eszakHomlokzatbol, tetoAblakokHomlokzatrol, oromSzelessegek, type HomlokzatRajz, type MertMagassag } from '../terv/homlokzatIllesztes';
 import type { Lap } from '../terv/kinyeres';
 
 type Modosit = (f: (q: Projekt) => void) => void;
@@ -424,6 +424,16 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   }));
 
   /** Közös átvétel: egy alaprajz a megadott kijelöléssel, szintekkel, padló/tető beállítással. */
+  /** A homlokzatokon látszó oromzatok szélessége alaprajzi irányonként (0/90/180/270). */
+  function oromok(eszak: number, M?: number): Record<number, number> {
+    const ki: Record<number, number> = {};
+    if (!me?.tetoter) return ki;
+    for (const { l } of homlokzatLapok) {
+      let lista: { az: number; orom: number }[] = []; try { lista = oromSzelessegek(l.lap, me.tetoter.hajlas, M); } catch { lista = []; }
+      for (const x of lista) { const ir = (Math.round(norm(x.az + eszak) / 90) * 90) % 360; ki[ir] = Math.max(ki[ir] ?? 0, x.orom); }
+    }
+    return ki;
+  }
   /** Tetőtéri alaprajz: a falhoz nem rendelt, fűtött helyiségen belül írt ablakméret-feliratok (tetősík ablak). */
   function tetoAblakok(a: AlaprajzFeldolgozas, hs: ReturnType<typeof atvetelReszek>['helyisegek'], k: Kijeloles, eszak: number) {
     const r = a.r; if (!r) return [];
@@ -480,7 +490,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     return tervAtvesz(q, {
       helyisegek: hs, retegrendek: blokkok, nyilasok: ny,
       eszakSzog: o.eszak, belmagassag: (tetoterLap ? me?.tetoter?.belmagassag ?? me?.szintek.belmagassag.at(-1) : undefined) ?? bm ?? 2.7, szintszam: szintszam ?? 1, csere: o.csere, padloAt: o.padloAt, tetoAt: o.tetoAt,
-      ...(tetoterLap && me?.tetoter ? { tetoter: me.tetoter, tetoablakok: tetoAblakok(a, hs, k, o.eszak) } : {}),
+      ...(tetoterLap && me?.tetoter ? { tetoter: { ...me.tetoter, orom: oromok(o.eszak, a.e.meretarany ?? undefined) }, tetoablakok: tetoAblakok(a, hs, k, o.eszak) } : {}),
       ...(mintaFajta === 'blokkos' ? { alapFalSablon: 'fal_blokk_kohosalak' } : {}),
       forras: [o.fajl, mLap?.fajl].filter(Boolean).join(', '), szintek: o.szintek,
       ...(terepAlatt ? { terepAlatt: true, ...(pinceMelyseg ? { terepMelyseg: pinceMelyseg } : {}) } : {}),

@@ -148,3 +148,34 @@ export function tetoAblakokHomlokzatrol(lap: Lap, kuszob: number, hajlas: number
   }
   return ki;
 }
+
+/**
+ * Oromfalak a homlokzaton: a tető hajlásszögével (±4°) futó, legalább 1 m-es ferde vonalak vízszintes vetületének
+ * uniója rajzonként (m) – az oromzat (nyeregtető vége) a homlokzaton ferde tetőszélként látszik, az eresz vízszintesként.
+ * A rajz területe: a hozzá rendelt keretek befoglalója, kibővítve (a cím szerinti rajzhoz tartozó vonalak).
+ */
+export function oromSzelessegek(lap: Lap, hajlas: number, tartalekM?: number): { az: number; orom: number }[] {
+  const rajzok = homlokzatRajzok(lap, tartalekM); if (!rajzok.length) return [];
+  const ki: { az: number; orom: number }[] = [];
+  for (const r of rajzok) {
+    const m = r.mPerPt;
+    const bx0 = Math.min(...r.keretek.map((k) => k.x0)) - 12 / m, bx1 = Math.max(...r.keretek.map((k) => k.x1)) + 12 / m;
+    const by0 = Math.min(...r.keretek.map((k) => k.y0)) - 5 / m, by1 = Math.max(...r.keretek.map((k) => k.y1)) + 1 / m;
+    const tart: [number, number][] = [];
+    for (const u of lap.utvonalak) {
+      if (u.muvelet === 'none' || u.bbox[2] < bx0 || u.bbox[0] > bx1 || u.bbox[3] < by0 || u.bbox[1] > by1) continue;
+      for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) {
+        const dx = Math.abs(p[i + 2]! - p[i]!), dy = Math.abs(p[i + 3]! - p[i + 1]!);
+        if (Math.hypot(dx, dy) * m < 1) continue;
+        const sz = Math.atan2(dy, dx) * 180 / Math.PI;
+        if (Math.abs(sz - hajlas) > 4) continue;
+        tart.push([Math.min(p[i]!, p[i + 2]!), Math.max(p[i]!, p[i + 2]!)]);
+      }
+    }
+    tart.sort((a, b) => a[0] - b[0]);
+    let ossz = 0, veg = -Infinity;
+    for (const [a, b] of tart) { if (b > veg) { ossz += b - Math.max(a, veg); veg = b; } }
+    ki.push({ az: r.az, orom: Math.round(ossz * m * 100) / 100 });
+  }
+  return ki;
+}
