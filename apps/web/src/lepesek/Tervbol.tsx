@@ -183,6 +183,18 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const [kijelolesek, setKijelolesek] = useState<Record<number, Kijeloles>>({});
   // „minden fűtött” kapcsoló: az összes lap minden helyisége fűtött (a kézi besorolás felülírja)
   const [mindFutott, setMindFutott] = useState(false);
+  // számított épületrész (bővítés, épületrész-tanúsítvány): csak az itt megadott kódkezdetű helyiségek kerülnek át,
+  // a többi (pl. a meglévő épület) fűtött szomszédként viselkedik – a közös fal nem hőátadó felület
+  const [reszKod, setReszKod] = useState('');
+  const reszElotagok = reszKod.split(/[,;\s]+/).map((x) => x.trim().toLowerCase().replace(/[^a-z0-9]/g, '')).filter(Boolean);
+  const reszKizar = (a: AlaprajzFeldolgozas): number[] => !reszElotagok.length ? [] : a.e.helyisegek.map((h, i) => {
+    const k = (h.kod ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    return h.kulter || reszElotagok.some((e) => k.startsWith(e)) ? -1 : i;
+  }).filter((i) => i >= 0);
+  const kjVeg = (i: number, a: AlaprajzFeldolgozas): Kijeloles => {
+    const k = kijelolesek[i] ?? alapKijeloles(a); const rk = reszKizar(a);
+    return { ...k, kizartH: rk.length ? new Set([...k.kizartH, ...rk]) : k.kizartH, mindFutott };
+  };
   const [rrKi, setRrKi] = useState<Record<string, boolean>>({});
   const [bm, setBm] = useState<number | undefined>(undefined);
   const [szintszam, setSzintszam] = useState<number | undefined>(undefined);
@@ -243,7 +255,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     if (kihagyLap[i] !== undefined) return kihagyLap[i]!;
     if (!lapSzintek(i).includes('P')) return false;
     const a = elemzesek[i];
-    return !(typeof a === 'object' && atvetelReszek(a, { ...(kijelolesek[i] ?? alapKijeloles(a)), mindFutott }).helyisegek.some((h) => h.kategoria !== 'gyengen_kapcsolt'));
+    return !(typeof a === 'object' && atvetelReszek(a, kjVeg(i, a)).helyisegek.some((h) => h.kategoria !== 'gyengen_kapcsolt'));
   };
   // át nem vett, átvételre jelölt alaprajzok: a lépés elhagyása / az oldal bezárása előtt figyelmeztetünk
   tervbolFuggo.lapok = alaprajzLapok.filter(({ i }) => !atvett.has(i) && !kimarad(i)).length;
@@ -278,7 +290,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const al = kezi ?? keszElemzes;
   // kézi méretarány: új felismerés – a lap kijelölése újraindul
   useEffect(() => { if (kezi) setKijelolesek((m) => { const u = { ...m }; delete u[aIdx]; return u; }); }, [kezi]);
-  const kijeloles = (i: number, a: AlaprajzFeldolgozas): Kijeloles => ({ ...(kijelolesek[i] ?? alapKijeloles(a)), mindFutott });
+  const kijeloles = (i: number, a: AlaprajzFeldolgozas): Kijeloles => kjVeg(i, a);
   const kj: Kijeloles = al ? kijeloles(aIdx, al) : { egysegek: new Set(), kizartH: new Set(), kat: {}, kizartNy: new Set() };
   const { egysegek, kizartH, kat, kizartNy } = kj;
   const kjMod = (fn: (k: Kijeloles) => Kijeloles) => { if (!al) return; const a = al, i = aIdx; setKijelolesek((m) => ({ ...m, [i]: fn(m[i] ?? alapKijeloles(a)) })); };
@@ -601,6 +613,10 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
         )}
         {alaprajzLapok.length > 0 && (
           <div style="margin-top:16px">
+            <label class="mezo" style="max-width:520px;margin-bottom:8px" title="Bővítés, épületrész: csak a megadott kódkezdetű helyiségek kerülnek át (pl. „TF, TE, TT”); a többi fűtött szomszéd, a közös fal nem hőátadó">
+              <span>Számított épületrész – helyiségkódok kezdete (üresen: az egész épület)</span>
+              <input type="text" aria-label="Számított épületrész helyiségkódjai" value={reszKod} placeholder="pl. TF, TE, TT" onInput={(e) => setReszKod((e.target as HTMLInputElement).value)} />
+            </label>
             <span class="halkabb">Alaprajzok és szintek – egy alaprajz több azonos szintet is ábrázolhat (pl. 1. és 2. emelet); a helyiségek szintenként, a falak és nyílászárók a szintek számával szorozva kerülnek át</span>
             {(() => { const v = alaprajzLapok.filter(({ i }) => !atvett.has(i)); return v.length > 1 && <div style="margin-top:4px"><MindJelolo db={v.filter(({ i }) => !kimarad(i)).length} ossz={v.length} szoveg="mind átvételre / egyik sem" valt={(be) => { const k = { ...kihagyLap }; for (const { i } of v) k[i] = !be; setKihagyLap(k); }} /></div>; })()}
             <table class="tabla" style="margin-top:4px">

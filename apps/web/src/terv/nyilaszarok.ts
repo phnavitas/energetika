@@ -50,8 +50,9 @@ export interface NyilasFelirat { szel: number; mag: number; pm: number | null; x
 const cmErtek = (v: string) => (v.includes(',') || v.includes('.') ? Math.round(Number(v.replace(',', '.')) * 100) : Number(v));
 /**
  * Falnyílás- és tokméret egy feliratban: „2,60 (2,40)”, „(1,80) 1,80”, „75 (75)”, „pm -20 (0)”, „pm 1,75 (1,80)” –
- * a zárójeles érték a nyílászáró (tok) mérete, a másik a falnyílásé. Az energetikai számításhoz a tokméret kell,
- * ezért a feliratot a zárójeles értékre (cm) cseréljük.
+ * a zárójeles érték a nyílászáró (tok) mérete, a másik a falnyílásé. A nyílászáró felületét a falnyílás méretével
+ * számoljuk (a fal ennyivel kevesebb), ezért a feliratot a zárójel nélküli értékre (cm) cseréljük; a mellvédnél a
+ * zárójeles (kész padlótól mért) érték marad.
  */
 function tokMeret(t: Szoveg): Szoveg {
   const s = t.s.trim();
@@ -60,7 +61,7 @@ function tokMeret(t: Szoveg): Szoveg {
   if (pm) return { ...t, s: `pm ${cmErtek(pm[3]!)}` };
   const m = new RegExp(`^(?:${SZ}\\s*\\(${SZ}\\)|\\(${SZ}\\)\\s*${SZ})$`).exec(s);
   if (!m) return t;
-  const v = cmErtek(m[2] ?? m[3]!);
+  const v = cmErtek(m[1] ?? m[4]!);
   return v >= 30 && v <= 600 ? { ...t, s: String(v) } : t;
 }
 
