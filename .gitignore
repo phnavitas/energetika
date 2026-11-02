@@ -6,3 +6,4 @@ apps/web/node_modules
 apps/web/dist
 apps/web/dist-egy
 apps/web/dist-hamis
+__pycache__/
