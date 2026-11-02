@@ -15,7 +15,7 @@ import { egtaj, jegyzekenKivul, szintekCimbol, szintNev } from '../terv/alaprajz
 import { tervAtvesz, type AtvettNyilas, type AtvettHelyiseg } from '../terv/atvetel';
 import { MintaLakasok } from './MintaLakasok';
 import { Burok3D, type Burok3DSzint } from './Burok3D';
-import { homlokzatRajzok, mertMagassagok, eszakHomlokzatbol, type HomlokzatRajz, type MertMagassag } from '../terv/homlokzatIllesztes';
+import { homlokzatRajzok, mertMagassagok, eszakHomlokzatbol, tetoAblakokHomlokzatrol, type HomlokzatRajz, type MertMagassag } from '../terv/homlokzatIllesztes';
 import type { Lap } from '../terv/kinyeres';
 
 type Modosit = (f: (q: Projekt) => void) => void;
@@ -425,13 +425,13 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
 
   /** Közös átvétel: egy alaprajz a megadott kijelöléssel, szintekkel, padló/tető beállítással. */
   /** Tetőtéri alaprajz: a falhoz nem rendelt, fűtött helyiségen belül írt ablakméret-feliratok (tetősík ablak). */
-  function tetoAblakok(a: AlaprajzFeldolgozas, hs: ReturnType<typeof atvetelReszek>['helyisegek'], k: Kijeloles) {
+  function tetoAblakok(a: AlaprajzFeldolgozas, hs: ReturnType<typeof atvetelReszek>['helyisegek'], k: Kijeloles, eszak: number) {
     const r = a.r; if (!r) return [];
     const { ri } = atvetelReszek(a, k);
     // a felirat a ferde tetősíkban lévő ablaké, ha nincs külső falhoz rendelve (falhoz nem köthető, vagy belső
     // „fülkeként” / belső nyílásként felismert) és ablakméretű
     const jelolt = [...(a.arvaFeliratok ?? []), ...a.nyilasok.filter((n) => !n.kulso && (n.fajta === 'falfulke' || n.fajta === 'ablak'))];
-    return jelolt.flatMap((f) => {
+    const alaprajzrol = jelolt.flatMap((f) => {
       if (f.szel < 0.4 || f.szel > 1.6 || f.mag < 0.6 || f.mag > 1.8) return [];
       // a felirat a tetőtéri homlokzat mentén (a tetőpárkány vetületében, kívül vagy belül): a legközelebbi, külső falú
       // átvett helyiség (≤ 2,5 m)
@@ -445,6 +445,20 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
       if (hi < 0) return [];
       return [{ helyiseg: hi, szel: f.szel, mag: f.mag, tav }];
     });
+    if (!me?.tetoter || me.tetoter.terdfal === null || me.tetoter.padlo === null) return alaprajzrol;
+    // a homlokzatokról azonosítva (a térdfal teteje feletti keretek): darabszám és tájolás a homlokzat szerint, a méret
+    // az alaprajzi felirat szerint, ha van azonos szélességű; a homlokzat irányában a legtöbb külső fallal bíró
+    // tetőtéri helyiséghez. Homlokzati találat híján az alaprajzi feliratok.
+    const kuszob = me.tetoter.padlo + me.tetoter.terdfal + 0.1;
+    const hom = homlokzatLapok.flatMap(({ l }) => { try { return tetoAblakokHomlokzatrol(l.lap, kuszob, me.tetoter!.hajlas, a.e.meretarany ?? undefined); } catch { return []; } });
+    const homRes = hom.flatMap((t) => {
+      const ir = (Math.round(norm(t.az + eszak) / 90) * 90) % 360;
+      let hi = -1, leg = 0;
+      ri.forEach((x, j) => { if (x < 0 || !hs[j]) return; const L = r.helyisegek[x]!.szakaszok.filter((sg) => sg.tul === 'kulso' && sg.irany === ir).reduce((q, sg) => q + sg.hossz, 0); if (L > leg) { leg = L; hi = j; } });
+      const fel = alaprajzrol.find((x) => Math.abs(x.szel - t.szel) <= 0.1);
+      return hi < 0 ? [] : [{ helyiseg: hi, szel: fel?.szel ?? t.szel, mag: fel?.mag ?? t.hossz, irany: ir }];
+    });
+    return homRes.length ? homRes : alaprajzrol;
   }
 
   function egyAtvetel(q: Projekt, a: AlaprajzFeldolgozas, k: Kijeloles, o: { csere: boolean; padloAt: boolean; tetoAt: boolean; eszak: number; szintek: string[]; fajl?: string }): string[] {
@@ -466,7 +480,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     return tervAtvesz(q, {
       helyisegek: hs, retegrendek: blokkok, nyilasok: ny,
       eszakSzog: o.eszak, belmagassag: (tetoterLap ? me?.tetoter?.belmagassag ?? me?.szintek.belmagassag.at(-1) : undefined) ?? bm ?? 2.7, szintszam: szintszam ?? 1, csere: o.csere, padloAt: o.padloAt, tetoAt: o.tetoAt,
-      ...(tetoterLap && me?.tetoter ? { tetoter: me.tetoter, tetoablakok: tetoAblakok(a, hs, k) } : {}),
+      ...(tetoterLap && me?.tetoter ? { tetoter: me.tetoter, tetoablakok: tetoAblakok(a, hs, k, o.eszak) } : {}),
       ...(mintaFajta === 'blokkos' ? { alapFalSablon: 'fal_blokk_kohosalak' } : {}),
       forras: [o.fajl, mLap?.fajl].filter(Boolean).join(', '), szintek: o.szintek,
       ...(terepAlatt ? { terepAlatt: true, ...(pinceMelyseg ? { terepMelyseg: pinceMelyseg } : {}) } : {}),

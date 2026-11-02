@@ -116,3 +116,35 @@ export function eszakHomlokzatbol(nyilasok: TervNyilas[], mPerPt: number, rajzok
   const ered = [0, 45, 90, 135, 180, 225, 270, 315].map((sz) => ({ sz, p: pont(sz) })).sort((a, b) => b.p - a.p);
   return ered[0]!.p >= 4 && ered[1]!.p <= (2 / 3) * ered[0]!.p ? ered[0]!.sz : null;
 }
+
+export interface HomlokzatTetoAblak { az: number; szel: number; hossz: number; alja: number }
+
+/**
+ * Tetősík ablakok a homlokzatról (ha az alaprajzon nincs méretfeliratuk): a homlokzati rajz azon keretei, amelyek alja a
+ * térdfal teteje (tetőtéri padló + térdfal) fölött van – az eresz felőli homlokzaton ezek a tetősíkban ülnek. A magasság
+ * a lap szintjeleiből (a kerethez legközelebbi szintjel-oszlop lineáris illesztése); a tetősík menti hossz a látszó
+ * magasság / sin(hajlásszög), a szélesség a látszó szélesség.
+ */
+export function tetoAblakokHomlokzatrol(lap: Lap, kuszob: number, hajlas: number, tartalekM?: number): HomlokzatTetoAblak[] {
+  const rajzok = homlokzatRajzok(lap, tartalekM); if (!rajzok.length) return [];
+  const jelek = lap.szovegek.flatMap((t) => { const m = /^([±+-])\s?(\d{1,2}),(\d{2})$/.exec(t.s.trim()); return m ? [{ x: t.x, y: t.y, v: (m[1] === '-' ? -1 : 1) * Number(`${m[2]}.${m[3]}`) }] : []; });
+  const oszlopok: (typeof jelek)[] = [];
+  for (const j of [...jelek].sort((a, b) => a.x - b.x)) { const o = oszlopok.find((c) => Math.abs(c[0]!.x - j.x) < 8); if (o) o.push(j); else oszlopok.push([j]); }
+  const jo = oszlopok.filter((o) => o.length >= 3);
+  const ki: HomlokzatTetoAblak[] = [];
+  const sin = Math.sin(hajlas * Math.PI / 180);
+  for (const r of rajzok) for (const k of r.keretek) {
+    const cy = (k.y0 + k.y1) / 2, cx = (k.x0 + k.x1) / 2;
+    // a kerettel azonos magasságtartományt lefedő, hozzá vízszintesen legközelebbi szintjel-oszlop
+    const o = jo.filter((c) => Math.min(...c.map((j) => j.y)) <= cy && Math.max(...c.map((j) => j.y)) >= cy).sort((a, b) => Math.abs(a[0]!.x - cx) - Math.abs(b[0]!.x - cx))[0];
+    if (!o) continue;
+    // y → szint (legkisebb négyzetek)
+    const n = o.length, sx = o.reduce((s, j) => s + j.y, 0), sy = o.reduce((s, j) => s + j.v, 0), sxx = o.reduce((s, j) => s + j.y * j.y, 0), sxy = o.reduce((s, j) => s + j.y * j.v, 0);
+    const b = (n * sxy - sx * sy) / (n * sxx - sx * sx); if (!(b < 0)) continue;
+    const a = (sy - b * sx) / n;
+    const alja = a + b * k.y1;
+    if (alja < kuszob) continue;
+    ki.push({ az: r.az, szel: k.szel, hossz: Math.round(k.mag / sin * 100) / 100, alja: Math.round(alja * 100) / 100 });
+  }
+  return ki;
+}

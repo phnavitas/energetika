@@ -56,7 +56,7 @@ export interface TervAtvetel {
   tetoter?: { hajlas: number; terdfal: number | null; belmagassag?: number | null };
   /** Tetősík ablakok (tetőtérben a falhoz nem rendelt, helyiségen belüli méretfelirat): a ferde tetőből vonódnak le,
    * a legközelebbi eresz menti homlokzat tájolásával (tav: homlokzati irány → távolság, m). */
-  tetoablakok?: { helyiseg: number; szel: number; mag: number; tav: Record<number, number> }[];
+  tetoablakok?: { helyiseg: number; szel: number; mag: number; tav?: Record<number, number>; irany?: number }[];
   /** Az alaprajz által ábrázolt szintek (pl. ['1', '2'] – azonos 1. és 2. emelet): a helyiségek szintenként, a falak, nyílászárók szintszámszorosan. */
   szintek?: string[];
 }
@@ -291,7 +291,9 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
     const csop = new Map<string, { helyiseg: number; ir: number; szel: number; mag: number; db: number }>();
     for (const ta of a.tetoablakok ?? []) {
       if (!a.helyisegek[ta.helyiseg] || !burok(a.helyisegek[ta.helyiseg]!)) continue;
-      const ir = [...ereszIr].sort((x, y) => (ta.tav[x] ?? Infinity) - (ta.tav[y] ?? Infinity))[0]!;
+      // tájolás: a homlokzatról ismert irány, ill. az alaprajzi felirathoz legközelebbi külső fal iránya (összetett,
+      // pl. L alakú tetőnél az eresz nem csak a fő homlokzatpáron van)
+      const ir = ta.irany ?? Number(Object.entries(ta.tav ?? {}).sort((x, y) => x[1] - y[1])[0]?.[0] ?? ereszIr[0]);
       const k = `${ta.helyiseg}|${ir}|${ta.szel}|${ta.mag}`;
       const c = csop.get(k); if (c) c.db++; else csop.set(k, { helyiseg: ta.helyiseg, ir, szel: ta.szel, mag: ta.mag, db: 1 });
     }
@@ -307,10 +309,12 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
         p.nyilaszarok.push(t);
       }
       const h = a.helyisegek[c.helyiseg]!;
-      p.feluletek.push({ id: ujId(), nev: `${h.nev} – Tetősík ablak ${meret}`, helyisegId: helyIdk[c.helyiseg], fajta: 'nyilaszaro', nyilaszaroId: t.id, hatar: 'kulso', darab: c.db * n, tajolas: egtaj(c.ir, a.eszakSzog), hajlasszog: hsz, szuloId: ferdeId[c.ir] });
+      // szülő: az azonos irányú ferde tetősáv, ennek híján a nagyobbik
+      const szulo = ferdeId[c.ir] ?? Object.values(ferdeId).sort((x, y) => (p.feluletek.find((f) => f.id === y)?.A ?? 0) - (p.feluletek.find((f) => f.id === x)?.A ?? 0))[0];
+      p.feluletek.push({ id: ujId(), nev: `${h.nev} – Tetősík ablak ${meret}`, helyisegId: helyIdk[c.helyiseg], fajta: 'nyilaszaro', nyilaszaroId: t.id, hatar: 'kulso', darab: c.db * n, tajolas: egtaj(c.ir, a.eszakSzog), hajlasszog: hsz, szuloId: szulo });
       tdb += c.db;
     }
-    if (tdb) uz.push(`Tetőtér: ${tdb} tetősík ablak (a tetőtéri alaprajz falhoz nem köthető méretfeliratai) – a ferde tetőből vonódnak le, a legközelebbi eresz felőli tájolással.`);
+    if (tdb) uz.push(`Tetőtér: ${tdb} tetősík ablak (${(a.tetoablakok ?? []).some((x) => x.irany !== undefined) ? 'a homlokzatokról: a térdfal teteje feletti keretek, a látszó magasság / sin(hajlásszög)' : 'a tetőtéri alaprajz falhoz nem köthető méretfeliratai'}) – a ferde tetőből vonódnak le.`);
     uz.push(`Tetőtér: ${sz2(tt.hajlas)}°-os tető, ${sz2(tt.terdfal!)} m térdfal (metszet) – az eresz a ${ereszIr.map((ir) => egtaj(ir, a.eszakSzog)).join('–')} homlokzatokon; ferde tetősáv ${sz2(kerek(w))} m vízszintes szélességben (${sz2(kerek(vetulet / Math.cos(alfa)))} m²), vízszintes födém ${sz2(kerek(AFelso))} m². Az oromfalak téglalapként (belmagasságig) kerültek át – a Határolás lépésben ellenőrizd.`);
   }
   if (legfelso && padlas && AFelso > 0) p.feluletek.push({ id: ujId(), nev: tt ? 'Padlásfödém (kalapfödém)' : 'Padlásfödém', fajta: 'opak', retegrendId: rrIdM.get(padlas.rr), hatar: 'padlas', A: kerek(AFelso), tajolas: null, hajlasszog: 0, chi: 0.1 });

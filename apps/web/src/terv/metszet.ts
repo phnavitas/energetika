@@ -441,6 +441,8 @@ export interface TetoterAdat {
   terdfal: number | null;
   /** A tetőtér belmagassága (kész padló – kalapfödém alsó síkja), ha megállapítható. */
   belmagassag: number | null;
+  /** A tetőtéri kész padló szintje (m, ±0,00-hoz). */
+  padlo: number | null;
 }
 
 /**
@@ -471,5 +473,5 @@ export function tetoterKeres(sz: Szoveg[], szintek: SzintEredmeny): TetoterAdat 
     }
     if (db.size) terdfal = [...db.entries()].sort((a, b) => b[1] - a[1])[0]![0];
   }
-  return { hajlas, terdfal, belmagassag };
+  return { hajlas, terdfal, belmagassag, padlo: z0 ?? null };
 }
