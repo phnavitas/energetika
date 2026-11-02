@@ -4,12 +4,17 @@ import sys,json,glob,re
 import os
 PJ=os.environ.get('PJ','/root/wwteszt/proj/')
 MINTA=os.path.join(os.path.dirname(os.path.abspath(__file__)),'minta')
-MAP={os.path.basename(f)[:3]:f for f in sorted(glob.glob(MINTA+'/m*_elemek.json'))}
+MAP={os.path.basename(f)[:3]:[f] for f in sorted(glob.glob(MINTA+'/m*_elemek.json'))}
+# egy tervlapon több tanúsítvány (sorház A/B/C lakás): a terv projektje a lakások együttesével vethető össze
+for fo,al in {'m08':['m09','m10']}.items():
+  if fo in MAP:
+    for a in al:
+      if a in MAP: MAP[fo]+=MAP.pop(a)
 EG={0:'É',45:'ÉK',90:'K',135:'DK',180:'D',225:'DNy',270:'Ny',315:'ÉNy'}
 NY=re.compile(r'ablak|ajtó|nyílászáró|függöny|kapu|üveg|bejárat|terasz',re.I)
 FAL=re.compile(r'fal|falazat',re.I)
 for m,z in MAP.items():
-  e=json.load(open(z))['elemek']
+  e=[x for f in z for x in json.load(open(f))['elemek']]
   if not os.path.exists(f'{PJ}{m}.json'): continue
   fal=[x for x in e if x['dol']==90 and FAL.search(x['nev']) and not NY.search(x['nev']) and not re.search('fűtött tér|pince|terepszint',x['nev'],re.I)]
   ny=[x for x in e if x['dol']>=60 and NY.search(x['nev'])]
