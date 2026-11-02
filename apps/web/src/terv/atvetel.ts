@@ -51,6 +51,12 @@ export interface TervAtvetel {
   terepAlatt?: boolean;
   /** A terepszint alatti padló mélysége a terepszinttől [m]. */
   terepMelyseg?: number;
+  /** Tetőtér-beépítés (a lap a tetőteret ábrázolja): a metszet hajlásszöge és térdfalmagassága – az eresz felőli falak
+   * térdfalak, a ferde tetősáv a térdfal és a belmagasság (kalapfödém) között, a többi vízszintes födém. */
+  tetoter?: { hajlas: number; terdfal: number | null; belmagassag?: number | null };
+  /** Tetősík ablakok (tetőtérben a falhoz nem rendelt, helyiségen belüli méretfelirat): a ferde tetőből vonódnak le,
+   * a legközelebbi eresz menti homlokzat tájolásával (tav: homlokzati irány → távolság, m). */
+  tetoablakok?: { helyiseg: number; szel: number; mag: number; tav: Record<number, number> }[];
   /** Az alaprajz által ábrázolt szintek (pl. ['1', '2'] – azonos 1. és 2. emelet): a helyiségek szintenként, a falak, nyílászárók szintszámszorosan. */
   szintek?: string[];
 }
@@ -197,11 +203,17 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
       uz.push(`Terepszint alatti szint: ${sz2(hossz * n)} m talajjal érintkező fal ${sz2(z)} m mélységig${talajFal ? ` (${talajFal.rr.kod}${talajFal.rr.cim ? ` „${talajFal.rr.cim}”` : ""})` : ' – a metszeten nincs pincefal-rétegrend, a Határolás lépésben válassz'}. A talaj felé esőnek az épület (pinceszint) körvonalán lévő szakaszokat vettem – a Határolás lépésben ellenőrizd.`);
     }
   }
+  const iranyHossz = (ir: number) => a.helyisegek.filter(burok).reduce((s, h) => s + h.falak.filter((f) => f.irany === ir).reduce((q, f) => q + f.hossz, 0), 0);
+  // tetőtér: az eresz a hosszabb homlokzatpár mentén fut (nyeregtető) – ott térdfal és ferde tetősáv, a másik pár oromfal
+  const tt = a.tetoter && a.tetoter.terdfal !== null && legfelso ? a.tetoter : null;
+  const ereszIr = tt ? (iranyHossz(0) + iranyHossz(180) >= iranyHossz(90) + iranyHossz(270) ? [0, 180] : [90, 270]) : [];
   for (const ir of iranyok) {
-    const hossz = kerek(a.helyisegek.filter(burok).reduce((s, h) => s + h.falak.filter((f) => f.irany === ir).reduce((q, f) => q + f.hossz, 0), 0));
+    const hossz = kerek(iranyHossz(ir));
     if (hossz < 0.2) continue;
     const t = egtaj(ir, a.eszakSzog);
-    const f: Felulet = { id: ujId(), nev: `Homlokzati fal – ${t}`, fajta: 'opak', retegrendId: falRid, hatar: 'kulso', tajolas: t, hajlasszog: 90, meret: { hossz: kerek(hossz * n), magassag: a.belmagassag }, A: kerek(hossz * n * a.belmagassag), chi: 0.2 };
+    const terd = tt && ereszIr.includes(ir);
+    const m = terd ? tt!.terdfal! : a.belmagassag;
+    const f: Felulet = { id: ujId(), nev: terd ? `Térdfal – ${t}` : `Homlokzati fal – ${t}`, fajta: 'opak', retegrendId: falRid, hatar: 'kulso', tajolas: t, hajlasszog: 90, meret: { hossz: kerek(hossz * n), magassag: m }, A: kerek(hossz * n * m), chi: 0.2 };
     p.feluletek.push(f); falFel[ir] = f.id;
   }
 
@@ -258,14 +270,57 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
     });
     uz.push(`Padló-rétegrendet nem találtam a metszeten: a talajon fekvő padló (${sz2(Aossz)} m²) rétegrend nélkül került át – válaszd ki a Határolás lépésben.`);
   }
-  if (legfelso && padlas && Aossz > 0) p.feluletek.push({ id: ujId(), nev: 'Padlásfödém', fajta: 'opak', retegrendId: rrIdM.get(padlas.rr), hatar: 'padlas', A: kerek(Aossz), tajolas: null, hajlasszog: 0, chi: 0.1 });
-  else if (legfelso && teto && Aossz > 0) {
-    p.feluletek.push({ id: ujId(), nev: 'Tető – legfelső szint felett', fajta: 'opak', retegrendId: rrIdM.get(teto.rr), hatar: 'kulso', A: kerek(Aossz), tajolas: null, hajlasszog: 0, chi: 0.1 });
+  // tetőtér: a térdfal és a kalapfödém (belmagasság) közti ferde tetősáv az eresz menti homlokzatokon; vízszintes
+  // vetülete a tetőtér alapterületéből levonódik (a maradék a kalapfödém / padlásfödém)
+  let AFelso = Aossz;
+  if (tt && Aossz > 0) {
+    const alfa = tt.hajlas * Math.PI / 180;
+    const w = Math.max(0, (a.belmagassag - tt.terdfal!) / Math.tan(alfa));
+    const tetoRr = a.retegrendek.find((x) => x.becsles.szerep === 'teto' && !x.becsles.kihagy && !/garázs|garazs|pince/i.test(x.rr.cim)) ?? padlas;
+    let vetulet = 0;
+    for (const ir of ereszIr) {
+      const L = iranyHossz(ir); if (L < 0.2) continue;
+      const v = Math.min(L * w, Aossz / 2); vetulet += v;
+      const t = egtaj(ir, a.eszakSzog);
+      p.feluletek.push({ id: ujId(), nev: `Ferde tető (tetőtér, ${sz2(tt.hajlas)}°) – ${t}`, fajta: 'opak', retegrendId: tetoRr ? rrIdM.get(tetoRr.rr) : undefined, hatar: 'kulso', A: kerek(v / Math.cos(alfa)), tajolas: t, hajlasszog: ([30, 45, 60] as const).reduce((b, x) => (Math.abs(x - tt.hajlas) < Math.abs(b - tt.hajlas) ? x : b)), chi: 0.1 });
+    }
+    AFelso = Math.max(0, Aossz - vetulet);
+    // tetősík ablakok a ferde tetőben
+    const ferdeId: Record<number, string> = {};
+    for (const f of p.feluletek.slice(-ereszIr.length)) for (const ir of ereszIr) if (f.nev.endsWith(`– ${egtaj(ir, a.eszakSzog)}`) && f.nev.startsWith('Ferde tető')) ferdeId[ir] = f.id;
+    const csop = new Map<string, { helyiseg: number; ir: number; szel: number; mag: number; db: number }>();
+    for (const ta of a.tetoablakok ?? []) {
+      if (!a.helyisegek[ta.helyiseg] || !burok(a.helyisegek[ta.helyiseg]!)) continue;
+      const ir = [...ereszIr].sort((x, y) => (ta.tav[x] ?? Infinity) - (ta.tav[y] ?? Infinity))[0]!;
+      const k = `${ta.helyiseg}|${ir}|${ta.szel}|${ta.mag}`;
+      const c = csop.get(k); if (c) c.db++; else csop.set(k, { helyiseg: ta.helyiseg, ir, szel: ta.szel, mag: ta.mag, db: 1 });
+    }
+    const hsz = ([30, 45, 60] as const).reduce((b, x) => (Math.abs(x - tt.hajlas) < Math.abs(b - tt.hajlas) ? x : b));
+    let tdb = 0;
+    for (const c of csop.values()) {
+      const meret = `${String(Math.round(c.szel * 100))}×${String(Math.round(c.mag * 100))}`;
+      let t = p.nyilaszarok.find((x) => x.kovetelmenyKod === 'tetosik_ablak' && Math.abs(x.szelesseg - c.szel) < 1e-6 && Math.abs(x.magassag - c.mag) < 1e-6);
+      if (!t) {
+        const s = NS.NYILASZARO_SABLONOK.find((x) => x.kod === 'pvc_3r')!;
+        t = sablonbolNyilaszaro(s, { id: ujId(), szelesseg: c.szel, magassag: c.mag, kovetelmenyKod: 'tetosik_ablak' });
+        t.nev = `Tetősík ablak ${meret}`; t.kovetelmenyKod = 'tetosik_ablak'; t.csoportId = csoportFajta(p, 'ablak', 'tetősík ablak');
+        p.nyilaszarok.push(t);
+      }
+      const h = a.helyisegek[c.helyiseg]!;
+      p.feluletek.push({ id: ujId(), nev: `${h.nev} – Tetősík ablak ${meret}`, helyisegId: helyIdk[c.helyiseg], fajta: 'nyilaszaro', nyilaszaroId: t.id, hatar: 'kulso', darab: c.db * n, tajolas: egtaj(c.ir, a.eszakSzog), hajlasszog: hsz, szuloId: ferdeId[c.ir] });
+      tdb += c.db;
+    }
+    if (tdb) uz.push(`Tetőtér: ${tdb} tetősík ablak (a tetőtéri alaprajz falhoz nem köthető méretfeliratai) – a ferde tetőből vonódnak le, a legközelebbi eresz felőli tájolással.`);
+    uz.push(`Tetőtér: ${sz2(tt.hajlas)}°-os tető, ${sz2(tt.terdfal!)} m térdfal (metszet) – az eresz a ${ereszIr.map((ir) => egtaj(ir, a.eszakSzog)).join('–')} homlokzatokon; ferde tetősáv ${sz2(kerek(w))} m vízszintes szélességben (${sz2(kerek(vetulet / Math.cos(alfa)))} m²), vízszintes födém ${sz2(kerek(AFelso))} m². Az oromfalak téglalapként (belmagasságig) kerültek át – a Határolás lépésben ellenőrizd.`);
+  }
+  if (legfelso && padlas && AFelso > 0) p.feluletek.push({ id: ujId(), nev: tt ? 'Padlásfödém (kalapfödém)' : 'Padlásfödém', fajta: 'opak', retegrendId: rrIdM.get(padlas.rr), hatar: 'padlas', A: kerek(AFelso), tajolas: null, hajlasszog: 0, chi: 0.1 });
+  else if (legfelso && teto && AFelso > 0) {
+    p.feluletek.push({ id: ujId(), nev: 'Tető – legfelső szint felett', fajta: 'opak', retegrendId: rrIdM.get(teto.rr), hatar: 'kulso', A: kerek(AFelso), tajolas: null, hajlasszog: 0, chi: 0.1 });
     const tobb = a.retegrendek.filter((x) => x.becsles.szerep === 'teto' && !x.becsles.kihagy && x !== teto).length;
     uz.push(`Padlásfödém nincs: a legfelső szint tetője a(z) ${teto.rr.kod}${teto.rr.cim ? ` „${teto.rr.cim}”` : ""} (${sz2(Aossz)} m², a helyiségek nettó alapterülete)${tobb ? ` – a metszeten még ${tobb} tető-rétegrend van, a Határolás lépésben bontsd a tényleges tetőfelületek szerint` : ''}.`);
   }
-  else if (legfelso && Aossz > 0) {
-    p.feluletek.push({ id: ujId(), nev: 'Tető / padlásfödém – legfelső szint felett', fajta: 'opak', hatar: 'kulso', A: kerek(Aossz), tajolas: null, hajlasszog: 0, chi: 0.1 });
+  else if (legfelso && AFelso > 0) {
+    p.feluletek.push({ id: ujId(), nev: 'Tető / padlásfödém – legfelső szint felett', fajta: 'opak', hatar: 'kulso', A: kerek(AFelso), tajolas: null, hajlasszog: 0, chi: 0.1 });
     uz.push(`Tető- és padlásfödém-rétegrendet nem találtam a metszeten: a legfelső szint feletti felület (${sz2(Aossz)} m²) rétegrend nélkül került át – válaszd ki a Határolás lépésben (padlásfödémnél a határ: fűtetlen padlás).`);
   }
 

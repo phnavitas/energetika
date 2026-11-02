@@ -10,7 +10,7 @@ import type { TintaKep } from './tinta';
 import { meretaranyKotabol, automatikusHelyisegek, lakasCsoportok, arnyalatHatarok, type SzurkeKep } from './autohelyiseg';
 import { fuggonyfalak, jeloletlenNyilasok, nyilasFeliratok, nyilasokHozzarendel, falfulkeE, type TervNyilas, type NyilasFelirat } from './nyilaszarok';
 import { talajOldal } from './talaj';
-import { retegrendBlokkok, szerepBecsles, retegekEpit, szintekKeres, type TervRetegrend, type SzerepBecsles, type TervRetegUI, type SzintEredmeny } from './metszet';
+import { retegrendBlokkok, szerepBecsles, retegekEpit, szintekKeres, tetoterKeres, type TetoterAdat, type TervRetegrend, type SzerepBecsles, type TervRetegUI, type SzintEredmeny } from './metszet';
 import { ujId } from '../modell';
 
 export interface TervLap {
@@ -293,6 +293,8 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
 export interface MetszetFeldolgozas {
   blokkok: { rr: TervRetegrend; becsles: SzerepBecsles; retegek: TervRetegUI[] }[];
   szintek: SzintEredmeny;
+  /** Tetőtér-beépítés adatai (hajlásszög, térdfal), ha a metszeten van tetőhajlás-felirat. */
+  tetoter: TetoterAdat | null;
 }
 
 /**
@@ -310,6 +312,7 @@ export function metszetFeldolgoz(lap: Lap): MetszetFeldolgozas {
   return {
     blokkok: b.map((rr) => { const becsles = szerepBecsles(rr, b); return { rr, becsles, retegek: retegekEpit(rr, becsles, ujId) }; }),
     szintek: szintekKeres(lap.szovegek),
+    tetoter: tetoterKeres(lap.szovegek, szintekKeres(lap.szovegek)),
   };
 }
 

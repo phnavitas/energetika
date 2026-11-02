@@ -424,9 +424,34 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   }));
 
   /** Közös átvétel: egy alaprajz a megadott kijelöléssel, szintekkel, padló/tető beállítással. */
+  /** Tetőtéri alaprajz: a falhoz nem rendelt, fűtött helyiségen belül írt ablakméret-feliratok (tetősík ablak). */
+  function tetoAblakok(a: AlaprajzFeldolgozas, hs: ReturnType<typeof atvetelReszek>['helyisegek'], k: Kijeloles) {
+    const r = a.r; if (!r) return [];
+    const { ri } = atvetelReszek(a, k);
+    // a felirat a ferde tetősíkban lévő ablaké, ha nincs külső falhoz rendelve (falhoz nem köthető, vagy belső
+    // „fülkeként” / belső nyílásként felismert) és ablakméretű
+    const jelolt = [...(a.arvaFeliratok ?? []), ...a.nyilasok.filter((n) => !n.kulso && (n.fajta === 'falfulke' || n.fajta === 'ablak'))];
+    return jelolt.flatMap((f) => {
+      if (f.szel < 0.4 || f.szel > 1.6 || f.mag < 0.6 || f.mag > 1.8) return [];
+      // a felirat a tetőtéri homlokzat mentén (a tetőpárkány vetületében, kívül vagy belül): a legközelebbi, külső falú
+      // átvett helyiség (≤ 2,5 m)
+      let hi = -1, tav: Record<number, number> = {}, leg = 2.5;
+      ri.forEach((x, j) => {
+        if (x < 0 || !hs[j]) return;
+        const t: Record<number, number> = {}; let m = Infinity;
+        for (const sg of r.helyisegek[x]!.szakaszok) if (sg.tul === 'kulso') for (const q of sg.pontok) { const d = Math.hypot(q[0] - f.x, q[1] - f.y) * r.mPerPt; if (d < (t[sg.irany] ?? Infinity)) t[sg.irany] = d; if (d < m) m = d; }
+        if (m < leg) { leg = m; hi = j; tav = t; }
+      });
+      if (hi < 0) return [];
+      return [{ helyiseg: hi, szel: f.szel, mag: f.mag, tav }];
+    });
+  }
+
   function egyAtvetel(q: Projekt, a: AlaprajzFeldolgozas, k: Kijeloles, o: { csere: boolean; padloAt: boolean; tetoAt: boolean; eszak: number; szintek: string[]; fajl?: string }): string[] {
     // terepszint alatti szint (pince, alagsor): a feltételes rétegrendek (pincefal, pincepadló) is átkerülnek
     const terepAlatt = o.szintek.includes('P');
+    // tetőtéri alaprajz (a legfelső szint tetőtér): a metszet tetőhajlása és térdfala szerint ferde tető + térdfal
+    const tetoterLap = o.szintek.includes('T') && o.tetoAt && me?.szintek.belmagassag.length ? true : false;
     const extraUz: string[] = [];
     const blokkok = (me?.blokkok ?? []).filter((b) => rrKi[b.rr.kod] || (terepAlatt && b.becsles.feltetel === 'terepAlatt'));
     // méretfelirat nélküli nyílások magassága a homlokzati lapokról (a lap szintjének sorszáma alulról)
@@ -440,7 +465,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     }
     return tervAtvesz(q, {
       helyisegek: hs, retegrendek: blokkok, nyilasok: ny,
-      eszakSzog: o.eszak, belmagassag: bm ?? 2.7, szintszam: szintszam ?? 1, csere: o.csere, padloAt: o.padloAt, tetoAt: o.tetoAt,
+      eszakSzog: o.eszak, belmagassag: (tetoterLap ? me?.tetoter?.belmagassag ?? me?.szintek.belmagassag.at(-1) : undefined) ?? bm ?? 2.7, szintszam: szintszam ?? 1, csere: o.csere, padloAt: o.padloAt, tetoAt: o.tetoAt,
+      ...(tetoterLap && me?.tetoter ? { tetoter: me.tetoter, tetoablakok: tetoAblakok(a, hs, k) } : {}),
       ...(mintaFajta === 'blokkos' ? { alapFalSablon: 'fal_blokk_kohosalak' } : {}),
       forras: [o.fajl, mLap?.fajl].filter(Boolean).join(', '), szintek: o.szintek,
       ...(terepAlatt ? { terepAlatt: true, ...(pinceMelyseg ? { terepMelyseg: pinceMelyseg } : {}) } : {}),

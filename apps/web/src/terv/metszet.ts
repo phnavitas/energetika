@@ -431,3 +431,45 @@ export function szintekKeres(sz: Szoveg[]): SzintEredmeny {
   const gerinc = Math.max(...jelek.map((j) => j.ertek));
   return { szintek: [...new Set(jelek.map((j) => j.ertek))].sort((a, b) => a - b), szintszam: Math.max(1, bm.length), belmagassag: bm, padlo, terepszint: terep, gerinc, figyelmeztetes: fig };
 }
+
+// ——— tetőtér ———
+
+export interface TetoterAdat {
+  /** A tető hajlásszöge (fok) – a metszet szögfeliratainak leggyakoribb 15–65°-os értéke. */
+  hajlas: number;
+  /** A térdfal magassága a tetőtéri padlótól (m), ha a metszeten „térdfal” felirat mellett szintjel áll. */
+  terdfal: number | null;
+  /** A tetőtér belmagassága (kész padló – kalapfödém alsó síkja), ha megállapítható. */
+  belmagassag: number | null;
+}
+
+/**
+ * Tetőtér-beépítés adatai a metszetről: hajlásszög („38,00°”) és térdfalmagasság (a „térdfal” felirathoz legközelebbi,
+ * a tetőtéri padló feletti 0,2–2,0 m-es szintjel). A tetőtéri padló a metszet legfelső padlószintje.
+ */
+export function tetoterKeres(sz: Szoveg[], szintek: SzintEredmeny): TetoterAdat | null {
+  const szogek = new Map<number, number>();
+  for (const t of sz) {
+    const m = /(\d{1,2}(?:[,.]\d{1,2})?)\s*°/.exec(szovegJavit(t.s)); if (!m) continue;
+    const v = Math.round(szamErtek(m[1]!) * 10) / 10; if (v < 15 || v > 65) continue;
+    szogek.set(v, (szogek.get(v) ?? 0) + 1);
+  }
+  if (!szogek.size) return null;
+  const hajlas = [...szogek.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]![0];
+  const jelek = sz.map((t) => ({ t, m: /^\+\s?(\d{1,2}[,.]\d{2})$/.exec(szovegJavit(t.s).trim()) })).filter((x) => x.m).map((x) => ({ x: x.t.x, y: x.t.y, v: szamErtek(x.m![1]!) }));
+  // a tetőtéri kész padló: a legfelső padlószint (a födém teteje) feletti 0,3 m-en belüli legmagasabb jel; a kalapfödém
+  // alsó síkja a legfelső szint mennyezete
+  const zf = szintek.padlo.at(-1), bmf = szintek.belmagassag.at(-1);
+  const z0 = zf === undefined ? undefined : Math.max(zf, ...jelek.map((j) => j.v).filter((v) => v > zf && v <= zf + 0.3));
+  const belmagassag = zf !== undefined && bmf !== undefined && z0 !== undefined ? Math.round((zf + bmf - z0) * 100) / 100 : null;
+  let terdfal: number | null = null;
+  if (z0 !== undefined) {
+    const db = new Map<number, number>();
+    for (const c of sz.filter((t) => /térdfal|terdfal/i.test(t.s))) {
+      const jo = jelek.map((j) => ({ ...j, d: Math.hypot(j.x - c.x, j.y - c.y) })).filter((j) => j.d < 120 && j.v - z0 >= 0.2 && j.v - z0 <= 2).sort((a, b) => a.d - b.d)[0];
+      if (jo) { const h = Math.round((jo.v - z0) * 100) / 100; db.set(h, (db.get(h) ?? 0) + 1); }
+    }
+    if (db.size) terdfal = [...db.entries()].sort((a, b) => b[1] - a[1])[0]![0];
+  }
+  return { hajlas, terdfal, belmagassag };
+}
