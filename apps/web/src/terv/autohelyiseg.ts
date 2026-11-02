@@ -2,6 +2,7 @@
  * Pecsét nélküli alaprajzok (pl. típusalaprajz-mintalapok): a lépték becslése a méretláncokból, és a helyiségek
  * automatikus felismerése a falak közötti zárt terekből.
  */
+import { tintaFal, type TintaKep } from './tinta';
 import type { Lap, Szoveg } from './kinyeres';
 import { raszterEpit, type Raszter } from './raszter';
 import type { TervHelyiseg } from './alaprajz';
@@ -93,13 +94,31 @@ function meretaranyJelekbol(sz: Szoveg[], utvonalak: Lap['utvonalak']): number |
  * Pecsét nélküli lapon a falakkal körbezárt terek (≥ 2 m²) mint helyiségek: a lap sarkaiból indított elárasztás
  * a külső teret jelöli, a raszter a zárt zsebeket külső térré nyilvánítaná – ezeket gyűjtjük ki.
  */
-export function automatikusHelyisegek(lap: Lap, mPerPt: number, kep?: SzurkeKep): TervHelyiseg[] {
+export function automatikusHelyisegek(lap: Lap, mPerPt: number, kep?: SzurkeKep, tinta?: TintaKep): TervHelyiseg[] {
   const sarkok = [{ x: 1, y: 1 }, { x: lap.szel - 1, y: lap.mag - 1 }];
   const px = 0.05;
   const r = raszterEpit(lap, mPerPt, sarkok, { px, resZaras: 3.0, vastagVonalFal: 0.05, ...(kep ? { szinKep: kep } : {}) }, 1);
   const { w, h, cimke } = r;
   const latott = new Uint8Array(w * h);
   const ki: TervHelyiseg[] = [];
+  // az épület: a lapkép falvastagságú tintájának (a vékony méret-, jel- és keretvonalak nélkül) legnagyobb összefüggő
+  // foltja – a befoglalóján kívüli zárt terek (méretlánc-, felirat-, keretzsebek) nem helyiségek
+  let eb: [number, number, number, number] | null = null;
+  if (tinta) {
+    const fm = tintaFal(tinta, r.x0, r.y0, mPerPt / px, w, h, px, lap.szovegek);
+    const lt = new Uint8Array(w * h); let leg = 0;
+    for (let i = 0; i < w * h; i++) {
+      if (!fm[i] || lt[i]) continue;
+      const komp = [i]; lt[i] = 1; let x0 = w, y0 = h, x1 = 0, y1 = 0;
+      for (let k = 0; k < komp.length; k++) {
+        const q = komp[k]!, x = q % w, y = (q / w) | 0;
+        if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+        for (const n of [x > 0 ? q - 1 : -1, x < w - 1 ? q + 1 : -1, q - w, q + w]) if (n >= 0 && n < w * h && fm[n] && !lt[n]) { lt[n] = 1; komp.push(n); }
+      }
+      // a lapkeret (a lap nagy részét befoglaló vékony vonal) nem épület
+      if (komp.length > leg && (x1 - x0) < 0.9 * w && (y1 - y0) < 0.9 * h) { leg = komp.length; eb = [x0, y0, x1, y1]; }
+    }
+  }
   // jelölt cella: külső térként címkézett, vagy (sraffozott falas rajzon) címkézetlen, szabad zseb
   const jelolt = (i: number) => cimke[i] === 1 || (cimke[i] === 0 && !r.fal[i] && !r.nyilas[i]);
   for (let i = 0; i < w * h; i++) {
@@ -112,6 +131,7 @@ export function automatikusHelyisegek(lap: Lap, mPerPt: number, kep?: SzurkeKep)
     }
     const A = komp.length * px * px;
     if (szel || A < 1 || A > 120) continue;
+    if (eb) { let sx0 = 0, sy0 = 0; for (const q of komp) { sx0 += q % w; sy0 += (q / w) | 0; } sx0 /= komp.length; sy0 /= komp.length; if (sx0 < eb[0] || sx0 > eb[2] || sy0 < eb[1] || sy0 > eb[3]) continue; }
     // befoglaló téglalap kitöltöttsége: a helyiség zömök (≥ 45%), a rajzok közti „zseb” szabálytalan, hosszú
     let bx0 = w, by0 = h, bx1 = 0, by1 = 0;
     for (const q of komp) { const x = q % w, y = (q / w) | 0; if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y; }

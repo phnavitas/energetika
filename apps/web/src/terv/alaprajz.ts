@@ -269,15 +269,38 @@ export function eszakjelKeres(lap: Lap, kizar: [number, number, number, number][
   // 1) „É” / „N” / „ÉSZAK” betű egy kis zárt alakzat mellett
   const betuk = szovegek.filter((t) => /^(É|N|ÉSZAK|NORTH)$/i.test(t.s.trim()));
   const kicsik = utvonalak.filter((u) => { const w = u.bbox[2] - u.bbox[0], h = u.bbox[3] - u.bbox[1]; return Math.max(w, h) > 10 && Math.max(w, h) < 200; });
+  // a betűhöz legközelebbi kompakt jelcsoport; ha van benne kitöltött (nyíl)alak, a nyíl tengelye adja az irányt:
+  // a csúcs a betűhöz legközelebbi pont, a tengely a jel pontjainak súlypontjától a csúcsig
+  type BetuJelolt = { e: Eszakjel; pont: number };
+  const bJeloltek: BetuJelolt[] = [];
   for (const b of betuk) {
     const bx = b.x + b.szel / 2, by = b.y - b.meret / 2;
+    const tav = (u: Utvonal) => Math.hypot(Math.max(u.bbox[0] - bx, 0, bx - u.bbox[2]), Math.max(u.bbox[1] - by, 0, by - u.bbox[3]));
+    const jel = kicsik.filter((u) => { const r = Math.max(u.bbox[2] - u.bbox[0], u.bbox[3] - u.bbox[1]); return tav(u) < 3 * b.meret && r < 12 * b.meret + 20 && !(bx > u.bbox[0] && bx < u.bbox[2] && by > u.bbox[1] && by < u.bbox[3] && r > 120); });
+    const tele = jel.filter((u) => u.muvelet !== 'stroke' && !/^#(f[0-9a-f]){3}$/i.test(u.toltoSzin));
+    if (jel.length && tele.length) {
+      const pts: [number, number][] = [];
+      // a kitöltött alak(ok) befoglalójába (30%-kal tágítva) eső elemek – a nyíl másik (üres) fele igen, a sraffozás nem
+      const t0 = Math.min(...tele.map((t) => t.bbox[0])), t1 = Math.min(...tele.map((t) => t.bbox[1])), t2 = Math.max(...tele.map((t) => t.bbox[2])), t3 = Math.max(...tele.map((t) => t.bbox[3]));
+      const tg = 0.3 * Math.max(t2 - t0, t3 - t1);
+      for (const u of jel) if (u.bbox[0] >= t0 - tg && u.bbox[2] <= t2 + tg && u.bbox[1] >= t1 - tg && u.bbox[3] <= t3 + tg)
+        for (const p of u.pontok) for (let i = 0; i + 1 < p.length; i += 2) pts.push([p[i]!, p[i + 1]!]);
+      const csucs = pts.reduce((a, q) => (Math.hypot(q[0] - bx, q[1] - by) < Math.hypot(a[0] - bx, a[1] - by) ? q : a));
+      const gx = pts.reduce((s2, q) => s2 + q[0], 0) / pts.length, gy = pts.reduce((s2, q) => s2 + q[1], 0) / pts.length;
+      if (Math.hypot(csucs[0] - gx, csucs[1] - gy) >= 1) {
+        const bb: [number, number, number, number] = [Math.min(...pts.map((q) => q[0])), Math.min(...pts.map((q) => q[1])), Math.max(...pts.map((q) => q[0])), Math.max(...pts.map((q) => q[1]))];
+        bJeloltek.push({ e: { szog: lapSzog(csucs[0] - gx, csucs[1] - gy), x: gx, y: gy, meret: Math.max(bb[2] - bb[0], bb[3] - bb[1]), forras: 'betu', bizonytalan: false, bbox: bb }, pont: 2 });
+        continue;
+      }
+    }
     const kozel = kicsik.filter((u) => { const cx = (u.bbox[0] + u.bbox[2]) / 2, cy = (u.bbox[1] + u.bbox[3]) / 2; const r = Math.max(u.bbox[2] - u.bbox[0], u.bbox[3] - u.bbox[1]); return Math.hypot(cx - bx, cy - by) < r * 1.6 + b.meret && !(bx > u.bbox[0] && bx < u.bbox[2] && by > u.bbox[1] && by < u.bbox[3] && r > 120); });
     if (!kozel.length) continue;
     const bb: [number, number, number, number] = [Math.min(...kozel.map((u) => u.bbox[0])), Math.min(...kozel.map((u) => u.bbox[1])), Math.max(...kozel.map((u) => u.bbox[2])), Math.max(...kozel.map((u) => u.bbox[3]))];
     const cx = (bb[0] + bb[2]) / 2, cy = (bb[1] + bb[3]) / 2;
     if (Math.hypot(bx - cx, by - cy) < 1) continue;
-    return { szog: lapSzog(bx - cx, by - cy), x: cx, y: cy, meret: Math.max(bb[2] - bb[0], bb[3] - bb[1]), forras: 'betu', bizonytalan: false, bbox: bb };
+    bJeloltek.push({ e: { szog: lapSzog(bx - cx, by - cy), x: cx, y: cy, meret: Math.max(bb[2] - bb[0], bb[3] - bb[1]), forras: 'betu', bizonytalan: false, bbox: bb }, pont: 1 });
   }
+  if (bJeloltek.length) return bJeloltek.reduce((a, c) => (c.pont > a.pont ? c : a)).e;
   // 2) önálló, kompakt kitöltött alakzat (nyíl / egyedi jel)
   const betuJel = szovegek.filter((t) => /^[A-Z]$/.test(t.s.trim()) && t.meret > 8);
   const nemFeher = (u: Utvonal) => u.muvelet !== 'stroke' && !/^#(f[0-9a-f]){3}$/i.test(u.toltoSzin);
@@ -424,7 +447,7 @@ const SORSZAM: Record<string, number> = { első: 1, második: 2, harmadik: 3, ne
 const ROMAI: Record<string, number> = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10 };
 export function szintekCimbol(cim: string): string[] {
   // betűvel / római számmal írt sorszám („Első emeleti”, „II. emelet”) → „1.”
-  const c = cim.toLowerCase()
+  const c = cim.toLowerCase().replace(/\bm\s*=?\s*1\s*:\s*\d+/g, ' ')
     .replace(/(első|második|harmadik|negyedik|ötödik|hatodik|hetedik|nyolcadik|kilencedik|tizedik)(?=[\s,–-]|$)/g, (m) => `${SORSZAM[m]}.`)
     .replace(/(?<![a-záéíóöőúüű])(i{1,3}|iv|v|vi{1,3}|ix|x)\s*\.(?=\s*(?:[-–,]|és|emelet))/g, (_m, r: string) => `${ROMAI[r]}.`);
   if (/pince|alagsor|mélygarázs/.test(c)) return ['P'];
@@ -434,5 +457,7 @@ export function szintekCimbol(cim: string): string[] {
   if (tart) { const a = Number(tart[1]), b = Number(tart[2]); return Array.from({ length: Math.max(0, b - a) + 1 }, (_, i) => String(a + i)); }
   const tobb = [...c.matchAll(/(\d+)\s*\.(?=[^\d]*(?:és|,|emelet))/g)].map((m) => m[1]!);
   if (tobb.length && /emelet/.test(c)) return [...new Set(tobb)];
+  // sorszám nélküli „emelet” (egyetlen emelet: földszint + emelet)
+  if (/emelet/.test(c) && !/\d/.test(c)) return ['1'];
   return [];
 }

@@ -3,7 +3,7 @@
  * felismerése, alaprajz (helyiségek, északjel, raszter, külső falak, nyílászárók) és metszet (rétegrendek, szintek).
  */
 import { lapKinyer, type Lap } from './kinyeres';
-import { alaprajzElemez, type AlaprajzEredmeny, type TervHelyiseg } from './alaprajz';
+import { alaprajzElemez, szintekCimbol, eszakjelKeres, jegyzekSorok, type AlaprajzEredmeny, type TervHelyiseg } from './alaprajz';
 import { raszterEpit, type Raszter, type RaszterBeallitas } from './raszter';
 import { kotaEllenoriz } from './kota';
 import type { TintaKep } from './tinta';
@@ -84,6 +84,48 @@ export function lapSzerep(lap: Lap, fajlnev = ''): { szerep: TervLap['szerep']; 
   return { szerep: 'egyeb', cim: cim || 'Egyéb lap' };
 }
 
+/**
+ * Több alaprajz egy lapon (pl. „FÖLDSZINT ALAPRAJZ” és „EMELET ALAPRAJZ” egymás alatt, vagy „MÁSODIK…” és
+ * „HARMADIK EMELETI ALAPRAJZ” egymás mellett): a különböző szintet megnevező rajzcímek mentén a lapot részekre
+ * bontjuk. A rajzcím a rajz bal felső vagy bal alsó sarkánál áll, ezért a határ a második (harmadik…) cím
+ * koordinátája abban az irányban, amelyben a címek egymástól jobban eltérnek. A rajzpecsét (szintet több szinttel
+ * vagy egyáltalán nem megnevező) lapcíme nem rajzcím.
+ */
+export function lapFeloszt(lap: Lap): { lap: Lap; cim: string }[] {
+  const cimek: { t: Lap['szovegek'][number]; sz: string }[] = [];
+  for (const t of lap.szovegek) {
+    if (t.s.trim().length > 60 || !/alaprajz/i.test(t.s)) continue;
+    const sz = szintekCimbol(t.s); if (sz.length !== 1) continue;
+    if (cimek.some((c) => c.sz === sz[0])) continue;
+    cimek.push({ t, sz: sz[0]! });
+  }
+  if (cimek.length < 2) return [];
+  // azonos betűméretű címek (a rajzcímek egyformák; a pecsétben más méretű a felirat)
+  const m = cimek.map((c) => c.t.meret).sort((a, b) => a - b)[cimek.length >> 1]!;
+  const cs = cimek.filter((c) => Math.abs(c.t.meret - m) <= 0.5);
+  if (cs.length < 2) return [];
+  const dx = Math.max(...cs.map((c) => c.t.x)) - Math.min(...cs.map((c) => c.t.x)), dy = Math.max(...cs.map((c) => c.t.y)) - Math.min(...cs.map((c) => c.t.y));
+  const fuggo = dy > dx; // egymás alatt
+  const k = (x: number, y: number) => (fuggo ? y : x);
+  cs.sort((a, b) => k(a.t.x, a.t.y) - k(b.t.x, b.t.y));
+  // a cím feletti / előtti sor is a rajzhoz tartozik (egymás alatti rajzoknál a cím a rajz tetején)
+  const hatar = cs.slice(1).map((c) => k(c.t.x, c.t.y) - (fuggo ? 2 * c.t.meret : 0));
+  const resz = (x: number, y: number) => { let i = 0; while (i < hatar.length && k(x, y) >= hatar[i]!) i++; return i; };
+  // az északjel (lapon egy van) minden részhez
+  const ej = eszakjelKeres(lap); const eb = ej?.bbox; const g = ej ? 0.3 * ej.meret + 20 : 0;
+  const jel = (x: number, y: number) => !!eb && x >= eb[0] - g && x <= eb[2] + g && y >= eb[1] - g && y <= eb[3] + g;
+  // a helyiségjegyzék (táblázat) sorai minden részhez – a pecsét gyakran csak kódot ír, a nevet, területet a jegyzék adja
+  const js = jegyzekSorok(lap.szovegek);
+  const tb = js.length ? [Math.min(...js.map((j) => j.x)) - 150, Math.min(...js.map((j) => j.y)) - 15, Math.max(...js.map((j) => j.x)) + 250, Math.max(...js.map((j) => j.y)) + 5] : null;
+  const tabla = (x: number, y: number) => !!tb && x >= tb[0]! && x <= tb[2]! && y >= tb[1]! && y <= tb[3]!;
+  return cs.map((c, i) => ({
+    cim: c.t.s.trim(),
+    lap: { szel: lap.szel, mag: lap.mag,
+      szovegek: lap.szovegek.filter((t) => resz(t.x, t.y) === i || jel(t.x, t.y) || tabla(t.x, t.y)),
+      utvonalak: lap.utvonalak.filter((u) => { const x = (u.bbox[0] + u.bbox[2]) / 2, y = (u.bbox[1] + u.bbox[3]) / 2; return resz(x, y) === i || (jel(x, y) && Math.max(u.bbox[2] - u.bbox[0], u.bbox[3] - u.bbox[1]) < 200); }) },
+  }));
+}
+
 export async function pdfLapok(f: File, kepSzel = 2000, halad?: (kesz: number, ossz: number) => void): Promise<TervLap[]> {
   const pdfjs = await pdfjsBetolt();
   const doc = await pdfjs.getDocument({ data: new Uint8Array(await f.arrayBuffer()), verbosity: 0, isEvalSupported: false }).promise;
@@ -114,7 +156,10 @@ export async function pdfLapok(f: File, kepSzel = 2000, halad?: (kesz: number, o
         tinta = { w: tc.width, h: tc.height, ptPx: ts, adat };
       } catch { tinta = undefined; }
     }
-    ki.push({ fajl: f.name, oldal: n, szerep, cim, lap, kep: c.toDataURL('image/jpeg', 0.82), kepSzel: c.width, kepMag: c.height, szurke: szurkeKep(c, scale), ...(tinta ? { tinta } : {}) });
+    const kep = c.toDataURL('image/jpeg', 0.82), szurke = szurkeKep(c, scale);
+    const reszek = szerep === 'alaprajz' ? lapFeloszt(lap) : [];
+    if (reszek.length) for (const r of reszek) ki.push({ fajl: f.name, oldal: n, szerep, cim: r.cim, lap: r.lap, kep, kepSzel: c.width, kepMag: c.height, szurke, ...(tinta ? { tinta } : {}) });
+    else ki.push({ fajl: f.name, oldal: n, szerep, cim, lap, kep, kepSzel: c.width, kepMag: c.height, szurke, ...(tinta ? { tinta } : {}) });
     page.cleanup();
     halad?.(n, ossz);
   }
@@ -151,7 +196,14 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
   const auto = !magHelyisegek.length && !!e.mPerPt;
   if (auto && szurke && !szurke.hatar) szurke = { ...szurke, hatar: arnyalatHatarok(szurke) };
   if (auto) {
-    magHelyisegek = automatikusHelyisegek(lap, e.mPerPt!, szurke);
+    magHelyisegek = automatikusHelyisegek(lap, e.mPerPt!, szurke, tinta);
+    // a szürke árnyalat (lakásszínezés) a falhatárt is adja; ha viszont a lapon a szürke sraffozás, minta (burkolat,
+    // anyagjelölés), akkor a helyiségeket szétszabdalja: ilyenkor a színkép nélküli felismerés ad több valódi helyiséget
+    if (szurke) {
+      const pont = (l: TervHelyiseg[]) => l.reduce((s2, h) => s2 + (h.A >= 4 ? h.A : 0), 0);
+      const nelkul = automatikusHelyisegek(lap, e.mPerPt!, undefined, tinta);
+      if (pont(nelkul) > 1.2 * pont(magHelyisegek)) { magHelyisegek = nelkul; szurke = undefined; }
+    }
     e.helyisegek = magHelyisegek;
     if (magHelyisegek.length) e.figyelmeztetesek = e.figyelmeztetesek.filter((x) => !/Helyiséget nem találtam/.test(x));
     if (magHelyisegek.length) e.figyelmeztetesek.push(`Helyiségpecsét nincs a lapon: ${magHelyisegek.length} zárt teret ismertem fel helyiségként (Helyiség 1, 2, …). Jelöld ki a lakás helyiségeit, és nevezd át őket a Helyiségek lépésben.`);
@@ -160,7 +212,24 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
   const kulsoPontok = e.helyisegek.filter((h) => h.kulter && h.forras === 'pecset').map((h) => h.mutato ?? h);
   const magok = magHelyisegek.map((h) => ({ ...(h.mutato ?? h), A: h.A }));
   let r: Raszter;
-  if (auto) r = raszterEpit(lap, e.mPerPt, magok, { px: 0.04, resZaras: 3.0, vastagVonalFal: 0.05, ...(szurke ? { szinKep: szurke } : {}) });
+  if (auto) {
+    // pecsét nélküli lap: a zárt terekből indított elárasztás. Az a „helyiség”, amely a végső raszterben a lap széléig
+    // kifolyik, vagy a zárt térként mért területének többszörösére nő (a rajz körüli méretlánc-zseb, keretmező),
+    // nem helyiség – kihagyjuk, és újraépítjük a raszter nélküle (különben az egész lapot elárasztja).
+    const opc = { px: 0.04, resZaras: 3.0, vastagVonalFal: 0.05, ...(szurke ? { szinKep: szurke } : {})};
+    r = raszterEpit(lap, e.mPerPt, magok, opc);
+    for (let kor = 0; kor < 12; kor++) {
+      const db = new Map<number, number>(); for (let k = 0; k < r.w * r.h; k++) { const c = r.cimke[k]!; if (c >= 2) db.set(c - 2, (db.get(c - 2) ?? 0) + 1); }
+      const rossz = new Set(magHelyisegek.map((h, i) => ((r.helyisegek[i]?.szivarog || (db.get(i) ?? 0) * r.px * r.px > Math.max(2 * h.A, h.A + 15)) ? i : -1)).filter((i) => i >= 0));
+      if (!rossz.size || rossz.size === magHelyisegek.length) break;
+      magHelyisegek = magHelyisegek.filter((_, i) => !rossz.has(i));
+      magHelyisegek.forEach((h, i) => { h.nev = `Helyiség ${i + 1}`; });
+      e.helyisegek = magHelyisegek;
+      magok.splice(0, magok.length, ...magHelyisegek.map((h) => ({ ...(h.mutato ?? h), A: h.A })));
+      r = raszterEpit(lap, e.mPerPt, magok, opc);
+    }
+    e.figyelmeztetesek = e.figyelmeztetesek.map((x) => x.replace(/^Helyiségpecsét nincs a lapon: \d+ zárt teret/, `Helyiségpecsét nincs a lapon: ${magHelyisegek.length} zárt teret`));
+  }
   else {
     // önellenőrzés: több felismerési változat (vektoros fal / + lapkép-„tinta”, ablaksor-szabállyal / nélküle) közül az,
     // amelyben a helyiségek kiterjedése a pecsétben írt területhez a legjobban illik (területtel súlyozott egyezés)
