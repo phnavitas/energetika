@@ -83,8 +83,10 @@ export function meretaranyKeres(sz: Szoveg[]): number | null {
 export function pecsetek(sz: Szoveg[]): TervHelyiseg[] {
   const vsz = sz.filter(vizszintes);
   const ki: TervHelyiseg[] = [];
+  // a területfelirat előtagja: „H: 19,05 m²” (hasznos), „A=”, „T:”, „Ah:” – maga a szám a terület
+  const ELOTAG = /^(?:H|A|T|Ah|Ahasz|Hasznos|Nt|Net)\s*[:=]\s*/i;
   for (const a of vsz) {
-    const s = szovegJavit(a.s);
+    const s = szovegJavit(a.s).replace(ELOTAG, '');
     const m = TERULET.exec(s);
     // a „m” nélküli szám csak akkor terület, ha közvetlenül utána felső indexű „2” vagy „m²” áll
     let ter: number | null = m ? szamErtek(m[1]!) : null;
@@ -94,27 +96,37 @@ export function pecsetek(sz: Szoveg[]): TervHelyiseg[] {
       if (!kov) continue;
       ter = szamErtek(s);
     }
+    // két területsor („H: 4,06 m²” hasznos és alatta „T: 6,48 m²” teljes): a pecsét az alsóból indul, a teljes
+    // (geometriai) alapterülettel – a hőburok felületeihez ez kell
+    const teruletSor = (t: Szoveg) => { const q = szovegJavit(t.s); return ELOTAG.test(q) && /^\d{1,4}[,.]\d{1,2}\s*(m\s*(²|2)?)?$/.test(q.replace(ELOTAG, '')); };
+    if (ELOTAG.test(szovegJavit(a.s)) && vsz.some((t) => t !== a && teruletSor(t) && t.y > a.y + a.meret * 0.4 && t.y < a.y + a.meret * 1.9 && Math.abs(kozep(t) - kozep(a)) < a.meret * 3)) continue;
     const sorok: Szoveg[] = [];
     let akt = a; const cx = kozep(a);
     let koz = 0; // sortávolság: az első lépés rögzíti, a többi ehhez igazodik
     for (let k = 0; k < 6; k++) {
-      const jelolt = vsz.filter((t) => t !== akt && !sorok.includes(t) && Math.abs(t.meret - a.meret) < a.meret * 0.2
-        && t.y < akt.y - a.meret * 0.6 && t.y > akt.y - a.meret * 1.9 && Math.abs(kozep(t) - cx) < Math.max(a.szel, t.szel) * 0.75 + a.meret
-        && (!koz || Math.abs(akt.y - t.y - koz) < koz * 0.25))
+      // a név / kód sora nagyobb betűs is lehet (pl. 8 pt-os „NAPPALI” a 6 pt-os burkolat és terület fölött)
+      const jelolt = vsz.filter((t) => t !== akt && !sorok.includes(t) && t.meret > a.meret * 0.8 && t.meret < a.meret * 1.5
+        && t.y < akt.y - a.meret * 0.6 && t.y > akt.y - Math.max(a.meret, t.meret) * 1.9 && Math.abs(kozep(t) - cx) < Math.max(a.szel, t.szel) * 0.75 + Math.max(a.meret, t.meret)
+        && (!koz || Math.abs(akt.y - t.y - koz) < koz * 0.25 + Math.max(0, t.meret - a.meret) * 1.2))
         .sort((p, q) => (Math.abs(kozep(p) - cx) + (akt.y - p.y)) - (Math.abs(kozep(q) - cx) + (akt.y - q.y)));
       const t = jelolt[0];
       if (t && !koz) koz = akt.y - t.y;
       if (!t) break;
       const ts = szovegJavit(t.s);
+      if (teruletSor(t) && ELOTAG.test(ts)) { akt = t; continue; } // a hasznos-terület sora a teljes fölött
       // másik pecsét / méretszám (a magyar méretszám tizedesvesszős; a pontos „1.01” helyiségkód lehet)
       if (TERULET.test(ts) || /^\d+,\d+$/.test(ts) || /^\d{4,}$/.test(ts)) break;
       sorok.unshift(t); akt = t;
-      if (kodE(ts)) break;
+      if (kodE(ts) || kodE(ts.split(/\s+/)[0] ?? '')) break;
     }
     if (!sorok.length) continue;
     const szovegek = sorok.map((t) => szovegJavit(t.s));
     let kod: string | undefined; let burkolat: string | undefined; const nevResz: string[] = [];
-    for (const t of szovegek) {
+    for (const t0 of szovegek) {
+      let t = t0;
+      // kód és név egy sorban: „001 előtér”, „T002 tároló-gépészet”
+      const kn = /^(\S+)\s+(\p{L}.*)$/u.exec(t);
+      if (!kod && kn && kodE(kn[1]!)) { kod = kn[1]!; t = kn[2]!; }
       if (!kod && kodE(t)) kod = t.replace(/\s/g, '');
       else if (!burkolat && BURKOLAT.test(t) && nevResz.length) burkolat = t;
       else nevResz.push(t);
