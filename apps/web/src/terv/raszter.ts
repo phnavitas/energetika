@@ -734,7 +734,21 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
     }
     if (legjobb >= 0) helyCimke[legjobb] = 2 + k;
   });
+  // a külső tér feliratai (fedett bejárat, terasz, lapostető) is versenyeznek az elárasztásban: a velük közös, falakkal
+  // nem teljesen lezárt teret (nyitott oldalú fedett bejárat) nem nyelheti el a szomszédos helyiség
+  const kpCimke = 2 + magok.length;
+  kp.forEach((m) => {
+    const [cx, cy] = tr(m.x, m.y).map(Math.round) as [number, number];
+    let kesz = false;
+    for (let r = 0; r < 40 && !kesz; r++) for (let dy = -r; dy <= r && !kesz; dy++) for (let dx = -r; dx <= r; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+      const x = cx + dx, y = cy + dy; if (x < 0 || y < 0 || x >= w || y >= h) continue;
+      const i = y * w + x; if (szabadKicsi[i] && !helyCimke[i]) { helyCimke[i] = kpCimke; kesz = true; break; }
+    }
+  });
   araszt(helyCimke, szabadKicsi, w, h);
+  const kpTer = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) if (helyCimke[i] === kpCimke) { helyCimke[i] = 0; kpTer[i] = 1; }
   szivargoPotlas(helyCimke, gat, magok, w, h, px, tr);
   if (sraffMod) {
     // a rács széléig kifutó „helyiség” (pl. a pecsétje a külső térben van: fedett bejáró, kukatároló) a külső tér része
@@ -761,6 +775,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       const i = y * w + x; if (nemHely[i]) { kulsoMag[i] = 1; kesz = true; break; }
     }
   }
+  for (let i = 0; i < w * h; i++) if (kpTer[i] && nemHely[i]) kulsoMag[i] = 1;
   araszt(kulsoMag, nemHely, w, h);
   // a zseb egy áthidalt nyíláson (≤ 0,6 m) át legalább 0,3 m hosszan érintkezik-e pecsételt helyiséggel
   const nyilasonHelyiseg = (komp: number[]) => {

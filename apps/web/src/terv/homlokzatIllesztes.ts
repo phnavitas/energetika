@@ -77,3 +77,34 @@ export function mertMagassagok(nyilasok: TervNyilas[], mPerPt: number, eszakSzog
   }
   return ki;
 }
+
+/**
+ * Északjel nélküli alaprajz: az észak iránya a homlokzati rajzokból. A címükben égtájat viselő homlokzatok
+ * nyílászárókereteit minden szóba jöhető északirány (45°-onként) mellett az alaprajz megfelelő homlokzatának
+ * nyílásaihoz illesztjük (szélesség és egymáshoz viszonyított helyzet); az az irány, amelynél a legtöbb nyílás
+ * egyezik. Csak egyértelmű győztes esetén ad eredményt (≥ 4 egyezés, a második legjobb legfeljebb kétharmada).
+ */
+export function eszakHomlokzatbol(nyilasok: TervNyilas[], mPerPt: number, rajzok: HomlokzatRajz[]): number | null {
+  const kulso = nyilasok.filter((n) => n.kulso && n.irany !== null && n.fajta !== 'falfulke' && n.szel > 0.3);
+  if (!rajzok.length || kulso.length < 4) return null;
+  const s = (n: TervNyilas) => { const t = n.irany! * Math.PI / 180; return (-Math.cos(t) * n.x - Math.sin(t) * n.y) * mPerPt; };
+  const e = (rz: HomlokzatRajz, k: HomlokzatKeret) => (k.x0 + k.x1) / 2 * rz.mPerPt;
+  const pont = (eszak: number) => {
+    let ossz = 0;
+    for (const rz of rajzok) {
+      const sajat = kulso.filter((n) => szogKul(n.irany! - eszak, rz.az) <= 22.5);
+      if (sajat.length < 2) continue;
+      let leg = 0;
+      for (const n of sajat) for (const k of rz.keretek) {
+        if (Math.abs(k.szel - n.szel) > SZT) continue;
+        const c = e(rz, k) - s(n);
+        const t = sajat.filter((m) => rz.keretek.some((q) => Math.abs(q.szel - m.szel) <= SZT && Math.abs(e(rz, q) - s(m) - c) <= 0.25)).length;
+        if (t > leg) leg = t;
+      }
+      ossz += leg;
+    }
+    return ossz;
+  };
+  const ered = [0, 45, 90, 135, 180, 225, 270, 315].map((sz) => ({ sz, p: pont(sz) })).sort((a, b) => b.p - a.p);
+  return ered[0]!.p >= 4 && ered[1]!.p <= (2 / 3) * ered[0]!.p ? ered[0]!.sz : null;
+}
