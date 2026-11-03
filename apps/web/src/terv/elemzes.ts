@@ -246,6 +246,7 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
   }
   kotaEllenoriz(r, lap.szovegek);
   talajOldal(lap, r, e.helyisegek.filter((h) => h.forras === 'pecset' && !h.kulter).map((h) => h.mutato ?? h));
+  szomszedOldal(lap, r);
   // pecsét nélküli típusalaprajz: lakás = egy szürkével színezett, összefüggő terület helyiségei (az x-szel áthúzott aknák nélkül)
   if (auto && szurke) {
     const l = lakasCsoportok(r, magHelyisegek, lap, szurke);
@@ -260,6 +261,13 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
   const feliratok = nyilasFeliratok(lap.szovegek);
   const nyilasok = nyilasokHozzarendel(feliratok, r, magHelyisegek.map((h) => h.nev), auto)
     .map((n) => (n.fajta !== 'belso_ajto' && falfulkeE(n, r, lap) ? { ...n, fajta: 'falfulke' as const, kulso: false } : n));
+  // ugyanannak a kapunak két felirata (pl. falnyílás- és tokmagasság külön: „3,75 / 2,25” és „3,75 / 2,40”): azonos
+  // helyiség, irány és szélesség, a kapu szélességén belül egymás mellett → egy kapu (az alacsonyabb marad)
+  for (let i = nyilasok.length - 1; i >= 0; i--) {
+    const a = nyilasok[i]!; if (a.fajta !== 'garazskapu') continue;
+    const j = nyilasok.findIndex((b, k) => k !== i && b.fajta === 'garazskapu' && b.helyiseg === a.helyiseg && b.irany === a.irany && Math.abs(b.szel - a.szel) < 0.01 && Math.hypot(b.x - a.x, b.y - a.y) * r.mPerPt < a.szel);
+    if (j >= 0) { const b = nyilasok[j]!; if (a.mag < b.mag) nyilasok[j] = a; nyilasok.splice(i, 1); }
+  }
   // felirat nélküli függönyfalak, üvegfalak (széles, üvegezett falszakasz a fűtött helyiség és a külső tér határán)
   nyilasok.push(...fuggonyfalak(r, nyilasok, magHelyisegek.map((h) => h.mutato ?? h)));
   // méretfelirat nélküli (pl. csak típusjeles) homlokzati nyílások: a falnyílás mért szélességével
@@ -331,4 +339,36 @@ export function eszakJavitas(alairas: string | undefined): number {
 export function eszakJavitasMent(alairas: string | undefined, elteres: number) {
   if (!alairas) return;
   try { const t = JSON.parse(localStorage.getItem(JAVITAS_KULCS) ?? '{}') as Record<string, number>; t[alairas] = ((elteres % 360) + 360) % 360; localStorage.setItem(JAVITAS_KULCS, JSON.stringify(t)); } catch { /* nincs tároló */ }
+}
+
+/**
+ * Szomszédos épülethez csatlakozó falak: a külső falszakasz mögött (kifelé, ≤ 4 m-en belül, a szakasz mentén legfeljebb
+ * 1,5 m-rel túlnyúlva) „szomszédos épület”, „szomszéd ingatlan”, „zártsorú”, „tűzfal” felirat áll. A felirat elforgatva
+ * (a fal mentén) is állhat: a kezdőpontja és a közepe is számít.
+ */
+export function szomszedOldal(lap: Lap, r: Raszter) {
+  const SZ = /szomsz[ée]d(?:os)?\s+(?:épület|ingatlan|telek|ház)|zártsor|tűzfal|ikres\s+csatlakoz/i;
+  // a felirat szakasza (kezdő- és végpont; elforgatva a fal mentén is állhat)
+  const szakasz = lap.szovegek.filter((t) => SZ.test(t.s)).map((t) => {
+    const a = (t.szog ?? 0) * Math.PI / 180;
+    return { x0: t.x, y0: t.y, x1: t.x + Math.cos(a) * t.szel, y1: t.y - Math.sin(a) * t.szel };
+  });
+  const pontok = szakasz;
+  if (!pontok.length) return;
+  const m = r.mPerPt;
+  for (const H of r.helyisegek) for (const sg of H.szakaszok) {
+    if (sg.tul !== 'kulso' || !sg.pontok.length) continue;
+    const fugg = sg.irany === 90 || sg.irany === 270; // a fal függőleges a lapon
+    const kifele = sg.irany === 0 || sg.irany === 270 ? -1 : 1;
+    const c = sg.pontok.reduce((s0, q) => s0 + (fugg ? q[0] : q[1]), 0) / sg.pontok.length;
+    const menten = sg.pontok.map((q) => (fugg ? q[1] : q[0]));
+    const a0 = Math.min(...menten), a1 = Math.max(...menten);
+    sg.szomszed = pontok.some((f) => {
+      // a felirat (középpontja) a fal mögött 4 m-en belül, és a fal mentén átfed a szakasszal (1,5 m tűréssel)
+      const kx = (f.x0 + f.x1) / 2, ky = (f.y0 + f.y1) / 2;
+      const kereszt = ((fugg ? kx : ky) - c) * kifele * m;
+      const f0 = Math.min(fugg ? f.y0 : f.x0, fugg ? f.y1 : f.x1), f1 = Math.max(fugg ? f.y0 : f.x0, fugg ? f.y1 : f.x1);
+      return kereszt > 0 && kereszt <= 4 && f1 >= a0 - 1.5 / m && f0 <= a1 + 1.5 / m;
+    });
+  }
 }

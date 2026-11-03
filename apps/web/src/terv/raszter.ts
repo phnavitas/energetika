@@ -46,6 +46,9 @@ export interface FalSzakasz {
   pontok: [number, number][];
   /** Külső szakasznál: a fal mögött talaj (terep-/földsraffozás) van – terepszint alatti szintnél talajjal érintkező fal. */
   talaj?: boolean;
+  /** Külső szakasznál: a fal mögött szomszédos épület áll („szomszédos épület”, „zártsorú”, „tűzfal” felirat) –
+   * zártsorú / ikres csatlakozás, nem homlokzati fal. */
+  szomszed?: boolean;
 }
 
 export interface Raszter {

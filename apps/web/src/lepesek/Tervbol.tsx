@@ -145,7 +145,7 @@ function atvetelReszek(al: AlaprajzFeldolgozas, k: Kijeloles, mert?: Map<TervNyi
   const kategoria = (i: number): HelyisegKategoria => k.kat[i] ?? (k.mindFutott ? 'kondicionalt' : kategoriaJavaslat(hs[i]!.nev) ?? 'kondicionalt');
   const ri = (i: number) => al.magHelyisegek.indexOf(hs[i]!);
   const bf = k.burok && al.r ? burokFalak(al.r, k.burok, futottRiK(al, k), pecsetPontok(al)) : null;
-  const falak = (i: number) => { const x = ri(i); if (bf) return x < 0 ? [] : (bf.get(x) ?? []).filter((f) => f.hossz >= 0.3); return !al.r || x < 0 ? [] : al.r.helyisegek[x]!.szakaszok.filter((s, j) => (s.tul === 'kulso' || (s.tul === 'ismeretlen' && !!k.ismKulso?.has(`${x}|${j}`))) && s.hossz >= 0.3); };
+  const falak = (i: number) => { const x = ri(i); if (bf) return x < 0 ? [] : (bf.get(x) ?? []).filter((f) => f.hossz >= 0.3); return !al.r || x < 0 ? [] : al.r.helyisegek[x]!.szakaszok.filter((s, j) => ((s.tul === 'kulso' && !s.szomszed) || (s.tul === 'ismeretlen' && !!k.ismKulso?.has(`${x}|${j}`))) && s.hossz >= 0.3); };
   const kiv = hs.map((h, i) => ({ h, i })).filter(({ i }) => valasztott[i]);
   const index = new Map(kiv.map(({ i }, j) => [i, j]));
   const helyisegek = kiv.map(({ h, i }) => ({
@@ -342,7 +342,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const kategoria = (i: number): HelyisegKategoria => kat[i] ?? (mindFutott ? 'kondicionalt' : kategoriaJavaslat(helyisegek[i]!.nev) ?? 'kondicionalt');
   const falak = (i: number) => {
     const ri = raszterIdx(i); if (!al?.r || ri < 0) return [];
-    return al.r.helyisegek[ri]!.szakaszok.filter((s, j) => (s.tul === 'kulso' || (s.tul === 'ismeretlen' && !!kj.ismKulso?.has(`${ri}|${j}`))) && s.hossz >= 0.3);
+    return al.r.helyisegek[ri]!.szakaszok.filter((s, j) => ((s.tul === 'kulso' && !s.szomszed) || (s.tul === 'ismeretlen' && !!kj.ismKulso?.has(`${ri}|${j}`))) && s.hossz >= 0.3);
   };
   // hőburok-körvonal: a felismert (fűtött helyiségek összevonva), vagy a felhasználó által szerkesztett
   const futottKulcs = al ? [...futottRiK(al, kj)].sort((a, b) => a - b).join(',') : '';
@@ -482,6 +482,12 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     const szintSor = [...new Set(alaprajzLapok.flatMap(({ i }) => lapSzintek(i)))].sort((x, y) => SZINT_SOR.indexOf(x) - SZINT_SOR.indexOf(y));
     const mert = a.r && a.e.mPerPt && a.nyilasok.some((n) => n.mert) ? mertMagassagok(a.nyilasok, a.e.mPerPt, o.eszak, homlokzatRajzTar(homlokzatLapok.map(({ l }) => l.lap), a.e.meretarany), Math.max(0, szintSor.indexOf(o.szintek[0] ?? 'F')), szintSor.length) : undefined;
     const { helyisegek: hs, nyilasok: ny } = atvetelReszek(a, k, mert);
+    // szomszédos épülethez csatlakozó (zártsorú, ikres) falak: nem homlokzati falak – az átvételből kimaradnak
+    if (a.r) {
+      const { ri: riL } = atvetelReszek(a, k);
+      const szh = riL.reduce((t, x) => t + (x < 0 ? 0 : a.r!.helyisegek[x]!.szakaszok.filter((sg) => sg.tul === 'kulso' && sg.szomszed).reduce((q, sg) => q + sg.hossz, 0)), 0);
+      if (szh >= 0.3) extraUz.push(`Szomszédos épülethez csatlakozó fal: ${String(Math.round(szh * 100) / 100).replace('.', ',')} m (a rajzon „szomszédos épület” / „zártsorú” felirat a fal mögött) – nem homlokzati fal, nem került át; ha a szomszéd fűtetlen, a Határolás lépésben vedd fel.`);
+    }
     const mertDb = ny.length && mert ? [...mert.values()] : [];
     if (mertDb.length) {
       const h = mertDb.filter((x) => x.forras === 'homlokzat').length, sz = mertDb.filter((x) => x.forras === 'szelesseg').length, b = mertDb.filter((x) => x.forras === 'becsult').length;
