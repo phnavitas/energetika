@@ -149,7 +149,7 @@ function atvetelReszek(al: AlaprajzFeldolgozas, k: Kijeloles, mert?: Map<TervNyi
   const kiv = hs.map((h, i) => ({ h, i })).filter(({ i }) => valasztott[i]);
   const index = new Map(kiv.map(({ i }, j) => [i, j]));
   const helyisegek = kiv.map(({ h, i }) => ({
-    kod: h.kod, nev: h.nev, burkolat: h.burkolat, A: h.A, kategoria: kategoria(i), egyseg: h.egyseg ? (al.e.egysegInfo[h.egyseg]?.nev ?? h.egyseg) : undefined, falak: falak(i).map((f) => ({ irany: f.irany, hossz: f.hossz, ...("talaj" in f && f.talaj ? { talaj: true } : {}) })),
+    kod: h.kod, nev: h.nev, burkolat: h.burkolat, A: h.hasznosA ?? h.A, ...(h.hasznosA !== undefined ? { teljesA: h.A } : {}), kategoria: kategoria(i), egyseg: h.egyseg ? (al.e.egysegInfo[h.egyseg]?.nev ?? h.egyseg) : undefined, falak: falak(i).map((f) => ({ irany: f.irany, hossz: f.hossz, ...("talaj" in f && f.talaj ? { talaj: true } : {}) })),
     // fal fűtetlen (gyengén kapcsolt) helyiség felé, pl. garázs
     futetlenFalak: (() => { const x = ri(i); if (!al.r || x < 0) return []; return al.r.helyisegek[x]!.szakaszok.filter((s) => typeof s.tul === 'number' && s.hossz >= 0.3).flatMap((s) => {
       const mi = hs.indexOf(al.magHelyisegek[s.tul as number]!); return mi >= 0 && valasztott[mi] && kategoria(mi) === 'gyengen_kapcsolt' && kategoria(i) !== 'gyengen_kapcsolt' ? [{ hossz: s.hossz, fele: hs[mi]!.nev }] : []; }); })(),
@@ -195,6 +195,10 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   // szomszédos épület fűtött-e – a válasz minden lapra érvényes (a soronkénti kézi besorolás elsőbbséget élvez)
   const [futottValasz, setFutottValasz] = useState<Record<string, boolean>>({});
   const [szomszedFutott, setSzomszedFutott] = useState(true);
+  /** Átvétel előtti kérdések modális ablaka: a megerősítés után futó átvétel. */
+  const [kerdesAblak, setKerdesAblak] = useState<null | 'osszes' | 'egy'>(null);
+  /** Átvétel előtt: ha van eldöntendő kérdés, modális ablakban (a képernyő közepén) kérdezünk, különben azonnal. */
+  const kerdezveAtvesz = (mi: 'osszes' | 'egy') => { if (eldontendoKerdesek()) setKerdesAblak(mi); else if (mi === 'osszes') osszesAtvesz(); else atvesz(); };
   const kerdesKulcs = (nev: string) => nev.toLowerCase().replace(/\s*\([^)]*\)\s*/g, ' ').replace(/[^\p{L}\s-]/gu, '').replace(/\s+/g, ' ').trim();
   const kjVeg = (i: number, a: AlaprajzFeldolgozas): Kijeloles => {
     const k = kijelolesek[i] ?? alapKijeloles(a); const rk = reszKizar(a);
@@ -541,8 +545,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     }
     if (!jel.size && szomszed < 0.3) return null;
     return (
-      <div class="szakasz-belso" style="margin-top:12px;padding:10px 12px;border:1px solid var(--szegely, #ccc);border-radius:6px" role="group" aria-label="Eldöntendő a beolvasáshoz">
-        <strong>Eldöntendő a beolvasáshoz</strong>
+      <div role="group" aria-label="Eldöntendő a beolvasáshoz">
         <table class="tabla" style="margin-top:6px"><tbody>
           {[...jel.entries()].map(([kk, x]) => (
             <tr>
@@ -811,9 +814,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                 </div>
               );
             })()}
-            {eldontendoKerdesek()}
             <div class="gombsor" style="margin-top:8px">
-              <button class="gomb fo" disabled={osszesFut || alaprajzLapok.some(({ i }) => elemzesek[i] === undefined) || !alaprajzLapok.some(({ i }) => !kimarad(i) && !atvett.has(i))} onClick={osszesAtvesz}>
+              <button class="gomb fo" disabled={osszesFut || alaprajzLapok.some(({ i }) => elemzesek[i] === undefined) || !alaprajzLapok.some(({ i }) => !kimarad(i) && !atvett.has(i))} onClick={() => kerdezveAtvesz('osszes')}>
                 {alaprajzLapok.some(({ i }) => elemzesek[i] === undefined) ? `Feldolgozás… (${alaprajzLapok.filter(({ i }) => elemzesek[i] !== undefined).length} / ${alaprajzLapok.length})` : `Összes kijelölt alaprajz átvétele (${alaprajzLapok.filter(({ i }) => !kimarad(i)).length} lap)`}
               </button>
               <span class="halkabb">{csere && !atvett.size ? 'A projekt meglévő helyiségei, felületei és nyílászárói helyére kerülnek (Felülírás – lent módosítható).' : 'A meglévők mellé kerülnek.'} A megnyitott lapnál a kézi kijelölés, a többinél az összes egység és helyiség.</span>
@@ -822,6 +824,32 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
         )}
       </section>
 
+      {kerdesAblak && (
+        <div class="modal-hatter">
+          <div class="modal" role="dialog" aria-modal="true" aria-label="Eldöntendő az átvételhez">
+            <h2>Eldöntendő az átvételhez</h2>
+            {eldontendoKerdesek()}
+            <div class="gombsor">
+              <button class="gomb halk-gomb semleges" onClick={() => setKerdesAblak(null)}>Mégse</button>
+              <button class="gomb fo" onClick={() => { const mi = kerdesAblak; setKerdesAblak(null); if (mi === 'osszes') osszesAtvesz(); else atvesz(); }}>Átvétel</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {kesz && (
+        <div class="modal-hatter">
+          <div class="modal" role="dialog" aria-modal="true" aria-label="Átvétel eredménye">
+            <h2>Átvéve</h2>
+            <div role="status">{kesz.map((u) => <p class="halkabb">{u}</p>)}</div>
+            <div class="gombsor">
+              <button class="gomb" onClick={() => ugrik('helyisegek')}>Helyiségek</button>
+              <button class="gomb" onClick={() => ugrik('retegrendek')}>Rétegrendek</button>
+              <button class="gomb" onClick={() => ugrik('hatarolas')}>Határolás</button>
+              <button class="gomb fo" onClick={() => setKesz(null)}>Rendben</button>
+            </div>
+          </div>
+        </div>
+      )}
       {aLap && !al && elemzesek[aIdx] === undefined && <section class="szakasz"><p class="halk" role="status">A(z) „{aLap.cim || aLap.fajl}” alaprajz feldolgozása folyamatban…</p></section>}
       {aLap && typeof elemzesek[aIdx] === 'string' && <section class="szakasz"><div class="hiba-doboz">A(z) „{aLap.cim || aLap.fajl}” alaprajz nem dolgozható fel: {elemzesek[aIdx] as string}</div></section>}
 
@@ -1185,19 +1213,10 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             <label><input type="checkbox" checked={tetoAt} onChange={(e) => setTetoAt((e.target as HTMLInputElement).checked)} /> Padlásfödém / tető (legfelső szint)</label>
           </div>
           <div class="gombsor">
-            {alaprajzLapok.length > 1 && <button class="gomb fo" disabled={osszesFut || alaprajzLapok.some(({ i }) => elemzesek[i] === undefined)} onClick={osszesAtvesz}>Összes kijelölt alaprajz átvétele ({alaprajzLapok.filter(({ i }) => !kimarad(i)).length} lap)</button>}
-            <button class={`gomb${alaprajzLapok.length > 1 ? '' : ' fo'}`} disabled={!valasztott.some(Boolean)} onClick={atvesz}>{alaprajzLapok.length > 1 ? `Csak ez a lap: ${aLap?.cim || aLap?.fajl}` : 'Átvétel a projektbe'}</button>
+            {alaprajzLapok.length > 1 && <button class="gomb fo" disabled={osszesFut || alaprajzLapok.some(({ i }) => elemzesek[i] === undefined)} onClick={() => kerdezveAtvesz('osszes')}>Összes kijelölt alaprajz átvétele ({alaprajzLapok.filter(({ i }) => !kimarad(i)).length} lap)</button>}
+            <button class={`gomb${alaprajzLapok.length > 1 ? '' : ' fo'}`} disabled={!valasztott.some(Boolean)} onClick={() => kerdezveAtvesz('egy')}>{alaprajzLapok.length > 1 ? `Csak ez a lap: ${aLap?.cim || aLap?.fajl}` : 'Átvétel a projektbe'}</button>
           </div>
-          {kesz && (
-            <div class="kartya" style="margin-top:12px" role="status">
-              <strong>Átvéve.</strong> {kesz.map((u) => <p class="halkabb">{u}</p>)}
-              <div class="gombsor" style="margin-top:8px">
-                <button class="gomb" onClick={() => ugrik('helyisegek')}>Helyiségek</button>
-                <button class="gomb" onClick={() => ugrik('retegrendek')}>Rétegrendek</button>
-                <button class="gomb" onClick={() => ugrik('hatarolas')}>Határolás</button>
-              </div>
-            </div>
-          )}
+
         </section>
       )}
       {homlokzatLapok.length > 0 && <HomlokzatEllenorzes p={p} lapok={homlokzatLapok} />}

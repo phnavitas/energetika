@@ -12,6 +12,8 @@ import { egtaj, szintNev } from './alaprajz';
 
 export interface AtvettHelyiseg {
   kod?: string; nev: string; burkolat?: string; A: number; kategoria: HelyisegKategoria;
+  /** Teljes (geometriai) alapterület, ha A a hasznos alapterület (tetőtér: „H:” és „T:” terület) – a tető vízszintes vetületéhez. */
+  teljesA?: number;
   /** Lakás / egység megjelenő neve (csoportosításhoz). */
   egyseg?: string;
   /** Külső falak a homlokzat lapiránya szerint (nettó belső hossz, m). */
@@ -254,6 +256,8 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
   // talajon fekvő padló(k) – burkolat szerint a megfelelő padló-rétegrendre; a kerület a terület arányában oszlik meg
   const futott = a.helyisegek.filter((h) => h.kategoria !== 'gyengen_kapcsolt');
   const Aossz = futott.reduce((s, h) => s + h.A, 0);
+  // a legfelső szint feletti szerkezet (tető, kalapfödém) vízszintes vetülete a teljes alapterület szerint
+  const AossT = futott.reduce((s, h) => s + (h.teljesA ?? h.A), 0);
   // terepszint alatt csak a talaj felé eső kerület kitett (a fűtetlen belső tér felé eső nem)
   const Possz = a.helyisegek.filter(burok).reduce((s, h) => s + h.falak.filter((f) => !terep || f.talaj).reduce((q, f) => q + f.hossz, 0), 0);
   const pinceFodem = a.retegrendek.find((x) => x.becsles.szerep === 'pincefodem' && x.becsles.kovetelmenyKod === 'also_zarofodem' && !x.becsles.kihagy);
@@ -297,19 +301,19 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
   }
   // tetőtér: a térdfal és a kalapfödém (belmagasság) közti ferde tetősáv az eresz menti homlokzatokon; vízszintes
   // vetülete a tetőtér alapterületéből levonódik (a maradék a kalapfödém / padlásfödém)
-  let AFelso = Aossz;
-  if (tt && Aossz > 0) {
+  let AFelso = AossT;
+  if (tt && AossT > 0) {
     const alfa = tt.hajlas * Math.PI / 180;
     const w = Math.max(0, (a.belmagassag - tt.terdfal!) / Math.tan(alfa));
     const tetoRr = a.retegrendek.find((x) => x.becsles.szerep === 'teto' && !x.becsles.kihagy && !/garázs|garazs|pince/i.test(x.rr.cim)) ?? padlas;
     let vetulet = 0;
     for (const ir of Object.keys(ereszHossz).map(Number)) {
       const L = ereszHossz[ir]!; if (L < 0.2) continue;
-      const v = Math.min(L * w, Aossz / 2); vetulet += v;
+      const v = Math.min(L * w, AossT / 2); vetulet += v;
       const t = egtaj(ir, a.eszakSzog);
       p.feluletek.push({ id: ujId(), nev: `Ferde tető (tetőtér, ${sz2(tt.hajlas)}°) – ${t}`, fajta: 'opak', retegrendId: tetoRr ? rrIdM.get(tetoRr.rr) : undefined, hatar: 'kulso', A: kerek(v / Math.cos(alfa)), tajolas: t, hajlasszog: ([30, 45, 60] as const).reduce((b, x) => (Math.abs(x - tt.hajlas) < Math.abs(b - tt.hajlas) ? x : b)), chi: 0.1 });
     }
-    AFelso = Math.max(0, Aossz - vetulet);
+    AFelso = Math.max(0, AossT - vetulet);
     // tetősík ablakok a ferde tetőben
     const ferdeId: Record<number, string> = {};
     for (const f of p.feluletek.slice(-4)) for (const ir of [0, 90, 180, 270]) if (f.nev.endsWith(`– ${egtaj(ir, a.eszakSzog)}`) && f.nev.startsWith('Ferde tető')) ferdeId[ir] = f.id;

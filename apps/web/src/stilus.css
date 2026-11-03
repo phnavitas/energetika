@@ -429,3 +429,9 @@ details.osszecsukhato[open] > summary { margin-bottom: 4px; }
 .munka > header .eszkozsor .gomb[aria-label] { min-width: 36px; font-size: 17px; line-height: 1; padding: 6px 10px; }
 .sor-nyit { border: 0; background: none; cursor: pointer; font-size: 13px; padding: 2px 4px; color: var(--szoveg, inherit); line-height: 1; vertical-align: middle; }
 .tabla tr.alsor td { background: var(--lap-2, rgba(0,0,0,.025)); font-size: 13px; }
+
+/* modális ablak: a képernyő közepén, a munkaterület fölött */
+.modal-hatter { position: fixed; inset: 0; background: color-mix(in srgb, var(--tus, #000) 35%, transparent); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+.modal { background: var(--lap, #fff); color: inherit; border-radius: 8px; box-shadow: 0 12px 40px rgba(0, 0, 0, .25); max-width: 640px; width: 100%; max-height: 85vh; overflow: auto; padding: 18px 20px; }
+.modal h2 { margin: 0 0 8px; font-size: 18px; }
+.modal .gombsor { margin-top: 14px; justify-content: flex-end; }

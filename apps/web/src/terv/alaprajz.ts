@@ -7,6 +7,9 @@ import type { Lap, Szoveg, Utvonal } from './kinyeres';
 
 export interface TervHelyiseg {
   kod?: string; nev: string; burkolat?: string; A: number;
+  /** Hasznos alapterület, ha a pecsét a teljes (A) mellett külön is megadja („H: 4,06 m²” a „T: 6,48 m²” fölött –
+   * tetőtérben a belmagasság szerinti hasznos rész): a fűtött alapterülethez ez számít, a geometriához A. */
+  hasznosA?: number;
   /** A pecsét középpontja (pt, lapkoordináta). */
   x: number; y: number;
   /** A pecsét befoglaló téglalapja (pt). */
@@ -101,6 +104,7 @@ export function pecsetek(sz: Szoveg[]): TervHelyiseg[] {
     const teruletSor = (t: Szoveg) => { const q = szovegJavit(t.s); return ELOTAG.test(q) && /^\d{1,4}[,.]\d{1,2}\s*(m\s*(²|2)?)?$/.test(q.replace(ELOTAG, '')); };
     if (ELOTAG.test(szovegJavit(a.s)) && vsz.some((t) => t !== a && teruletSor(t) && t.y > a.y + a.meret * 0.4 && t.y < a.y + a.meret * 1.9 && Math.abs(kozep(t) - kozep(a)) < a.meret * 3)) continue;
     const sorok: Szoveg[] = [];
+    let hasznos: number | undefined;
     let akt = a; const cx = kozep(a);
     let koz = 0; // sortávolság: az első lépés rögzíti, a többi ehhez igazodik
     for (let k = 0; k < 6; k++) {
@@ -113,7 +117,7 @@ export function pecsetek(sz: Szoveg[]): TervHelyiseg[] {
       if (t && !koz) koz = akt.y - t.y;
       if (!t) break;
       const ts = szovegJavit(t.s);
-      if (teruletSor(t) && ELOTAG.test(ts)) { akt = t; continue; } // a hasznos-terület sora a teljes fölött
+      if (teruletSor(t) && ELOTAG.test(ts)) { hasznos = szamErtek(ts.replace(ELOTAG, '').replace(/\s*m.*$/, '')); akt = t; continue; } // a hasznos-terület sora a teljes fölött
       // másik pecsét / méretszám (a magyar méretszám tizedesvesszős; a pontos „1.01” helyiségkód lehet)
       if (TERULET.test(ts) || /^\d+,\d+$/.test(ts) || /^\d{4,}$/.test(ts)) break;
       sorok.unshift(t); akt = t;
@@ -138,7 +142,7 @@ export function pecsetek(sz: Szoveg[]): TervHelyiseg[] {
     const ys = [...sorok, a].map((t) => t.y);
     const bal = Math.min(...[...sorok, a].map((t) => t.x)), jobb = Math.max(...[...sorok, a].map((t) => t.x + t.szel));
     const bbox: [number, number, number, number] = [bal, Math.min(...ys) - a.meret, jobb, Math.max(...ys) + a.meret * 0.25];
-    ki.push({ kod, nev: nagybetuJavit(nev), burkolat, A: ter, x: cx, y: (Math.min(...ys) + Math.max(...ys)) / 2 - a.meret / 2, bbox, forras: 'pecset', kulter: kulterE(nev) || (!kod && BURKOLAT.test(nev) && nev.split(' ').length <= 2), egyseg: kod ? egysegKod(kod) : undefined });
+    ki.push({ kod, nev: nagybetuJavit(nev), burkolat, A: ter, ...(hasznos !== undefined && hasznos < ter ? { hasznosA: hasznos } : {}), x: cx, y: (Math.min(...ys) + Math.max(...ys)) / 2 - a.meret / 2, bbox, forras: 'pecset', kulter: kulterE(nev) || (!kod && BURKOLAT.test(nev) && nev.split(' ').length <= 2), egyseg: kod ? egysegKod(kod) : undefined });
   }
   // azonos pecsét kétszeri felismerése ellen
   return ki.filter((h, i) => ki.findIndex((g) => Math.hypot(g.x - h.x, g.y - h.y) < 3 && g.A === h.A) === i);

@@ -496,12 +496,15 @@ function App() {
 
         <main class="munka">
           {elhagyKerdes && (
-            <div class="figyelmeztetes sav" role="alertdialog" aria-label="Beolvasott tervlapok">
-              <span>{tervbolFuggo.lapok} beolvasott tervlapot még nem vettél át a projektbe. Ha elhagyod a lapot, a beolvasás és a kijelölések elvesznek. Biztosan elhagyod?</span>
-              <span class="gombsor">
-                <button class="gomb" onClick={() => setElhagyKerdes(null)}>Maradok, átveszem</button>
-                <button class="gomb halk-gomb semleges" onClick={() => { tervbolFuggo.lapok = 0; const n = elhagyKerdes; setElhagyKerdes(null); setNezetNyers(n); }}>Elhagyom</button>
-              </span>
+            <div class="modal-hatter">
+              <div class="modal" role="alertdialog" aria-modal="true" aria-label="Beolvasott tervlapok">
+                <h2>Át nem vett tervlapok</h2>
+                <p>{tervbolFuggo.lapok} beolvasott tervlapot még nem vettél át a projektbe. Ha elhagyod a lapot, a beolvasás és a kijelölések elvesznek. Biztosan elhagyod?</p>
+                <div class="gombsor">
+                  <button class="gomb fo" onClick={() => setElhagyKerdes(null)}>Maradok, átveszem</button>
+                  <button class="gomb halk-gomb semleges" onClick={() => { tervbolFuggo.lapok = 0; const n = elhagyKerdes; setElhagyKerdes(null); setNezetNyers(n); }}>Elhagyom</button>
+                </div>
+              </div>
             </div>
           )}
           {tavoli && mentes.a === 'utkozes' && (
