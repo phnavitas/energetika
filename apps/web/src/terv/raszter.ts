@@ -88,7 +88,8 @@ export function falKitoltes(u: Utvonal, mPerPt: number, maxFal = 0.9): boolean {
   // (a bútorok – szekrény, pult, kád – 0,5 m-nél mélyebbek vagy rövidek)
   const hossz = Math.max(u.bbox[2] - u.bbox[0], u.bbox[3] - u.bbox[1]) * mPerPt;
   // (a rövid falpillérek miatt itt csak 0,15 m; a bútorokat a rétegszomszédság-vizsgálat szűri ki)
-  return v >= 0.03 && v <= 0.35 && hossz >= 0.15;
+  // (csarnok szendvicspanel-fala 0,6 m-ig, ha hosszú – a végeinek pillérbe futását a felhasználás helye vizsgálja)
+  return v >= 0.03 && (v <= 0.35 ? hossz >= 0.15 : v <= 0.6 && hossz >= 2 && hossz >= 5 * v);
 }
 
 /** Sokszögek kitöltése páros-páratlan szabállyal a rácsra. */
@@ -260,7 +261,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   const ptPx = mPerPt / px; // 1 pt hány pixel
   const kp = b.kulsoPontok ?? [];
   // a rács a pecsétek körül: legalább `margo`, nagy helyiségnél (a pecsét a terem közepén) a terület gyökével arányosan több
-  const mg = (m: { A?: number }) => Math.min(20, Math.max(margo, Math.sqrt(m.A ?? 0) + 2)) / mPerPt;
+  const mg = (m: { A?: number }) => Math.min(40, Math.max(margo, Math.sqrt(m.A ?? 0) + 2)) / mPerPt;
   const pk = [...magok.map((m) => ({ x: m.x, y: m.y, d: mg(m) })), ...kp.map((m) => ({ x: m.x, y: m.y, d: margo / mPerPt }))];
   const x0 = Math.min(...pk.map((p) => p.x - p.d)), y0 = Math.min(...pk.map((p) => p.y - p.d)), x1 = Math.max(...pk.map((p) => p.x + p.d)), y1 = Math.max(...pk.map((p) => p.y + p.d));
   const w = Math.ceil((x1 - x0) * ptPx), h = Math.ceil((y1 - y0) * ptPx);
@@ -417,8 +418,9 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   }
   const kozelSzines = tagit(korvonal, w, h, 1);
   for (const u of feherJeloltek) {
-    let ok = !vanSzines && Math.max(u.bbox[2] - u.bbox[0], u.bbox[3] - u.bbox[1]) * mPerPt >= 0.5;
-    if (vanSzines) {
+    const vastagFeher = Math.min(u.bbox[2] - u.bbox[0], u.bbox[3] - u.bbox[1]) * mPerPt > 0.35;
+    let ok = !vanSzines && !vastagFeher && Math.max(u.bbox[2] - u.bbox[0], u.bbox[3] - u.bbox[1]) * mPerPt >= 0.5;
+    if (vanSzines || vastagFeher) {
       // a fehér elem körvonalának legalább 70%-a színes falréteg mellett fut (válaszfal mag: mindkét hosszanti oldala; a fal mellé tolt szekrény csak az egyik)
       let db = 0, jo = 0;
       const hosszIrany = u.bbox[2] - u.bbox[0] >= u.bbox[3] - u.bbox[1];
@@ -429,7 +431,19 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
         const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) * 2));
         for (let k = 0; k <= n; k++) { const x = Math.round(ax + (bx - ax) * k / n), y = Math.round(ay + (by - ay) * k / n); if (x < 0 || y < 0 || x >= w || y >= h) continue; db++; if (kozelSzines[y * w + x]) jo++; }
       }
-      ok = db > 0 && jo / db >= 0.7;
+      ok = !vastagFeher && db > 0 && jo / db >= 0.7;
+      if (!ok) {
+        // fehér kitöltésű, falvastagságú (0,15–0,7 m), hosszú (≥ 2 m) panelsáv, amelynek mindkét vége pillérbe / falba fut
+        // (csarnok szendvicspanel-fala a pillérek között)
+        const [bx0, by0, bx1, by1] = u.bbox; const W = (bx1 - bx0) * mPerPt, H = (by1 - by0) * mPerPt;
+        const v = Math.min(W, H), L = Math.max(W, H);
+        if (v >= 0.15 && v <= 0.7 && L >= 2 && L >= 5 * v) {
+          const fekvo = W >= H; const d = 0.3 / mPerPt;
+          const falKozel = (cx: number, cy: number) => { for (let t = -d; t <= d; t += d / 6) { const [xx, yy] = fekvo ? tr(cx + t, cy) : tr(cx, cy + t); const xi = Math.round(xx), yi = Math.round(yy); if (xi >= 0 && yi >= 0 && xi < w && yi < h && fal[yi * w + xi]) return true; } return false; };
+          const cx = (bx0 + bx1) / 2, cy = (by0 + by1) / 2;
+          ok = fekvo ? falKozel(bx0, cy) && falKozel(bx1, cy) : falKozel(cx, by0) && falKozel(cx, by1);
+        }
+      }
     }
       if (!ok) continue;
     poliRajzol(fal, w, h, u.pontok, tr); stilusRajzol(u, false);

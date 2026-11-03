@@ -120,9 +120,41 @@ export function nyilasFeliratok(sz0: Szoveg[]): NyilasFelirat[] {
     if (!pm && szel >= 1.9 && mag <= 1.2) [szel, mag] = [mag, szel];
     ki.push({ szel, mag, pm: pm ? pmErtek(pm.m![1]!, pm.m![2]) : null, x, y, fal: Math.abs(ga.fel[0]) >= Math.abs(ga.fel[1]) ? 'v' : 'f' });
   }
-  // méterben írt kapuméretek (szélesség ≥ 1,8 m, magasság 1,8–3,2 m) – a méretláncok számaitól a hozzárendelés választja el
-  const mSzamok = sz.filter((t) => SZAM_M.test(t.s.trim()) && mSzam(t.s) >= 1.8 && mSzam(t.s) <= 6);
+  // méterben írt nyílásméret mellvéddel („1,80 / 1,50” + „pm: 90”): a mellvédfelirat igazolja, hogy nyílászáró (a
+  // méretlánc számai mellett nincs mellvéd) – bármilyen méretben
   const mHasznalt = new Set<Szoveg>();
+  {
+    const mind = sz.filter((t) => SZAM_M.test(t.s.trim()) && mSzam(t.s) >= 0.3 && mSzam(t.s) <= 6);
+    for (const a of mind) {
+      if (mHasznalt.has(a)) continue;
+      const ga = geom(a);
+      let legjobb: { b: Szoveg; perp: number } | null = null;
+      for (const b of mind) {
+        if (b === a || mHasznalt.has(b) || Math.abs(b.szog - a.szog) > 2 || Math.abs(b.meret - a.meret) > a.meret * 0.15) continue;
+        const gb = geom(b); const dx = gb.cx - ga.cx, dy = gb.cy - ga.cy;
+        const menti = Math.abs(dx * ga.dir[0] + dy * ga.dir[1]), perp = dx * ga.fel[0] + dy * ga.fel[1];
+        if (menti > a.meret * 1.0 || Math.abs(perp) < a.meret * 0.9 || Math.abs(perp) > a.meret * 1.9) continue;
+        if (!legjobb || Math.abs(perp) < Math.abs(legjobb.perp)) legjobb = { b, perp };
+      }
+      if (!legjobb) continue;
+      const gb = geom(legjobb.b);
+      const x = (ga.cx + gb.cx) / 2, y = (ga.cy + gb.cy) / 2;
+      let pm: (typeof pmek)[number] | undefined; let pmT = Infinity;
+      for (const q of pmek) {
+        if (pmHasznalt.has(q.t)) continue;
+        const g = geom(q.t); const d = Math.hypot(g.cx - x, g.cy - y);
+        if (d <= a.meret * 5 && d < pmT) { pmT = d; pm = q; }
+      }
+      if (!pm) continue;
+      const [felso, also] = legjobb.perp > 0 ? [legjobb.b, a] : [a, legjobb.b];
+      const w = mSzam(felso.s), h = mSzam(also.s);
+      if (h < 0.3 || h > 3.5) continue;
+      pmHasznalt.add(pm.t); mHasznalt.add(a); mHasznalt.add(legjobb.b);
+      ki.push({ szel: w, mag: h, pm: pmErtek(pm.m![1]!, pm.m![2]), x, y, fal: Math.abs(ga.fel[0]) >= Math.abs(ga.fel[1]) ? 'v' : 'f' });
+    }
+  }
+  // méterben írt kapuméretek (szélesség ≥ 1,8 m, magasság 1,8–3,2 m) – a méretláncok számaitól a hozzárendelés választja el
+  const mSzamok = sz.filter((t) => SZAM_M.test(t.s.trim()) && mSzam(t.s) >= 1.8 && mSzam(t.s) <= 6 && !mHasznalt.has(t));
   for (const a of mSzamok) {
     if (mHasznalt.has(a)) continue;
     const ga = geom(a);
