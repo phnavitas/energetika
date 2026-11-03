@@ -191,9 +191,16 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     const k = (h.kod ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
     return h.kulter || reszElotagok.some((e) => k.startsWith(e)) ? -1 : i;
   }).filter((i) => i >= 0);
+  // beolvasáskor eldöntendő kérdések: a fűtetlennek javasolt helyiségek (garázs, pince, padlás…) fűtöttek-e, és a
+  // szomszédos épület fűtött-e – a válasz minden lapra érvényes (a soronkénti kézi besorolás elsőbbséget élvez)
+  const [futottValasz, setFutottValasz] = useState<Record<string, boolean>>({});
+  const [szomszedFutott, setSzomszedFutott] = useState(true);
+  const kerdesKulcs = (nev: string) => nev.toLowerCase().replace(/\s*\([^)]*\)\s*/g, ' ').replace(/[^\p{L}\s-]/gu, '').replace(/\s+/g, ' ').trim();
   const kjVeg = (i: number, a: AlaprajzFeldolgozas): Kijeloles => {
     const k = kijelolesek[i] ?? alapKijeloles(a); const rk = reszKizar(a);
-    return { ...k, kizartH: rk.length ? new Set([...k.kizartH, ...rk]) : k.kizartH, mindFutott };
+    const kat = { ...k.kat };
+    a.e.helyisegek.forEach((h, j) => { if (kat[j] === undefined && futottValasz[kerdesKulcs(h.nev)] && kategoriaJavaslat(h.nev) === 'gyengen_kapcsolt') kat[j] = 'kondicionalt'; });
+    return { ...k, kat, kizartH: rk.length ? new Set([...k.kizartH, ...rk]) : k.kizartH, mindFutott };
   };
   const [rrKi, setRrKi] = useState<Record<string, boolean>>({});
   const [bm, setBm] = useState<number | undefined>(undefined);
@@ -482,11 +489,13 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     const szintSor = [...new Set(alaprajzLapok.flatMap(({ i }) => lapSzintek(i)))].sort((x, y) => SZINT_SOR.indexOf(x) - SZINT_SOR.indexOf(y));
     const mert = a.r && a.e.mPerPt && a.nyilasok.some((n) => n.mert) ? mertMagassagok(a.nyilasok, a.e.mPerPt, o.eszak, homlokzatRajzTar(homlokzatLapok.map(({ l }) => l.lap), a.e.meretarany), Math.max(0, szintSor.indexOf(o.szintek[0] ?? 'F')), szintSor.length) : undefined;
     const { helyisegek: hs, nyilasok: ny } = atvetelReszek(a, k, mert);
-    // szomszédos épülethez csatlakozó (zártsorú, ikres) falak: nem homlokzati falak – az átvételből kimaradnak
+    // szomszédos épülethez csatlakozó (zártsorú, ikres) falak: nem homlokzati falak – fűtött szomszédnál kimaradnak,
+    // fűtetlennél fal fűtetlen tér felé
+    let szomszedH = 0;
     if (a.r) {
       const { ri: riL } = atvetelReszek(a, k);
       const szh = riL.reduce((t, x) => t + (x < 0 ? 0 : a.r!.helyisegek[x]!.szakaszok.filter((sg) => sg.tul === 'kulso' && sg.szomszed).reduce((q, sg) => q + sg.hossz, 0)), 0);
-      if (szh >= 0.3) extraUz.push(`Szomszédos épülethez csatlakozó fal: ${String(Math.round(szh * 100) / 100).replace('.', ',')} m (a rajzon „szomszédos épület” / „zártsorú” felirat a fal mögött) – nem homlokzati fal, nem került át; ha a szomszéd fűtetlen, a Határolás lépésben vedd fel.`);
+      if (szh >= 0.3) { szomszedH = szh; extraUz.push(`Szomszédos épülethez csatlakozó fal: ${String(Math.round(szh * 100) / 100).replace('.', ',')} m (a rajzon „szomszédos épület” / „zártsorú” felirat a fal mögött) – ${szomszedFutott ? 'fűtött szomszéd: nem hőátadó felület, nem került át' : 'fűtetlen szomszéd: fal fűtetlen tér felé (b-tényezővel)'}.`); }
     }
     const mertDb = ny.length && mert ? [...mert.values()] : [];
     if (mertDb.length) {
@@ -496,6 +505,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     return tervAtvesz(q, {
       helyisegek: hs, retegrendek: blokkok, nyilasok: ny,
       eszakSzog: o.eszak, belmagassag: (tetoterLap ? me?.tetoter?.belmagassag ?? me?.szintek.belmagassag.at(-1) : undefined) ?? bm ?? 2.7, szintszam: szintszam ?? 1, csere: o.csere, padloAt: o.padloAt, tetoAt: o.tetoAt,
+      ...(!szomszedFutott && szomszedH >= 0.3 ? { szomszedFutetlen: szomszedH } : {}),
       ...(tetoterLap && me?.tetoter ? { tetoter: { ...me.tetoter, orom: oromok(o.eszak, a.e.meretarany ?? undefined) }, tetoablakok: tetoAblakok(a, hs, k, o.eszak) } : {}),
       ...(mintaFajta === 'blokkos' ? { alapFalSablon: 'fal_blokk_kohosalak' } : {}),
       forras: [o.fajl, mLap?.fajl].filter(Boolean).join(', '), szintek: o.szintek,
@@ -516,6 +526,47 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   }
 
   /** Minden feldolgozott, átvételre jelölt alaprajz egy lépésben, szintsorrendben (az első a választott módon, a többi hozzáadva). */
+  /** Beolvasáskor eldöntendő kérdések (minden átvételre jelölt lapra): fűtetlennek javasolt helyiségek, szomszédos épület. */
+  function eldontendoKerdesek() {
+    const jel = new Map<string, { nev: string; A: number }>();
+    let szomszed = 0;
+    for (const { i } of alaprajzLapok) {
+      const a = elemzesek[i]; if (typeof a !== 'object' || kimarad(i)) continue;
+      const k = kjVeg(i, a);
+      a.e.helyisegek.forEach((h, j) => {
+        if (h.kulter || k.kizartH.has(j) || kategoriaJavaslat(h.nev) !== 'gyengen_kapcsolt') return;
+        const kk = kerdesKulcs(h.nev); const x = jel.get(kk) ?? { nev: h.nev.replace(/\s*\([^)]*\)/g, ''), A: 0 }; x.A += h.A; jel.set(kk, x);
+      });
+      if (a.r) for (const x of atvetelReszek(a, k).ri) if (x >= 0) szomszed += a.r.helyisegek[x]!.szakaszok.filter((sg) => sg.tul === 'kulso' && sg.szomszed).reduce((q, sg) => q + sg.hossz, 0);
+    }
+    if (!jel.size && szomszed < 0.3) return null;
+    return (
+      <div class="szakasz-belso" style="margin-top:12px;padding:10px 12px;border:1px solid var(--szegely, #ccc);border-radius:6px" role="group" aria-label="Eldöntendő a beolvasáshoz">
+        <strong>Eldöntendő a beolvasáshoz</strong>
+        <table class="tabla" style="margin-top:6px"><tbody>
+          {[...jel.entries()].map(([kk, x]) => (
+            <tr>
+              <td>{x.nev} <span class="halkabb">({sz(x.A)} m²)</span> – a hőburok része (fűtött)?</td>
+              <td style="white-space:nowrap">
+                <label class="jelolo"><input type="radio" name={`fv-${kk}`} checked={!futottValasz[kk]} onChange={() => setFutottValasz({ ...futottValasz, [kk]: false })} /> fűtetlen</label>{' '}
+                <label class="jelolo"><input type="radio" name={`fv-${kk}`} checked={!!futottValasz[kk]} onChange={() => setFutottValasz({ ...futottValasz, [kk]: true })} /> fűtött</label>
+              </td>
+            </tr>
+          ))}
+          {szomszed >= 0.3 && (
+            <tr>
+              <td>Szomszédos épülethez csatlakozó fal ({sz(szomszed)} m) – a szomszéd épület fűtött?</td>
+              <td style="white-space:nowrap">
+                <label class="jelolo"><input type="radio" name="szomszed" checked={szomszedFutott} onChange={() => setSzomszedFutott(true)} /> fűtött (nem hőátadó)</label>{' '}
+                <label class="jelolo"><input type="radio" name="szomszed" checked={!szomszedFutott} onChange={() => setSzomszedFutott(false)} /> fűtetlen</label>
+              </td>
+            </tr>
+          )}
+        </tbody></table>
+      </div>
+    );
+  }
+
   function osszesAtvesz() {
     const sor = alaprajzLapok.filter(({ i }) => !kimarad(i) && typeof elemzesek[i] === 'object')
       .sort((x, y) => SZINT_SOR.indexOf(lapSzintek(x.i)[0] ?? 'F') - SZINT_SOR.indexOf(lapSzintek(y.i)[0] ?? 'F'));
@@ -760,6 +811,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                 </div>
               );
             })()}
+            {eldontendoKerdesek()}
             <div class="gombsor" style="margin-top:8px">
               <button class="gomb fo" disabled={osszesFut || alaprajzLapok.some(({ i }) => elemzesek[i] === undefined) || !alaprajzLapok.some(({ i }) => !kimarad(i) && !atvett.has(i))} onClick={osszesAtvesz}>
                 {alaprajzLapok.some(({ i }) => elemzesek[i] === undefined) ? `Feldolgozás… (${alaprajzLapok.filter(({ i }) => elemzesek[i] !== undefined).length} / ${alaprajzLapok.length})` : `Összes kijelölt alaprajz átvétele (${alaprajzLapok.filter(({ i }) => !kimarad(i)).length} lap)`}

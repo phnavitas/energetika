@@ -54,6 +54,8 @@ export interface TervAtvetel {
   /** Tetőtér-beépítés (a lap a tetőteret ábrázolja): a metszet hajlásszöge és térdfalmagassága – az eresz felőli falak
    * térdfalak, a ferde tetősáv a térdfal és a belmagasság (kalapfödém) között, a többi vízszintes födém. */
   tetoter?: { hajlas: number; terdfal: number | null; belmagassag?: number | null; /** a homlokzatokról mért oromzat-szélesség (m) alaprajzi irányonként (0/90/180/270) */ orom?: Record<number, number> };
+  /** Fűtetlen szomszédos épülethez csatlakozó fal hossza (m, egy szintre): fal fűtetlen tér felé. */
+  szomszedFutetlen?: number;
   /** Tetősík ablakok (tetőtérben a falhoz nem rendelt, helyiségen belüli méretfelirat): a ferde tetőből vonódnak le,
    * a legközelebbi eresz menti homlokzat tájolásával (tav: homlokzati irány → távolság, m). */
   tetoablakok?: { helyiseg: number; szel: number; mag: number; tav?: Record<number, number>; irany?: number }[];
@@ -241,6 +243,7 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
 
   // fal fűtetlen helyiség felé (b tényezővel)
   const futetlen = new Map<string, number>();
+  if (a.szomszedFutetlen && a.szomszedFutetlen >= 0.3) futetlen.set('szomszédos (fűtetlen) épület', a.szomszedFutetlen);
   for (const h of a.helyisegek.filter(burok)) for (const f of h.futetlenFalak ?? []) futetlen.set(f.fele, (futetlen.get(f.fele) ?? 0) + f.hossz);
   const belsoFal = a.retegrendek.find((x) => x.becsles.szerep === 'fal' && /teherhordó|belső/i.test(x.rr.cim));
   for (const [fele, hossz] of futetlen) {
