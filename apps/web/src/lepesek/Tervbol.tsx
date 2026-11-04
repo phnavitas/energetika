@@ -11,8 +11,9 @@ import { eltolas, fedettArany } from '../terv/fedes';
 import { burokAuto, burokFalak, burokMeres, nyilasEl, bennE, type Poligon } from '../terv/burok';
 import type { TervNyilas } from '../terv/nyilaszarok';
 import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, eszakJavitas, eszakJavitasMent, type TervLap, type AlaprajzFeldolgozas } from '../terv/elemzes';
-import { egtaj, jegyzekenKivul, szintekCimbol, szintNev } from '../terv/alaprajz';
+import { egtaj, jegyzekenKivul, jegyzekSorok, szintekCimbol, szintNev } from '../terv/alaprajz';
 import { tervAtvesz, type AtvettNyilas, type AtvettHelyiseg } from '../terv/atvetel';
+import type { Raszter, FalSzakasz } from '../terv/raszter';
 import { MintaLakasok } from './MintaLakasok';
 import { Burok3D, type Burok3DSzint } from './Burok3D';
 import { homlokzatRajzok, mertMagassagok, eszakHomlokzatbol, tetoAblakokHomlokzatrol, oromSzelessegek, type HomlokzatRajz, type MertMagassag } from '../terv/homlokzatIllesztes';
@@ -52,13 +53,38 @@ function futottRiK(al: AlaprajzFeldolgozas, k: Kijeloles): Set<number> {
 /** A raszterhelyiségek pecsétpontjai (pt). */
 const pecsetPontok = (al: AlaprajzFeldolgozas) => new Map(al.magHelyisegek.map((h, i) => [i, { x: h.x, y: h.y }] as [number, { x: number; y: number }]));
 
+/** Ismeretlen túloldalú falszakasz az épület szélén: a túloldalán 1,5 m-en belül külső tér (vagy a lap széle) kezdődik. */
+function kulsoKozelE(rr: Raszter, sg: FalSzakasz, nincsHely = 0): boolean {
+  const [dx, dy] = sg.irany === 0 ? [0, -1] : sg.irany === 90 ? [1, 0] : sg.irany === 180 ? [0, 1] : [-1, 0];
+  const minta = sg.pontok.filter((_, q) => q % Math.max(1, Math.floor(sg.pontok.length / 6)) === 0);
+  let db = 0;
+  for (const [x, y] of minta) {
+    // `nincsHely` > 0: a túloldalon ennyi méteren belül nincs helyiség (a rajz körüli méretláncok, sraffozás, színezés
+    // miatt a külső tér elárasztása nem ér a falig, de a fal mögött nincs épületrész)
+    const vT = Math.max(1.5, nincsHely);
+    for (let t = 0.2; t <= vT + 1e-9; t += 0.1) {
+      const xi = Math.floor(((x + dx! * t / rr.mPerPt) - rr.x0) * rr.mPerPt / rr.px), yi = Math.floor(((y + dy! * t / rr.mPerPt) - rr.y0) * rr.mPerPt / rr.px);
+      if (xi < 0 || yi < 0 || xi >= rr.w || yi >= rr.h) { db++; break; }
+      const c = rr.cimke[yi * rr.w + xi]!;
+      if (c === 1 && t <= 1.5) { db++; break; }
+      if (c >= 2) break;
+      if (nincsHely && t + 0.1 > vT) db++;
+    }
+  }
+  return db >= Math.max(1, minta.length / 2);
+}
+
 /** Alapértelmezett kijelölés a felismerésből (minden egység; a csak jegyzékben szereplő sorok nélkül). */
 function alapKijeloles(al: AlaprajzFeldolgozas): Kijeloles {
   const vanPecset = al.e.helyisegek.some((h) => h.forras === 'pecset');
-  const kizartH = new Set(al.auto ? al.e.helyisegek.map((h, i) => (al.e.egysegek.length && h.egyseg ? -1 : i)).filter((i) => i >= 0) : vanPecset ? al.e.helyisegek.map((h, i) => (h.forras === 'jegyzek' ? i : -1)).filter((i) => i >= 0) : []);
+  const kizartH = new Set(al.leiras ? [] : al.auto ? al.e.helyisegek.map((h, i) => (al.e.egysegek.length && h.egyseg ? -1 : i)).filter((i) => i >= 0) : vanPecset ? al.e.helyisegek.map((h, i) => (h.forras === 'jegyzek' ? i : -1)).filter((i) => i >= 0) : []);
   // a helyiségjegyzékből hiányzó, kód nélküli pecsét (pl. kívül álló tároló, hulladéktároló), ha a pecsétek nagy része (≥ 70 %) a jegyzékben szerepel
   for (const i of jegyzekenKivul(al.e.helyisegek)) kizartH.add(i);
-  return { egysegek: new Set(al.e.egysegek), kizartH, kat: {}, kizartNy: new Set() };
+  // pecsét nélküli (automatikusan felismert) alaprajz: az épület szélén álló, ismeretlen túloldalú falak (a rajz körüli
+  // sraffozás, színezés miatt nem ér el a külső tér) alapból külső falként számítanak – a Hőburok-ellenőrzésben kivehetők
+  const ismKulso = new Set<string>();
+  if (al.auto && al.r) al.r.helyisegek.forEach((R, ri) => R.szakaszok.forEach((sg, j) => { if (sg.tul === 'ismeretlen' && sg.hossz >= 0.3 && kulsoKozelE(al.r!, sg, 4)) ismKulso.add(`${ri}|${j}`); }));
+  return { egysegek: new Set(al.e.egysegek), kizartH, kat: {}, kizartNy: new Set(), ...(ismKulso.size ? { ismKulso } : {}) };
 }
 
 /** A külső nyílászárók: szerkesztett hőburoknál a körvonal közelében (≤ 1,3 m) lévők, az él irányával. */
@@ -149,7 +175,7 @@ function atvetelReszek(al: AlaprajzFeldolgozas, k: Kijeloles, mert?: Map<TervNyi
   const kiv = hs.map((h, i) => ({ h, i })).filter(({ i }) => valasztott[i]);
   const index = new Map(kiv.map(({ i }, j) => [i, j]));
   const helyisegek = kiv.map(({ h, i }) => ({
-    kod: h.kod, nev: h.nev, burkolat: h.burkolat, A: h.hasznosA ?? h.A, ...(h.hasznosA !== undefined ? { teljesA: h.A } : {}), kategoria: kategoria(i), egyseg: h.egyseg ? (al.e.egysegInfo[h.egyseg]?.nev ?? h.egyseg) : undefined, falak: falak(i).map((f) => ({ irany: f.irany, hossz: f.hossz, ...("talaj" in f && f.talaj ? { talaj: true } : {}) })),
+    kod: h.kod, nev: h.nev, burkolat: h.burkolat, A: h.hasznosA ?? h.A, ...(h.hasznosA ? { teljesA: h.A } : {}), kategoria: kategoria(i), egyseg: h.egyseg ? (al.e.egysegInfo[h.egyseg]?.nev ?? h.egyseg) : undefined, falak: falak(i).map((f) => ({ irany: f.irany, hossz: f.hossz, ...("talaj" in f && f.talaj ? { talaj: true } : {}) })),
     // fal fűtetlen (gyengén kapcsolt) helyiség felé, pl. garázs
     futetlenFalak: (() => { const x = ri(i); if (!al.r || x < 0) return []; return al.r.helyisegek[x]!.szakaszok.filter((s) => typeof s.tul === 'number' && s.hossz >= 0.3).flatMap((s) => {
       const mi = hs.indexOf(al.magHelyisegek[s.tul as number]!); return mi >= 0 && valasztott[mi] && kategoria(mi) === 'gyengen_kapcsolt' && kategoria(i) !== 'gyengen_kapcsolt' ? [{ hossz: s.hossz, fele: hs[mi]!.nev }] : []; }); })(),
@@ -286,18 +312,20 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   }, [aIdx, lapok.length, JSON.stringify(szintKi)]);
   const mLap = mIdx >= 0 ? lapok[mIdx] : undefined;
   // háttérfeldolgozás: a feltöltött alaprajzok egymás után (a felület két lap között frissül)
+  // a műszaki leírás(ok) helyiséglistája – a helyiségpecsét nélküli alaprajzhoz
+  const leirasJegyzek = useMemo(() => lapok.filter((l) => l.szerep === 'leiras').flatMap((l) => jegyzekSorok(l.lap.szovegek)), [lapok]);
   useEffect(() => {
     const kov = lapok.findIndex((l, i) => l.szerep === 'alaprajz' && elemzesek[i] === undefined);
     if (kov < 0) return;
     const t = window.setTimeout(() => {
       let ered: AlaprajzFeldolgozas | string;
-      try { ered = alaprajzFeldolgoz(lapok[kov]!.lap, undefined, lapok[kov]!.szurke, lapok[kov]!.tinta); } catch (e) { ered = (e as Error).message; }
+      try { ered = alaprajzFeldolgoz(lapok[kov]!.lap, undefined, lapok[kov]!.szurke, lapok[kov]!.tinta, leirasJegyzek); } catch (e) { ered = (e as Error).message; }
       setElemzesek((x) => ({ ...x, [kov]: ered }));
     }, 40);
     return () => window.clearTimeout(t);
   }, [lapok, elemzesek]);
   const keszElemzes = aIdx >= 0 && typeof elemzesek[aIdx] === 'object' ? elemzesek[aIdx] as AlaprajzFeldolgozas : null;
-  const kezi = useMemo(() => (aLap && meretarany ? alaprajzFeldolgoz(aLap.lap, meretarany, aLap.szurke, aLap.tinta) : null), [aLap, meretarany]);
+  const kezi = useMemo(() => (aLap && meretarany ? alaprajzFeldolgoz(aLap.lap, meretarany, aLap.szurke, aLap.tinta, leirasJegyzek) : null), [aLap, meretarany, leirasJegyzek]);
   const al = kezi ?? keszElemzes;
   // kézi méretarány: új felismerés – a lap kijelölése újraindul
   useEffect(() => { if (kezi) setKijelolesek((m) => { const u = { ...m }; delete u[aIdx]; return u; }); }, [kezi]);
@@ -397,21 +425,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
       // helyiségenként összevonva: az ismeretlen túloldalú szakaszok együtt, a ki nem jelölt szomszédok szomszédonként
       // csak a hőburok szempontjából érdekes ismeretlen szakasz: a túloldalán 1,5 m-en belül külső tér kezdődik (az épület szélén van)
       const rr = al.r!;
-      const kulsoKozel = (sg: (typeof R.szakaszok)[number]) => {
-        const [dx, dy] = sg.irany === 0 ? [0, -1] : sg.irany === 90 ? [1, 0] : sg.irany === 180 ? [0, 1] : [-1, 0];
-        const minta = sg.pontok.filter((_, q) => q % Math.max(1, Math.floor(sg.pontok.length / 6)) === 0);
-        let db = 0;
-        for (const [x, y] of minta) {
-          for (let t = 0.2; t <= 1.5; t += 0.1) {
-            const xi = Math.floor(((x + dx * t / rr.mPerPt) - rr.x0) * rr.mPerPt / rr.px), yi = Math.floor(((y + dy * t / rr.mPerPt) - rr.y0) * rr.mPerPt / rr.px);
-            if (xi < 0 || yi < 0 || xi >= rr.w || yi >= rr.h) { db++; break; }
-            const c = rr.cimke[yi * rr.w + xi]!;
-            if (c === 1) { db++; break; }
-            if (c >= 2) break;
-          }
-        }
-        return db >= Math.max(1, minta.length / 2);
-      };
+      const kulsoKozel = (sg: FalSzakasz) => kulsoKozelE(rr, sg);
       const ism = R.szakaszok.map((sg, j) => ({ sg, j })).filter(({ sg }) => sg.tul === 'ismeretlen' && sg.hossz >= 0.3 && kulsoKozel(sg));
       const ismH = ism.reduce((t, { sg }) => t + sg.hossz, 0);
       if (ismH >= 1) problemak.push({ tipus: 'ismeretlen', i, kulcsok: ism.map(({ j }) => `${ri}|${j}`), pontok: ism.flatMap(({ sg }) => sg.pontok), hossz: ismH, szoveg: `${h.nev}: ${sz(ismH, 2)} m fal, a túloldala nem ismerhető fel (${[...new Set(ism.map(({ sg }) => egtaj(sg.irany, eszakSz)))].join(', ')})` });

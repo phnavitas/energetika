@@ -188,6 +188,9 @@ export function jegyzekSorok(sz: Szoveg[]): TervHelyiseg[] {
   const ki: TervHelyiseg[] = [];
   for (const r of sorok) {
     r.sort((p, q) => p.x - q.x);
+    // műleírás-táblázat: a terület után még a burkolat oszlopa áll („01 ELŐTÉR 12,03 greslap”)
+    let vegBurkolat: string | undefined;
+    if (r.length >= 4 && BURKOLAT.test(r.at(-1)!.s) && /^\d{1,4}[,.]\d{1,2}$/.test(r.at(-2)!.s)) vegBurkolat = r.pop()!.s;
     if (r.length < 3) continue;
     const utolso = r.at(-1)!.s;
     if (!/^\d{1,4}[,.]\d{1,2}$/.test(utolso)) continue;
@@ -207,7 +210,7 @@ export function jegyzekSorok(sz: Szoveg[]): TervHelyiseg[] {
       continue;
     }
     if (!kozepso.length || !kod) continue;
-    let burkolat: string | undefined; const nevResz: string[] = [];
+    let burkolat: string | undefined = vegBurkolat; const nevResz: string[] = [];
     for (const t of kozepso) { if (!burkolat && nevResz.length && BURKOLAT.test(t)) burkolat = t; else nevResz.push(t); }
     if (!nevResz.length || /összesen|össz\.|sum/i.test(nevResz.join(' ')) || !/\p{L}{2}/u.test(nevResz.join(' '))) continue;
     const nev = nevResz.join(' ');

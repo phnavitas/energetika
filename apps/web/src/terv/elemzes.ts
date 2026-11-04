@@ -15,7 +15,8 @@ import { ujId } from '../modell';
 
 export interface TervLap {
   fajl: string; oldal: number;
-  szerep: 'alaprajz' | 'metszet' | 'homlokzat' | 'egyeb';
+  /** `leiras`: műszaki leírás (szöveges dokumentum) – a helyiséglistája a pecsét nélküli alaprajzhoz. */
+  szerep: 'alaprajz' | 'metszet' | 'homlokzat' | 'leiras' | 'egyeb';
   cim: string;
   lap: Lap;
   /** Előnézeti kép (JPEG dataURL) és mérete pixelben. */
@@ -74,6 +75,10 @@ export function lapSzerep(lap: Lap, fajlnev = ''): { szerep: TervLap['szerep']; 
   const nagy = jeloltek.find((t) => t.meret >= 12);
   const legnagyobb = Math.max(0, ...jeloltek.map((t) => t.meret));
   const cim = nagy ? nagy.s.trim() : [...new Set(jeloltek.filter((t) => t.meret >= legnagyobb - 0.5).map((t) => t.s.trim()))].join(' · ');
+  // szöveges dokumentum (műszaki leírás): fájlnév szerint, vagy rajzcím nélküli, kevés vonalú, hosszú mondatos lap
+  const fn = fajlnev.normalize('NFC');
+  const mondat = lap.szovegek.filter((t) => t.s.trim().length >= 50).length;
+  if (/m[űuü]\s*le[íi]r[áa]s|műszaki[_\s-]*leírás|leiras|tervezői\s*nyilatkozat/i.test(fn) || (!cim && lap.utvonalak.length < 40 && mondat >= 8 && /műszaki\s+leírás/i.test(sz))) return { szerep: 'leiras', cim: 'Műszaki leírás' };
   const fajta = (x: string) => (/metszet/i.test(x) ? 'metszet' : /alaprajz/i.test(x) ? 'alaprajz' : /homlokzat/i.test(x) ? 'homlokzat' : null);
   const f = fajta(cim) ?? fajta(fajlnev.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ').normalize('NFC'));
   if (f) return { szerep: f, cim: cim || fajlnev.replace(/\.pdf$/i, '') };
@@ -177,6 +182,8 @@ export interface AlaprajzFeldolgozas {
   arvaFeliratok?: NyilasFelirat[];
   /** Pecsét nélküli lap: a helyiségek automatikusan felismert zárt terek. */
   auto?: boolean;
+  /** Pecsét nélküli lapnál a műszaki leírás helyiséglistájából átvett sorok száma (párosított / csak listában). */
+  leiras?: { parositott: number; csakListaban: number };
 }
 
 /** A raszter helyiségterületeinek egyezése a pecsétterületekkel (0…1, a pecsétterülettel súlyozva). */
@@ -186,12 +193,51 @@ export function pecsetEgyezes(r: Raszter, hs: { A: number }[]): number {
   return n ? s / n : 0;
 }
 
-export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: SzurkeKep, tinta?: TintaKep): AlaprajzFeldolgozas {
+/**
+ * Pecsét nélküli alaprajz + műszaki leírás helyiséglistája: a zárt terek a területük szerint (±12 %, egy-egy
+ * párosítás, a legkisebb eltérés előre) kapják a lista kódját, nevét, burkolatát és területét. A párosítatlan zárt
+ * terek (a rajz hiányos falai miatt több helyiség egy térben, vagy egy helyiség több részben) a falaik miatt a
+ * burokban maradnak, de a területük nem számít (a lista sorai adják); a párosítatlan listasorok csak-jegyzék
+ * helyiségként kerülnek be.
+ */
+function leirasParosit(e: AlaprajzEredmeny, mag: TervHelyiseg[], lista: TervHelyiseg[]): NonNullable<AlaprajzFeldolgozas['leiras']> {
+  const sorok = lista.filter((j) => j.A > 0);
+  // csak egyértelmű pár: a zárt tér egyetlen listaterülethez (azonos területű sorok egynek számítanak), a listaterület
+  // egyetlen zárt térhez illik (a rajz széttöredezett tereinél a kis darabok több sorhoz is illenének – azok kimaradnak)
+  const TUR = 0.08;
+  const illik = (a: number, b: number) => Math.abs(a - b) / b <= TUR;
+  const parok: { i: number; j: number; d: number }[] = [];
+  mag.forEach((h, i) => {
+    if (h.A < 2.5) return;
+    const jo = sorok.map((j, jj) => ({ j, jj })).filter(({ j }) => !j.kulter && illik(h.A, j.A));
+    if (new Set(jo.map(({ j }) => j.A.toFixed(2))).size !== 1) return;
+    const A = jo[0]!.j.A;
+    if (mag.filter((g) => g.A >= 2.5 && illik(g.A, A)).length > jo.length) return;
+    for (const { j, jj } of jo) parok.push({ i, j: jj, d: Math.abs(h.A - j.A) / j.A });
+  });
+  parok.sort((a, b) => a.d - b.d);
+  const hFoglalt = new Set<number>(), jFoglalt = new Set<number>();
+  for (const p of parok) {
+    if (hFoglalt.has(p.i) || jFoglalt.has(p.j)) continue;
+    hFoglalt.add(p.i); jFoglalt.add(p.j);
+    const h = mag[p.i]!, j = sorok[p.j]!;
+    h.kod = j.kod; h.nev = j.nev; if (j.burkolat) h.burkolat = j.burkolat; h.A = j.A;
+  }
+  mag.forEach((h, i) => { if (!hFoglalt.has(i)) { h.nev = `${h.nev} (listában nem azonosított)`; h.hasznosA = 0; } });
+  const csak = sorok.filter((_, jj) => !jFoglalt.has(jj)).map((j) => ({ ...j, forras: 'jegyzek' as const }));
+  e.helyisegek = [...e.helyisegek, ...csak];
+  e.figyelmeztetesek = e.figyelmeztetesek.filter((x) => !/^Helyiségpecsét nincs a lapon/.test(x));
+  e.figyelmeztetesek.push(`Helyiségpecsét nincs a lapon: a helyiségeket a műszaki leírás helyiséglistájából vettem át (${sorok.length} sor). ${hFoglalt.size} zárt teret a területe alapján azonosítottam; ${csak.filter((j) => !j.kulter).length} sornak a helye a rajzon nem ismert (csak területtel kerül át)${mag.length - hFoglalt.size ? `, ${mag.length - hFoglalt.size} zárt tér a listában nem azonosítható (falai a burokban maradnak, területe nem számít)` : ''}. Ellenőrizd a Helyiségek lépésben.`);
+  return { parositott: hFoglalt.size, csakListaban: csak.filter((j) => !j.kulter).length };
+}
+
+export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: SzurkeKep, tinta?: TintaKep, leirasJegyzek?: TervHelyiseg[]): AlaprajzFeldolgozas {
   const e = alaprajzElemez(lap);
   if (meretarany && meretarany > 0) { e.meretarany = meretarany; e.mPerPt = (25.4 / 72) / 1000 * meretarany; }
   // lépték nélküli lap (pl. kicsinyített típusalaprajz): a méretláncokból becsülve
   if (!e.mPerPt) { const M = meretaranyKotabol(lap.szovegek, lap.utvonalak); if (M) { e.meretarany = M; e.mPerPt = (25.4 / 72) / 1000 * M; e.figyelmeztetesek = e.figyelmeztetesek.filter((x) => !/méretarányt nem találtam/.test(x)); e.figyelmeztetesek.push(`A lépték a méretláncokból becsülve: M = 1:${M}. Ellenőrizd, szükség esetén add meg kézzel.`); } }
   let magHelyisegek = e.helyisegek.filter((h) => h.forras === 'pecset' && !h.kulter);
+  let leiras: AlaprajzFeldolgozas['leiras'];
   // pecsét nélküli (egyszerűsített) alaprajz: a falakkal körbezárt terek a helyiségek
   const auto = !magHelyisegek.length && !!e.mPerPt;
   if (auto && szurke && !szurke.hatar) szurke = { ...szurke, hatar: arnyalatHatarok(szurke) };
@@ -229,6 +275,7 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
       r = raszterEpit(lap, e.mPerPt, magok, opc);
     }
     e.figyelmeztetesek = e.figyelmeztetesek.map((x) => x.replace(/^Helyiségpecsét nincs a lapon: \d+ zárt teret/, `Helyiségpecsét nincs a lapon: ${magHelyisegek.length} zárt teret`));
+    if (leirasJegyzek?.length) leiras = leirasParosit(e, magHelyisegek, leirasJegyzek);
   }
   else {
     // önellenőrzés: több felismerési változat (vektoros fal / + lapkép-„tinta”, ablaksor-szabállyal / nélküle) közül az,
@@ -249,7 +296,7 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
   talajOldal(lap, r, e.helyisegek.filter((h) => h.forras === 'pecset' && !h.kulter).map((h) => h.mutato ?? h));
   szomszedOldal(lap, r);
   // pecsét nélküli típusalaprajz: lakás = egy szürkével színezett, összefüggő terület helyiségei (az x-szel áthúzott aknák nélkül)
-  if (auto && szurke) {
+  if (auto && szurke && !leiras) {
     const l = lakasCsoportok(r, magHelyisegek, lap, szurke);
     if (l.egysegek.length) {
       e.egysegek = l.egysegek; e.egysegInfo = l.info;
@@ -296,7 +343,7 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
   }
   // falhoz nem rendelt nyílásfeliratok (pl. a raszterben nem lezárt, üvegfalas helyiség homlokzatán): a szerkesztett hőburok használja
   const arva = feliratok.filter((f) => !nyilasok.some((n) => Math.hypot(n.x - f.x, n.y - f.y) < 2));
-  return { e, magHelyisegek, r, nyilasok, auto, arvaFeliratok: arva };
+  return { e, magHelyisegek, r, nyilasok, auto, arvaFeliratok: arva, ...(leiras ? { leiras } : {}) };
 }
 
 export interface MetszetFeldolgozas {
