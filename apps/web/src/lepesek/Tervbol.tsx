@@ -28,8 +28,9 @@ const KATEGORIAK: { ertek: HelyisegKategoria; nev: string }[] = [
 ];
 const FAJTA_NEV = { ablak: 'Ablak', erkelyajto: 'Erkélyajtó', bejarati_ajto: 'Bejárati ajtó', bejarati_uvegajto: 'Bejárati ajtó (üvegezett)', garazskapu: 'Garázskapu', belso_ajto: 'Belső ajtó', falfulke: 'Falfülke (nem nyílászáró)', fuggonyfal: 'Függönyfal, üvegfal' } as const;
 /** Megjeleníthető felismerési rétegek (az alaprajz fölött, külön-külön kapcsolhatók). */
-type RetegKulcs = 'helyiseg' | 'fal' | 'nyilas' | 'padlo' | 'fodem' | 'teto' | 'tetoablak';
+type RetegKulcs = 'burok' | 'helyiseg' | 'fal' | 'nyilas' | 'padlo' | 'fodem' | 'teto' | 'tetoablak';
 const RETEGEK: { k: RetegKulcs; nev: string; szin: string }[] = [
+  { k: 'burok', nev: 'Hőburok', szin: '#F97316' },
   { k: 'helyiseg', nev: 'Helyiségek', szin: '#2563EB' },
   { k: 'fal', nev: 'Falak', szin: '#B91C1C' },
   { k: 'nyilas', nev: 'Ablakok, ajtók', szin: '#0EA5E9' },
@@ -284,7 +285,10 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const [kesz, setKesz] = useState<string[] | null>(null);
   const [nagyit, setNagyit] = useState(true);
   /** A bekapcsolt felismerési rétegek (ellenőrzéshez). */
-  const [retegek, setRetegek] = useState<Set<RetegKulcs>>(new Set());
+  const [retegek, setRetegek] = useState<Set<RetegKulcs>>(new Set(['burok']));
+  /** A rajzon kattintással kiválasztott helyiség (a helyiséglistában kiemelve). */
+  const [kivH, setKivH] = useState<number | null>(null);
+  useEffect(() => setKivH(null), [aIdx]);
   /** Az alaprajz-ablak nézete: 2D (a rajz a felismert elemekkel) vagy 3D (a hőburok térben). */
   const [nezet3d, setNezet3d] = useState(false);
   const retegValt = (k: RetegKulcs) => setRetegek((x) => { const y = new Set(x); if (y.has(k)) y.delete(k); else y.add(k); return y; });
@@ -460,6 +464,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   }, [al, katKulcs, retegek.has('helyiseg')]);
   const nyilasKep = useMemo(() => (al?.r && (retegek.has('nyilas') || retegek.has('helyiseg')) ? raszterReteg(al.r, (k) => (al.r!.nyilas[k] ? '#0EA5E9' : null)) : ''), [al, retegek.has('nyilas') || retegek.has('helyiseg')]);
   // falak pirossal; a külső sraffozott felület (járda, térkő, kavics – nem fal) szürkével
+  // a kiválasztott helyiség kiemelése (sárga kitöltés, erős körvonal)
+  const kivKep = useMemo(() => { if (!al?.r || kivH === null) return ''; const ri = al.magHelyisegek.indexOf(helyisegek[kivH]!); if (ri < 0) return ''; return raszterReteg(al.r, (k) => (al.r!.cimke[k] === ri + 2 ? '#F59E0B' : null)); }, [al, kivH]);
   const falKep = useMemo(() => { if (!al?.r || !retegek.has('fal')) return ''; const sr = kulsoSraff(al.r); return raszterReteg(al.r, (k) => (al.r!.fal[k] ? (sr[k] ? '#6B7280' : '#B91C1C') : null)); }, [al, retegek.has('fal')]);
   const tetoterLapE = aIdx >= 0 && lapSzintek(aIdx).includes('T') && !!me?.tetoter;
   const tetoablakJeloltek = (al?.r && tetoterLapE ? [...(al.arvaFeliratok ?? []), ...al.nyilasok.filter((n) => !n.kulso && (n.fajta === 'falfulke' || n.fajta === 'ablak'))] : [])
@@ -484,6 +490,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   }, [al, kj, eszakSz, tetoterLapE, retegek.has('tetoablak'), tetoablakJeloltek.length]);
   const korvonalA = al?.r ? burok.reduce((t, q) => t + poligonTerulet(q, al.r!.mPerPt), 0) : 0;
   const retegDb: Record<RetegKulcs, string> = {
+    burok: kj.burok ? 'szerkesztett' : `${burok.length} körvonal`,
     helyiseg: `${valasztott.filter(Boolean).length} / ${helyisegek.filter((h) => !h.kulter).length}`,
     fal: al?.r ? `${sz(helyisegek.reduce((t, _, i) => t + (valasztott[i] ? falak(i).reduce((q, f) => q + f.hossz, 0) : 0), 0), 1)} m külső` : '–',
     nyilas: `${nyilasok.filter(({ k }) => !kizartNy.has(k)).length} db`,
@@ -1029,7 +1036,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             <button class="gomb halk-gomb semleges" onClick={() => setRetegek(new Set(RETEGEK.map((x) => x.k)))}>Mind</button>
             <button class="gomb halk-gomb semleges" onClick={() => setRetegek(new Set())}>Egyik sem</button>
           </div>}
-          {!nezet3d && retegek.size > 0 && <div class="halkabb" style="font-size:12px;margin:-2px 0 8px">Falak: piros – fal, szürke – külső sraffozott felület (járda, térkő, kavics), nem fal. Helyiségenként más szín (szürke: nem kerül át); a felirat mellett zárójelben a rajzon felismert terület, ha eltér a pecséttől. Nyílások: szaggatott keret – méretfelirat nélkül mért, vagy falnyíláshoz nem köthető; áthúzott – nem kerül át.</div>}
+          {!nezet3d && [...retegek].some((k) => k !== 'burok') && <div class="halkabb" style="font-size:12px;margin:-2px 0 8px">Falak: piros – fal, szürke – külső sraffozott felület (járda, térkő, kavics), nem fal. Helyiségenként más szín (szürke: nem kerül át); a felirat mellett zárójelben a rajzon felismert terület, ha eltér a pecséttől. Nyílások: szaggatott keret – méretfelirat nélkül mért, vagy falnyíláshoz nem köthető; áthúzott – nem kerül át.</div>}
           <div style="position:relative;margin-bottom:8px">
             {/* 2D / 3D nézetváltó a bal felső sarokban */}
             <div role="group" aria-label="Nézet" style="position:absolute;left:10px;top:10px;z-index:3;display:flex;border:1px solid #D1D5DB;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)">
@@ -1056,7 +1063,9 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   const szk = lapSzintek(i).length ? lapSzintek(i) : ['F'];
                   for (const sz0 of szk) {
                     const sorszam = jelen.indexOf(sz0) - Math.max(0, nulla);
-                    szint3.push({ nev: szintNev(sz0), poligonok: pol, z0: sorszam * emelet, h: emelet - 0.35, nyilasok: ny });
+                    // tetőtér: a metszetből a hajlás, a térdfal és a padlásfödém (belmagasság) – a 3D-ben a tetősíkok töréseivel
+                    const tt = sz0 === 'T' && me?.tetoter ? { hajlas: me.tetoter.hajlas, terdfal: me.tetoter.terdfal ?? 0.9, belmag: me.tetoter.belmagassag ?? (bm ?? 2.6) } : undefined;
+                    szint3.push({ nev: szintNev(sz0), poligonok: pol, z0: sorszam * emelet, h: tt ? tt.belmag : emelet - 0.35, nyilasok: ny, ...(tt ? { teto: tt, orom: oromok(eszakSz, a.e.meretarany ?? undefined) } : {}) });
                   }
                 }
                 const vanPol = szint3.some((x) => x.poligonok.length);
@@ -1072,9 +1081,18 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   setBurokVazlat((b) => { const u = (b ?? burok).map((q) => q.map((v) => [...v] as [number, number])); u[huz.p]![huz.v] = [Math.round(pt.x * 10) / 10, Math.round(pt.y * 10) / 10]; return u; });
                 }}
                 onClick={(e) => {
-                  if (!rajzol) return;
                   const svg = e.currentTarget as SVGSVGElement; const m = svg.getScreenCTM(); if (!m) return;
                   const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
+                  if (!rajzol) {
+                    // kattintás a rajzon: a helyiség, amelybe esik, kiemelve a helyiséglistában
+                    const r = al.r; if (!r) return;
+                    const cx = Math.floor((pt.x - r.x0) * r.mPerPt / r.px), cy = Math.floor((pt.y - r.y0) * r.mPerPt / r.px);
+                    const c = cx >= 0 && cy >= 0 && cx < r.w && cy < r.h ? r.cimke[cy * r.w + cx]! : 0;
+                    const i = c >= 2 ? helyisegek.indexOf(al.magHelyisegek[c - 2]!) : -1;
+                    setKivH(i >= 0 && i !== kivH ? i : null);
+                    if (i >= 0) setTimeout(() => document.getElementById(`hs-sor-${i}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 30);
+                    return;
+                  }
                   const p0 = rajzol[0];
                   // az első pontra kattintva (vagy dupla kattintással) a körvonal bezárul
                   if (p0 && rajzol.length >= 3 && Math.hypot(pt.x - p0[0], pt.y - p0[1]) < 12 * fogo) { burokMent([...(kj.burok ?? burokFelismert), rajzol]); setRajzol(null); return; }
@@ -1084,7 +1102,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                 onPointerUp={() => { if (huz) { if (burokVazlat) burokMent(burokVazlat); setBurokVazlat(null); setHuz(null); } }}
                 onPointerLeave={() => { if (huz) { if (burokVazlat) burokMent(burokVazlat); setBurokVazlat(null); setHuz(null); } }}>
                 <image href={aLap.kep} x={0} y={0} width={aLap.lap.szel} height={aLap.lap.mag} />
-                {al.r && retegek.size > 0 && (() => {
+                {al.r && (retegek.size > 0 || kivH !== null) && (() => {
                   const r = al.r; const W = r.w * r.px / r.mPerPt, H = r.h * r.px / r.mPerPt; const m = 1 / r.mPerPt;
                   const korv = (minta: string, szin: string) => burok.map((q) => <polygon points={q.map(([x, y]) => `${x},${y}`).join(' ')} fill={`url(#${minta})`} stroke={szin} stroke-width={3} vector-effect="non-scaling-stroke" stroke-dasharray="10 4" />);
                   return (
@@ -1097,7 +1115,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                       {retegek.has('padlo') && padloAt && korv('rt-padlo', '#15803D')}
                       {retegek.has('fodem') && tetoAt && !tetoterLapE && korv('rt-fodem', '#7C3AED')}
                       {retegek.has('teto') && tetoAt && tetoterLapE && korv('rt-teto', '#92400E')}
-                      {retegek.has('helyiseg') && helyisegKep && <image href={helyisegKep} x={r.x0} y={r.y0} width={W} height={H} preserveAspectRatio="none" style="image-rendering:pixelated" />}
+                      {kivH !== null && kivKep && <image href={kivKep} x={r.x0} y={r.y0} width={W} height={H} preserveAspectRatio="none" style="image-rendering:pixelated" />}
+                    {retegek.has('helyiseg') && helyisegKep && <image href={helyisegKep} x={r.x0} y={r.y0} width={W} height={H} preserveAspectRatio="none" style="image-rendering:pixelated" />}
                       {(retegek.has('nyilas') || retegek.has('helyiseg')) && nyilasKep && <image href={nyilasKep} x={r.x0} y={r.y0} width={W} height={H} preserveAspectRatio="none" style="image-rendering:pixelated" />}
                       {retegek.has('fal') && falKep && <image href={falKep} x={r.x0} y={r.y0} width={W} height={H} preserveAspectRatio="none" style="image-rendering:pixelated" />}
                       {retegek.has('helyiseg') && helyisegek.map((h, i) => {
@@ -1156,7 +1175,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   );
                 })}
                 {/* hőburok: vastag vonal; szerkesztéskor a csúcsok húzhatók, az élfelezőkkel új pont szúrható be, dupla kattintás törli a csúcsot */}
-                {burok.map((q, pi) => (
+                {(retegek.has('burok') || rajzol || huz) && burok.map((q, pi) => (
                   <g>
                     {/* a vonal a nagyítástól függetlenül vastag (képernyő-pixelben): fehér kontúr + lila */}
                     <polygon points={q.map(([x, y]) => `${x},${y}`).join(' ')} fill="none" stroke="#fff" stroke-width={10} vector-effect="non-scaling-stroke" stroke-linejoin="round" pointer-events="none" opacity={0.9} />
@@ -1177,7 +1196,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   </g>
                 ))}
                 {/* mért belső falsíkok: zöld szaggatott = fal megtalálva; piros = ennél az élnél nincs falsáv (a hossz bizonytalan) */}
-                {burokMert.flat().filter((e) => e.rajzolt >= 0.8).map((e) => {
+                {retegek.has('burok') && burokMert.flat().filter((e) => e.rajzolt >= 0.8).map((e) => {
                   const [a, b2] = e.belso; const mx = (a[0] + b2[0]) / 2, my = (a[1] + b2[1]) / 2; const jo = e.lefedett >= 0.3;
                   const fugg = Math.abs(b2[1] - a[1]) > Math.abs(b2[0] - a[0]);
                   return (
@@ -1267,7 +1286,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   if (R?.szivarog) megj.push('a helyiség körvonala nem zárt – a külső falakat ellenőrizd');
                   return (<>
                     {csoportFej}
-                    <tr style={valasztott[i] ? '' : 'opacity:.55'}>
+                    <tr id={`hs-sor-${i}`} style={`${valasztott[i] ? '' : 'opacity:.55;'}${kivH === i ? 'background:#FEF3C7;outline:2px solid #F59E0B;outline-offset:-2px' : ''}`} onClick={() => setKivH(kivH === i ? null : i)}>
                       <td><input type="checkbox" aria-label={`${h.nev} átvétele`} disabled={h.kulter} checked={valasztott[i]} onChange={(e) => { const s = new Set(kizartH); if ((e.target as HTMLInputElement).checked) s.delete(i); else s.add(i); setKizartH(s); }} /></td>
                       <td>{h.kod ?? '–'}</td>
                       <td>{h.nev}{h.burkolat && <span class="halkabb"> · {h.burkolat}</span>}</td>

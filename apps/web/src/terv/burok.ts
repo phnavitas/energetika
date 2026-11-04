@@ -74,12 +74,14 @@ function ferdeOsszevon(p: Poligon, tures: number, ugras: number, minHossz: numbe
  * koordinátáján), a két tengelyirányú él közötti rövid (< `letores`) ferde „letörés” (a rácsból adódó sarokcsapás)
  * elhagyva – a csúcsok a szomszédos élegyenesek metszéspontjai. A hosszú ferde él (valódi ferde fal) marad.
  */
-function derekszog(p: Poligon, letores: number): Poligon {
+function derekszog(p: Poligon, letores: number, tures: number): Poligon {
   type El = { a: [number, number]; b: [number, number]; t: 'v' | 'f' | 'x'; c: number };
   const tipus = (a: [number, number], b: [number, number]): El => {
     const dx = b[0] - a[0], dy = b[1] - a[1]; const sz = Math.abs(Math.atan2(dy, dx) * 180 / Math.PI) % 180;
-    if (sz <= 12 || sz >= 168) return { a, b, t: 'v', c: (a[1] + b[1]) / 2 };
-    if (Math.abs(sz - 90) <= 12) return { a, b, t: 'f', c: (a[0] + b[0]) / 2 };
+    // tengelyirányú, ha a végpontjai a tengelytől legfeljebb `tures`-nyire térnek el (rövid élnél ez akár 12°,
+    // hosszú élnél csak kis szög – a valódi, enyhén ferde fal megmarad)
+    if ((sz <= 12 || sz >= 168) && Math.abs(dy) <= Math.max(tures, Math.abs(dx) * Math.tan(Math.PI / 180))) return { a, b, t: 'v', c: (a[1] + b[1]) / 2 };
+    if (Math.abs(sz - 90) <= 12 && Math.abs(dx) <= Math.max(tures, Math.abs(dy) * Math.tan(Math.PI / 180))) return { a, b, t: 'f', c: (a[0] + b[0]) / 2 };
     return { a, b, t: 'x', c: 0 };
   };
   let el: El[] = p.map((a, i) => tipus(a, p[(i + 1) % p.length]!));
@@ -165,7 +167,7 @@ function futottZsebek(r: Raszter, futott: ReadonlySet<number>, tilto: { x: numbe
   const szabad = (k: number) => r.cimke[k]! < 2 && !fal[k];
   for (let i = 0; i < N; i++) {
     if (latott[i] || !szabad(i)) continue;
-    const komp = [i]; latott[i] = 1; let rossz = false; let futottDb = 0; let hatar = 0;
+    const komp = [i]; latott[i] = 1; let rossz = false; let futottDb = 0; let hatar = 0; let vastagDb = 0;
     for (let t = 0; t < komp.length; t++) {
       const q = komp[t]!, x = q % w, y = (q / w) | 0;
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
@@ -176,7 +178,7 @@ function futottZsebek(r: Raszter, futott: ReadonlySet<number>, tilto: { x: numbe
         // a határon túl (vékony falon át) mi van
         let xx = nx, yy = ny, l = 0;
         while (l < lepMax && xx >= 0 && yy >= 0 && xx < w && yy < h && fal[yy * w + xx]) { xx += dx; yy += dy; l++; }
-        if (xx < 0 || yy < 0 || xx >= w || yy >= h || fal[yy * w + xx]) continue; // vastag fal
+        if (xx < 0 || yy < 0 || xx >= w || yy >= h || fal[yy * w + xx]) { vastagDb++; continue; } // vastag fal
         const c = r.cimke[yy * w + xx]!;
         // vékony vonalon (szaggatott belmagasság-vonal, válaszfal) túli szabad tér: ugyanannak a zsebnek a része (a külső
         // tér is – akkor a zseb a lap széléig ér, és elvetjük)
@@ -186,7 +188,8 @@ function futottZsebek(r: Raszter, futott: ReadonlySet<number>, tilto: { x: numbe
     }
     // a zseb határának legalább negyede vékony vonalon át fűtött helyiséggel közös (a két épületrész közötti, ajtóval
     // csatlakozó fűtetlen tér nem zseb)
-    if (!rossz && futottDb * r.px >= 0.5 && futottDb >= 0.25 * hatar && !komp.some((k) => tiltoK.has(k))) ki.push(...komp);
+    // … és legalább negyede vastag (külső) fal: a korláttal, vékony vonallal határolt erkély, loggia nem zseb
+    if (!rossz && futottDb * r.px >= 0.5 && futottDb >= 0.25 * hatar && vastagDb >= 0.25 * hatar && !komp.some((k) => tiltoK.has(k))) ki.push(...komp);
   }
   return ki;
 }
@@ -297,7 +300,7 @@ export function burokAuto(r: Raszter, futott: ReadonlySet<number>, zsebTilto?: {
   }
   const min = 4 / (r.px * r.px);
   const kulsok = hurkok.filter((p) => terulet(p) > min); // a cella bal oldali bejárásánál a külső határ pozitív előjelű
-  return kulsok.map((p) => derekszog(ferdeOsszevon(egyszerusit(p, 0.12 / r.px), 0.6 / r.px, 0.7 / r.px, 2.5 / r.px, 3.0 / r.px), 1.5 / r.px).map(([gx, gy]) => [Math.round(lapX(r, gx) * 10) / 10, Math.round(lapY(r, gy) * 10) / 10] as [number, number]))
+  return kulsok.map((p) => derekszog(ferdeOsszevon(egyszerusit(p, 0.12 / r.px), 0.6 / r.px, 0.7 / r.px, 2.5 / r.px, 3.0 / r.px), 1.5 / r.px, 0.2 / r.px).map(([gx, gy]) => [Math.round(lapX(r, gx) * 10) / 10, Math.round(lapY(r, gy) * 10) / 10] as [number, number]))
     .filter((p) => p.length >= 3);
 }
 
