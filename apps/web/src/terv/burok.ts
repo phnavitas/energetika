@@ -94,9 +94,21 @@ function futottZsebek(r: Raszter, futott: ReadonlySet<number>, tilto: { x: numbe
   const { w, h } = r; const N = w * h;
   // megnevezett tér (pl. „PADLÁS – TÁROLÓTÉR” felirat a zsebben): nem fűtött zseb
   const tiltoK = new Set(tilto.map((t) => { const x = Math.floor((t.x - r.x0) * r.mPerPt / r.px), y = Math.floor((t.y - r.y0) * r.mPerPt / r.px); return x >= 0 && y >= 0 && x < w && y < h ? y * w + x : -1; }).filter((k) => k >= 0));
+  // a falak ≤ 0,2 m-es rései (dilatáció, két falréteg közti hézag) zárva: ezeken át a külső tér nem „folyik be” a zsebbe
+  const R = Math.max(1, Math.round(0.1 / r.px));
+  const tagit = (be: Uint8Array, ertek: number) => {
+    const tmp = new Uint8Array(N), ki = new Uint8Array(N);
+    for (let y = 0; y < h; y++) { let u = -1e9; for (let x = 0; x < w; x++) { if (be[y * w + x] === ertek) u = x; if (x - u <= R) tmp[y * w + x] = 1; } u = 1e9; for (let x = w - 1; x >= 0; x--) { if (be[y * w + x] === ertek) u = x; if (u - x <= R) tmp[y * w + x] = 1; } }
+    for (let x = 0; x < w; x++) { let u = -1e9; for (let y = 0; y < h; y++) { if (tmp[y * w + x]) u = y; if (y - u <= R) ki[y * w + x] = 1; } u = 1e9; for (let y = h - 1; y >= 0; y--) { if (tmp[y * w + x]) u = y; if (u - y <= R) ki[y * w + x] = 1; } }
+    return ki;
+  };
+  const fal0 = new Uint8Array(N); for (let k = 0; k < N; k++) fal0[k] = r.fal[k] || r.nyilas[k] ? 1 : 0;
+  const dil = tagit(fal0, 1); const nem = new Uint8Array(N); for (let k = 0; k < N; k++) nem[k] = dil[k] ? 0 : 1;
+  const er = tagit(nem, 1); const fal = new Uint8Array(N); for (let k = 0; k < N; k++) fal[k] = er[k] ? 0 : 1;
+  for (let k = 0; k < N; k++) if (r.cimke[k]! >= 2) fal[k] = 0; // helyiségbe nem nő bele
   const latott = new Uint8Array(N); const ki: number[] = [];
   const lepMax = Math.max(1, Math.round(0.2 / r.px)); const maxDb = 20 / (r.px * r.px);
-  const szabad = (k: number) => r.cimke[k] === 0 && !r.fal[k] && !r.nyilas[k];
+  const szabad = (k: number) => r.cimke[k]! < 2 && !fal[k];
   for (let i = 0; i < N; i++) {
     if (latott[i] || !szabad(i)) continue;
     const komp = [i]; latott[i] = 1; let rossz = false; let futottDb = 0;
@@ -108,11 +120,12 @@ function futottZsebek(r: Raszter, futott: ReadonlySet<number>, tilto: { x: numbe
         if (szabad(n)) { if (!latott[n]) { latott[n] = 1; komp.push(n); } continue; }
         // a határon túl (vékony falon át) mi van
         let xx = nx, yy = ny, l = 0;
-        while (l < lepMax && xx >= 0 && yy >= 0 && xx < w && yy < h && (r.fal[yy * w + xx] || r.nyilas[yy * w + xx])) { xx += dx; yy += dy; l++; }
-        if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+        while (l < lepMax && xx >= 0 && yy >= 0 && xx < w && yy < h && fal[yy * w + xx]) { xx += dx; yy += dy; l++; }
+        if (xx < 0 || yy < 0 || xx >= w || yy >= h || fal[yy * w + xx]) continue; // vastag fal
         const c = r.cimke[yy * w + xx]!;
-        if (r.fal[yy * w + xx] || r.nyilas[yy * w + xx]) continue; // vastag fal
-        if (c === 1) rossz = true; else if (c >= 2) { if (futott.has(c - 2)) futottDb++; else rossz = true; }
+        // vékony vonalon (szaggatott belmagasság-vonal, válaszfal) túli szabad tér: ugyanannak a zsebnek a része (a külső
+        // tér is – akkor a zseb a lap széléig ér, és elvetjük)
+        if (c >= 2) { if (futott.has(c - 2)) futottDb++; else rossz = true; } else { const m2 = yy * w + xx; if (!latott[m2]) { latott[m2] = 1; komp.push(m2); } }
       }
       if (komp.length > maxDb) rossz = true;
     }
