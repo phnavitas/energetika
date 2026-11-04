@@ -52,7 +52,16 @@ function ferdeOsszevon(p: Poligon, tures: number, ugras: number, minHossz: numbe
       const u = p[k % n]!, v = p[(k + 1) % n]!; const l = Math.hypot(v[0] - u[0], v[1] - u[1]);
       // az él iránya a ferde egyeneshez képest: menti (hosszú) vagy keresztirányú ugrás (rövid)
       const ex = (b[0] - a[0]) / L, ey = (b[1] - a[1]) / L; const menti = ((v[0] - u[0]) * ex + (v[1] - u[1]) * ey) / (l || 1);
-      if (menti > 0.9) { if (l > maxMenti) return false; continue; }
+      if (menti > 0.9) {
+        if (l > maxMenti) {
+          // hosszabb menti él csak akkor, ha maga is a ferde fal irányába dől (≥ 0,8°, azonos értelemben) – a pontosan
+          // tengelyirányú, lépcsőzetes homlokzat (sorház) nem ferde fal
+          const tenge = Math.abs(v[0] - u[0]) >= Math.abs(v[1] - u[1]); const elter = tenge ? (v[1] - u[1]) / (v[0] - u[0]) : (v[0] - u[0]) / (v[1] - u[1]);
+          const lanc = tenge ? (b[1] - a[1]) / (b[0] - a[0]) : (b[0] - a[0]) / (b[1] - a[1]);
+          if (l > 2 * maxMenti || Math.abs(Math.atan(elter)) < 0.8 * Math.PI / 180 || Math.sign(elter) !== Math.sign(lanc)) return false;
+        }
+        continue;
+      }
       if (menti < -0.2 || l > ugras) return false;
       const sz = Math.sign((v[0] - u[0]) * -ey + (v[1] - u[1]) * ex); if (!sz) continue;
       if (elojel && sz !== elojel) return false; elojel = sz; ugrasDb++;
@@ -300,7 +309,7 @@ export function burokAuto(r: Raszter, futott: ReadonlySet<number>, zsebTilto?: {
   }
   const min = 4 / (r.px * r.px);
   const kulsok = hurkok.filter((p) => terulet(p) > min); // a cella bal oldali bejárásánál a külső határ pozitív előjelű
-  return kulsok.map((p) => derekszog(ferdeOsszevon(egyszerusit(p, 0.12 / r.px), 0.6 / r.px, 0.7 / r.px, 2.5 / r.px, 3.0 / r.px), 1.5 / r.px, 0.2 / r.px).map(([gx, gy]) => [Math.round(lapX(r, gx) * 10) / 10, Math.round(lapY(r, gy) * 10) / 10] as [number, number]))
+  return kulsok.map((p) => { const g = globalThis as any; let q = egyszerusit(p, 0.12 / r.px); if (!g.NOFO) q = ferdeOsszevon(q, 0.6 / r.px, 0.7 / r.px, 2.5 / r.px, 3.0 / r.px); if (!g.NODR) q = derekszog(q, 1.5 / r.px, 0.2 / r.px); return q.map(([gx, gy]) => [Math.round(lapX(r, gx) * 10) / 10, Math.round(lapY(r, gy) * 10) / 10] as [number, number]); })
     .filter((p) => p.length >= 3);
 }
 
