@@ -22,6 +22,8 @@ export interface TervNyilas {
   fajta: 'ablak' | 'erkelyajto' | 'bejarati_ajto' | 'bejarati_uvegajto' | 'garazskapu' | 'belso_ajto' | 'falfulke' | 'fuggonyfal';
   /** Méretfelirat nélküli nyílás: a szélesség az alaprajzon mért falnyílás, a magasság a homlokzatról (vagy becsült). */
   mert?: { magForras: 'homlokzat' | 'homlokzat_takart' | 'becsult' };
+  /** A hozzárendelt (áthidalt) falnyílás befoglalója a lapon (pt): x0, y0, x1, y1 – a megjelenítéshez. */
+  hely?: [number, number, number, number];
 }
 
 /** Nyílásméret cm-ben; a „+30” toldás (redőnytok, tokszélesítés) a magasság mellett – a nyílásméret az első szám. */
@@ -299,6 +301,10 @@ export function nyilasokHozzarendel(feliratok: NyilasFelirat[], r: Raszter, neve
       for (const n of [x > 0 ? q - 1 : -1, x < W - 1 ? q + 1 : -1, q - W, q + W]) if (n >= 0 && n < W * H && r.nyilas[n] && !komp[n]) { komp[n] = id; sor.push(n); }
     }
   }
+  // a nyílásfoltok befoglalója (rácspont)
+  const kompBB = Array.from({ length: kompDb + 1 }, () => [Infinity, Infinity, -Infinity, -Infinity]);
+  for (let i = 0; i < W * H; i++) { const c = komp[i]!; if (!c) continue; const b = kompBB[c]!, x = i % W, y = (i / W) | 0; if (x < b[0]!) b[0] = x; if (y < b[1]!) b[1] = y; if (x > b[2]!) b[2] = x; if (y > b[3]!) b[3] = y; }
+  const kompHely = (c: number): [number, number, number, number] => { const b = kompBB[c]!; return [r.x0 + b[0]! / ptPx, r.y0 + b[1]! / ptPx, r.x0 + (b[2]! + 1) / ptPx, r.y0 + (b[3]! + 1) / ptPx]; };
   for (const f of feliratok) {
     const fx = Math.round((f.x - r.x0) * ptPx), fy = Math.round((f.y - r.y0) * ptPx);
     const R = Math.round(1.3 / r.px);
@@ -339,8 +345,8 @@ export function nyilasokHozzarendel(feliratok: NyilasFelirat[], r: Raszter, neve
     };
     // az első olyan folt, amely helyiséghez tartozik (a járdaszegély, kerítés „nyílásai” kiesnek)
     let p: { h: number; irany: number; kulso: boolean } | null = null;
-    let elteroIrany = false;
-    for (const [, { i, v }] of jeloltek.slice(0, 6)) { p = vizsgal(i, v); if (p) { elteroIrany = v !== (f.fal === 'v'); break; } }
+    let elteroIrany = false; let folt = 0;
+    for (const [, { i, v }] of jeloltek.slice(0, 6)) { p = vizsgal(i, v); if (p) { elteroIrany = v !== (f.fal === 'v'); folt = komp[i]!; break; } }
     // ajtófelirat, de csak a feliratra merőleges falban találtunk nyílást (az ajtónyílás nincs áthidalva, pl. fedett
     // terasz felé nyíló bejárat): a felirat irányával egyező, közeli (≤ 1 m) külső falszakasz előbb
     if (p && elteroIrany && f.pm === null && f.mag >= 1.9) {
@@ -376,7 +382,7 @@ export function nyilasokHozzarendel(feliratok: NyilasFelirat[], r: Raszter, neve
     const lako = p ? LAKO.test(nevek[p.h] ?? '') : false;
     const kapu = kulso && f.pm === null && f.mag >= 1.8 && (garazsban ? f.kapuJelolt || f.szel >= 1.8 : !lako && f.kapuJelolt && f.szel >= 2.2);
     const fajta: TervNyilas['fajta'] = kapu ? 'garazskapu' : !kulso ? 'belso_ajto' : f.pm !== null && f.pm > 0.05 ? 'ablak' : f.pm !== null ? 'erkelyajto' : f.mag >= 1.9 ? (tipusLap || lako ? 'erkelyajto' : 'bejarati_ajto') : 'ablak';
-    ki.push({ ...f, helyiseg: p?.h ?? null, irany: p?.irany ?? null, kulso, fajta });
+    ki.push({ ...f, helyiseg: p?.h ?? null, irany: p?.irany ?? null, kulso, fajta, ...(folt && !elteroIrany ? { hely: kompHely(folt) } : {}) });
   }
   return ki;
 }
@@ -423,7 +429,7 @@ export function fuggonyfalak(r: Raszter, feliratos: TervNyilas[], pecsetek: { x:
     if (feliratos.some((n) => n.kulso && n.helyiseg !== null && (g.fuggo ? Math.abs(n.x - cx) < 1.5 / r.mPerPt && n.y > L[0]! && n.y < L[1]! : Math.abs(n.y - cy) < 1.5 / r.mPerPt && n.x > L[0]! && n.x < L[1]!))) continue;
     const helyiseg = (a >= 2 ? a : b) - 2;
     const irany = g.fuggo ? (a === 1 ? 270 : 90) : (a === 1 ? 0 : 180);
-    ki.push({ szel: Math.round(g.hossz * 100) / 100, mag: 0, pm: 0, x: cx, y: cy, helyiseg, irany, kulso: true, fajta: 'fuggonyfal' });
+    ki.push({ szel: Math.round(g.hossz * 100) / 100, mag: 0, pm: 0, x: cx, y: cy, helyiseg, irany, kulso: true, fajta: 'fuggonyfal', hely: [Math.min(g.x0, g.x1), Math.min(g.y0, g.y1), Math.max(g.x0, g.x1), Math.max(g.y0, g.y1)] });
   }
   return ki;
 }
@@ -464,7 +470,7 @@ export function jeloletlenNyilasok(r: Raszter, meglevo: TervNyilas[]): TervNyila
     if (r.uvegfalak.some((g) => g.fuggo === fuggo && (fuggo ? Math.abs((g.x0 + g.x1) / 2 - X) < ke && Y > g.y0 && Y < g.y1 : Math.abs((g.y0 + g.y1) / 2 - Y) < ke && X > g.x0 && X < g.x1))) continue;
     const helyiseg = (a >= 2 ? a : b) - 2;
     const irany = fuggo ? (a === 1 ? 270 : 90) : (a === 1 ? 0 : 180);
-    ki.push({ szel: Math.round(L * 100) / 100, mag: 0, pm: null, x: X, y: Y, helyiseg, irany, kulso: true, fajta: 'ablak', mert: { magForras: 'becsult' } });
+    ki.push({ szel: Math.round(L * 100) / 100, mag: 0, pm: null, x: X, y: Y, helyiseg, irany, kulso: true, fajta: 'ablak', mert: { magForras: 'becsult' }, hely: [lapX(x0), lapY(y0), lapX(x1 + 1), lapY(y1 + 1)] });
   }
   return ki;
 }
