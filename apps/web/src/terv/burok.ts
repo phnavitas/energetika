@@ -33,6 +33,42 @@ function egyszerusit(p: Poligon, eps: number): Poligon {
   return [...a.slice(0, -1), ...b.slice(0, -1)];
 }
 
+/**
+ * Ferde fal lépcsőzetes rajzolata → egy ferde él. A rácsból kapott körvonalon a ferde falat (ablakfülkék, sarkok
+ * miatt) rövid, egy irányba lépő „ugrások” tördelik; ahol legalább két ilyen ugrás (mind ugyanarra az oldalra,
+ * egyenként < `ugras`, a köztük lévő menti élek ≤ `maxMenti`) egy legalább `minHossz` hosszú, tengelytől ≥ 3°-kal eltérő
+ * egyenes mentén `tures`-en belül marad, a szakaszt egy ferde éllel helyettesítjük. Az ide-oda ugró (fülke, kiugrás),
+ * ill. hosszú szakaszokkal lépcsőző (sorházas homlokzat) tengelyirányú fal marad.
+ */
+function ferdeOsszevon(p: Poligon, tures: number, ugras: number, minHossz: number, maxMenti: number): Poligon {
+  const n = p.length; if (n < 6) return p;
+  const tav = (q: [number, number], a: [number, number], b: [number, number]) => { const dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1e-9; return ((q[0] - a[0]) * dy - (q[1] - a[1]) * dx) / l; };
+  const jo = (i: number, j: number) => {
+    const a = p[i]!, b = p[j % n]!; const L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < minHossz) return false;
+    const szog = Math.abs(Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI) % 90; if (szog < 3 || szog > 87) return false;
+    let elojel = 0, ugrasDb = 0;
+    for (let k = i + 1; k < j; k++) if (Math.abs(tav(p[k % n]!, a, b)) > tures) return false;
+    for (let k = i; k < j; k++) {
+      const u = p[k % n]!, v = p[(k + 1) % n]!; const l = Math.hypot(v[0] - u[0], v[1] - u[1]);
+      // az él iránya a ferde egyeneshez képest: menti (hosszú) vagy keresztirányú ugrás (rövid)
+      const ex = (b[0] - a[0]) / L, ey = (b[1] - a[1]) / L; const menti = ((v[0] - u[0]) * ex + (v[1] - u[1]) * ey) / (l || 1);
+      if (menti > 0.9) { if (l > maxMenti) return false; continue; }
+      if (menti < -0.2 || l > ugras) return false;
+      const sz = Math.sign((v[0] - u[0]) * -ey + (v[1] - u[1]) * ex); if (!sz) continue;
+      if (elojel && sz !== elojel) return false; elojel = sz; ugrasDb++;
+    }
+    return ugrasDb >= 2;
+  };
+  const ki: Poligon = []; let i = 0;
+  while (i < n) {
+    let leg = -1;
+    for (let j = i + 3; j <= n; j++) if (jo(i, j)) leg = j;
+    ki.push(p[i]!);
+    i = leg > 0 ? leg : i + 1;
+  }
+  return ki.length >= 3 ? ki : p;
+}
+
 export const terulet = (p: Poligon) => p.reduce((s, a, i) => { const b = p[(i + 1) % p.length]!; return s + a[0] * b[1] - b[0] * a[1]; }, 0) / 2;
 
 export function bennE(p: Poligon, x: number, y: number): boolean {
@@ -102,7 +138,7 @@ export function burokAuto(r: Raszter, futott: ReadonlySet<number>): Poligon[] {
   }
   const min = 4 / (r.px * r.px);
   const kulsok = hurkok.filter((p) => terulet(p) > min); // a cella bal oldali bejárásánál a külső határ pozitív előjelű
-  return kulsok.map((p) => egyszerusit(p, 0.12 / r.px).map(([gx, gy]) => [Math.round(lapX(r, gx) * 10) / 10, Math.round(lapY(r, gy) * 10) / 10] as [number, number]))
+  return kulsok.map((p) => ferdeOsszevon(egyszerusit(p, 0.12 / r.px), 0.6 / r.px, 0.7 / r.px, 2.5 / r.px, 3.0 / r.px).map(([gx, gy]) => [Math.round(lapX(r, gx) * 10) / 10, Math.round(lapY(r, gy) * 10) / 10] as [number, number]))
     .filter((p) => p.length >= 3);
 }
 
