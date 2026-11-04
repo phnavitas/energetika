@@ -8,7 +8,7 @@ import { pecsetKinyer, type PecsetAdat } from '../terv/pecset';
 import { HomlokzatEllenorzes } from './TervHomlokzat';
 import type { SzurkeKep } from '../terv/autohelyiseg';
 import { eltolas, fedettArany } from '../terv/fedes';
-import { burokAuto, burokFalak, burokMeres, csatlakozasok, kulsoSikra, kulsoSraff, nyilasEl, bennE, type Poligon } from '../terv/burok';
+import { burokAuto, burokFalak, burokMeres, burokTomeg, csatlakozasok, kulsoSikra, kulsoSraff, nyilasEl, bennE, type Poligon } from '../terv/burok';
 import type { TervNyilas } from '../terv/nyilaszarok';
 import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, eszakJavitas, eszakJavitasMent, type TervLap, type AlaprajzFeldolgozas } from '../terv/elemzes';
 import { egtaj, jegyzekenKivul, jegyzekSorok, szintekCimbol, szintNev } from '../terv/alaprajz';
@@ -201,7 +201,7 @@ const burok3dTar = new Map<string, Poligon[]>();
 function burok3dCache(i: number, r: NonNullable<AlaprajzFeldolgozas['r']>, fut: Set<number>, lap?: Lap, a?: AlaprajzFeldolgozas, belso = false): Poligon[] {
   const kulcs = `${i}|${r.w}x${r.h}|${[...fut].sort((a, b) => a - b).join(',')}|${belso ? 'b' : 'k'}`;
   // belső méret: a helyiségek széle (a fal belső síkja); külső méret: a fal / hőszigetelés külső síkja
-  let v = burok3dTar.get(kulcs); if (!v) { const b = burokAuto(r, fut, lap ? nevFeliratok(lap) : undefined, a ? vartTer(a) : undefined); v = belso ? b : kulsoSikra(r, b); burok3dTar.set(kulcs, v); }
+  let v = burok3dTar.get(kulcs); if (!v) { v = belso ? burokAuto(r, fut, lap ? nevFeliratok(lap) : undefined, a ? vartTer(a) : undefined) : burokTomeg(r, fut, lap ? nevFeliratok(lap) : undefined, a ? vartTer(a) : undefined); burok3dTar.set(kulcs, v); }
   return v;
 }
 /** A burok menti nyílászárók a megadott körvonalhoz (pt). */
@@ -444,7 +444,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   // hőburok-körvonal: a felismert (fűtött helyiségek összevonva), vagy a felhasználó által szerkesztett
   const futottKulcs = al ? [...futottRiK(al, kj)].sort((a, b) => a - b).join(',') : '';
   // a megjelenített (és szerkesztésre átadott) hőburok a fal külső síkján: hőszigetelés külső felülete / vastag fal külső síkja
-  const burokFelismert = useMemo(() => (al?.r ? kulsoSikra(al.r, burokAuto(al.r, futottRiK(al, kj), aLap ? nevFeliratok(aLap.lap) : undefined, vartTer(al))) : []), [al, futottKulcs]);
+  const burokFelismert = useMemo(() => (al?.r ? burokTomeg(al.r, futottRiK(al, kj), aLap ? nevFeliratok(aLap.lap) : undefined, vartTer(al)) : []), [al, futottKulcs]);
   const [burokVazlat, setBurokVazlat] = useState<Poligon[] | null>(null);
   const [burokSzerk, setBurokSzerk] = useState(false);
   const [huz, setHuz] = useState<{ p: number; v: number } | null>(null);
