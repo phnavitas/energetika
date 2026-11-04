@@ -18,13 +18,15 @@ export interface Burok3DSzint {
   teto?: { hajlas: number; terdfal: number; belmag: number };
   /** Oromzatok a homlokzatokról: lapirány (0/90/180/270) → oromszélesség (m). */
   orom?: Record<number, number>;
+  /** Belső méretnél: körvonalanként, élenként a belső falak csatlakozási szakaszai [t0, t1] (levonódnak). */
+  csatl?: [number, number][][][];
 }
 
 type P3 = [number, number, number];
-type Tipus = 'fal' | 'nyilas' | 'teto' | 'padlo' | 'fodem';
+type Tipus = 'fal' | 'nyilas' | 'teto' | 'padlo' | 'fodem' | 'csatl';
 interface Sik { tipus: Tipus; pts: P3[]; n: P3; szint: string; info: string; terulet: number; /** tetőrács-cella (körvonal nélkül rajzolva) */ cella?: boolean; /** a hasáb (szint-körvonal) sorszáma */ grp: number; /** a falhoz tartozó nyílászárónál a fal síkjának sorszáma */ fal?: number }
 
-const TIPUS_NEV: Record<Tipus, string> = { fal: 'Külső fal', nyilas: 'Nyílászáró', teto: 'Födém / tető (legfelső szint)', padlo: 'Padló (legalsó szint)', fodem: 'Közbenső födém' };
+const TIPUS_NEV: Record<Tipus, string> = { csatl: 'Belső fal csatlakozása (levonva)', fal: 'Külső fal', nyilas: 'Nyílászáró', teto: 'Födém / tető (legfelső szint)', padlo: 'Padló (legalsó szint)', fodem: 'Közbenső födém' };
 const EGTAJ = ['É', 'ÉK', 'K', 'DK', 'D', 'DNy', 'Ny', 'ÉNy'];
 const sz = (v: number, t = 2) => v.toLocaleString('hu-HU', { minimumFractionDigits: t, maximumFractionDigits: t });
 
@@ -105,7 +107,7 @@ export function tetoGeo(p: [number, number][], t: { hajlas: number; terdfal: num
   return { H, ucap, elek };
 }
 
-export function Burok3D({ szintek, eszakSzog, magassag = 560 }: { szintek: Burok3DSzint[]; eszakSzog: number; magassag?: number }) {
+export function Burok3D({ szintek, eszakSzog, magassag = 560, meretMod, onMeretMod }: { szintek: Burok3DSzint[]; eszakSzog: number; magassag?: number; meretMod?: 'belso' | 'kulso'; onMeretMod?: (m: 'belso' | 'kulso') => void }) {
   const [forg, setForg] = useState(-35);
   const [dol, setDol] = useState(30);
   const [zoom, setZoom] = useState(1);
@@ -113,7 +115,7 @@ export function Burok3D({ szintek, eszakSzog, magassag = 560 }: { szintek: Burok
   const [huz, setHuz] = useState<{ x: number; y: number; f: number; d: number; p: [number, number]; mod: 'forgat' | 'mozgat'; mozdult: number } | null>(null);
   const [kijelolMod, setKijelolMod] = useState(false);
   const [kijelolt, setKijelolt] = useState<number | null>(null);
-  const [lathato, setLathato] = useState<Record<Tipus, boolean>>({ fal: true, nyilas: true, teto: true, padlo: true, fodem: false });
+  const [lathato, setLathato] = useState<Record<Tipus, boolean>>({ fal: true, nyilas: true, teto: true, padlo: true, fodem: false, csatl: true });
   const svgRef = useRef<SVGSVGElement>(null);
 
   // a síkok (világkoordinátában, m): falak, nyílászárók, padló, födém / tető
@@ -125,7 +127,7 @@ export function Burok3D({ szintek, eszakSzog, magassag = 560 }: { szintek: Burok
     const hasabok: { cx: number; cy: number; z0: number; bb: [number, number, number, number] }[] = [];
     for (const s of szintek) {
       const z1 = s.z0 + s.h;
-      for (const p of s.poligonok) {
+      s.poligonok.forEach((p, pi) => {
         const grp = hasabok.length; hasabok.push({ cx: p.reduce((t, q) => t + q[0], 0) / p.length, cy: p.reduce((t, q) => t + q[1], 0) / p.length, z0: s.z0, bb: [Math.min(...p.map((q) => q[0])), Math.min(...p.map((q) => q[1])), Math.max(...p.map((q) => q[0])), Math.max(...p.map((q) => q[1]))] });
         const A0 = p.reduce((t, [x, y], i) => { const [x2, y2] = p[(i + 1) % p.length]!; return t + x * y2 - x2 * y; }, 0) / 2;
         const tg = s.teto ? tetoGeo(p, s.teto, s.orom) : null;
@@ -149,7 +151,17 @@ export function Burok3D({ szintek, eszakSzog, magassag = 560 }: { szintek: Burok
             const fajta = ef === 'kiugro' ? 'teljes szintmagasságú kiugrás' : ef === 'orom' ? 'oromfal' : hMax - hMin < 0.05 ? (hMax >= s.teto!.belmag - 0.05 ? 'teljes magasságú fal' : 'térdfal') : 'ferde felső élű fal';
             sikok.push({ tipus: 'fal', pts, n: [nx, ny, 0], szint: s.nev, info: `${tj} tájolású · ${fajta} · ${sz(l)} m, ${sz(hMin)}–${sz(hMax)} m magas`, terulet: pts.length ? Math.abs(normTer(pts, nx, ny)) : l * s.h, grp });
           } else
-          sikok.push({ tipus: 'fal', pts: [[A[0], A[1], s.z0], [B[0], B[1], s.z0], [B[0], B[1], z1], [A[0], A[1], z1]], n: [nx, ny, 0], szint: s.nev, info: `${tj} tájolású · ${sz(l)} × ${sz(s.h)} m`, terulet: l * s.h, grp });
+          {
+            // a fal darabjai a belső falak csatlakozásai között; a csatlakozások külön (levont) síkok
+            const cs = (s.csatl?.[pi]?.[i] ?? []).slice().sort((u, w) => u[0] - w[0]);
+            const levon = cs.reduce((t0, [u0, u1]) => t0 + (u1 - u0) * l, 0);
+            const pont = (u: number): [number, number] => [A[0] + dx * u, A[1] + dy * u];
+            const darab = (u0: number, u1: number, tip: Tipus, info: string) => { const P = pont(u0), Q = pont(u1); sikok.push({ tipus: tip, pts: [[P[0], P[1], s.z0], [Q[0], Q[1], s.z0], [Q[0], Q[1], z1], [P[0], P[1], z1]], n: [nx, ny, 0], szint: s.nev, info, terulet: (u1 - u0) * l * s.h, grp }); };
+            const info = `${tj} tájolású · ${sz(l)} × ${sz(s.h)} m${levon > 0 ? ` · nettó hossz ${sz(l - levon)} m (belső falak: −${sz(levon)} m)` : ''}`;
+            let u = 0;
+            for (const [u0, u1] of cs) { if (u0 > u) darab(u, u0, 'fal', info); darab(u0, u1, 'csatl', `${tj} oldali külső falhoz csatlakozó belső fal · ${sz((u1 - u0) * l)} m széles`); u = u1; }
+            if (u < 1) darab(u, 1, 'fal', info);
+          }
           for (const n of s.nyilasok) {
             const tt = ((n.x - A[0]) * dx + (n.y - A[1]) * dy) / (l * l);
             const dist = Math.abs((n.x - A[0]) * dy - (n.y - A[1]) * dx) / l;
@@ -182,7 +194,7 @@ export function Burok3D({ szintek, eszakSzog, magassag = 560 }: { szintek: Burok
         } else
         sikok.push({ tipus: felso ? 'teto' : 'fodem', pts: p.map(([x, y]) => [x, y, z1] as P3), n: [0, 0, 1], szint: s.nev, info: `vízszintes · ${sz(Ab, 1)} m² (a körvonalon belül)`, terulet: Ab, grp });
         if (also) sikok.push({ tipus: 'padlo', pts: p.map(([x, y]) => [x, y, s.z0] as P3).reverse(), n: [0, 0, -1], szint: s.nev, info: `vízszintes · ${sz(Ab, 1)} m² (a körvonalon belül)`, terulet: Ab, grp });
-      }
+      });
     }
     const pts = sikok.flatMap((x) => x.pts);
     const kozep: P3 = pts.length ? [(Math.min(...pts.map((p) => p[0])) + Math.max(...pts.map((p) => p[0]))) / 2, (Math.min(...pts.map((p) => p[1])) + Math.max(...pts.map((p) => p[1]))) / 2, (zMin + zMax) / 2] : [0, 0, 0];
@@ -216,7 +228,7 @@ export function Burok3D({ szintek, eszakSzog, magassag = 560 }: { szintek: Burok
   // a fény iránya (világkoordinátában: bal-elöl-fent) és a néző iránya
   const feny: P3 = (() => { const v: P3 = [-0.45, 0.55, 0.7]; const l = Math.hypot(...v); return [v[0] / l, v[1] / l, v[2] / l]; })();
   const nezo: P3 = [Math.sin(a) * Math.cos(t), Math.cos(a) * Math.cos(t), Math.sin(t)];
-  const ALAP: Record<Tipus, [number, number, number]> = { fal: [226, 218, 200], nyilas: [120, 178, 228], teto: [196, 120, 92], padlo: [150, 150, 145], fodem: [205, 195, 230] };
+  const ALAP: Record<Tipus, [number, number, number]> = { csatl: [120, 113, 108], fal: [226, 218, 200], nyilas: [120, 178, 228], teto: [196, 120, 92], padlo: [150, 150, 145], fodem: [205, 195, 230] };
   // rajzolási sorrend (festő-algoritmus hasábonként): a hasábok a talajon mért mélységük, egymás fölött alulról
   // felfelé; a hasábon belül: hátsó falak, padló, első falak (a nyílászáróikkal), végül a felső födém / tető
   const felulrol = t >= 0;
@@ -286,11 +298,29 @@ export function Burok3D({ szintek, eszakSzog, magassag = 560 }: { szintek: Burok
         <text x={e1[0]} y={e1[1]} font-size={vw / 40} fill="#B91C1C" font-weight="700" font-family="system-ui">É</text>
       </svg>
       <div style="position:absolute;right:10px;top:10px;display:flex;flex-direction:column;gap:4px;background:rgba(255,255,255,.92);border:1px solid #E5E7EB;border-radius:8px;padding:8px 10px;font-size:12px">
+        {meretMod && onMeretMod && (
+          <div role="group" aria-label="Méretezés" style="display:flex;gap:4px;margin-bottom:4px">
+            {(['belso', 'kulso'] as const).map((mm) => <button aria-pressed={meretMod === mm} onClick={() => onMeretMod(mm)} style={`padding:3px 10px;font:600 12px system-ui;border:1px solid #D1D5DB;border-radius:6px;cursor:pointer;${meretMod === mm ? 'background:#1F2937;color:#fff' : 'background:#fff;color:#374151'}`}>{mm === 'belso' ? 'Belső méret' : 'Külső méret'}</button>)}
+          </div>
+        )}
         <label class="jelolo" style="font-weight:600"><input type="checkbox" checked={kijelolMod} onChange={(e) => { setKijelolMod((e.target as HTMLInputElement).checked); setKijelolt(null); }} /> Kijelölés</label>
-        {(['fal', 'nyilas', 'teto', 'padlo', 'fodem'] as Tipus[]).map((tp) => (
+        {(['fal', 'csatl', 'nyilas', 'teto', 'padlo', 'fodem'] as Tipus[]).filter((tp) => tp !== 'csatl' || szintek.some((x) => x.csatl)).map((tp) => (
           <label class="jelolo"><input type="checkbox" checked={lathato[tp]} onChange={(e) => setLathato({ ...lathato, [tp]: (e.target as HTMLInputElement).checked })} /> <span style={`display:inline-block;width:10px;height:10px;border-radius:2px;background:rgb(${ALAP[tp].join(',')})`} /> {TIPUS_NEV[tp].replace(/ \(.*\)/, '')}</label>
         ))}
       </div>
+      {(() => {
+        // a modell felületei összesítve (ellenőrzéshez)
+        const ossz = (t: Tipus) => sikok.filter((x) => x.tipus === t).reduce((a2, x) => a2 + x.terulet, 0);
+        const fal = ossz('fal'), ny = ossz('nyilas');
+        return (
+          <div class="halkabb" style="position:absolute;right:10px;bottom:10px;background:rgba(255,255,255,.92);border:1px solid #E5E7EB;border-radius:8px;padding:6px 10px;font-size:12px;line-height:1.5">
+            <strong>A modell felületei</strong> ({meretMod === 'kulso' ? 'külső' : 'belső'} méret)<br />
+            Külső fal: {sz(fal, 1)} m² − nyílás {sz(ny, 1)} m² = <strong>{sz(fal - ny, 1)} m²</strong><br />
+            {ossz('csatl') > 0 && <>Belső fal csatlakozás (levonva): {sz(ossz('csatl'), 1)} m²<br /></>}
+            Tető / felső födém: {sz(ossz('teto'), 1)} m² · Padló: {sz(ossz('padlo'), 1)} m²
+          </div>
+        );
+      })()}
       {ks && (
         <div role="status" style="position:absolute;left:10px;bottom:10px;max-width:60%;background:#fff;border:2px solid #F97316;border-radius:8px;padding:8px 12px;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,.08)">
           <div style="font-weight:700">{TIPUS_NEV[ks.tipus]}</div>

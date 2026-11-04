@@ -8,7 +8,7 @@ import { pecsetKinyer, type PecsetAdat } from '../terv/pecset';
 import { HomlokzatEllenorzes } from './TervHomlokzat';
 import type { SzurkeKep } from '../terv/autohelyiseg';
 import { eltolas, fedettArany } from '../terv/fedes';
-import { burokAuto, burokFalak, burokMeres, kulsoSikra, kulsoSraff, nyilasEl, bennE, type Poligon } from '../terv/burok';
+import { burokAuto, burokFalak, burokMeres, csatlakozasok, kulsoSikra, kulsoSraff, nyilasEl, bennE, type Poligon } from '../terv/burok';
 import type { TervNyilas } from '../terv/nyilaszarok';
 import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, eszakJavitas, eszakJavitasMent, type TervLap, type AlaprajzFeldolgozas } from '../terv/elemzes';
 import { egtaj, jegyzekenKivul, jegyzekSorok, szintekCimbol, szintNev } from '../terv/alaprajz';
@@ -198,9 +198,10 @@ const nevFeliratok = (lap: Lap) => lap.szovegek.filter((t) => /\p{L}{4,}/u.test(
 const vartTer = (a: AlaprajzFeldolgozas) => (a.auto ? [] : a.magHelyisegek.map((h, ri) => ({ ri, A: h.A, x: (h.mutato ?? h).x, y: (h.mutato ?? h).y })));
 /** Automatikus hőburok lapokra gyorstárazva (a 3D ábrához). */
 const burok3dTar = new Map<string, Poligon[]>();
-function burok3dCache(i: number, r: NonNullable<AlaprajzFeldolgozas['r']>, fut: Set<number>, lap?: Lap, a?: AlaprajzFeldolgozas): Poligon[] {
-  const kulcs = `${i}|${r.w}x${r.h}|${[...fut].sort((a, b) => a - b).join(',')}`;
-  let v = burok3dTar.get(kulcs); if (!v) { v = kulsoSikra(r, burokAuto(r, fut, lap ? nevFeliratok(lap) : undefined, a ? vartTer(a) : undefined)); burok3dTar.set(kulcs, v); }
+function burok3dCache(i: number, r: NonNullable<AlaprajzFeldolgozas['r']>, fut: Set<number>, lap?: Lap, a?: AlaprajzFeldolgozas, belso = false): Poligon[] {
+  const kulcs = `${i}|${r.w}x${r.h}|${[...fut].sort((a, b) => a - b).join(',')}|${belso ? 'b' : 'k'}`;
+  // belső méret: a helyiségek széle (a fal belső síkja); külső méret: a fal / hőszigetelés külső síkja
+  let v = burok3dTar.get(kulcs); if (!v) { const b = burokAuto(r, fut, lap ? nevFeliratok(lap) : undefined, a ? vartTer(a) : undefined); v = belso ? b : kulsoSikra(r, b); burok3dTar.set(kulcs, v); }
   return v;
 }
 /** A burok menti nyílászárók a megadott körvonalhoz (pt). */
@@ -291,6 +292,9 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   useEffect(() => setKivH(null), [aIdx]);
   /** Az alaprajz-ablak nézete: 2D (a rajz a felismert elemekkel) vagy 3D (a hőburok térben). */
   const [nezet3d, setNezet3d] = useState(false);
+  /** A 3D modell méretezése: belső (alap – a fal belső síkjai, belmagasság) vagy külső (a hőszigetelés külső síkja, szintmagasság). */
+  const [meretMod, setMeretMod] = useState<'belso' | 'kulso'>(() => { try { return localStorage.getItem('ekm-meretmod') === 'kulso' ? 'kulso' : 'belso'; } catch { return 'belso'; } });
+  useEffect(() => { try { localStorage.setItem('ekm-meretmod', meretMod); } catch { /* */ } }, [meretMod]);
   const retegValt = (k: RetegKulcs) => setRetegek((x) => { const y = new Set(x); if (y.has(k)) y.delete(k); else y.add(k); return y; });
   const [pecsetBe, setPecsetBe] = useState(true);
   const [padloAt, setPadloAt] = useState(true);
@@ -1058,18 +1062,23 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   const a = elemzesek[i] as AlaprajzFeldolgozas, r = a.r!, k = kijeloles(i, a);
                   const el = i === sor[0]!.i ? { dx: 0, dy: 0 } : eltolas(alap, r) ?? { dx: 0, dy: 0 };
                   const m = (x: number, y: number): [number, number] => [(x - el.dx) * r.mPerPt, (y - el.dy) * r.mPerPt];
-                  const pol = (k.burok ?? burok3dCache(i, r, futottRiK(a, k), lapok[i]?.lap, a)).map((q) => q.map(([x, y]) => m(x, y)));
-                  const ny = burokNyilasokPt(a, k, pol.length ? (k.burok ?? burok3dCache(i, r, futottRiK(a, k), lapok[i]?.lap, a)) : []).map((n) => { const [x, y] = m(n.x, n.y); return { x, y, szel: n.szel, mag: n.mag, pm: n.pm ?? 0 }; });
+                  const belso = meretMod === 'belso';
+                  const polPt = k.burok && !belso ? k.burok : burok3dCache(i, r, futottRiK(a, k), lapok[i]?.lap, a, belso);
+                  const pol = polPt.map((q) => q.map(([x, y]) => m(x, y)));
+                  // belső méretnél: a belső falak csatlakozása a külső falhoz (levonódik a külső fal felületéből)
+                  const csatl = belso ? csatlakozasok(r, polPt) : undefined;
+                  const ny = burokNyilasokPt(a, k, pol.length ? polPt : []).map((n) => { const [x, y] = m(n.x, n.y); return { x, y, szel: n.szel, mag: n.mag, pm: n.pm ?? 0 }; });
                   const szk = lapSzintek(i).length ? lapSzintek(i) : ['F'];
                   for (const sz0 of szk) {
                     const sorszam = jelen.indexOf(sz0) - Math.max(0, nulla);
                     // tetőtér: a metszetből a hajlás, a térdfal és a padlásfödém (belmagasság) – a 3D-ben a tetősíkok töréseivel
                     const tt = sz0 === 'T' && me?.tetoter ? { hajlas: me.tetoter.hajlas, terdfal: me.tetoter.terdfal ?? 0.9, belmag: me.tetoter.belmagassag ?? (bm ?? 2.6) } : undefined;
-                    szint3.push({ nev: szintNev(sz0), poligonok: pol, z0: sorszam * emelet, h: tt ? tt.belmag : emelet - 0.35, nyilasok: ny, ...(tt ? { teto: tt, orom: oromok(eszakSz, a.e.meretarany ?? undefined) } : {}) });
+                    // belső méret: a falmagasság a belmagasság (a födém vastagsága kimarad); külső méret: teljes szintmagasság
+                    szint3.push({ nev: szintNev(sz0), poligonok: pol, z0: sorszam * emelet, h: tt ? tt.belmag : belso ? emelet - 0.35 : emelet, nyilasok: ny, ...(csatl ? { csatl } : {}), ...(tt ? { teto: tt, orom: oromok(eszakSz, a.e.meretarany ?? undefined) } : {}) });
                   }
                 }
                 const vanPol = szint3.some((x) => x.poligonok.length);
-                return <div class="kartya" style="padding:0;overflow:hidden">{vanPol ? <Burok3D szintek={szint3} eszakSzog={eszakSz} magassag={Math.round(Math.min(760, Math.max(420, (typeof window !== 'undefined' ? window.innerHeight : 800) * 0.72)))} /> : <div class="halkabb" style="padding:60px 16px 16px">Még nincs hőburok-körvonal – a 2D nézetben a „Hőburok rajzolása” gombbal megrajzolhatod.</div>}</div>;
+                return <div class="kartya" style="padding:0;overflow:hidden">{vanPol ? <Burok3D szintek={szint3} eszakSzog={eszakSz} meretMod={meretMod} onMeretMod={setMeretMod} magassag={Math.round(Math.min(760, Math.max(420, (typeof window !== 'undefined' ? window.innerHeight : 800) * 0.72)))} /> : <div class="halkabb" style="padding:60px 16px 16px">Még nincs hőburok-körvonal – a 2D nézetben a „Hőburok rajzolása” gombbal megrajzolhatod.</div>}</div>;
             })()
             ) : (
             <div class="kartya" style="padding:0;overflow:auto;max-height:80vh">
@@ -1136,8 +1145,12 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                         let [x0, y0, x1, y1] = n.hely ?? (vizsz ? [n.x - n.szel * m / 2, n.y - v / 2, n.x + n.szel * m / 2, n.y + v / 2] : [n.x - v / 2, n.y - n.szel * m / 2, n.x + v / 2, n.y + n.szel * m / 2]);
                         if (vizsz && y1 - y0 < v) { const c0 = (y0 + y1) / 2; y0 = c0 - v / 2; y1 = c0 + v / 2; }
                         if (!vizsz && x1 - x0 < v) { const c0 = (x0 + x1) / 2; x0 = c0 - v / 2; x1 = c0 + v / 2; }
+                        // ferde falban a nyílás is ferde: a legközelebbi (1,5 m-en belüli) burokél irányába forgatva
+                        const kx = (x0 + x1) / 2, ky = (y0 + y1) / 2; let fordit = 0;
+                        { let leg = 1.5 * m; for (const q of burok) for (let k = 0; k < q.length; k++) { const A = q[k]!, B = q[(k + 1) % q.length]!; const dx = B[0] - A[0], dy = B[1] - A[1], L = Math.hypot(dx, dy); if (L < 1e-6) continue; const t = Math.max(0, Math.min(1, ((kx - A[0]) * dx + (ky - A[1]) * dy) / (L * L))); const d = Math.hypot(A[0] + dx * t - kx, A[1] + dy * t - ky); if (d < leg) { leg = d; const sz0 = (Math.atan2(dy, dx) * 180) / Math.PI; const r90 = ((sz0 % 90) + 90) % 90; fordit = r90 > 3 && r90 < 87 ? (r90 > 45 ? r90 - 90 : r90) : 0; } } }
+                        if (fordit) { const w = n.szel * m, hh = v; x0 = kx - (vizsz ? w : hh) / 2; x1 = kx + (vizsz ? w : hh) / 2; y0 = ky - (vizsz ? hh : w) / 2; y1 = ky + (vizsz ? hh : w) / 2; }
                         return (
-                          <g>
+                          <g transform={fordit ? `rotate(${fordit} ${kx} ${ky})` : undefined}>
                             <rect x={x0} y={y0} width={x1 - x0} height={y1 - y0} fill={c} fill-opacity={0.22} stroke={c} stroke-width={2} vector-effect="non-scaling-stroke" stroke-dasharray={n.mert || !n.hely ? '4 3' : undefined} />
                             {!atvesz && <line x1={x0} y1={y0} x2={x1} y2={y1} stroke={c} stroke-width={1.5} vector-effect="non-scaling-stroke" />}
                             <text x={(x0 + x1) / 2} y={vizsz ? (n.irany === 0 ? y0 - 3 * fogo : y1 + 9 * fogo) : (y0 + y1) / 2} dx={vizsz ? 0 : (n.irany === 270 ? -4 * fogo : 4 * fogo)} font-size={8 * fogo} text-anchor={vizsz ? 'middle' : n.irany === 270 ? 'end' : 'start'} fill={c} font-family="system-ui" font-weight="600" paint-order="stroke" stroke="#fff" stroke-width={2.5 * fogo}>

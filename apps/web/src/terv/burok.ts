@@ -554,3 +554,31 @@ function szakaszMetsz(a: [number, number], b: [number, number], c: [number, numb
   const o = (p: [number, number], q: [number, number], r2: [number, number]) => Math.sign((q[0] - p[0]) * (r2[1] - p[1]) - (q[1] - p[1]) * (r2[0] - p[0]));
   return o(a, b, c) * o(a, b, d) < 0 && o(c, d, a) * o(c, d, b) < 0;
 }
+
+/**
+ * Belső falak csatlakozása a (belső méretű) körvonal éleihez: az él mentén 5 cm-enként, 15 cm-re befelé falcella van
+ * (válaszfal, belső teherhordó fal). Élenként a csatlakozási szakaszok az él hosszának arányában [t0, t1], a sarkok
+ * 10 cm-es környezete nélkül. Belső méretes számításnál ezek a falszakaszok nem a külső fal részei (levonódnak).
+ */
+export function csatlakozasok(r: Raszter, pol: Poligon[]): [number, number][][][] {
+  return pol.map((p) => {
+    const n = p.length;
+    const A0 = p.reduce((t, [x, y], i) => { const [x2, y2] = p[(i + 1) % n]!; return t + x * y2 - x2 * y; }, 0);
+    const el = Math.sign(A0) || 1;
+    return p.map((a, i) => {
+      const b = p[(i + 1) % n]!; const L = Math.hypot(b[0] - a[0], b[1] - a[1]) * r.mPerPt; if (L < 0.3) return [];
+      const ux = (b[0] - a[0]) / (L / r.mPerPt), uy = (b[1] - a[1]) / (L / r.mPerPt); const bx = -el * uy, by = el * ux; // befelé
+      const ki: [number, number][] = []; let kezd: number | null = null;
+      const lep = 0.05;
+      for (let d = 0.1; d <= L - 0.1 + 1e-9; d += lep) {
+        const x = a[0] + (ux * d + bx * 0.15) / r.mPerPt, y = a[1] + (uy * d + by * 0.15) / r.mPerPt;
+        const cx = Math.floor((x - r.x0) * r.mPerPt / r.px), cy = Math.floor((y - r.y0) * r.mPerPt / r.px);
+        const k = cy * r.w + cx; const fal = cx >= 0 && cy >= 0 && cx < r.w && cy < r.h && !!r.fal[k] && !r.nyilas[k];
+        if (fal && kezd === null) kezd = d;
+        if (!fal && kezd !== null) { if (d - kezd >= 0.06) ki.push([kezd / L, d / L]); kezd = null; }
+      }
+      if (kezd !== null && L - 0.1 - kezd >= 0.06) ki.push([kezd / L, (L - 0.1) / L]);
+      return ki;
+    });
+  });
+}
