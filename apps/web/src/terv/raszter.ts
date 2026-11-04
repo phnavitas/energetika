@@ -25,6 +25,9 @@ export interface RaszterBeallitas {
   kulsoPontok?: { x: number; y: number }[];
   /** A renderelt lap szürkeképe (≈ 1,5 képpont / pt): a rajzstílustól független „tinta”-fal a vektoros fal mellé. */
   tinta?: TintaKep;
+  /** Széles (≥ 2,5 m) nyílások – kapuk – méretfeliratai (pt, lapkoordináta; fal: 'v' vízszintes / 'f' függőleges fal):
+   * a felirat melletti, a felirat szélességével egyező falrés áthidalódik (a 2,8 m-es általános áthidalásnál szélesebb is). */
+  kapuk?: { x: number; y: number; szel: number; fal: 'v' | 'f' }[];
   /** Az ablaksor-szabály (egymás mellé sorolt ablakmodulok falnyílásként) – kikapcsolható változat az önellenőrzéshez. */
   ablaksor?: boolean;
 }
@@ -737,6 +740,33 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   const resM = b.resZaras ?? (sraffMod || tintaDb * px * px > 2 ? 2.7 : 0);
   // (sraffozott falnál a nyílások közti falpillér gyakran különálló folt – ott nem kell azonos falhálózat)
   if (resM) resZar(fal, nyilas, w, h, Math.round(resM / px), Math.round(0.6 / px), sraffMod && !b.resZaras ? new Int32Array(w * h).fill(1) : falKomponensek(fal, w, h), Math.max(2, Math.round(0.25 / px)), Math.round(0.18 / px), Math.round(1.2 / px));
+  // feliratos széles nyílások (kapuk): a felirat 2,5 m-es környezetében az a falirányú rés, amelynek hossza a felirat
+  // szélességével egyezik (±25 %) és mindkét végén fal van – a rés falvastagságnyi sávja áthidalódik
+  for (const k of b.kapuk ?? []) {
+    const [kx, ky] = tr(k.x, k.y); const L = k.szel / px, R = Math.round(2.5 / px);
+    const vizsz = k.fal === 'v';
+    const sorok: { s: number; a: number; e: number }[] = [];
+    for (let d = -R; d <= R; d++) {
+      const sorI = Math.round(vizsz ? ky : kx) + d; if (sorI < 0 || sorI >= (vizsz ? h : w)) continue;
+      const n = vizsz ? w : h; const at = (q: number) => (vizsz ? fal[sorI * w + q] : fal[q * w + sorI]);
+      const c = Math.round(vizsz ? kx : ky);
+      // a felirat helyéről mindkét irányban az első falig
+      let a = c, e = c;
+      if (at(Math.max(0, Math.min(n - 1, c)))) continue;
+      while (a > 0 && !at(a - 1) && c - a < L * 1.5) a--;
+      while (e < n - 1 && !at(e + 1) && e - c < L * 1.5) e++;
+      if (a <= 0 || e >= n - 1 || !at(a - 1) || !at(e + 1)) continue;
+      const hossz = e - a + 1;
+      if (hossz < L * 0.75 || hossz > L * 1.25) continue;
+      sorok.push({ s: sorI, a, e });
+    }
+    // a falvastagság: egymást követő, azonos résű sorok (≤ 0,8 m)
+    if (!sorok.length || sorok.length > Math.round(0.8 / px) * 3) continue;
+    const t0 = sorok[0]!;
+    const egy = sorok.filter((x) => Math.abs(x.a - t0.a) <= 3 && Math.abs(x.e - t0.e) <= 3);
+    if (egy.length < 2 || egy.length > Math.round(0.8 / px)) continue;
+    for (const x of egy) for (let q = x.a; q <= x.e; q++) { const i = vizsz ? x.s * w + q : q * w + x.s; if (!fal[i]) nyilas[i] = 1; }
+  }
   const gat = new Uint8Array(w * h);
   for (let i = 0; i < w * h; i++) gat[i] = fal[i] || nyilas[i] ? 1 : 0;
   // helyiségek: a pecsétekből indított versengő elárasztás a (hajszálrésekre kissé tágított) gáton belül

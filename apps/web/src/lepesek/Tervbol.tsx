@@ -373,12 +373,13 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const belsoAjtok = (al?.nyilasok ?? []).filter((n) => !n.kulso).length;
   // északjel nélküli lap: a homlokzati rajzokból (címbeli égtáj + nyílások helyzete), ha egyértelmű
   const eszakHom = (a: AlaprajzFeldolgozas | null | undefined): number | null => {
-    if (!a || a.e.eszak || !a.e.mPerPt || !homlokzatLapok.length) return null;
+    if (!a || (a.e.eszak && !a.e.eszak.bizonytalan) || !a.e.mPerPt || !homlokzatLapok.length) return null;
     if (eszakHomGy.has(a)) return eszakHomGy.get(a)!;
     let v: number | null = null; try { v = eszakHomlokzatbol(a.nyilasok, a.e.mPerPt, homlokzatRajzTar(homlokzatLapok.map(({ l }) => l.lap), a.e.meretarany)); } catch { v = null; }
     eszakHomGy.set(a, v); return v;
   };
-  const eszakFelismert = (a: AlaprajzFeldolgozas | null | undefined) => (a?.e.eszak ? norm(a.e.eszak.szog + eszakJavitas(a.e.eszak.alairas)) : eszakHom(a) ?? 0);
+  // a bizonytalan (betű nélküli alakból becsült) északjel helyett a homlokzatokból adódó irány, ha az egyértelmű
+  const eszakFelismert = (a: AlaprajzFeldolgozas | null | undefined) => (a?.e.eszak && !(a.e.eszak.bizonytalan && eszakHom(a) !== null) ? norm(a.e.eszak.szog + eszakJavitas(a.e.eszak.alairas)) : eszakHom(a) ?? (a?.e.eszak ? norm(a.e.eszak.szog + eszakJavitas(a.e.eszak.alairas)) : 0));
   const eszakLap = (i: number, a: AlaprajzFeldolgozas | null | undefined) => eszakKulon[i] ?? eszakKozos ?? eszakFelismert(a);
   const eszakSz = eszakLap(aIdx, al);
   const kulonE = aIdx in eszakKulon;
@@ -543,7 +544,9 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
       });
       if (a.r) for (const x of atvetelReszek(a, k).ri) if (x >= 0) szomszed += a.r.helyisegek[x]!.szakaszok.filter((sg) => sg.tul === 'kulso' && sg.szomszed).reduce((q, sg) => q + sg.hossz, 0);
     }
-    if (!jel.size && szomszed < 0.3) return null;
+    // a belmagasság a metszetből nem olvasható (nincs metszet, vagy a szintjelekből nem adódik – pl. csarnok)
+    const bmHiany = alaprajzLapok.length > 0 && !(me?.szintek.belmagassag.length);
+    if (!jel.size && szomszed < 0.3 && !bmHiany) return null;
     return (
       <div role="group" aria-label="Eldöntendő a beolvasáshoz">
         <table class="tabla" style="margin-top:6px"><tbody>
@@ -556,6 +559,12 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
               </td>
             </tr>
           ))}
+          {bmHiany && (
+            <tr>
+              <td>A belmagasságot nem tudtam kiolvasni a metszetből{me ? '' : ' (nincs metszet)'} – add meg (csarnoknál a fal belső magassága, pl. az eresz alsó síkjáig).</td>
+              <td style="white-space:nowrap"><input type="number" step="0.01" min="1.5" max="20" aria-label="Belmagasság (m)" style="width:90px" value={bm ?? 2.7} onInput={(e) => { const v = Number((e.target as HTMLInputElement).value.replace(',', '.')); if (v > 0) setBm(v); }} /> m</td>
+            </tr>
+          )}
           {szomszed >= 0.3 && (
             <tr>
               <td>Szomszédos épülethez csatlakozó fal ({sz(szomszed)} m) – a szomszéd épület fűtött?</td>
@@ -885,7 +894,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                 <button class="gomb" onClick={() => setEszak(norm(eszakSz + 45))}>+45°</button>
               </div>
               <label class="halkabb" style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" checked={kulonE} onChange={(e) => { const be = (e.target as HTMLInputElement).checked; setEszakKulon((x) => { const y = { ...x }; if (be) y[aIdx] = eszakSz; else delete y[aIdx]; return y; }); }} /> Ennél a lapnál külön érték{!kulonE && eszakKozos !== null ? ' (most: közös, minden lapra érvényes)' : ''}</label>
-              {!ej && eszakKozos === null && !kulonE && eszakHom(al) !== null && <small class="halkabb">Északjel nincs a lapon: az irányt a homlokzati rajzokból becsültem (a címükben szereplő égtáj és a nyílások helyzete szerint) – ellenőrizd.</small>}
+              {(!ej || ej.bizonytalan) && eszakKozos === null && !kulonE && eszakHom(al) !== null && <small class="halkabb">{ej ? 'Az északjel alakja nem egyértelmű' : 'Északjel nincs a lapon'}: az irányt a homlokzati rajzokból becsültem (a címükben szereplő égtáj és a nyílások helyzete szerint) – ellenőrizd.</small>}
               {ej && eszakKozos === null && !kulonE && <small class="halkabb">{ej.forras === 'betu' ? 'Az „É” / „N” betűs északjelből.' : eszakJavitas(ej.alairas) !== 0 ? 'Ismert északjel: a korábban rögzített iránnyal. Ellenőrizd az előnézeten (piros nyíl).' : 'Az északjel alakjából – ellenőrizd az előnézeten (piros nyíl), a javítást a program ehhez a jelhez megjegyzi.'}</small>}
             </div>
             {al.e.egysegek.length > 1 && (

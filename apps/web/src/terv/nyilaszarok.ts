@@ -153,7 +153,7 @@ export function nyilasFeliratok(sz0: Szoveg[]): NyilasFelirat[] {
       ki.push({ szel: w, mag: h, pm: pmErtek(pm.m![1]!, pm.m![2]), x, y, fal: Math.abs(ga.fel[0]) >= Math.abs(ga.fel[1]) ? 'v' : 'f' });
     }
   }
-  // méterben írt kapuméretek (szélesség ≥ 1,8 m, magasság 1,8–3,2 m) – a méretláncok számaitól a hozzárendelés választja el
+  // méterben írt kapuméretek (szélesség ≥ 1,8 m, magasság 1,8–6 m) – a méretláncok számaitól a hozzárendelés választja el
   const mSzamok = sz.filter((t) => SZAM_M.test(t.s.trim()) && mSzam(t.s) >= 1.8 && mSzam(t.s) <= 6 && !mHasznalt.has(t));
   for (const a of mSzamok) {
     if (mHasznalt.has(a)) continue;
@@ -169,7 +169,11 @@ export function nyilasFeliratok(sz0: Szoveg[]): NyilasFelirat[] {
     if (!legjobb) continue;
     const [felso, also] = legjobb.perp > 0 ? [legjobb.b, a] : [a, legjobb.b];
     const w = mSzam(felso.s), h = mSzam(also.s);
-    if (h < 1.8 || h > 3.2) continue;
+    // magasabb (3,2–6 m) csak csarnokkapu lehet: legalább 4 m széles, és a közelében (≤ 25 betűméret) „kapu” felirat áll –
+    // a lakóépület függőleges méretláncpárjai nem
+    const gb0 = geom(legjobb.b);
+    const kapuSzoveg = () => sz.some((t) => /kapu/i.test(t.s) && Math.hypot(t.x - (ga.cx + gb0.cx) / 2, t.y - (ga.cy + gb0.cy) / 2) < a.meret * 25);
+    if (h < 1.8 || h > 6 || (h > 3.2 && !(w >= 4 && kapuSzoveg()))) continue;
     const gb = geom(legjobb.b);
     mHasznalt.add(a); mHasznalt.add(legjobb.b);
     ki.push({ szel: w, mag: h, pm: null, x: (ga.cx + gb.cx) / 2, y: (ga.cy + gb.cy) / 2, fal: Math.abs(ga.fel[0]) >= Math.abs(ga.fel[1]) ? 'v' : 'f', kapuJelolt: true });
