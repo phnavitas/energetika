@@ -107,19 +107,11 @@ export function tetoGeo(p: [number, number][], t: { hajlas: number; terdfal: num
   return { H, ucap, elek };
 }
 
-export function Burok3D({ szintek, eszakSzog, magassag = 560, meretMod, onMeretMod }: { szintek: Burok3DSzint[]; eszakSzog: number; magassag?: number; meretMod?: 'belso' | 'kulso'; onMeretMod?: (m: 'belso' | 'kulso') => void }) {
-  const [forg, setForg] = useState(-35);
-  const [dol, setDol] = useState(30);
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState<[number, number]>([0, 0]);
-  const [huz, setHuz] = useState<{ x: number; y: number; f: number; d: number; p: [number, number]; mod: 'forgat' | 'mozgat'; mozdult: number } | null>(null);
-  const [kijelolMod, setKijelolMod] = useState(false);
-  const [kijelolt, setKijelolt] = useState<number | null>(null);
-  const [lathato, setLathato] = useState<Record<Tipus, boolean>>({ fal: true, nyilas: true, teto: true, padlo: true, fodem: false, csatl: true });
-  const svgRef = useRef<SVGSVGElement>(null);
-
-  // a síkok (világkoordinátában, m): falak, nyílászárók, padló, födém / tető
-  const { sikok, kozep, R, hasabok } = useMemo(() => {
+/**
+ * A 3D modell síkjai (falak, nyílászárók, csatlakozó belső falak, tető / födém, padló) világkoordinátában (m) – a
+ * rajzolás és a modellből számolt felületek közös alapja.
+ */
+export function modellSikok(szintek: Burok3DSzint[], eszakSzog: number) {
     const sikok: Sik[] = [];
     // tájolás: a kifelé mutató normális lapirányszöge (felfelé 0°, óramutató szerint) az északjelhez képest
     const tajol = (nx: number, ny: number) => { const b = (Math.atan2(nx, -ny) * 180) / Math.PI; const az = (((b - eszakSzog) % 360) + 360) % 360; return EGTAJ[Math.round(az / 45) % 8]!; };
@@ -200,7 +192,34 @@ export function Burok3D({ szintek, eszakSzog, magassag = 560, meretMod, onMeretM
     const kozep: P3 = pts.length ? [(Math.min(...pts.map((p) => p[0])) + Math.max(...pts.map((p) => p[0]))) / 2, (Math.min(...pts.map((p) => p[1])) + Math.max(...pts.map((p) => p[1]))) / 2, (zMin + zMax) / 2] : [0, 0, 0];
     const R = Math.max(5, ...pts.map((p) => Math.hypot(p[0] - kozep[0], p[1] - kozep[1], p[2] - kozep[2])));
     return { sikok, kozep, R, hasabok };
-  }, [szintek, eszakSzog]);
+}
+
+/** A modell felületei összesítve: típusonként, a falak és nyílászárók tájolásonként is (m²). */
+export function modellOsszesites(szintek: Burok3DSzint[], eszakSzog: number) {
+  const { sikok } = modellSikok(szintek, eszakSzog);
+  const ki: { tipus: Record<string, number>; falTaj: Record<string, number>; nyilasTaj: Record<string, number> } = { tipus: {}, falTaj: {}, nyilasTaj: {} };
+  for (const x of sikok) {
+    ki.tipus[x.tipus] = (ki.tipus[x.tipus] ?? 0) + x.terulet;
+    const tj = x.info.split(' ')[0]!;
+    if (x.tipus === 'fal') ki.falTaj[tj] = (ki.falTaj[tj] ?? 0) + x.terulet;
+    if (x.tipus === 'nyilas') ki.nyilasTaj[tj] = (ki.nyilasTaj[tj] ?? 0) + x.terulet;
+  }
+  return ki;
+}
+
+export function Burok3D({ szintek, eszakSzog, magassag = 560, meretMod, onMeretMod }: { szintek: Burok3DSzint[]; eszakSzog: number; magassag?: number; meretMod?: 'belso' | 'kulso'; onMeretMod?: (m: 'belso' | 'kulso') => void }) {
+  const [forg, setForg] = useState(-35);
+  const [dol, setDol] = useState(30);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState<[number, number]>([0, 0]);
+  const [huz, setHuz] = useState<{ x: number; y: number; f: number; d: number; p: [number, number]; mod: 'forgat' | 'mozgat'; mozdult: number } | null>(null);
+  const [kijelolMod, setKijelolMod] = useState(false);
+  const [kijelolt, setKijelolt] = useState<number | null>(null);
+  const [lathato, setLathato] = useState<Record<Tipus, boolean>>({ fal: true, nyilas: true, teto: true, padlo: true, fodem: false, csatl: true });
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  // a síkok (világkoordinátában, m): falak, nyílászárók, padló, födém / tető
+  const { sikok, kozep, R, hasabok } = useMemo(() => modellSikok(szintek, eszakSzog), [szintek, eszakSzog]);
 
   // görgetés: nagyítás a kurzor körül (nem passzív figyelő, hogy a lap ne görögjön)
   useEffect(() => {

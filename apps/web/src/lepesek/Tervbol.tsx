@@ -15,7 +15,7 @@ import { egtaj, jegyzekenKivul, jegyzekSorok, szintekCimbol, szintNev } from '..
 import { tervAtvesz, type AtvettNyilas, type AtvettHelyiseg } from '../terv/atvetel';
 import type { Raszter, FalSzakasz } from '../terv/raszter';
 import { MintaLakasok } from './MintaLakasok';
-import { Burok3D, type Burok3DSzint } from './Burok3D';
+import { Burok3D, modellOsszesites, type Burok3DSzint } from './Burok3D';
 import { homlokzatRajzok, mertMagassagok, eszakHomlokzatbol, tetoAblakokHomlokzatrol, oromSzelessegek, type HomlokzatRajz, type MertMagassag } from '../terv/homlokzatIllesztes';
 import type { Lap } from '../terv/kinyeres';
 
@@ -487,6 +487,38 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const eszakFelismert = (a: AlaprajzFeldolgozas | null | undefined) => (a?.e.eszak && !(a.e.eszak.bizonytalan && eszakHom(a) !== null) ? norm(a.e.eszak.szog + eszakJavitas(a.e.eszak.alairas)) : eszakHom(a) ?? (a?.e.eszak ? norm(a.e.eszak.szog + eszakJavitas(a.e.eszak.alairas)) : 0));
   const eszakLap = (i: number, a: AlaprajzFeldolgozas | null | undefined) => eszakKulon[i] ?? eszakKozos ?? eszakFelismert(a);
   const eszakSz = eszakLap(aIdx, al);
+  /** A 3D modell szintjei (a hőburok-körvonal szintenként, a választott méretezéssel) – a 3D nézethez és a modellből számolt felületekhez. */
+  const modellSzintek = (mod: 'belso' | 'kulso'): Burok3DSzint[] | null => {
+              const sor = alaprajzLapok.filter(({ i }) => !kimarad(i) && typeof elemzesek[i] === 'object' && (elemzesek[i] as AlaprajzFeldolgozas).r);
+              if (!sor.length) return null;
+              const alap = (elemzesek[sor[0]!.i] as AlaprajzFeldolgozas).r!;
+              const emelet = (bm ?? 2.7) + 0.35;
+              const szint3: Burok3DSzint[] = [];
+              const jelen = [...new Set(sor.flatMap(({ i }) => (lapSzintek(i).length ? lapSzintek(i) : ['F'])))].sort((x, y) => SZINT_SOR.indexOf(x) - SZINT_SOR.indexOf(y));
+              const nulla = jelen.indexOf('F') >= 0 ? jelen.indexOf('F') : jelen.findIndex((x) => x !== 'P');
+              for (const { i } of sor) {
+                const a = elemzesek[i] as AlaprajzFeldolgozas, r = a.r!, k = kijeloles(i, a);
+                const el = i === sor[0]!.i ? { dx: 0, dy: 0 } : eltolas(alap, r) ?? { dx: 0, dy: 0 };
+                const m = (x: number, y: number): [number, number] => [(x - el.dx) * r.mPerPt, (y - el.dy) * r.mPerPt];
+                const belso = mod === 'belso';
+                const polPt = k.burok && !belso ? k.burok : burok3dCache(i, r, futottRiK(a, k), lapok[i]?.lap, a, belso);
+                const pol = polPt.map((q) => q.map(([x, y]) => m(x, y)));
+                // belső méretnél: a belső falak csatlakozása a külső falhoz (levonódik a külső fal felületéből)
+                const csatl = belso ? csatlakozasok(r, polPt) : undefined;
+                const ny = burokNyilasokPt(a, k, pol.length ? polPt : []).map((n) => { const [x, y] = m(n.x, n.y); return { x, y, szel: n.szel, mag: n.mag, pm: n.pm ?? 0 }; });
+                const szk = lapSzintek(i).length ? lapSzintek(i) : ['F'];
+                for (const sz0 of szk) {
+                  const sorszam = jelen.indexOf(sz0) - Math.max(0, nulla);
+                  // tetőtér: a metszetből a hajlás, a térdfal és a padlásfödém (belmagasság) – a 3D-ben a tetősíkok töréseivel
+                  const tt = sz0 === 'T' && me?.tetoter ? { hajlas: me.tetoter.hajlas, terdfal: me.tetoter.terdfal ?? 0.9, belmag: me.tetoter.belmagassag ?? (bm ?? 2.6) } : undefined;
+                  // belső méret: a falmagasság a belmagasság (a födém vastagsága kimarad); külső méret: teljes szintmagasság
+                  szint3.push({ nev: szintNev(sz0), poligonok: pol, z0: sorszam * emelet, h: tt ? tt.belmag : belso ? emelet - 0.35 : emelet, nyilasok: ny, ...(csatl ? { csatl } : {}), ...(tt ? { teto: tt, orom: oromok(eszakSz, a.e.meretarany ?? undefined) } : {}) });
+                }
+              }
+    return szint3;
+  };
+  // ellenőrzéshez (regresszió): a modell felületei mindkét méretezéssel, igény szerint lekérdezhetők
+  try { (globalThis as any).__modell3d = () => ({ belso: (() => { const x = modellSzintek('belso'); return x ? modellOsszesites(x, eszakSz) : null; })(), kulso: (() => { const x = modellSzintek('kulso'); return x ? modellOsszesites(x, eszakSz) : null; })() }); } catch { /* */ }
   // az átvételkor ténylegesen használt tetőablakok (homlokzatról azonosítva, ennek híján az alaprajzi feliratokból)
   const tetoablakSzoveg = useMemo(() => {
     if (!al?.r || !tetoterLapE || !retegek.has('tetoablak')) return `${tetoablakJeloltek.length} felirat`;
@@ -1050,33 +1082,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             </div>
             {nezet3d ? (
               (() => {
-                // hőburok térben: minden átvételre jelölt alaprajz körvonala a szintje szerint, a lapok eltolását a falak illesztése adja
-                const sor = alaprajzLapok.filter(({ i }) => !kimarad(i) && typeof elemzesek[i] === 'object' && (elemzesek[i] as AlaprajzFeldolgozas).r);
-                if (!sor.length) return <div class="kartya halkabb" style="padding:60px 16px 16px">A 3D nézethez a lap léptéke és a felismert falak kellenek (add meg a méretarányt).</div>;
-                const alap = (elemzesek[sor[0]!.i] as AlaprajzFeldolgozas).r!;
-                const emelet = (bm ?? 2.7) + 0.35;
-                const szint3: Burok3DSzint[] = [];
-                const jelen = [...new Set(sor.flatMap(({ i }) => (lapSzintek(i).length ? lapSzintek(i) : ['F'])))].sort((x, y) => SZINT_SOR.indexOf(x) - SZINT_SOR.indexOf(y));
-                const nulla = jelen.indexOf('F') >= 0 ? jelen.indexOf('F') : jelen.findIndex((x) => x !== 'P');
-                for (const { i } of sor) {
-                  const a = elemzesek[i] as AlaprajzFeldolgozas, r = a.r!, k = kijeloles(i, a);
-                  const el = i === sor[0]!.i ? { dx: 0, dy: 0 } : eltolas(alap, r) ?? { dx: 0, dy: 0 };
-                  const m = (x: number, y: number): [number, number] => [(x - el.dx) * r.mPerPt, (y - el.dy) * r.mPerPt];
-                  const belso = meretMod === 'belso';
-                  const polPt = k.burok && !belso ? k.burok : burok3dCache(i, r, futottRiK(a, k), lapok[i]?.lap, a, belso);
-                  const pol = polPt.map((q) => q.map(([x, y]) => m(x, y)));
-                  // belső méretnél: a belső falak csatlakozása a külső falhoz (levonódik a külső fal felületéből)
-                  const csatl = belso ? csatlakozasok(r, polPt) : undefined;
-                  const ny = burokNyilasokPt(a, k, pol.length ? polPt : []).map((n) => { const [x, y] = m(n.x, n.y); return { x, y, szel: n.szel, mag: n.mag, pm: n.pm ?? 0 }; });
-                  const szk = lapSzintek(i).length ? lapSzintek(i) : ['F'];
-                  for (const sz0 of szk) {
-                    const sorszam = jelen.indexOf(sz0) - Math.max(0, nulla);
-                    // tetőtér: a metszetből a hajlás, a térdfal és a padlásfödém (belmagasság) – a 3D-ben a tetősíkok töréseivel
-                    const tt = sz0 === 'T' && me?.tetoter ? { hajlas: me.tetoter.hajlas, terdfal: me.tetoter.terdfal ?? 0.9, belmag: me.tetoter.belmagassag ?? (bm ?? 2.6) } : undefined;
-                    // belső méret: a falmagasság a belmagasság (a födém vastagsága kimarad); külső méret: teljes szintmagasság
-                    szint3.push({ nev: szintNev(sz0), poligonok: pol, z0: sorszam * emelet, h: tt ? tt.belmag : belso ? emelet - 0.35 : emelet, nyilasok: ny, ...(csatl ? { csatl } : {}), ...(tt ? { teto: tt, orom: oromok(eszakSz, a.e.meretarany ?? undefined) } : {}) });
-                  }
-                }
+                const szint3 = modellSzintek(meretMod);
+                if (!szint3) return <div class="kartya halkabb" style="padding:60px 16px 16px">A 3D nézethez a lap léptéke és a felismert falak kellenek (add meg a méretarányt).</div>;
                 const vanPol = szint3.some((x) => x.poligonok.length);
                 return <div class="kartya" style="padding:0;overflow:hidden">{vanPol ? <Burok3D szintek={szint3} eszakSzog={eszakSz} meretMod={meretMod} onMeretMod={setMeretMod} magassag={Math.round(Math.min(760, Math.max(420, (typeof window !== 'undefined' ? window.innerHeight : 800) * 0.72)))} /> : <div class="halkabb" style="padding:60px 16px 16px">Még nincs hőburok-körvonal – a 2D nézetben a „Hőburok rajzolása” gombbal megrajzolhatod.</div>}</div>;
             })()

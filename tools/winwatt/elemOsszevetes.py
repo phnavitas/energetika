@@ -38,4 +38,13 @@ for m,z in MAP.items():
   # tájolás-egyezés: az égtájanként közös felület a kisebbik összfelülethez viszonyítva (az összfelület eltérését nem bünteti)
   kozos=sum(min(a,b) for a,b in o.values()); kisebb=min(WNY,MNY)
   print(f"  tájolás-egyezés {kozos/kisebb*100:5.1f}%" if kisebb else "  tájolás-egyezés -")
+  # a 3D modellből számolt felületek (belső / külső méret), ha a mérés elmentette (mNN_modell.json)
+  mf_=f'{PJ}{m}_modell.json'
+  if os.path.exists(mf_):
+    md=json.load(open(mf_)) or {}
+    for mod in ('belso','kulso'):
+      t=(md.get(mod) or {}).get('tipus') or {}
+      if not t: continue
+      fal_=t.get('fal',0)-t.get('nyilas',0)
+      print(f"  3D {mod:5s}  nettó fal {fal_:7.1f} {pct(WA,fal_)}   nyílás {t.get('nyilas',0):6.1f} {pct(WNY,t.get('nyilas',0))}   tető {t.get('teto',0):6.1f}  padló {t.get('padlo',0):6.1f}")
   print('   ', '  '.join(f"{k}: {a:.1f}/{b:.1f}" for k,(a,b) in sorted(o.items(),key=lambda kv:str(kv[0]))))
