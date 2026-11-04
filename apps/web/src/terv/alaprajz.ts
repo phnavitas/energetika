@@ -372,8 +372,11 @@ export function eszakjelKeres(lap: Lap, kizar: [number, number, number, number][
     if (betuJel.some((t) => Math.hypot(t.x + t.szel / 2 - cx, t.y - t.meret / 2 - cy) < r * 1.2 + 10)) continue;
     // elszigeteltség: a befoglaló téglalapba lógó egyéb (nem óriás) útvonalak száma
     let zavar = 0;
+    // (az alakzat saját körvonala – külön vonalként is megrajzolva – nem zavaró elem)
+    const csucsok: [number, number][] = []; for (const p of u.pontok) for (let i = 0; i + 1 < p.length; i += 2) csucsok.push([p[i]!, p[i + 1]!]);
+    const sajatKontur = (v: Utvonal) => v.muvelet === 'stroke' && v.pontok.every((p) => { for (let i = 0; i + 1 < p.length; i += 2) if (!csucsok.some((c) => Math.abs(c[0] - p[i]!) < 0.6 && Math.abs(c[1] - p[i + 1]!) < 0.6)) return false; return true; });
     for (const v of utvonalak) {
-      if (v === u) continue;
+      if (v === u || sajatKontur(v)) continue;
       const vr = Math.max(v.bbox[2] - v.bbox[0], v.bbox[3] - v.bbox[1]);
       if (vr > r * 4) continue;
       if (v.bbox[2] > u.bbox[0] && v.bbox[0] < u.bbox[2] && v.bbox[3] > u.bbox[1] && v.bbox[1] < u.bbox[3]) zavar++;
@@ -383,6 +386,12 @@ export function eszakjelKeres(lap: Lap, kizar: [number, number, number, number][
     const sotet = /^#([0-4][0-9a-f]){3}$/i.test(u.toltoSzin) ? 2 : 0;
     jeloltek.push({ u, pont: sotet + (12 - zavar) / 4 + (u.pontok[0]!.length / 2 > 6 ? 1 : 0) });
   }
+  // ismétlődő egyszerű alakzat (azonos oldalhosszú háromszög, sokszög – akár elforgatva): metszetjel, szintjel,
+  // lejtésjel – az északjel a lapon egyedi
+  const oldalak = (u: Utvonal) => { const p = u.pontok[0]!; const n = p.length / 2; if (u.pontok.length !== 1 || n > 9) return ''; const l: number[] = []; for (let i = 0; i + 3 < p.length; i += 2) { const d = Math.hypot(p[i + 2]! - p[i]!, p[i + 3]! - p[i + 1]!); if (d > 0.3) l.push(Math.round(d)); } return l.sort((x, y) => x - y).join(','); };
+  const sorszam = new Map<string, number>();
+  for (const q of jeloltek) { const k = oldalak(q.u); if (k) sorszam.set(k, (sorszam.get(k) ?? 0) + 1); }
+  for (let i = jeloltek.length - 1; i >= 0; i--) { const k = oldalak(jeloltek[i]!.u); if (k && sorszam.get(k)! >= 2) jeloltek.splice(i, 1); }
   jeloltek.sort((a, b) => b.pont - a.pont);
   const j = jeloltek[0];
   if (!j) return null;

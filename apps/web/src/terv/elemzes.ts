@@ -319,7 +319,15 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
   // felirat nélküli függönyfalak, üvegfalak (széles, üvegezett falszakasz a fűtött helyiség és a külső tér határán)
   nyilasok.push(...fuggonyfalak(r, nyilasok, magHelyisegek.map((h) => h.mutato ?? h)));
   // méretfelirat nélküli (pl. csak típusjeles) homlokzati nyílások: a falnyílás mért szélességével
-  nyilasok.push(...jeloletlenNyilasok(r, nyilasok));
+  {
+    // méretfeliratos lapon (≥ 5 feliratos külső nyílás, típusjel-feliratok nélkül) a felirat nélküli keskeny (< 0,6 m)
+    // „nyílás” rajzi rés (beépített szekrény, pillér, csatorna) – nem nyílászáró
+    const kodok = new Set(e.helyisegek.map((h) => (h.kod ?? '').trim()));
+    const tipusjel = lap.szovegek.filter((t) => /^[A-ZÁÉ]{1,4}[-_.]?\d{1,3}[A-Z]?$/.test(t.s.trim()) && !kodok.has(t.s.trim())).length;
+    const feliratos = nyilasok.filter((n) => n.kulso && n.fajta !== 'fuggonyfal' && !n.mert).length;
+    const keskenyKi = feliratos >= 5 && tipusjel < 3;
+    nyilasok.push(...jeloletlenNyilasok(r, nyilasok).filter((n) => !(keskenyKi && n.szel < 0.6)));
+  }
   // lakáson belüli helyiség (előszoba, tároló, kamra, vizes helyiség) mellvéd nélküli ajtaja: a lakás bejárati ajtaja a közös
   // térbe (lépcsőház, folyosó) – akkor is, ha a túloldali tér nincs pecsételve (a rajz szerint „kültér”)
   for (const n of nyilasok) if (n.kulso && n.pm === null && n.fajta === 'bejarati_ajto' && /előszoba|eloszoba|tároló|tarolo|kamra|wc|fürdő|furdo|gardrób|gardrob/i.test(magHelyisegek[n.helyiseg ?? -1]?.nev ?? '')) { n.kulso = false; n.fajta = 'belso_ajto'; }
