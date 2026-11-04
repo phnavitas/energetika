@@ -8,7 +8,7 @@ import { pecsetKinyer, type PecsetAdat } from '../terv/pecset';
 import { HomlokzatEllenorzes } from './TervHomlokzat';
 import type { SzurkeKep } from '../terv/autohelyiseg';
 import { eltolas, fedettArany } from '../terv/fedes';
-import { burokAuto, burokFalak, burokMeres, kulsoSikra, nyilasEl, bennE, type Poligon } from '../terv/burok';
+import { burokAuto, burokFalak, burokMeres, kulsoSikra, kulsoSraff, nyilasEl, bennE, type Poligon } from '../terv/burok';
 import type { TervNyilas } from '../terv/nyilaszarok';
 import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, eszakJavitas, eszakJavitasMent, type TervLap, type AlaprajzFeldolgozas } from '../terv/elemzes';
 import { egtaj, jegyzekenKivul, jegyzekSorok, szintekCimbol, szintNev } from '../terv/alaprajz';
@@ -193,11 +193,13 @@ function burokAutoTar(r: NonNullable<AlaprajzFeldolgozas['r']>, fut: Set<number>
 
 /** A lap megnevező feliratainak helye (≥ 4 betű): ezekben a zsebekben nem fűtött tér van (padlás, tároló). */
 const nevFeliratok = (lap: Lap) => lap.szovegek.filter((t) => /\p{L}{4,}/u.test(t.s)).flatMap((t) => [{ x: t.x, y: t.y }, { x: t.x + Math.cos(t.szog * Math.PI / 180) * t.szel / 2, y: t.y - Math.sin(t.szog * Math.PI / 180) * t.szel / 2 }]);
+/** A raszterhelyiségek pecsét szerinti területe és pontja (a kifolyt rész levágásához). */
+const vartTer = (a: AlaprajzFeldolgozas) => (a.auto ? [] : a.magHelyisegek.map((h, ri) => ({ ri, A: h.A, x: (h.mutato ?? h).x, y: (h.mutato ?? h).y })));
 /** Automatikus hőburok lapokra gyorstárazva (a 3D ábrához). */
 const burok3dTar = new Map<string, Poligon[]>();
-function burok3dCache(i: number, r: NonNullable<AlaprajzFeldolgozas['r']>, fut: Set<number>, lap?: Lap): Poligon[] {
+function burok3dCache(i: number, r: NonNullable<AlaprajzFeldolgozas['r']>, fut: Set<number>, lap?: Lap, a?: AlaprajzFeldolgozas): Poligon[] {
   const kulcs = `${i}|${r.w}x${r.h}|${[...fut].sort((a, b) => a - b).join(',')}`;
-  let v = burok3dTar.get(kulcs); if (!v) { v = kulsoSikra(r, burokAuto(r, fut, lap ? nevFeliratok(lap) : undefined)); burok3dTar.set(kulcs, v); }
+  let v = burok3dTar.get(kulcs); if (!v) { v = kulsoSikra(r, burokAuto(r, fut, lap ? nevFeliratok(lap) : undefined, a ? vartTer(a) : undefined)); burok3dTar.set(kulcs, v); }
   return v;
 }
 /** A burok menti nyílászárók a megadott körvonalhoz (pt). */
@@ -432,7 +434,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   // hőburok-körvonal: a felismert (fűtött helyiségek összevonva), vagy a felhasználó által szerkesztett
   const futottKulcs = al ? [...futottRiK(al, kj)].sort((a, b) => a - b).join(',') : '';
   // a megjelenített (és szerkesztésre átadott) hőburok a fal külső síkján: hőszigetelés külső felülete / vastag fal külső síkja
-  const burokFelismert = useMemo(() => (al?.r ? kulsoSikra(al.r, burokAuto(al.r, futottRiK(al, kj), aLap ? nevFeliratok(aLap.lap) : undefined)) : []), [al, futottKulcs]);
+  const burokFelismert = useMemo(() => (al?.r ? kulsoSikra(al.r, burokAuto(al.r, futottRiK(al, kj), aLap ? nevFeliratok(aLap.lap) : undefined, vartTer(al))) : []), [al, futottKulcs]);
   const [burokVazlat, setBurokVazlat] = useState<Poligon[] | null>(null);
   const [burokSzerk, setBurokSzerk] = useState(false);
   const [huz, setHuz] = useState<{ p: number; v: number } | null>(null);
@@ -455,7 +457,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     return raszterReteg(r, (k) => { const c = r.cimke[k]!; return c >= 2 ? szinek[c - 2] ?? null : null; });
   }, [al, katKulcs, retegek.has('helyiseg')]);
   const nyilasKep = useMemo(() => (al?.r && (retegek.has('nyilas') || retegek.has('helyiseg')) ? raszterReteg(al.r, (k) => (al.r!.nyilas[k] ? '#0EA5E9' : null)) : ''), [al, retegek.has('nyilas') || retegek.has('helyiseg')]);
-  const falKep = useMemo(() => (al?.r && retegek.has('fal') ? raszterReteg(al.r, (k) => (al.r!.fal[k] ? '#B91C1C' : null)) : ''), [al, retegek.has('fal')]);
+  // falak pirossal; a külső sraffozott felület (járda, térkő, kavics – nem fal) szürkével
+  const falKep = useMemo(() => { if (!al?.r || !retegek.has('fal')) return ''; const sr = kulsoSraff(al.r); return raszterReteg(al.r, (k) => (al.r!.fal[k] ? (sr[k] ? '#6B7280' : '#B91C1C') : null)); }, [al, retegek.has('fal')]);
   const tetoterLapE = aIdx >= 0 && lapSzintek(aIdx).includes('T') && !!me?.tetoter;
   const tetoablakJeloltek = (al?.r && tetoterLapE ? [...(al.arvaFeliratok ?? []), ...al.nyilasok.filter((n) => !n.kulso && (n.fajta === 'falfulke' || n.fajta === 'ablak'))] : [])
     .filter((f) => f.szel >= 0.4 && f.szel <= 1.6 && f.mag >= 0.6 && f.mag <= 1.8)
@@ -1024,7 +1027,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             <button class="gomb halk-gomb semleges" onClick={() => setRetegek(new Set(RETEGEK.map((x) => x.k)))}>Mind</button>
             <button class="gomb halk-gomb semleges" onClick={() => setRetegek(new Set())}>Egyik sem</button>
           </div>
-          {retegek.size > 0 && <div class="halkabb" style="font-size:12px;margin:-2px 0 8px">Helyiségenként más szín (szürke: nem kerül át); a felirat mellett zárójelben a rajzon felismert terület, ha eltér a pecséttől. Nyílások: szaggatott keret – méretfelirat nélkül mért, vagy falnyíláshoz nem köthető; áthúzott – nem kerül át.</div>}
+          {retegek.size > 0 && <div class="halkabb" style="font-size:12px;margin:-2px 0 8px">Falak: piros – fal, szürke – külső sraffozott felület (járda, térkő, kavics), nem fal. Helyiségenként más szín (szürke: nem kerül át); a felirat mellett zárójelben a rajzon felismert terület, ha eltér a pecséttől. Nyílások: szaggatott keret – méretfelirat nélkül mért, vagy falnyíláshoz nem köthető; áthúzott – nem kerül át.</div>}
           <div class="kartya" style="padding:0;overflow:auto;max-height:80vh">
             <svg viewBox={nezet.join(' ')} style={`display:block;width:100%;height:auto;background:#fff;${burokSzerk || rajzol ? 'touch-action:none;' : ''}${rajzol ? 'cursor:crosshair' : ''}`} role="img" aria-label="Az alaprajz a felismert elemekkel"
               onPointerMove={(e) => {
@@ -1194,8 +1197,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                 const a = elemzesek[i] as AlaprajzFeldolgozas, r = a.r!, k = kijeloles(i, a);
                 const el = i === sor[0]!.i ? { dx: 0, dy: 0 } : eltolas(alap, r) ?? { dx: 0, dy: 0 };
                 const m = (x: number, y: number): [number, number] => [(x - el.dx) * r.mPerPt, (y - el.dy) * r.mPerPt];
-                const pol = (k.burok ?? burok3dCache(i, r, futottRiK(a, k), lapok[i]?.lap)).map((q) => q.map(([x, y]) => m(x, y)));
-                const ny = burokNyilasokPt(a, k, pol.length ? (k.burok ?? burok3dCache(i, r, futottRiK(a, k), lapok[i]?.lap)) : []).map((n) => { const [x, y] = m(n.x, n.y); return { x, y, szel: n.szel, mag: n.mag, pm: n.pm ?? 0 }; });
+                const pol = (k.burok ?? burok3dCache(i, r, futottRiK(a, k), lapok[i]?.lap, a)).map((q) => q.map(([x, y]) => m(x, y)));
+                const ny = burokNyilasokPt(a, k, pol.length ? (k.burok ?? burok3dCache(i, r, futottRiK(a, k), lapok[i]?.lap, a)) : []).map((n) => { const [x, y] = m(n.x, n.y); return { x, y, szel: n.szel, mag: n.mag, pm: n.pm ?? 0 }; });
                 const szk = lapSzintek(i).length ? lapSzintek(i) : ['F'];
                 for (const sz0 of szk) {
                   const sorszam = jelen.indexOf(sz0) - Math.max(0, nulla);
