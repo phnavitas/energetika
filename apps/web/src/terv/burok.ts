@@ -176,10 +176,12 @@ export interface BurokEl {
  * az élek eltolt egyenesei (a mintapontok mediánja), a sarkok ezek metszéspontjai – így a falvastagság nem kerül a
  * hosszba, és a pontatlanul lerakott sarokpont sem torzít. Nyílás (ablak, ajtó) is falsávnak számít.
  */
-export function burokMeres(r: Raszter, pol: Poligon[]): BurokEl[][] {
+/** A körvonal éleinél a falsáv a raszterben: élenként a befelé mutató normális, a sáv külső (dKi) és belső (dIn) síkjának
+ * távolsága a rajzolt éltől (m, befelé pozitív; mediánok), és hogy a mintapontok hányadánál volt meg. A legfeljebb 4 cm-es
+ * réssel csatlakozó réteg (a falra rajzolt hőszigetelés külön kontúrja) a sáv része. */
+function elSavok(r: Raszter, p: Poligon) {
   const gat = (x: number, y: number) => { const cx = Math.floor(((x - r.x0) * r.mPerPt) / r.px), cy = Math.floor(((y - r.y0) * r.mPerPt) / r.px); if (cx < 0 || cy < 0 || cx >= r.w || cy >= r.h) return false; const k = cy * r.w + cx; return !!(r.fal[k] || r.nyilas[k]); };
-  return pol.map((p) => {
-    const n = p.length;
+  const n = p.length;
     const elek = p.map((a, i) => {
       const b = p[(i + 1) % n]!;
       const lm = Math.hypot(b[0] - a[0], b[1] - a[1]) * r.mPerPt;
@@ -196,7 +198,9 @@ export function burokMeres(r: Raszter, pol: Poligon[]): BurokEl[][] {
         // a falsáv: az élhez legközelebbi összefüggő gát-szakasz a −1 … +1,5 m tartományban (+ befelé)
         const lp = 0.02; let legD = Infinity, kezd: number | null = null, sav: [number, number] | null = null;
         for (let d = -1.0; d <= 1.5 + 1e-9; d += lp) {
-          const g = gat(x + (nx * d) / r.mPerPt, y + (ny * d) / r.mPerPt);
+          let g = gat(x + (nx * d) / r.mPerPt, y + (ny * d) / r.mPerPt);
+          // ≤ 4 cm rés a sávon belül (rétegek határvonala, kontúrközi hézag): a sáv folytatódik
+          if (!g && kezd !== null && d + 0.05 <= 1.5 && (gat(x + (nx * (d + 0.02)) / r.mPerPt, y + (ny * (d + 0.02)) / r.mPerPt) || gat(x + (nx * (d + 0.04)) / r.mPerPt, y + (ny * (d + 0.04)) / r.mPerPt))) g = true;
           if (g && kezd === null) kezd = d;
           if ((!g || d + lp > 1.5) && kezd !== null) {
             const veg = g ? d : d - lp;
@@ -209,6 +213,13 @@ export function burokMeres(r: Raszter, pol: Poligon[]): BurokEl[][] {
       const med = (v: number[]) => { const q = [...v].sort((u, w) => u - w); return q.length ? q[q.length >> 1]! : null; };
       return { i, ir, lm, a, b, nx, ny, dIn: med(be), dKi: med(ki), lefedett: db ? be.length / db : 0 };
     });
+  return elek;
+}
+
+export function burokMeres(r: Raszter, pol: Poligon[]): BurokEl[][] {
+  return pol.map((p) => {
+    const n = p.length;
+    const elek = elSavok(r, p);
     // a nem talált élek belső síkja: a körvonal mediánvastagságával a rajzolt éltől befelé
     const vast = elek.flatMap((e) => (e.dIn !== null && e.dKi !== null && e.lefedett >= 0.3 ? [e.dIn - e.dKi] : [])).sort((u, w) => u - w);
     const vMed = vast.length ? vast[vast.length >> 1]! : 0.4;
@@ -286,4 +297,29 @@ export function nyilasEl(r: Raszter, pol: Poligon[], x: number, y: number, maxM 
     if (d < leg) { leg = d; ir = elIrany(p, i); }
   }
   return leg <= maxM ? ir : null;
+}
+
+/**
+ * A hőburok a fal külső síkján (hőszigetelés külső felülete, ill. vastag fal külső síkja): a körvonal élei a mért
+ * falsáv külső síkjára tolva, a sarkok a szomszédos külső síkok metszéspontjai. Ahol nincs falsáv, a körvonal
+ * mediánvastagságával kifelé.
+ */
+export function kulsoSikra(r: Raszter, pol: Poligon[]): Poligon[] {
+  return pol.map((p) => {
+    const n = p.length; if (n < 3) return p;
+    const elek = elSavok(r, p);
+    const jo = (e: (typeof elek)[number]) => e.lefedett >= 0.3 && e.dKi !== null && e.dIn !== null;
+    const vast = elek.flatMap((e) => (jo(e) ? [e.dIn! - e.dKi!] : [])).sort((u, w) => u - w);
+    const vMed = vast.length ? vast[vast.length >> 1]! : 0.4;
+    const eltol = (e: (typeof elek)[number]) => (jo(e) ? e.dKi! : -vMed);
+    const vonal = (e: (typeof elek)[number]) => { const d = eltol(e) / r.mPerPt; return { px: e.a[0] + e.nx * d, py: e.a[1] + e.ny * d, vx: e.b[0] - e.a[0], vy: e.b[1] - e.a[1] }; };
+    const ki: Poligon = elek.map((e, k) => {
+      const elozo = elek[(k - 1 + n) % n]!;
+      const A = vonal(elozo), B = vonal(e); const det = A.vx * B.vy - A.vy * B.vx;
+      if (Math.abs(det) < 1e-6 * Math.hypot(A.vx, A.vy) * Math.hypot(B.vx, B.vy)) { const d = eltol(e) / r.mPerPt; return [Math.round((e.a[0] + e.nx * d) * 10) / 10, Math.round((e.a[1] + e.ny * d) * 10) / 10] as [number, number]; }
+      const t = ((B.px - A.px) * B.vy - (B.py - A.py) * B.vx) / det; return [Math.round((A.px + A.vx * t) * 10) / 10, Math.round((A.py + A.vy * t) * 10) / 10] as [number, number];
+    });
+    // ha az eltolás kifordítaná a körvonalat (hibás metszés), marad az eredeti
+    return Math.sign(terulet(ki)) === Math.sign(terulet(p)) && Math.abs(terulet(ki)) >= Math.abs(terulet(p)) * 0.9 ? ki : p;
+  });
 }

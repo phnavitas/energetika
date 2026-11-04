@@ -8,7 +8,7 @@ import { pecsetKinyer, type PecsetAdat } from '../terv/pecset';
 import { HomlokzatEllenorzes } from './TervHomlokzat';
 import type { SzurkeKep } from '../terv/autohelyiseg';
 import { eltolas, fedettArany } from '../terv/fedes';
-import { burokAuto, burokFalak, burokMeres, nyilasEl, bennE, type Poligon } from '../terv/burok';
+import { burokAuto, burokFalak, burokMeres, kulsoSikra, nyilasEl, bennE, type Poligon } from '../terv/burok';
 import type { TervNyilas } from '../terv/nyilaszarok';
 import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, eszakJavitas, eszakJavitasMent, type TervLap, type AlaprajzFeldolgozas } from '../terv/elemzes';
 import { egtaj, jegyzekenKivul, jegyzekSorok, szintekCimbol, szintNev } from '../terv/alaprajz';
@@ -195,7 +195,7 @@ function burokAutoTar(r: NonNullable<AlaprajzFeldolgozas['r']>, fut: Set<number>
 const burok3dTar = new Map<string, Poligon[]>();
 function burok3dCache(i: number, r: NonNullable<AlaprajzFeldolgozas['r']>, fut: Set<number>): Poligon[] {
   const kulcs = `${i}|${r.w}x${r.h}|${[...fut].sort((a, b) => a - b).join(',')}`;
-  let v = burok3dTar.get(kulcs); if (!v) { v = burokAuto(r, fut); burok3dTar.set(kulcs, v); }
+  let v = burok3dTar.get(kulcs); if (!v) { v = kulsoSikra(r, burokAuto(r, fut)); burok3dTar.set(kulcs, v); }
   return v;
 }
 /** A burok menti nyílászárók a megadott körvonalhoz (pt). */
@@ -429,7 +429,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   };
   // hőburok-körvonal: a felismert (fűtött helyiségek összevonva), vagy a felhasználó által szerkesztett
   const futottKulcs = al ? [...futottRiK(al, kj)].sort((a, b) => a - b).join(',') : '';
-  const burokFelismert = useMemo(() => (al?.r ? burokAutoTar(al.r, futottRiK(al, kj)) : []), [al, futottKulcs]);
+  // a megjelenített (és szerkesztésre átadott) hőburok a fal külső síkján: hőszigetelés külső felülete / vastag fal külső síkja
+  const burokFelismert = useMemo(() => (al?.r ? kulsoSikra(al.r, burokAutoTar(al.r, futottRiK(al, kj))) : []), [al, futottKulcs]);
   const [burokVazlat, setBurokVazlat] = useState<Poligon[] | null>(null);
   const [burokSzerk, setBurokSzerk] = useState(false);
   const [huz, setHuz] = useState<{ p: number; v: number } | null>(null);
