@@ -356,6 +356,26 @@ export function kulsoSraff(r: Raszter): Uint8Array {
   const fal = new Uint8Array(N); for (let k = 0; k < N; k++) fal[k] = r.fal[k] ? 1 : 0;
   const hatter = morf(fal, 0); const er = new Uint8Array(N); for (let k = 0; k < N; k++) er[k] = fal[k] && !hatter[k] ? 1 : 0;
   const ny = morf(er, 1); for (let k = 0; k < N; k++) ny[k] = ny[k] && fal[k] ? 1 : 0;
+  // keskenyebb külső sáv (épület körüli járda, kavicssáv): az a kitöltési stílus, amely sehol nem határos helyiséggel,
+  // és a foltjai átlagosan 25 cm-nél szélesebbek (a hőszigetelés vékonyabb, a falazat helyiséggel határos)
+  const db = new Map<number, number>(), kerul = new Map<number, number>(), helyMellett = new Map<number, number>();
+  for (let k = 0; k < N; k++) {
+    const st = r.stilus[k]!; if (!fal[k] || !st) continue;
+    db.set(st, (db.get(st) ?? 0) + 1);
+    const x = k % w; let hm = false;
+    for (const n of [x > 0 ? k - 1 : -1, x < w - 1 ? k + 1 : -1, k - w, k + w]) {
+      if (n < 0 || n >= N) continue;
+      if (r.stilus[n] !== st || !fal[n]) kerul.set(st, (kerul.get(st) ?? 0) + 1);
+      if (r.cimke[n]! >= 2) hm = true;
+    }
+    if (hm) helyMellett.set(st, (helyMellett.get(st) ?? 0) + 1);
+  }
+  const kulsoSt = new Set<number>();
+  for (const [st, n] of db) {
+    const vast = (2 * n) / Math.max(1, kerul.get(st) ?? 0) * r.px;
+    if (n * r.px * r.px >= 0.5 && (helyMellett.get(st) ?? 0) <= 0.002 * n && vast >= 0.25) kulsoSt.add(st);
+  }
+  if (kulsoSt.size) for (let k = 0; k < N; k++) if (fal[k] && kulsoSt.has(r.stilus[k]!)) ny[k] = 1;
   sraffTar.set(r, ny); return ny;
 }
 
