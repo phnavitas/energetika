@@ -84,10 +84,48 @@ export function bennE(p: Poligon, x: number, y: number): boolean {
  * A fűtött helyiségek (raszterindexek) körvonala: a helyiségek közti belső falakat (≤ ~0,7 m) lezárva, a külső falak
  * belső síkján. Csak a külső határvonal (a belső, fűtetlen „szigetek” nélkül), 4 m²-nél kisebb foltok nélkül.
  */
-export function burokAuto(r: Raszter, futott: ReadonlySet<number>): Poligon[] {
+/**
+ * Fűtött zsebek: a helyiségként fel nem ismert, zárt terek (pl. tetőtérben a fürdő és a vastag külső fal közötti,
+ * az 1,90 m-es belmagasság-vonallal levágott sáv), amelyeket csak vékony (≤ 0,2 m) vonal / válaszfal választ el fűtött
+ * helyiségtől, a külső tértől és más (nem fűtött) helyiségtől viszont vastag fal. Legfeljebb 20 m², és nincs benne
+ * megnevező felirat (`tilto`: a lap szöveges feliratainak helye).
+ */
+function futottZsebek(r: Raszter, futott: ReadonlySet<number>, tilto: { x: number; y: number }[]): number[] {
+  const { w, h } = r; const N = w * h;
+  // megnevezett tér (pl. „PADLÁS – TÁROLÓTÉR” felirat a zsebben): nem fűtött zseb
+  const tiltoK = new Set(tilto.map((t) => { const x = Math.floor((t.x - r.x0) * r.mPerPt / r.px), y = Math.floor((t.y - r.y0) * r.mPerPt / r.px); return x >= 0 && y >= 0 && x < w && y < h ? y * w + x : -1; }).filter((k) => k >= 0));
+  const latott = new Uint8Array(N); const ki: number[] = [];
+  const lepMax = Math.max(1, Math.round(0.2 / r.px)); const maxDb = 20 / (r.px * r.px);
+  const szabad = (k: number) => r.cimke[k] === 0 && !r.fal[k] && !r.nyilas[k];
+  for (let i = 0; i < N; i++) {
+    if (latott[i] || !szabad(i)) continue;
+    const komp = [i]; latott[i] = 1; let rossz = false; let futottDb = 0;
+    for (let t = 0; t < komp.length; t++) {
+      const q = komp[t]!, x = q % w, y = (q / w) | 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= w || ny >= h) { rossz = true; continue; }
+        const n = ny * w + nx;
+        if (szabad(n)) { if (!latott[n]) { latott[n] = 1; komp.push(n); } continue; }
+        // a határon túl (vékony falon át) mi van
+        let xx = nx, yy = ny, l = 0;
+        while (l < lepMax && xx >= 0 && yy >= 0 && xx < w && yy < h && (r.fal[yy * w + xx] || r.nyilas[yy * w + xx])) { xx += dx; yy += dy; l++; }
+        if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+        const c = r.cimke[yy * w + xx]!;
+        if (r.fal[yy * w + xx] || r.nyilas[yy * w + xx]) continue; // vastag fal
+        if (c === 1) rossz = true; else if (c >= 2) { if (futott.has(c - 2)) futottDb++; else rossz = true; }
+      }
+      if (komp.length > maxDb) rossz = true;
+    }
+    if (!rossz && futottDb * r.px >= 0.5 && !komp.some((k) => tiltoK.has(k))) ki.push(...komp);
+  }
+  return ki;
+}
+
+export function burokAuto(r: Raszter, futott: ReadonlySet<number>, zsebTilto?: { x: number; y: number }[]): Poligon[] {
   const { w, h } = r;
   let m = new Uint8Array(w * h);
   for (let k = 0; k < w * h; k++) { const c = r.cimke[k]!; if (c >= 2 && futott.has(c - 2)) m[k] = 1; }
+  if (zsebTilto) for (const k of futottZsebek(r, futott, zsebTilto)) m[k] = 1;
   // zárás (dilatáció + erózió) a belső falak vastagságáig: a szomszédos fűtött helyiségek egy foltba kerülnek
   const R = Math.max(1, Math.round(0.36 / r.px));
   const tagit = (be: Uint8Array, ertek: 0 | 1) => {

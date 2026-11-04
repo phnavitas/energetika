@@ -191,11 +191,13 @@ function burokAutoTar(r: NonNullable<AlaprajzFeldolgozas['r']>, fut: Set<number>
   return v;
 }
 
+/** A lap megnevező feliratainak helye (≥ 4 betű): ezekben a zsebekben nem fűtött tér van (padlás, tároló). */
+const nevFeliratok = (lap: Lap) => lap.szovegek.filter((t) => /\p{L}{4,}/u.test(t.s)).flatMap((t) => [{ x: t.x, y: t.y }, { x: t.x + Math.cos(t.szog * Math.PI / 180) * t.szel / 2, y: t.y - Math.sin(t.szog * Math.PI / 180) * t.szel / 2 }]);
 /** Automatikus hőburok lapokra gyorstárazva (a 3D ábrához). */
 const burok3dTar = new Map<string, Poligon[]>();
-function burok3dCache(i: number, r: NonNullable<AlaprajzFeldolgozas['r']>, fut: Set<number>): Poligon[] {
+function burok3dCache(i: number, r: NonNullable<AlaprajzFeldolgozas['r']>, fut: Set<number>, lap?: Lap): Poligon[] {
   const kulcs = `${i}|${r.w}x${r.h}|${[...fut].sort((a, b) => a - b).join(',')}`;
-  let v = burok3dTar.get(kulcs); if (!v) { v = kulsoSikra(r, burokAuto(r, fut)); burok3dTar.set(kulcs, v); }
+  let v = burok3dTar.get(kulcs); if (!v) { v = kulsoSikra(r, burokAuto(r, fut, lap ? nevFeliratok(lap) : undefined)); burok3dTar.set(kulcs, v); }
   return v;
 }
 /** A burok menti nyílászárók a megadott körvonalhoz (pt). */
@@ -430,7 +432,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   // hőburok-körvonal: a felismert (fűtött helyiségek összevonva), vagy a felhasználó által szerkesztett
   const futottKulcs = al ? [...futottRiK(al, kj)].sort((a, b) => a - b).join(',') : '';
   // a megjelenített (és szerkesztésre átadott) hőburok a fal külső síkján: hőszigetelés külső felülete / vastag fal külső síkja
-  const burokFelismert = useMemo(() => (al?.r ? kulsoSikra(al.r, burokAutoTar(al.r, futottRiK(al, kj))) : []), [al, futottKulcs]);
+  const burokFelismert = useMemo(() => (al?.r ? kulsoSikra(al.r, burokAuto(al.r, futottRiK(al, kj), aLap ? nevFeliratok(aLap.lap) : undefined)) : []), [al, futottKulcs]);
   const [burokVazlat, setBurokVazlat] = useState<Poligon[] | null>(null);
   const [burokSzerk, setBurokSzerk] = useState(false);
   const [huz, setHuz] = useState<{ p: number; v: number } | null>(null);
@@ -1192,8 +1194,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                 const a = elemzesek[i] as AlaprajzFeldolgozas, r = a.r!, k = kijeloles(i, a);
                 const el = i === sor[0]!.i ? { dx: 0, dy: 0 } : eltolas(alap, r) ?? { dx: 0, dy: 0 };
                 const m = (x: number, y: number): [number, number] => [(x - el.dx) * r.mPerPt, (y - el.dy) * r.mPerPt];
-                const pol = (k.burok ?? burok3dCache(i, r, futottRiK(a, k))).map((q) => q.map(([x, y]) => m(x, y)));
-                const ny = burokNyilasokPt(a, k, pol.length ? (k.burok ?? burok3dCache(i, r, futottRiK(a, k))) : []).map((n) => { const [x, y] = m(n.x, n.y); return { x, y, szel: n.szel, mag: n.mag, pm: n.pm ?? 0 }; });
+                const pol = (k.burok ?? burok3dCache(i, r, futottRiK(a, k), lapok[i]?.lap)).map((q) => q.map(([x, y]) => m(x, y)));
+                const ny = burokNyilasokPt(a, k, pol.length ? (k.burok ?? burok3dCache(i, r, futottRiK(a, k), lapok[i]?.lap)) : []).map((n) => { const [x, y] = m(n.x, n.y); return { x, y, szel: n.szel, mag: n.mag, pm: n.pm ?? 0 }; });
                 const szk = lapSzintek(i).length ? lapSzintek(i) : ['F'];
                 for (const sz0 of szk) {
                   const sorszam = jelen.indexOf(sz0) - Math.max(0, nulla);
