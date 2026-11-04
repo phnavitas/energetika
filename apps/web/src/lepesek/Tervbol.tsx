@@ -285,6 +285,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const [nagyit, setNagyit] = useState(true);
   /** A bekapcsolt felismerési rétegek (ellenőrzéshez). */
   const [retegek, setRetegek] = useState<Set<RetegKulcs>>(new Set());
+  /** Az alaprajz-ablak nézete: 2D (a rajz a felismert elemekkel) vagy 3D (a hőburok térben). */
+  const [nezet3d, setNezet3d] = useState(false);
   const retegValt = (k: RetegKulcs) => setRetegek((x) => { const y = new Set(x); if (y.has(k)) y.delete(k); else y.add(k); return y; });
   const [pecsetBe, setPecsetBe] = useState(true);
   const [padloAt, setPadloAt] = useState(true);
@@ -1016,7 +1018,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             )}
           </div>
 
-          <div class="gombsor" role="group" aria-label="Felismert elemek megjelenítése" style="margin:0 0 8px;gap:6px;flex-wrap:wrap;align-items:center">
+          {!nezet3d && <div class="gombsor" role="group" aria-label="Felismert elemek megjelenítése" style="margin:0 0 8px;gap:6px;flex-wrap:wrap;align-items:center">
             <strong style="font-size:13px;margin-right:4px">Felismert elemek a rajzon:</strong>
             {RETEGEK.map((rt) => (
               <button class={`gomb halk-gomb${retegek.has(rt.k) ? '' : ' semleges'}`} aria-pressed={retegek.has(rt.k)} onClick={() => retegValt(rt.k)} title={retegDb[rt.k]}>
@@ -1026,152 +1028,187 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             ))}
             <button class="gomb halk-gomb semleges" onClick={() => setRetegek(new Set(RETEGEK.map((x) => x.k)))}>Mind</button>
             <button class="gomb halk-gomb semleges" onClick={() => setRetegek(new Set())}>Egyik sem</button>
-          </div>
-          {retegek.size > 0 && <div class="halkabb" style="font-size:12px;margin:-2px 0 8px">Falak: piros – fal, szürke – külső sraffozott felület (járda, térkő, kavics), nem fal. Helyiségenként más szín (szürke: nem kerül át); a felirat mellett zárójelben a rajzon felismert terület, ha eltér a pecséttől. Nyílások: szaggatott keret – méretfelirat nélkül mért, vagy falnyíláshoz nem köthető; áthúzott – nem kerül át.</div>}
-          <div class="kartya" style="padding:0;overflow:auto;max-height:80vh">
-            <svg viewBox={nezet.join(' ')} style={`display:block;width:100%;height:auto;background:#fff;${burokSzerk || rajzol ? 'touch-action:none;' : ''}${rajzol ? 'cursor:crosshair' : ''}`} role="img" aria-label="Az alaprajz a felismert elemekkel"
-              onPointerMove={(e) => {
-                if (!huz) return;
-                const svg = e.currentTarget as SVGSVGElement; const m = svg.getScreenCTM(); if (!m) return;
-                const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
-                setBurokVazlat((b) => { const u = (b ?? burok).map((q) => q.map((v) => [...v] as [number, number])); u[huz.p]![huz.v] = [Math.round(pt.x * 10) / 10, Math.round(pt.y * 10) / 10]; return u; });
-              }}
-              onClick={(e) => {
-                if (!rajzol) return;
-                const svg = e.currentTarget as SVGSVGElement; const m = svg.getScreenCTM(); if (!m) return;
-                const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
-                const p0 = rajzol[0];
-                // az első pontra kattintva (vagy dupla kattintással) a körvonal bezárul
-                if (p0 && rajzol.length >= 3 && Math.hypot(pt.x - p0[0], pt.y - p0[1]) < 12 * fogo) { burokMent([...(kj.burok ?? burokFelismert), rajzol]); setRajzol(null); return; }
-                setRajzol([...rajzol, [Math.round(pt.x * 10) / 10, Math.round(pt.y * 10) / 10]]);
-              }}
-              onDblClick={() => { if (rajzol && rajzol.length >= 3) { burokMent([...(kj.burok ?? burokFelismert), rajzol]); setRajzol(null); } }}
-              onPointerUp={() => { if (huz) { if (burokVazlat) burokMent(burokVazlat); setBurokVazlat(null); setHuz(null); } }}
-              onPointerLeave={() => { if (huz) { if (burokVazlat) burokMent(burokVazlat); setBurokVazlat(null); setHuz(null); } }}>
-              <image href={aLap.kep} x={0} y={0} width={aLap.lap.szel} height={aLap.lap.mag} />
-              {al.r && retegek.size > 0 && (() => {
-                const r = al.r; const W = r.w * r.px / r.mPerPt, H = r.h * r.px / r.mPerPt; const m = 1 / r.mPerPt;
-                const korv = (minta: string, szin: string) => burok.map((q) => <polygon points={q.map(([x, y]) => `${x},${y}`).join(' ')} fill={`url(#${minta})`} stroke={szin} stroke-width={3} vector-effect="non-scaling-stroke" stroke-dasharray="10 4" />);
-                return (
-                  <g pointer-events="none">
-                    <defs>
-                      <pattern id="rt-padlo" width={8} height={8} patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width={8} height={8} fill="#15803D" fill-opacity={0.08} /><line x1={0} y1={0} x2={0} y2={8} stroke="#15803D" stroke-width={1.6} stroke-opacity={0.45} /></pattern>
-                      <pattern id="rt-fodem" width={8} height={8} patternUnits="userSpaceOnUse" patternTransform="rotate(-45)"><rect width={8} height={8} fill="#7C3AED" fill-opacity={0.08} /><line x1={0} y1={0} x2={0} y2={8} stroke="#7C3AED" stroke-width={1.6} stroke-opacity={0.45} /></pattern>
-                      <pattern id="rt-teto" width={10} height={10} patternUnits="userSpaceOnUse"><rect width={10} height={10} fill="#92400E" fill-opacity={0.08} /><line x1={0} y1={5} x2={10} y2={5} stroke="#92400E" stroke-width={1.6} stroke-opacity={0.45} /></pattern>
-                    </defs>
-                    {retegek.has('padlo') && padloAt && korv('rt-padlo', '#15803D')}
-                    {retegek.has('fodem') && tetoAt && !tetoterLapE && korv('rt-fodem', '#7C3AED')}
-                    {retegek.has('teto') && tetoAt && tetoterLapE && korv('rt-teto', '#92400E')}
-                    {retegek.has('helyiseg') && helyisegKep && <image href={helyisegKep} x={r.x0} y={r.y0} width={W} height={H} preserveAspectRatio="none" style="image-rendering:pixelated" />}
-                    {(retegek.has('nyilas') || retegek.has('helyiseg')) && nyilasKep && <image href={nyilasKep} x={r.x0} y={r.y0} width={W} height={H} preserveAspectRatio="none" style="image-rendering:pixelated" />}
-                    {retegek.has('fal') && falKep && <image href={falKep} x={r.x0} y={r.y0} width={W} height={H} preserveAspectRatio="none" style="image-rendering:pixelated" />}
-                    {retegek.has('helyiseg') && helyisegek.map((h, i) => {
-                      if (h.kulter) return null; const pt = h.mutato ?? h; const ri = raszterIdx(i);
-                      const Ar = ri >= 0 ? r.helyisegek[ri]!.A : null; const c = !valasztott[i] ? '#6B7280' : ri >= 0 ? HELY_SZINEK[ri % HELY_SZINEK.length]! : '#111827';
-                      return (
-                        <text x={pt.x} y={pt.y - 6 * fogo} font-size={9 * fogo} text-anchor="middle" fill={c} font-family="system-ui" font-weight="700" paint-order="stroke" stroke="#fff" stroke-width={3 * fogo}>
-                          {h.nev} · {sz(h.hasznosA ?? h.A, 2)} m²{valasztott[i] && kategoria(i) !== 'kondicionalt' ? ` · ${KAT_NEV[kategoria(i)]}` : ''}{!valasztott[i] ? ' · nem kerül át' : ''}{Ar !== null && Math.abs(Ar - h.A) > Math.max(0.5, 0.1 * h.A) ? ` (rajzon ${sz(Ar, 1)})` : ''}{ri < 0 ? ' (helye nem ismert)' : ''}
-                        </text>
-                      );
-                    })}
-                    {retegek.has('nyilas') && al.nyilasok.map((n) => {
-                      const ki = nyilasok.find((x) => x.n === n); const atvesz = !!ki && !kizartNy.has(ki.k);
-                      const c = atvesz ? NYILAS_SZIN[n.fajta] ?? '#0EA5E9' : '#9CA3AF';
-                      const vizsz = n.irany === 0 || n.irany === 180 || (n.irany === null && n.fal === 'v');
-                      const v = 0.3 * m; // legalább 0,3 m vastag keret a fal irányára merőlegesen
-                      let [x0, y0, x1, y1] = n.hely ?? (vizsz ? [n.x - n.szel * m / 2, n.y - v / 2, n.x + n.szel * m / 2, n.y + v / 2] : [n.x - v / 2, n.y - n.szel * m / 2, n.x + v / 2, n.y + n.szel * m / 2]);
-                      if (vizsz && y1 - y0 < v) { const c0 = (y0 + y1) / 2; y0 = c0 - v / 2; y1 = c0 + v / 2; }
-                      if (!vizsz && x1 - x0 < v) { const c0 = (x0 + x1) / 2; x0 = c0 - v / 2; x1 = c0 + v / 2; }
-                      return (
-                        <g>
-                          <rect x={x0} y={y0} width={x1 - x0} height={y1 - y0} fill={c} fill-opacity={0.22} stroke={c} stroke-width={2} vector-effect="non-scaling-stroke" stroke-dasharray={n.mert || !n.hely ? '4 3' : undefined} />
-                          {!atvesz && <line x1={x0} y1={y0} x2={x1} y2={y1} stroke={c} stroke-width={1.5} vector-effect="non-scaling-stroke" />}
-                          <text x={(x0 + x1) / 2} y={vizsz ? (n.irany === 0 ? y0 - 3 * fogo : y1 + 9 * fogo) : (y0 + y1) / 2} dx={vizsz ? 0 : (n.irany === 270 ? -4 * fogo : 4 * fogo)} font-size={8 * fogo} text-anchor={vizsz ? 'middle' : n.irany === 270 ? 'end' : 'start'} fill={c} font-family="system-ui" font-weight="600" paint-order="stroke" stroke="#fff" stroke-width={2.5 * fogo}>
-                            {Math.round(n.szel * 100)}×{n.mag > 0 ? Math.round(n.mag * 100) : '?'}{atvesz ? '' : n.kulso ? ' (kizárva)' : ' (belső)'}
+          </div>}
+          {!nezet3d && retegek.size > 0 && <div class="halkabb" style="font-size:12px;margin:-2px 0 8px">Falak: piros – fal, szürke – külső sraffozott felület (járda, térkő, kavics), nem fal. Helyiségenként más szín (szürke: nem kerül át); a felirat mellett zárójelben a rajzon felismert terület, ha eltér a pecséttől. Nyílások: szaggatott keret – méretfelirat nélkül mért, vagy falnyíláshoz nem köthető; áthúzott – nem kerül át.</div>}
+          <div style="position:relative;margin-bottom:8px">
+            {/* 2D / 3D nézetváltó a bal felső sarokban */}
+            <div role="group" aria-label="Nézet" style="position:absolute;left:10px;top:10px;z-index:3;display:flex;border:1px solid #D1D5DB;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+              {(['2D', '3D'] as const).map((n) => (
+                <button aria-pressed={(n === '3D') === nezet3d} onClick={() => setNezet3d(n === '3D')} style={`font:700 20px/1 system-ui;padding:8px 14px;border:0;cursor:pointer;${(n === '3D') === nezet3d ? 'background:#1F2937;color:#fff' : 'background:rgba(255,255,255,.95);color:#374151'}`}>{n}</button>
+              ))}
+            </div>
+            {nezet3d ? (
+              (() => {
+                // hőburok térben: minden átvételre jelölt alaprajz körvonala a szintje szerint, a lapok eltolását a falak illesztése adja
+                const sor = alaprajzLapok.filter(({ i }) => !kimarad(i) && typeof elemzesek[i] === 'object' && (elemzesek[i] as AlaprajzFeldolgozas).r);
+                if (!sor.length) return <div class="kartya halkabb" style="padding:60px 16px 16px">A 3D nézethez a lap léptéke és a felismert falak kellenek (add meg a méretarányt).</div>;
+                const alap = (elemzesek[sor[0]!.i] as AlaprajzFeldolgozas).r!;
+                const emelet = (bm ?? 2.7) + 0.35;
+                const szint3: Burok3DSzint[] = [];
+                const jelen = [...new Set(sor.flatMap(({ i }) => (lapSzintek(i).length ? lapSzintek(i) : ['F'])))].sort((x, y) => SZINT_SOR.indexOf(x) - SZINT_SOR.indexOf(y));
+                const nulla = jelen.indexOf('F') >= 0 ? jelen.indexOf('F') : jelen.findIndex((x) => x !== 'P');
+                for (const { i } of sor) {
+                  const a = elemzesek[i] as AlaprajzFeldolgozas, r = a.r!, k = kijeloles(i, a);
+                  const el = i === sor[0]!.i ? { dx: 0, dy: 0 } : eltolas(alap, r) ?? { dx: 0, dy: 0 };
+                  const m = (x: number, y: number): [number, number] => [(x - el.dx) * r.mPerPt, (y - el.dy) * r.mPerPt];
+                  const pol = (k.burok ?? burok3dCache(i, r, futottRiK(a, k), lapok[i]?.lap, a)).map((q) => q.map(([x, y]) => m(x, y)));
+                  const ny = burokNyilasokPt(a, k, pol.length ? (k.burok ?? burok3dCache(i, r, futottRiK(a, k), lapok[i]?.lap, a)) : []).map((n) => { const [x, y] = m(n.x, n.y); return { x, y, szel: n.szel, mag: n.mag, pm: n.pm ?? 0 }; });
+                  const szk = lapSzintek(i).length ? lapSzintek(i) : ['F'];
+                  for (const sz0 of szk) {
+                    const sorszam = jelen.indexOf(sz0) - Math.max(0, nulla);
+                    szint3.push({ nev: szintNev(sz0), poligonok: pol, z0: sorszam * emelet, h: emelet - 0.35, nyilasok: ny });
+                  }
+                }
+                const vanPol = szint3.some((x) => x.poligonok.length);
+                return <div class="kartya" style="padding:0;overflow:hidden">{vanPol ? <Burok3D szintek={szint3} eszakSzog={eszakSz} magassag={Math.round(Math.min(760, Math.max(420, (typeof window !== 'undefined' ? window.innerHeight : 800) * 0.72)))} /> : <div class="halkabb" style="padding:60px 16px 16px">Még nincs hőburok-körvonal – a 2D nézetben a „Hőburok rajzolása” gombbal megrajzolhatod.</div>}</div>;
+            })()
+            ) : (
+            <div class="kartya" style="padding:0;overflow:auto;max-height:80vh">
+              <svg viewBox={nezet.join(' ')} style={`display:block;width:100%;height:auto;background:#fff;${burokSzerk || rajzol ? 'touch-action:none;' : ''}${rajzol ? 'cursor:crosshair' : ''}`} role="img" aria-label="Az alaprajz a felismert elemekkel"
+                onPointerMove={(e) => {
+                  if (!huz) return;
+                  const svg = e.currentTarget as SVGSVGElement; const m = svg.getScreenCTM(); if (!m) return;
+                  const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
+                  setBurokVazlat((b) => { const u = (b ?? burok).map((q) => q.map((v) => [...v] as [number, number])); u[huz.p]![huz.v] = [Math.round(pt.x * 10) / 10, Math.round(pt.y * 10) / 10]; return u; });
+                }}
+                onClick={(e) => {
+                  if (!rajzol) return;
+                  const svg = e.currentTarget as SVGSVGElement; const m = svg.getScreenCTM(); if (!m) return;
+                  const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
+                  const p0 = rajzol[0];
+                  // az első pontra kattintva (vagy dupla kattintással) a körvonal bezárul
+                  if (p0 && rajzol.length >= 3 && Math.hypot(pt.x - p0[0], pt.y - p0[1]) < 12 * fogo) { burokMent([...(kj.burok ?? burokFelismert), rajzol]); setRajzol(null); return; }
+                  setRajzol([...rajzol, [Math.round(pt.x * 10) / 10, Math.round(pt.y * 10) / 10]]);
+                }}
+                onDblClick={() => { if (rajzol && rajzol.length >= 3) { burokMent([...(kj.burok ?? burokFelismert), rajzol]); setRajzol(null); } }}
+                onPointerUp={() => { if (huz) { if (burokVazlat) burokMent(burokVazlat); setBurokVazlat(null); setHuz(null); } }}
+                onPointerLeave={() => { if (huz) { if (burokVazlat) burokMent(burokVazlat); setBurokVazlat(null); setHuz(null); } }}>
+                <image href={aLap.kep} x={0} y={0} width={aLap.lap.szel} height={aLap.lap.mag} />
+                {al.r && retegek.size > 0 && (() => {
+                  const r = al.r; const W = r.w * r.px / r.mPerPt, H = r.h * r.px / r.mPerPt; const m = 1 / r.mPerPt;
+                  const korv = (minta: string, szin: string) => burok.map((q) => <polygon points={q.map(([x, y]) => `${x},${y}`).join(' ')} fill={`url(#${minta})`} stroke={szin} stroke-width={3} vector-effect="non-scaling-stroke" stroke-dasharray="10 4" />);
+                  return (
+                    <g pointer-events="none">
+                      <defs>
+                        <pattern id="rt-padlo" width={8} height={8} patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width={8} height={8} fill="#15803D" fill-opacity={0.08} /><line x1={0} y1={0} x2={0} y2={8} stroke="#15803D" stroke-width={1.6} stroke-opacity={0.45} /></pattern>
+                        <pattern id="rt-fodem" width={8} height={8} patternUnits="userSpaceOnUse" patternTransform="rotate(-45)"><rect width={8} height={8} fill="#7C3AED" fill-opacity={0.08} /><line x1={0} y1={0} x2={0} y2={8} stroke="#7C3AED" stroke-width={1.6} stroke-opacity={0.45} /></pattern>
+                        <pattern id="rt-teto" width={10} height={10} patternUnits="userSpaceOnUse"><rect width={10} height={10} fill="#92400E" fill-opacity={0.08} /><line x1={0} y1={5} x2={10} y2={5} stroke="#92400E" stroke-width={1.6} stroke-opacity={0.45} /></pattern>
+                      </defs>
+                      {retegek.has('padlo') && padloAt && korv('rt-padlo', '#15803D')}
+                      {retegek.has('fodem') && tetoAt && !tetoterLapE && korv('rt-fodem', '#7C3AED')}
+                      {retegek.has('teto') && tetoAt && tetoterLapE && korv('rt-teto', '#92400E')}
+                      {retegek.has('helyiseg') && helyisegKep && <image href={helyisegKep} x={r.x0} y={r.y0} width={W} height={H} preserveAspectRatio="none" style="image-rendering:pixelated" />}
+                      {(retegek.has('nyilas') || retegek.has('helyiseg')) && nyilasKep && <image href={nyilasKep} x={r.x0} y={r.y0} width={W} height={H} preserveAspectRatio="none" style="image-rendering:pixelated" />}
+                      {retegek.has('fal') && falKep && <image href={falKep} x={r.x0} y={r.y0} width={W} height={H} preserveAspectRatio="none" style="image-rendering:pixelated" />}
+                      {retegek.has('helyiseg') && helyisegek.map((h, i) => {
+                        if (h.kulter) return null; const pt = h.mutato ?? h; const ri = raszterIdx(i);
+                        const Ar = ri >= 0 ? r.helyisegek[ri]!.A : null; const c = !valasztott[i] ? '#6B7280' : ri >= 0 ? HELY_SZINEK[ri % HELY_SZINEK.length]! : '#111827';
+                        return (
+                          <text x={pt.x} y={pt.y - 6 * fogo} font-size={9 * fogo} text-anchor="middle" fill={c} font-family="system-ui" font-weight="700" paint-order="stroke" stroke="#fff" stroke-width={3 * fogo}>
+                            {h.nev} · {sz(h.hasznosA ?? h.A, 2)} m²{valasztott[i] && kategoria(i) !== 'kondicionalt' ? ` · ${KAT_NEV[kategoria(i)]}` : ''}{!valasztott[i] ? ' · nem kerül át' : ''}{Ar !== null && Math.abs(Ar - h.A) > Math.max(0.5, 0.1 * h.A) ? ` (rajzon ${sz(Ar, 1)})` : ''}{ri < 0 ? ' (helye nem ismert)' : ''}
                           </text>
+                        );
+                      })}
+                      {retegek.has('nyilas') && al.nyilasok.map((n) => {
+                        const ki = nyilasok.find((x) => x.n === n); const atvesz = !!ki && !kizartNy.has(ki.k);
+                        const c = atvesz ? NYILAS_SZIN[n.fajta] ?? '#0EA5E9' : '#9CA3AF';
+                        const vizsz = n.irany === 0 || n.irany === 180 || (n.irany === null && n.fal === 'v');
+                        const v = 0.3 * m; // legalább 0,3 m vastag keret a fal irányára merőlegesen
+                        let [x0, y0, x1, y1] = n.hely ?? (vizsz ? [n.x - n.szel * m / 2, n.y - v / 2, n.x + n.szel * m / 2, n.y + v / 2] : [n.x - v / 2, n.y - n.szel * m / 2, n.x + v / 2, n.y + n.szel * m / 2]);
+                        if (vizsz && y1 - y0 < v) { const c0 = (y0 + y1) / 2; y0 = c0 - v / 2; y1 = c0 + v / 2; }
+                        if (!vizsz && x1 - x0 < v) { const c0 = (x0 + x1) / 2; x0 = c0 - v / 2; x1 = c0 + v / 2; }
+                        return (
+                          <g>
+                            <rect x={x0} y={y0} width={x1 - x0} height={y1 - y0} fill={c} fill-opacity={0.22} stroke={c} stroke-width={2} vector-effect="non-scaling-stroke" stroke-dasharray={n.mert || !n.hely ? '4 3' : undefined} />
+                            {!atvesz && <line x1={x0} y1={y0} x2={x1} y2={y1} stroke={c} stroke-width={1.5} vector-effect="non-scaling-stroke" />}
+                            <text x={(x0 + x1) / 2} y={vizsz ? (n.irany === 0 ? y0 - 3 * fogo : y1 + 9 * fogo) : (y0 + y1) / 2} dx={vizsz ? 0 : (n.irany === 270 ? -4 * fogo : 4 * fogo)} font-size={8 * fogo} text-anchor={vizsz ? 'middle' : n.irany === 270 ? 'end' : 'start'} fill={c} font-family="system-ui" font-weight="600" paint-order="stroke" stroke="#fff" stroke-width={2.5 * fogo}>
+                              {Math.round(n.szel * 100)}×{n.mag > 0 ? Math.round(n.mag * 100) : '?'}{atvesz ? '' : n.kulso ? ' (kizárva)' : ' (belső)'}
+                            </text>
+                          </g>
+                        );
+                      })}
+                      {retegek.has('tetoablak') && tetoablakJeloltek.map((f) => (
+                        <g>
+                          <rect x={f.x - f.szel * m / 2} y={f.y - f.mag * m / 2} width={f.szel * m} height={f.mag * m} fill="#DB2777" fill-opacity={0.2} stroke="#DB2777" stroke-width={2} vector-effect="non-scaling-stroke" />
+                          <text x={f.x} y={f.y - f.mag * m / 2 - 3 * fogo} font-size={8 * fogo} text-anchor="middle" fill="#DB2777" font-family="system-ui" font-weight="600" paint-order="stroke" stroke="#fff" stroke-width={2.5 * fogo}>tetőablak {Math.round(f.szel * 100)}×{Math.round(f.mag * 100)}</text>
                         </g>
-                      );
-                    })}
-                    {retegek.has('tetoablak') && tetoablakJeloltek.map((f) => (
-                      <g>
-                        <rect x={f.x - f.szel * m / 2} y={f.y - f.mag * m / 2} width={f.szel * m} height={f.mag * m} fill="#DB2777" fill-opacity={0.2} stroke="#DB2777" stroke-width={2} vector-effect="non-scaling-stroke" />
-                        <text x={f.x} y={f.y - f.mag * m / 2 - 3 * fogo} font-size={8 * fogo} text-anchor="middle" fill="#DB2777" font-family="system-ui" font-weight="600" paint-order="stroke" stroke="#fff" stroke-width={2.5 * fogo}>tetőablak {Math.round(f.szel * 100)}×{Math.round(f.mag * 100)}</text>
-                      </g>
+                      ))}
+                    </g>
+                  );
+                })()}
+                {helyisegek.map((h, i) => valasztott[i] && falak(i).map((f) => (
+                  <path d={f.pontok.map(([x, y]) => `M${(x - 0.45).toFixed(1)} ${(y - 0.45).toFixed(1)}h0.9v0.9h-0.9z`).join('')} fill={IRANY_SZIN[f.irany]} />
+                )))}
+                {/* hőburok-problémák: piros – ismeretlen túloldal, sárga – ki nem jelölt szomszéd, piros kör – nyitott / részleges körvonal */}
+                {problemak.map((pr) => pr.pontok ? (
+                  <path d={pr.pontok.map(([x, y]) => `M${(x - 1.6).toFixed(1)} ${(y - 1.6).toFixed(1)}h3.2v3.2h-3.2z`).join('')} fill={pr.tipus === 'ismeretlen' ? (ismBe(pr) ? '#16A34A' : '#DC2626') : '#F59E0B'} opacity={0.75}><title>{pr.szoveg}</title></path>
+                ) : (() => { const h = helyisegek[pr.i]!; const pt = h.mutato ?? h; const c = pr.tipus === 'nyitott' ? '#DC2626' : '#F97316'; return <g><circle cx={pt.x} cy={pt.y} r={18} fill={c} fill-opacity={0.15} stroke={c} stroke-width={2.5} stroke-dasharray="5 3" /><text x={pt.x + 16} y={pt.y - 12} font-size={16} font-weight="800" fill={c} font-family="system-ui">!</text><title>{pr.szoveg}</title></g>; })())}
+                {helyisegek.map((h, i) => {
+                  const pt = h.mutato ?? h; const ki = !valasztott[i];
+                  const valt = () => setKizartH((elozo) => { const s = new Set(elozo); if (s.has(i)) s.delete(i); else s.add(i); return s; });
+                  return (
+                    <g opacity={ki ? 0.35 : 1} style="cursor:pointer" onClick={valt}>
+                      <title>{h.nev}{ki ? ' – kattintással kijelölöd' : ' – kattintással kiveszed'}</title>
+                      {al.auto && <circle cx={pt.x} cy={pt.y} r={7} fill="transparent" />}
+                      <circle cx={pt.x} cy={pt.y} r={al.auto ? 4 : 3} fill={ki ? '#888' : '#2E6DB4'} />
+                      {h.mutato && <line x1={h.x} y1={h.y} x2={pt.x} y2={pt.y} stroke="#2E6DB4" stroke-width={0.6} stroke-dasharray="2 1" />}
+                    </g>
+                  );
+                })}
+                {/* hőburok: vastag vonal; szerkesztéskor a csúcsok húzhatók, az élfelezőkkel új pont szúrható be, dupla kattintás törli a csúcsot */}
+                {burok.map((q, pi) => (
+                  <g>
+                    {/* a vonal a nagyítástól függetlenül vastag (képernyő-pixelben): fehér kontúr + lila */}
+                    <polygon points={q.map(([x, y]) => `${x},${y}`).join(' ')} fill="none" stroke="#fff" stroke-width={10} vector-effect="non-scaling-stroke" stroke-linejoin="round" pointer-events="none" opacity={0.9} />
+                    <polygon points={q.map(([x, y]) => `${x},${y}`).join(' ')} fill="#F97316" fill-opacity={0.08} stroke="#F97316" stroke-width={kj.burok ? 7 : 6} vector-effect="non-scaling-stroke" stroke-linejoin="round" pointer-events="none" />
+                    {burokSzerk && q.map(([x, y], vi) => { const [x2, y2] = q[(vi + 1) % q.length]!; return (
+                      <rect x={(x + x2) / 2 - 5 * fogo} y={(y + y2) / 2 - 5 * fogo} width={10 * fogo} height={10 * fogo} fill="#fff" stroke="#F97316" stroke-width={2} vector-effect="non-scaling-stroke" style="cursor:copy"
+                        onPointerDown={(e) => { e.stopPropagation(); (e.currentTarget as SVGGraphicsElement).ownerSVGElement?.setPointerCapture?.(e.pointerId); const u = burok.map((z) => z.map((v) => [...v] as [number, number])); u[pi]!.splice(vi + 1, 0, [(x + x2) / 2, (y + y2) / 2]); setBurokVazlat(u); setHuz({ p: pi, v: vi + 1 }); }}>
+                        <title>Új pont beszúrása (húzd)</title>
+                      </rect>
+                    ); })}
+                    {burokSzerk && q.map(([x, y], vi) => (
+                      <circle cx={x} cy={y} r={7 * fogo} fill="#F97316" stroke="#fff" stroke-width={2} vector-effect="non-scaling-stroke" style="cursor:move"
+                        onPointerDown={(e) => { e.stopPropagation(); (e.currentTarget as SVGGraphicsElement).ownerSVGElement?.setPointerCapture?.(e.pointerId); setHuz({ p: pi, v: vi }); }}
+                        onDblClick={(e) => { e.stopPropagation(); if (q.length <= 3) return; burokMent(burok.map((z, zi) => (zi === pi ? z.filter((_, j) => j !== vi) : z))); }}>
+                        <title>Húzd a pontot; dupla kattintás: pont törlése</title>
+                      </circle>
                     ))}
                   </g>
-                );
-              })()}
-              {helyisegek.map((h, i) => valasztott[i] && falak(i).map((f) => (
-                <path d={f.pontok.map(([x, y]) => `M${(x - 0.45).toFixed(1)} ${(y - 0.45).toFixed(1)}h0.9v0.9h-0.9z`).join('')} fill={IRANY_SZIN[f.irany]} />
-              )))}
-              {/* hőburok-problémák: piros – ismeretlen túloldal, sárga – ki nem jelölt szomszéd, piros kör – nyitott / részleges körvonal */}
-              {problemak.map((pr) => pr.pontok ? (
-                <path d={pr.pontok.map(([x, y]) => `M${(x - 1.6).toFixed(1)} ${(y - 1.6).toFixed(1)}h3.2v3.2h-3.2z`).join('')} fill={pr.tipus === 'ismeretlen' ? (ismBe(pr) ? '#16A34A' : '#DC2626') : '#F59E0B'} opacity={0.75}><title>{pr.szoveg}</title></path>
-              ) : (() => { const h = helyisegek[pr.i]!; const pt = h.mutato ?? h; const c = pr.tipus === 'nyitott' ? '#DC2626' : '#F97316'; return <g><circle cx={pt.x} cy={pt.y} r={18} fill={c} fill-opacity={0.15} stroke={c} stroke-width={2.5} stroke-dasharray="5 3" /><text x={pt.x + 16} y={pt.y - 12} font-size={16} font-weight="800" fill={c} font-family="system-ui">!</text><title>{pr.szoveg}</title></g>; })())}
-              {helyisegek.map((h, i) => {
-                const pt = h.mutato ?? h; const ki = !valasztott[i];
-                const valt = () => setKizartH((elozo) => { const s = new Set(elozo); if (s.has(i)) s.delete(i); else s.add(i); return s; });
-                return (
-                  <g opacity={ki ? 0.35 : 1} style="cursor:pointer" onClick={valt}>
-                    <title>{h.nev}{ki ? ' – kattintással kijelölöd' : ' – kattintással kiveszed'}</title>
-                    {al.auto && <circle cx={pt.x} cy={pt.y} r={7} fill="transparent" />}
-                    <circle cx={pt.x} cy={pt.y} r={al.auto ? 4 : 3} fill={ki ? '#888' : '#2E6DB4'} />
-                    {h.mutato && <line x1={h.x} y1={h.y} x2={pt.x} y2={pt.y} stroke="#2E6DB4" stroke-width={0.6} stroke-dasharray="2 1" />}
-                  </g>
-                );
-              })}
-              {/* hőburok: vastag vonal; szerkesztéskor a csúcsok húzhatók, az élfelezőkkel új pont szúrható be, dupla kattintás törli a csúcsot */}
-              {burok.map((q, pi) => (
-                <g>
-                  {/* a vonal a nagyítástól függetlenül vastag (képernyő-pixelben): fehér kontúr + lila */}
-                  <polygon points={q.map(([x, y]) => `${x},${y}`).join(' ')} fill="none" stroke="#fff" stroke-width={10} vector-effect="non-scaling-stroke" stroke-linejoin="round" pointer-events="none" opacity={0.9} />
-                  <polygon points={q.map(([x, y]) => `${x},${y}`).join(' ')} fill="#F97316" fill-opacity={0.08} stroke="#F97316" stroke-width={kj.burok ? 7 : 6} vector-effect="non-scaling-stroke" stroke-linejoin="round" pointer-events="none" />
-                  {burokSzerk && q.map(([x, y], vi) => { const [x2, y2] = q[(vi + 1) % q.length]!; return (
-                    <rect x={(x + x2) / 2 - 5 * fogo} y={(y + y2) / 2 - 5 * fogo} width={10 * fogo} height={10 * fogo} fill="#fff" stroke="#F97316" stroke-width={2} vector-effect="non-scaling-stroke" style="cursor:copy"
-                      onPointerDown={(e) => { e.stopPropagation(); (e.currentTarget as SVGGraphicsElement).ownerSVGElement?.setPointerCapture?.(e.pointerId); const u = burok.map((z) => z.map((v) => [...v] as [number, number])); u[pi]!.splice(vi + 1, 0, [(x + x2) / 2, (y + y2) / 2]); setBurokVazlat(u); setHuz({ p: pi, v: vi + 1 }); }}>
-                      <title>Új pont beszúrása (húzd)</title>
-                    </rect>
-                  ); })}
-                  {burokSzerk && q.map(([x, y], vi) => (
-                    <circle cx={x} cy={y} r={7 * fogo} fill="#F97316" stroke="#fff" stroke-width={2} vector-effect="non-scaling-stroke" style="cursor:move"
-                      onPointerDown={(e) => { e.stopPropagation(); (e.currentTarget as SVGGraphicsElement).ownerSVGElement?.setPointerCapture?.(e.pointerId); setHuz({ p: pi, v: vi }); }}
-                      onDblClick={(e) => { e.stopPropagation(); if (q.length <= 3) return; burokMent(burok.map((z, zi) => (zi === pi ? z.filter((_, j) => j !== vi) : z))); }}>
-                      <title>Húzd a pontot; dupla kattintás: pont törlése</title>
-                    </circle>
-                  ))}
-                </g>
-              ))}
-              {/* mért belső falsíkok: zöld szaggatott = fal megtalálva; piros = ennél az élnél nincs falsáv (a hossz bizonytalan) */}
-              {burokMert.flat().filter((e) => e.rajzolt >= 0.8).map((e) => {
-                const [a, b2] = e.belso; const mx = (a[0] + b2[0]) / 2, my = (a[1] + b2[1]) / 2; const jo = e.lefedett >= 0.3;
-                const fugg = Math.abs(b2[1] - a[1]) > Math.abs(b2[0] - a[0]);
-                return (
+                ))}
+                {/* mért belső falsíkok: zöld szaggatott = fal megtalálva; piros = ennél az élnél nincs falsáv (a hossz bizonytalan) */}
+                {burokMert.flat().filter((e) => e.rajzolt >= 0.8).map((e) => {
+                  const [a, b2] = e.belso; const mx = (a[0] + b2[0]) / 2, my = (a[1] + b2[1]) / 2; const jo = e.lefedett >= 0.3;
+                  const fugg = Math.abs(b2[1] - a[1]) > Math.abs(b2[0] - a[0]);
+                  return (
+                    <g pointer-events="none">
+                      <line x1={a[0]} y1={a[1]} x2={b2[0]} y2={b2[1]} stroke={jo ? '#059669' : '#DC2626'} stroke-width={2.5} vector-effect="non-scaling-stroke" stroke-dasharray="6 4" />
+                      <text x={mx} y={my} transform={fugg ? `rotate(-90 ${mx} ${my})` : undefined} dy={-4 * fogo} font-size={10 * fogo} text-anchor="middle" fill={jo ? '#065F46' : '#B91C1C'} font-family="system-ui" font-weight="600" paint-order="stroke" stroke="#fff" stroke-width={3 * fogo}>
+                        {sz(e.hossz)} m{e.vastag !== null ? ` · ${Math.round(e.vastag * 100)} cm` : ' · nincs fal'}
+                      </text>
+                    </g>
+                  );
+                })}
+                {rajzol && rajzol.length > 0 && (
                   <g pointer-events="none">
-                    <line x1={a[0]} y1={a[1]} x2={b2[0]} y2={b2[1]} stroke={jo ? '#059669' : '#DC2626'} stroke-width={2.5} vector-effect="non-scaling-stroke" stroke-dasharray="6 4" />
-                    <text x={mx} y={my} transform={fugg ? `rotate(-90 ${mx} ${my})` : undefined} dy={-4 * fogo} font-size={10 * fogo} text-anchor="middle" fill={jo ? '#065F46' : '#B91C1C'} font-family="system-ui" font-weight="600" paint-order="stroke" stroke="#fff" stroke-width={3 * fogo}>
-                      {sz(e.hossz)} m{e.vastag !== null ? ` · ${Math.round(e.vastag * 100)} cm` : ' · nincs fal'}
-                    </text>
+                    <polyline points={rajzol.map(([x, y]) => `${x},${y}`).join(' ')} fill="none" stroke="#F97316" stroke-width={5} vector-effect="non-scaling-stroke" stroke-dasharray="8 5" />
+                    {rajzol.map(([x, y], i) => <circle cx={x} cy={y} r={(i === 0 ? 9 : 6) * fogo} fill={i === 0 ? '#fff' : '#F97316'} stroke="#F97316" stroke-width={2} vector-effect="non-scaling-stroke" />)}
                   </g>
-                );
-              })}
-              {rajzol && rajzol.length > 0 && (
-                <g pointer-events="none">
-                  <polyline points={rajzol.map(([x, y]) => `${x},${y}`).join(' ')} fill="none" stroke="#F97316" stroke-width={5} vector-effect="non-scaling-stroke" stroke-dasharray="8 5" />
-                  {rajzol.map(([x, y], i) => <circle cx={x} cy={y} r={(i === 0 ? 9 : 6) * fogo} fill={i === 0 ? '#fff' : '#F97316'} stroke="#F97316" stroke-width={2} vector-effect="non-scaling-stroke" />)}
+                )}
+                {!retegek.has('nyilas') && nyilasok.map(({ n, k }) => (
+                  <g opacity={kizartNy.has(k) ? 0.3 : 1}>
+                    <rect x={n.x - 9} y={n.y - 4} width={18} height={8} rx={1.5} fill={n.fajta === 'ablak' ? '#0EA5E9' : n.fajta === 'erkelyajto' ? '#6366F1' : n.fajta === 'garazskapu' ? '#475569' : '#B45309'} opacity={0.85} />
+                    <text x={n.x} y={n.y + 2.2} font-size={5.5} text-anchor="middle" fill="#fff" font-family="system-ui">{Math.round(n.szel * 100)}×{n.mag > 0 ? Math.round(n.mag * 100) : n.mert ? '?' : 'belm.'}</text>
+                  </g>
+                ))}
+                <g transform={`translate(${ejX} ${ejY})`}>
+                  <circle r={nyilHossz * 0.75} fill="#fff" stroke="#B91C1C" stroke-width={nyilHossz * 0.04} opacity={0.9} />
+                  <line x1={0} y1={0} x2={Math.sin(rad) * nyilHossz * 0.7} y2={-Math.cos(rad) * nyilHossz * 0.7} stroke="#B91C1C" stroke-width={nyilHossz * 0.08} />
+                  <text x={Math.sin(rad) * nyilHossz * 0.95} y={-Math.cos(rad) * nyilHossz * 0.95 + nyilHossz * 0.12} font-size={nyilHossz * 0.35} text-anchor="middle" fill="#B91C1C" font-weight="700" font-family="system-ui">É</text>
                 </g>
-              )}
-              {!retegek.has('nyilas') && nyilasok.map(({ n, k }) => (
-                <g opacity={kizartNy.has(k) ? 0.3 : 1}>
-                  <rect x={n.x - 9} y={n.y - 4} width={18} height={8} rx={1.5} fill={n.fajta === 'ablak' ? '#0EA5E9' : n.fajta === 'erkelyajto' ? '#6366F1' : n.fajta === 'garazskapu' ? '#475569' : '#B45309'} opacity={0.85} />
-                  <text x={n.x} y={n.y + 2.2} font-size={5.5} text-anchor="middle" fill="#fff" font-family="system-ui">{Math.round(n.szel * 100)}×{n.mag > 0 ? Math.round(n.mag * 100) : n.mert ? '?' : 'belm.'}</text>
-                </g>
-              ))}
-              <g transform={`translate(${ejX} ${ejY})`}>
-                <circle r={nyilHossz * 0.75} fill="#fff" stroke="#B91C1C" stroke-width={nyilHossz * 0.04} opacity={0.9} />
-                <line x1={0} y1={0} x2={Math.sin(rad) * nyilHossz * 0.7} y2={-Math.cos(rad) * nyilHossz * 0.7} stroke="#B91C1C" stroke-width={nyilHossz * 0.08} />
-                <text x={Math.sin(rad) * nyilHossz * 0.95} y={-Math.cos(rad) * nyilHossz * 0.95 + nyilHossz * 0.12} font-size={nyilHossz * 0.35} text-anchor="middle" fill="#B91C1C" font-weight="700" font-family="system-ui">É</text>
-              </g>
-            </svg>
+              </svg>
+            </div>
+            )}
           </div>
           <div class="gombsor" style="margin:8px 0 16px;gap:16px;flex-wrap:wrap">
             <button class="gomb halk-gomb semleges" onClick={() => setNagyit(!nagyit)}>{nagyit ? 'Teljes lap' : 'Nagyítás az épületre'}</button>
@@ -1184,30 +1221,6 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             <span class="halkabb" title="A hőburok minden élénél a program megkeresi a valódi falsávot, és a fal belső síkján méri a hosszt (a sarkoknál a szomszédos belső síkok metszéspontjáig) és a falvastagságot. Zöld: a falsáv megvan; piros: az élnél nincs fal a rajzon (a hossz bizonytalan)."><span style="display:inline-block;width:18px;border-top:3px dashed #059669;vertical-align:middle;margin-right:4px" />mért belső falsík: hossz · falvastagság (<span style="color:#DC2626">piros: nincs falsáv</span>)</span>
             {[0, 90, 180, 270].map((ir) => <span class="halkabb"><span style={`display:inline-block;width:10px;height:10px;border-radius:2px;background:${IRANY_SZIN[ir]};margin-right:4px`} />{IRANY_NEV[ir]} → {egtaj(ir, eszakSz)}</span>)}
           </div>
-          {(() => {
-              // hőburok térben: minden átvételre jelölt alaprajz körvonala a szintje szerint, a lapok eltolását a falak illesztése adja
-              const sor = alaprajzLapok.filter(({ i }) => !kimarad(i) && typeof elemzesek[i] === 'object' && (elemzesek[i] as AlaprajzFeldolgozas).r);
-              if (!sor.length) return <div class="kartya halkabb" style="margin:0 0 16px;padding:10px 12px"><strong>Hőburok térben (3D)</strong> – a 3D nézethez a lap léptéke és a felismert falak kellenek (add meg a méretarányt).</div>;
-              const alap = (elemzesek[sor[0]!.i] as AlaprajzFeldolgozas).r!;
-              const emelet = (bm ?? 2.7) + 0.35;
-              const szint3: Burok3DSzint[] = [];
-              const jelen = [...new Set(sor.flatMap(({ i }) => (lapSzintek(i).length ? lapSzintek(i) : ['F'])))].sort((x, y) => SZINT_SOR.indexOf(x) - SZINT_SOR.indexOf(y));
-              const nulla = jelen.indexOf('F') >= 0 ? jelen.indexOf('F') : jelen.findIndex((x) => x !== 'P');
-              for (const { i } of sor) {
-                const a = elemzesek[i] as AlaprajzFeldolgozas, r = a.r!, k = kijeloles(i, a);
-                const el = i === sor[0]!.i ? { dx: 0, dy: 0 } : eltolas(alap, r) ?? { dx: 0, dy: 0 };
-                const m = (x: number, y: number): [number, number] => [(x - el.dx) * r.mPerPt, (y - el.dy) * r.mPerPt];
-                const pol = (k.burok ?? burok3dCache(i, r, futottRiK(a, k), lapok[i]?.lap, a)).map((q) => q.map(([x, y]) => m(x, y)));
-                const ny = burokNyilasokPt(a, k, pol.length ? (k.burok ?? burok3dCache(i, r, futottRiK(a, k), lapok[i]?.lap, a)) : []).map((n) => { const [x, y] = m(n.x, n.y); return { x, y, szel: n.szel, mag: n.mag, pm: n.pm ?? 0 }; });
-                const szk = lapSzintek(i).length ? lapSzintek(i) : ['F'];
-                for (const sz0 of szk) {
-                  const sorszam = jelen.indexOf(sz0) - Math.max(0, nulla);
-                  szint3.push({ nev: szintNev(sz0), poligonok: pol, z0: sorszam * emelet, h: emelet - 0.35, nyilasok: ny });
-                }
-              }
-              const vanPol = szint3.some((x) => x.poligonok.length);
-              return <details class="kartya" open style="margin:0 0 16px;padding:10px 12px"><summary style="cursor:pointer"><strong>Hőburok térben (3D)</strong> <span class="halkabb">– a lapok hőburok-körvonala szintenként, a nyílászárókkal</span></summary><div style="margin-top:8px">{vanPol ? <Burok3D szintek={szint3} eszakSzog={eszakSz} /> : <div class="halkabb">Még nincs hőburok-körvonal – a fenti alaprajzon a „Hőburok rajzolása” gombbal megrajzolhatod.</div>}</div></details>;
-          })()}
           {problemak.length > 0 && (
             <details class="kartya" open style="margin-bottom:16px">
               <summary style="cursor:pointer"><strong>Hőburok-ellenőrzés</strong> <span class="jel figy">{problemak.length} bizonytalan hely</span> <span class="halkabb">– a rajzon jelölve: <span style="color:#DC2626">■</span> ismeretlen túloldal, <span style="color:#F59E0B">■</span> ki nem jelölt szomszéd, <span style="color:#DC2626">◌</span> nyitott / <span style="color:#F97316">◌</span> részlegesen felismert körvonal</span></summary>
