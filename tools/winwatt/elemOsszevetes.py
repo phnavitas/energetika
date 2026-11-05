@@ -29,6 +29,9 @@ for m,z in MAP.items():
   ML=sum(s.get('meret',{}).get('hossz',0) for s in mf); MA=sum(s['A'] for s in mf); MNY=sum(s['A'] for s in mny)
   pct=lambda a,b: f"{(b-a)/a*100:+.1f}%" if a else '-'
   print(f"== {m}")
+  if os.environ.get('NEVEK'):
+    from collections import Counter
+    c=Counter(); [c.update({x['nev']:x['A']-x['ny']}) for x in fal]; print('   WW falnevek', {k:round(v,1) for k,v in c.items()})
   print(f"  falhossz  WW {WL:7.1f}  mi {ML:7.1f}  {pct(WL,ML)}   magasság WW {sorted({x['H'] for x in fal})} mi {sorted({s['meret']['magassag'] for s in mf if 'meret' in s})}")
   print(f"  nettó fal WW {WA:7.1f}  mi {MA-MNY:7.1f}  {pct(WA,MA-MNY)}")
   print(f"  nyílás    WW {WNY:7.1f}  mi {MNY:7.1f}  {pct(WNY,MNY)}   db WW {sum(x['db'] for x in ny)} mi {sum(s.get('darab',1) for s in mny)}")
@@ -46,5 +49,5 @@ for m,z in MAP.items():
       t=(md.get(mod) or {}).get('tipus') or {}
       if not t: continue
       fal_=t.get('fal',0)-t.get('nyilas',0)
-      print(f"  3D {mod:5s}  nettó fal {fal_:7.1f} {pct(WA,fal_)}   nyílás {t.get('nyilas',0):6.1f} {pct(WNY,t.get('nyilas',0))}   tető {t.get('teto',0):6.1f}  padló {t.get('padlo',0):6.1f}")
+      print(f"  3D {mod:5s}  nettó fal {fal_:7.1f} {pct(WA,fal_)}   nyílás {t.get('nyilas',0):6.1f} {pct(WNY,t.get('nyilas',0))}   tető {t.get('teto',0):6.1f}  padló {t.get('padlo',0):6.1f}   fűtetlen felé {t.get('futetlen',0):6.1f}  szomszéd {t.get('szomszed',0):6.1f}  talaj {t.get('talaj',0):6.1f}")
   print('   ', '  '.join(f"{k}: {a:.1f}/{b:.1f}" for k,(a,b) in sorted(o.items(),key=lambda kv:str(kv[0]))))

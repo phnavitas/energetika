@@ -235,21 +235,51 @@ function kifolytR(r: Raszter, ri: number, Avart: number, px: number, py: number,
   };
   const er = morf(m, true); for (let k = 0; k < N; k++) if (!m[k]) er[k] = 0;
   const ny = morf(er, false); for (let k = 0; k < N; k++) if (!m[k]) ny[k] = 0;
-  const komp = new Int32Array(N); let kn = 0; const sor: number[] = [];
+  // a pecsétpontot tartalmazó (nyitás utáni) mag, és a maszkon belül tőle legfeljebb R + 2 rácslépésre eső cellák
+  // (a nyitás által lekerekített sarkok) – a többi a kifolyt rész (a nyakon túli tér, ill. a keskeny kifolyás)
+  const komp = new Int32Array(N); let kn = 0;
   for (let i = 0; i < N; i++) {
-    if (!ny[i] || komp[i]) continue; kn++; komp[i] = kn; const kezd = sor.length; sor.push(i);
-    for (let t = kezd; t < sor.length; t++) { const a = sor[t]!, x = a % w; for (const n of [x > 0 ? a - 1 : -1, x < w - 1 ? a + 1 : -1, a - w, a + w]) if (n >= 0 && n < N && ny[n] && !komp[n]) { komp[n] = kn; sor.push(n); } }
+    if (!ny[i] || komp[i]) continue; kn++; komp[i] = kn; const q = [i];
+    for (let t = 0; t < q.length; t++) { const a2 = q[t]!, x = a2 % w; for (const n of [x > 0 ? a2 - 1 : -1, x < w - 1 ? a2 + 1 : -1, a2 - w, a2 + w]) if (n >= 0 && n < N && ny[n] && !komp[n]) { komp[n] = kn; q.push(n); } }
   }
-  if (kn < 2) return [];
-  for (let t = 0; t < sor.length; t++) { const a = sor[t]!, x = a % w; for (const n of [x > 0 ? a - 1 : -1, x < w - 1 ? a + 1 : -1, a - w, a + w]) if (n >= 0 && n < N && m[n] && !komp[n]) { komp[n] = komp[a]!; sor.push(n); } }
+  if (!kn) return [];
   const gx = Math.floor((px - r.x0) * r.mPerPt / r.px) - ox, gy = Math.floor((py - r.y0) * r.mPerPt / r.px) - oy;
   let tart = gx >= 0 && gy >= 0 && gx < w && gy < h ? komp[gy * w + gx]! : 0;
-  const meret = new Map<number, number>(); for (let k = 0; k < N; k++) if (komp[k] && m[k]) meret.set(komp[k]!, (meret.get(komp[k]!) ?? 0) + 1);
-  if (!tart) tart = [...meret.entries()].sort((a2, b2) => b2[1] - a2[1])[0]![0];
-  const marad = (meret.get(tart) ?? 0) * r.px * r.px;
-  if (Math.abs(marad - Avart) >= Math.abs(A - Avart)) return [];
-  const ki: number[] = []; for (let k = 0; k < N; k++) if (m[k] && komp[k] !== tart) ki.push(gk(k));
+  const meret = new Map<number, number>(); for (let k = 0; k < N; k++) if (komp[k]) meret.set(komp[k]!, (meret.get(komp[k]!) ?? 0) + 1);
+  if (!tart) {
+    // a pecsétpont nem a magban (a nyitás lecsípte): a hozzá legközelebbi mag
+    let leg = Infinity; for (let k = 0; k < N; k++) if (komp[k]) { const d = Math.hypot((k % w) - gx, ((k / w) | 0) - gy); if (d < leg) { leg = d; tart = komp[k]!; } }
+  }
+  const tav = new Int32Array(N).fill(-1); const q: number[] = [];
+  for (let k = 0; k < N; k++) if (komp[k] === tart) { tav[k] = 0; q.push(k); }
+  for (let t = 0; t < q.length; t++) { const a2 = q[t]!, x = a2 % w; if (tav[a2]! >= R + 2) continue; for (const n of [x > 0 ? a2 - 1 : -1, x < w - 1 ? a2 + 1 : -1, a2 - w, a2 + w]) if (n >= 0 && n < N && m[n] && tav[n] < 0) { tav[n] = tav[a2]! + 1; q.push(n); } }
+  let marad = 0; for (let k = 0; k < N; k++) if (m[k] && tav[k] >= 0) marad++;
+  const maradA = marad * r.px * r.px;
+  // csak ha a maradék a pecséthez érdemben közelebb van, és nem lett túl kicsi
+  if (maradA < 0.6 * Avart || Math.abs(maradA - Avart) >= 0.8 * Math.abs(A - Avart)) return [];
+  const ki: number[] = []; for (let k = 0; k < N; k++) if (m[k] && tav[k] < 0) ki.push(gk(k));
   return ki;
+}
+
+/** A maszk azon összefüggő foltjai maradnak, amelyekben van fűtött helyiség pecsétpontja (a pecsét nélküli folt
+ * – a helyiség raszterének résen át kifolyt, leszakadt része – nem fűtött tér). */
+function pecsetesFoltok(r: Raszter, m: Uint8Array, pontok: { x: number; y: number }[]): void {
+  const { w, h } = r; const N = w * h; const komp = new Int32Array(N); let kn = 0; const tag: number[][] = [[]];
+  for (let i = 0; i < N; i++) {
+    if (!m[i] || komp[i]) continue; kn++; komp[i] = kn; const q = [i];
+    for (let t = 0; t < q.length; t++) { const a = q[t]!, x = a % w; for (const n of [x > 0 ? a - 1 : -1, x < w - 1 ? a + 1 : -1, a - w, a + w]) if (n >= 0 && n < N && m[n] && !komp[n]) { komp[n] = kn; q.push(n); } }
+    tag.push(q);
+  }
+  if (kn < 2) return;
+  const jo = new Set<number>();
+  for (const p of pontok) {
+    const cx = Math.floor((p.x - r.x0) * r.mPerPt / r.px), cy = Math.floor((p.y - r.y0) * r.mPerPt / r.px);
+    // a pecsétpont 0,5 m-es környezetében lévő folt
+    const R = Math.round(0.5 / r.px);
+    for (let dy = -R; dy <= R; dy += 2) for (let dx = -R; dx <= R; dx += 2) { const x = cx + dx, y = cy + dy; if (x >= 0 && y >= 0 && x < w && y < h && komp[y * w + x]) jo.add(komp[y * w + x]!); }
+  }
+  if (!jo.size) return;
+  for (let c = 1; c <= kn; c++) if (!jo.has(c)) for (const k of tag[c]!) m[k] = 0;
 }
 
 export function burokAuto(r: Raszter, futott: ReadonlySet<number>, zsebTilto?: { x: number; y: number }[], vart?: { ri: number; A: number; x: number; y: number }[]): Poligon[] {
@@ -287,6 +317,7 @@ export function burokAuto(r: Raszter, futott: ReadonlySet<number>, zsebTilto?: {
   const kulso = new Uint8Array(w * h); for (let k = 0; k < w * h; k++) kulso[k] = dil[k] ? 0 : 1;
   const er = tagit(kulso, 1);
   m = new Uint8Array(w * h); for (let k = 0; k < w * h; k++) m[k] = er[k] ? 0 : 1;
+  if (vart) pecsetesFoltok(r, m, vart.filter((v) => futott.has(v.ri)));
   return maszkKorvonal(r, m);
 }
 
@@ -644,7 +675,10 @@ export function burokTomeg(r: Raszter, futott: ReadonlySet<number>, zsebTilto?: 
   for (let t = 0; t < q0.length; t++) { const a = q0[t]!, x = a % w; for (const n of [x > 0 ? a - 1 : -1, x < w - 1 ? a + 1 : -1, a - w, a + w]) if (n >= 0 && n < N && !M[n] && !kint[n]) { kint[n] = 1; q0.push(n); } }
   // a fűtetlen helyiségek (és kifolyt részek) belseje nem lyuk: ki is marad
   for (let k = 0; k < N; k++) if (!kint[k] && !(r.cimke[k]! >= 2 && !H[k])) M[k] = 1;
-  // pozitív sarok: a kis (≤ 1 m²) beugrások kitöltve
+  // apró kiugrások (pillér, lábazati csonk, falvég – 0,7 m-nél keskenyebb) levágása; a fűtött tér marad
+  M = nyit(M, w, h, Math.max(1, Math.round(0.35 / r.px)));
+  for (let k = 0; k < N; k++) if (H[k]) M[k] = 1;
+  // pozitív sarok: a kis (≤ 1,5 m²) beugrások kitöltve
   const Z = zar(M, w, h, Math.max(1, Math.round(1.0 / r.px)));
   const latott = new Uint8Array(N);
   for (let i = 0; i < N; i++) {
@@ -652,7 +686,60 @@ export function burokTomeg(r: Raszter, futott: ReadonlySet<number>, zsebTilto?: 
     const q = [i]; latott[i] = 1;
     for (let t = 0; t < q.length; t++) { const a = q[t]!, x = a % w; for (const n of [x > 0 ? a - 1 : -1, x < w - 1 ? a + 1 : -1, a - w, a + w]) if (n >= 0 && n < N && Z[n] && !M[n] && !latott[n]) { latott[n] = 1; q.push(n); } }
     // fűtetlen helyiséget nem tölt ki
-    if (q.length * r.px * r.px <= 1.0 && !q.some((k) => r.cimke[k]! >= 2 && !H[k])) for (const k of q) M[k] = 1;
+    if (q.length * r.px * r.px <= 1.5 && !q.some((k) => r.cimke[k]! >= 2 && !H[k])) for (const k of q) M[k] = 1;
   }
+  if (vart) pecsetesFoltok(r, M, vart.filter((v) => futott.has(v.ri)));
   return maszkKorvonal(r, M);
+}
+
+export type ElKornyezet = 'kulso' | 'futetlen' | 'szomszed' | 'belso';
+/**
+ * A körvonal élein kívül mi van: élenként szakaszok [t0, t1, fajta]. Az élről kifelé haladva a falsávot (fal, nyílás,
+ * legfeljebb 1,2 m) átlépve az első szabad cella dönt: fűtetlen helyiség → `futetlen`; külső tér → `kulso`; ha a falsáv
+ * 1,2 m-en túl is tart (tűzfal, csatlakozó szomszéd épület), vagy a raszter szerint a szakasz szomszéd épület felé néz →
+ * `szomszed`; fűtött helyiség (másik körvonal, pl. dilatációval elválasztott épületrész) → `belso` (nem határoló).
+ */
+export function elKornyezet(r: Raszter, pol: Poligon[], futott: ReadonlySet<number>): [number, number, ElKornyezet][][][] {
+  const sraff = kulsoSraff(r);
+  // a szomszéd épület felé néző falszakaszok pontjai (a helyiség-raszter szakaszaiból)
+  const szomszedPont = new Set<number>();
+  r.helyisegek.forEach((H) => H.szakaszok.forEach((sg) => { if (sg.szomszed) for (const [x, y] of sg.pontok) { const cx = Math.floor((x - r.x0) * r.mPerPt / r.px / 4), cy = Math.floor((y - r.y0) * r.mPerPt / r.px / 4); szomszedPont.add(cy * 100000 + cx); } }));
+  const cella = (x: number, y: number) => { const cx = Math.floor((x - r.x0) * r.mPerPt / r.px), cy = Math.floor((y - r.y0) * r.mPerPt / r.px); return cx < 0 || cy < 0 || cx >= r.w || cy >= r.h ? -1 : cy * r.w + cx; };
+  return pol.map((p) => {
+    const n = p.length;
+    const A0 = p.reduce((t, [x, y], i) => { const [x2, y2] = p[(i + 1) % n]!; return t + x * y2 - x2 * y; }, 0);
+    const el = Math.sign(A0) || 1;
+    return p.map((a, i) => {
+      const b = p[(i + 1) % n]!; const Lpt = Math.hypot(b[0] - a[0], b[1] - a[1]); const L = Lpt * r.mPerPt;
+      if (L < 0.05) return [[0, 1, 'kulso']];
+      const ux = (b[0] - a[0]) / Lpt, uy = (b[1] - a[1]) / Lpt; const kx = el * uy, ky = -el * ux; // kifelé
+      const db = Math.max(1, Math.round(L / 0.25)); const minta: ElKornyezet[] = [];
+      for (let s = 0; s < db; s++) {
+        const t = (s + 0.5) / db; const x0 = a[0] + (b[0] - a[0]) * t, y0 = a[1] + (b[1] - a[1]) * t;
+        let fajta: ElKornyezet = 'kulso'; let d = -0.3; let falban = true; let sajat = -1; let falDb = 0;
+        for (; d <= 1.6; d += 0.05) {
+          const k = cella(x0 + kx * d / r.mPerPt, y0 + ky * d / r.mPerPt); if (k < 0) { falban = false; break; }
+          if ((r.fal[k] && !sraff[k]) || r.nyilas[k]) { if (sajat >= 0 || d >= 0) falDb++; continue; }
+          const c = r.cimke[k]!;
+          // még a saját helyiség (belső méretű körvonal: az él a helyiség szélén, ill. kicsit beljebb)
+          if (c >= 2 && futott.has(c - 2) && (falDb === 0 || c === sajat)) { if (falDb === 0) sajat = c; continue; }
+          falban = false;
+          if (c >= 2 && !futott.has(c - 2)) fajta = 'futetlen';
+          // a fal (≥ 6 cm) túloldalán másik fűtött helyiség: belső fal (pl. dilatációval elválasztott épületrész), nem határoló
+          // (csak ha az a helyiség nem ugyanennek a körvonalnak a belsejében van – az él egyszerűsítése levághat sarkot)
+          else if (c >= 2 && falDb * 0.05 >= 0.06 && !bennE(p, x0 + kx * d / r.mPerPt, y0 + ky * d / r.mPerPt)) fajta = pol.some((q) => q !== p && bennE(q, x0 + kx * d / r.mPerPt, y0 + ky * d / r.mPerPt)) ? 'belso' : 'kulso';
+          break;
+        }
+        if (falban && d > 1.2) fajta = 'szomszed';
+        const sx = Math.floor((x0 - r.x0) * r.mPerPt / r.px / 4), sy = Math.floor((y0 - r.y0) * r.mPerPt / r.px / 4);
+        if (fajta === 'kulso') for (let dy = -2; dy <= 2 && fajta === 'kulso'; dy++) for (let dx = -2; dx <= 2; dx++) if (szomszedPont.has((sy + dy) * 100000 + sx + dx)) { fajta = 'szomszed'; break; }
+        minta.push(fajta);
+      }
+      // összefüggő szakaszok; az 1 mintás (≤ 0,25 m) kiugró érték a szomszédjához olvad
+      for (let s = 1; s + 1 < minta.length; s++) if (minta[s] !== minta[s - 1] && minta[s - 1] === minta[s + 1]) minta[s] = minta[s - 1]!;
+      const ki: [number, number, ElKornyezet][] = [];
+      for (let s = 0; s < minta.length; s++) { const t0 = s / db, t1 = (s + 1) / db; const u = ki.at(-1); if (u && u[2] === minta[s]) u[1] = t1; else ki.push([t0, t1, minta[s]!]); }
+      return ki;
+    });
+  });
 }

@@ -28,7 +28,8 @@ export interface TervNyilas {
 
 /** Nyílásméret cm-ben; a „+30” toldás (redőnytok, tokszélesítés) a magasság mellett – a nyílásméret az első szám. */
 const SZAM = /^\d{2,3}(?:\s*\+\s*\d{1,3})?$/;
-const szamCm = (s: string) => Number(s.trim().split('+')[0]);
+// a „+30” toldás (redőnytok a falnyílásban) a falnyílás része: „240+30” → 270 (falnyílás-méret, mint a WinWatt-bevitelben)
+const szamCm = (s: string) => s.trim().split('+').reduce((t, v) => t + Number(v.trim()), 0);
 /** Méterben írt nyílásméret (kapuknál gyakori: „2,65” / „2,40”). */
 const SZAM_M = /^\d,\d{2}$/;
 const mSzam = (s: string) => Number(s.trim().replace(',', '.'));
@@ -68,7 +69,44 @@ function tokMeret(t: Szoveg): Szoveg {
   return v >= 30 && v <= 600 ? { ...t, s: String(v) } : t;
 }
 
-export function nyilasFeliratok(sz0: Szoveg[]): NyilasFelirat[] {
+/** A két (egymás fölötti) szám között a szöveg irányával párhuzamos, hosszú, mindkét oldalon túlnyúló vonal fut-e. */
+function meretlancE(a: Szoveg, b: Szoveg, utvonalak: { muvelet: string; pontok: number[][]; bbox: number[] }[]): boolean {
+  const ga = geom(a), gb = geom(b);
+  const mx = (ga.cx + gb.cx) / 2, my = (ga.cy + gb.cy) / 2; const sz = Math.max(a.szel, b.szel);
+  const perpTav = Math.abs((gb.cx - ga.cx) * ga.fel[0] + (gb.cy - ga.cy) * ga.fel[1]);
+  for (const u of utvonalak) {
+    if (u.muvelet === 'fill') continue;
+    if (mx < u.bbox[0]! - perpTav || mx > u.bbox[2]! + perpTav || my < u.bbox[1]! - perpTav || my > u.bbox[3]! + perpTav) continue;
+    for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) {
+      const x1 = p[i]!, y1 = p[i + 1]!, x2 = p[i + 2]!, y2 = p[i + 3]!;
+      const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy); if (L < 4 * sz) continue;
+      // párhuzamos a szöveggel
+      if (Math.abs((dx * ga.dir[0] + dy * ga.dir[1]) / L) < 0.995) continue;
+      // a két szám között (merőleges távolság a középponttól kisebb, mint a számok távolságának fele)
+      const d = (mx - x1) * ga.fel[0] + (my - y1) * ga.fel[1];
+      if (Math.abs(d) > perpTav * 0.45) continue;
+      // a számok mindkét oldalán túlnyúlik
+      const t = ((mx - x1) * dx + (my - y1) * dy) / (L * L);
+      const fel = (sz * 1.5) / L;
+      if (!(t > fel && t < 1 - fel)) continue;
+      // méretvonal-jel (rövid ferde vagy merőleges vonás, ill. pont) a vonalon, a számpár közelében (≤ 4 szövegszélesség)
+      const ux = dx / L, uy = dy / L; const meret = Math.max(a.meret, b.meret);
+      const vx = x1 + dx * t, vy = y1 + dy * t;
+      for (const u2 of utvonalak) {
+        if (u2.bbox[2]! - u2.bbox[0]! > 2.5 * meret || u2.bbox[3]! - u2.bbox[1]! > 2.5 * meret) continue;
+        const cx = (u2.bbox[0]! + u2.bbox[2]!) / 2, cy = (u2.bbox[1]! + u2.bbox[3]!) / 2;
+        const menti = (cx - vx) * ux + (cy - vy) * uy, kereszt = Math.abs((cx - vx) * -uy + (cy - vy) * ux);
+        if (Math.abs(menti) > 4 * sz || kereszt > 0.6 * meret) continue;
+        // a vonás nem párhuzamos a méretvonallal (ferde / merőleges jel), vagy kitöltött pont
+        if (u2.muvelet === 'fill') return true;
+        for (const q of u2.pontok) for (let j = 0; j + 3 < q.length; j += 2) { const ex = q[j + 2]! - q[j]!, ey = q[j + 3]! - q[j + 1]!, el = Math.hypot(ex, ey); if (el > 0.3 * meret && Math.abs((ex * ux + ey * uy) / el) < 0.9) return true; }
+      }
+    }
+  }
+  return false;
+}
+
+export function nyilasFeliratok(sz0: Szoveg[], utvonalak?: { muvelet: string; pontok: number[][]; bbox: number[] }[]): NyilasFelirat[] {
   const sz = sz0.map(tokMeret);
   const szamok = sz.filter((t) => SZAM.test(t.s.trim()) && szamCm(t.s) >= 30 && szamCm(t.s) <= 600);
   const pmek = sz.map((t) => ({ t, m: PM.exec(szovegJavit(t.s)) })).filter((x) => x.m);
@@ -95,6 +133,10 @@ export function nyilasFeliratok(sz0: Szoveg[]): NyilasFelirat[] {
       if (!legjobb || Math.abs(perp) < Math.abs(legjobb.perp)) legjobb = { b, perp };
     }
     if (!legjobb) continue;
+    // méretlánc: a két szám között a szöveg irányával párhuzamos, a számoknál jóval hosszabb (≥ 4 szövegszélesség)
+    // vonal fut, amely a számok mindkét oldalán túlnyúlik – a nyílásfelirat törtvonala rövid (≈ a szám szélessége)
+    // (kikapcsolva: a nyílásfelirat törtvonala sok tervben a falsíkon futó hosszú vonal – a valódi feliratokat is kiszűrte)
+    if (utvonalak && (globalThis as { MERETLANC_SZURES?: boolean }).MERETLANC_SZURES && meretlancE(a, legjobb.b, utvonalak)) continue;
     // a „fel” irányban lévő a szélesség, alatta a magasság
     const [felso, also] = legjobb.perp > 0 ? [legjobb.b, a] : [a, legjobb.b];
     const gb = geom(legjobb.b);

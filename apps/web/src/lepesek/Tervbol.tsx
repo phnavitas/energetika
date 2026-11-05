@@ -8,7 +8,7 @@ import { pecsetKinyer, type PecsetAdat } from '../terv/pecset';
 import { HomlokzatEllenorzes } from './TervHomlokzat';
 import type { SzurkeKep } from '../terv/autohelyiseg';
 import { eltolas, fedettArany } from '../terv/fedes';
-import { burokAuto, burokFalak, burokMeres, burokTomeg, csatlakozasok, kulsoSikra, kulsoSraff, nyilasEl, bennE, type Poligon } from '../terv/burok';
+import { burokAuto, burokFalak, burokMeres, burokTomeg, csatlakozasok, elKornyezet, kulsoSikra, kulsoSraff, nyilasEl, bennE, type Poligon } from '../terv/burok';
 import type { TervNyilas } from '../terv/nyilaszarok';
 import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, eszakJavitas, eszakJavitasMent, type TervLap, type AlaprajzFeldolgozas } from '../terv/elemzes';
 import { egtaj, jegyzekenKivul, jegyzekSorok, szintekCimbol, szintNev } from '../terv/alaprajz';
@@ -505,6 +505,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                 const pol = polPt.map((q) => q.map(([x, y]) => m(x, y)));
                 // belső méretnél: a belső falak csatlakozása a külső falhoz (levonódik a külső fal felületéből)
                 const csatl = belso ? csatlakozasok(r, polPt) : undefined;
+                  const kornyezet = k.burok && !belso ? undefined : elKornyezet(r, polPt, futottRiK(a, k));
                 const ny = burokNyilasokPt(a, k, pol.length ? polPt : []).map((n) => { const [x, y] = m(n.x, n.y); return { x, y, szel: n.szel, mag: n.mag, pm: n.pm ?? 0 }; });
                 const szk = lapSzintek(i).length ? lapSzintek(i) : ['F'];
                 for (const sz0 of szk) {
@@ -512,7 +513,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   // tetőtér: a metszetből a hajlás, a térdfal és a padlásfödém (belmagasság) – a 3D-ben a tetősíkok töréseivel
                   const tt = sz0 === 'T' && me?.tetoter ? { hajlas: me.tetoter.hajlas, terdfal: me.tetoter.terdfal ?? 0.9, belmag: me.tetoter.belmagassag ?? (bm ?? 2.6) } : undefined;
                   // belső méret: a falmagasság a belmagasság (a födém vastagsága kimarad); külső méret: teljes szintmagasság
-                  szint3.push({ nev: szintNev(sz0), poligonok: pol, z0: sorszam * emelet, h: tt ? tt.belmag : belso ? emelet - 0.35 : emelet, nyilasok: ny, ...(csatl ? { csatl } : {}), ...(tt ? { teto: tt, orom: oromok(eszakSz, a.e.meretarany ?? undefined) } : {}) });
+                  szint3.push({ nev: szintNev(sz0), poligonok: pol, z0: sorszam * emelet, h: tt ? tt.belmag : belso ? emelet - 0.35 : emelet, nyilasok: ny, ...(csatl ? { csatl } : {}), ...(kornyezet ? { kornyezet } : {}), ...(sz0 === 'P' ? { talaj: true } : {}), ...(tt ? { teto: tt, orom: oromok(eszakSz, a.e.meretarany ?? undefined) } : {}) });
                 }
               }
     return szint3;

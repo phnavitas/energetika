@@ -236,6 +236,12 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
   if (meretarany && meretarany > 0) { e.meretarany = meretarany; e.mPerPt = (25.4 / 72) / 1000 * meretarany; }
   // lépték nélküli lap (pl. kicsinyített típusalaprajz): a méretláncokból becsülve
   if (!e.mPerPt) { const M = meretaranyKotabol(lap.szovegek, lap.utvonalak); if (M) { e.meretarany = M; e.mPerPt = (25.4 / 72) / 1000 * M; e.figyelmeztetesek = e.figyelmeztetesek.filter((x) => !/méretarányt nem találtam/.test(x)); e.figyelmeztetesek.push(`A lépték a méretláncokból becsülve: M = 1:${M}. Ellenőrizd, szükség esetén add meg kézzel.`); } }
+  // a lapon írt méretarány ellenőrzése a méretláncokkal: eltérésnél (> 4 %) figyelmeztetünk (a lépték marad – a
+  // méretlánc-becslés a ritka, szétszórt méretszámoknál tévedhet; a kézi megadás felülírja)
+  if (e.mPerPt && e.meretarany && !meretarany) {
+    const Mk = meretaranyKotabol(lap.szovegek, lap.utvonalak);
+    if (Mk && Math.abs(Mk - e.meretarany) / e.meretarany > 0.04) e.figyelmeztetesek.push(`A lapon írt méretarány (1:${e.meretarany}) eltér a méretláncok szerint becsülttől (≈ 1:${Mk}). Ellenőrizd egy ismert méreten; ha a rajz kicsinyítve került a lapra, add meg a méretarányt kézzel.`);
+  }
   let magHelyisegek = e.helyisegek.filter((h) => h.forras === 'pecset' && !h.kulter);
   let leiras: AlaprajzFeldolgozas['leiras'];
   // pecsét nélküli (egyszerűsített) alaprajz: a falakkal körbezárt terek a helyiségek
@@ -280,7 +286,7 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
   else {
     // önellenőrzés: több felismerési változat (vektoros fal / + lapkép-„tinta”, ablaksor-szabállyal / nélküle) közül az,
     // amelyben a helyiségek kiterjedése a pecsétben írt területhez a legjobban illik (területtel súlyozott egyezés)
-    const kapuk = nyilasFeliratok(lap.szovegek).filter((f) => f.kapuJelolt && f.szel >= 2.5).map((f) => ({ x: f.x, y: f.y, szel: f.szel, fal: f.fal }));
+    const kapuk = nyilasFeliratok(lap.szovegek, lap.utvonalak).filter((f) => f.kapuJelolt && f.szel >= 2.5).map((f) => ({ x: f.x, y: f.y, szel: f.szel, fal: f.fal }));
     const alap = { ...(kulsoPontok.length ? { kulsoPontok } : {}), ...(kapuk.length ? { kapuk } : {}) };
     const valtozatok: RaszterBeallitas[] = [alap, { ...alap, ablaksor: false }, ...(tinta ? [{ ...alap, tinta }, { ...alap, tinta, ablaksor: false }] : [])];
     let leg: { r: Raszter; p: number } | null = null;
@@ -306,7 +312,7 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
     }
   }
   // falfülke (padlótól induló, sraffozott falszakasz előtti felirat): nem nyílászáró – kimarad az átvételből
-  const feliratok = nyilasFeliratok(lap.szovegek);
+  const feliratok = nyilasFeliratok(lap.szovegek, lap.utvonalak);
   const nyilasok = nyilasokHozzarendel(feliratok, r, magHelyisegek.map((h) => h.nev), auto)
     .map((n) => (n.fajta !== 'belso_ajto' && falfulkeE(n, r, lap) ? { ...n, fajta: 'falfulke' as const, kulso: false } : n));
   // ugyanannak a kapunak két felirata (pl. falnyílás- és tokmagasság külön: „3,75 / 2,25” és „3,75 / 2,40”): azonos
