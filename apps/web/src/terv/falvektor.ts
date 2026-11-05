@@ -120,7 +120,7 @@ export function falVektor(lap: Lap, mPerPt: number, bb?: [number, number, number
           if (kitoltve(x, y)) { jel[i] = 1; kitDb++; }
         }
         const tol = Math.max(0.02 / mPerPt, 0.15 * sz); let srDb = 0;
-        const latott = new Set<number>();
+        const latott = new Set<number>(); const merPoz: [number, number][] = [];
         const gx0 = Math.floor(Math.min(ux * o0 + nx * ca, ux * o1 + nx * ca, ux * o0 + nx * cb, ux * o1 + nx * cb) / G) - 1;
         const gx1 = Math.floor(Math.max(ux * o0 + nx * ca, ux * o1 + nx * ca, ux * o0 + nx * cb, ux * o1 + nx * cb) / G) + 1;
         const gy0 = Math.floor(Math.min(uy * o0 + ny * ca, uy * o1 + ny * ca, uy * o0 + ny * cb, uy * o1 + ny * cb) / G) - 1;
@@ -135,12 +135,26 @@ export function falVektor(lap: Lap, mPerPt: number, bb?: [number, number, number
           // a sraff ferde a falsíkhoz képest; a falsíkkal párhuzamos vagy pontosan merőleges vonal (burkolat-, csempe-, térkőrács
           // keresztvonala, lépcsőfok) nem sraff – a merőlegeshez közeli, de dőlt cikkcakk (ásványgyapot jele) igen
           const rel = (((Math.atan2(s.y2 - s.y1, s.x2 - s.x1) * 180 / Math.PI) - a) % 180 + 180) % 180;
-          if (rel < 10 || rel > 170 || Math.abs(rel - 90) < 4) continue;
+          if (rel < 10 || rel > 170) continue;
+          const meroleges = Math.abs(rel - 90) < 4;
           const fl = Math.min(f1, f2), fh = Math.max(f1, f2); if (fh < o0 - tol || fl > o1 + tol) continue;
+          // a pontosan merőleges vonal (téglajel létrája, de csempe-, térkőrács is) csak sűrűn számít – lásd lent
+          if (meroleges) { merPoz.push([Math.min(f1, f2), Math.max(f1, f2)]); continue; }
           srDb++;
           // a sraffvonal környezete (± 0,12 m a sáv mentén) jelzett
           const i0 = Math.max(0, Math.floor((fl - 0.12 / mPerPt - o0) / (o1 - o0) * n)), i1 = Math.min(n, Math.ceil((fh + 0.12 / mPerPt - o0) / (o1 - o0) * n));
           for (let i = i0; i <= i1; i++) jel[i] |= 2;
+        }
+        // merőleges „létra”: a fokok sűrűn (a közepes távolság ≤ a sávszélesség 60 %-a) – a négyzetes burkolatrács foka
+        // a sávszélességnyire követik egymást
+        if (merPoz.length >= 3) {
+          merPoz.sort((p1, p2) => p1[0] - p2[0]);
+          const tav = merPoz.slice(1).map((q, i) => q[0] - merPoz[i]![0]).filter((d) => d > 0.005 / mPerPt).sort((x, y) => x - y);
+          if (tav.length && tav[tav.length >> 1]! <= 0.6 * sz) for (const [fl, fh] of merPoz) {
+            srDb++;
+            const i0 = Math.max(0, Math.floor((fl - 0.12 / mPerPt - o0) / (o1 - o0) * n)), i1 = Math.min(n, Math.ceil((fh + 0.12 / mPerPt - o0) / (o1 - o0) * n));
+            for (let i = i0; i <= i1; i++) jel[i] |= 2;
+          }
         }
         if (!kitDb && srDb < 2) continue;
         // a jelzett futamok (≥ 0,15 m) lesznek falsávok
