@@ -174,12 +174,15 @@ export function nyilasFeliratok(sz0: Szoveg[], utvonalak?: { muvelet: string; po
     const mSz = (t: Szoveg) => (SZAM_M.test(t.s.trim()) ? mSzam(t.s) : szamCm(t.s) / 100);
     const mind = sz.filter((t) => (SZAM_M.test(t.s.trim()) && mSzam(t.s) >= 0.3 && mSzam(t.s) <= 6) || vegyes(t));
     const ajtok: { a: Szoveg; b: Szoveg; w: number; h: number; x: number; y: number; fal: 'v' | 'f' }[] = [];
+    // előbb a párok, utána a mellvédfeliratok a legközelebbi pártól kezdve (a szomszédos ajtópár ne vigye el az ablak mellvédjét)
+    const parok: { a: Szoveg; b: Szoveg; w: number; h: number; x: number; y: number; fal: 'v' | 'f'; cmPar: boolean; mPar: boolean }[] = [];
+    const parban = new Set<Szoveg>();
     for (const a of mind) {
-      if (mHasznalt.has(a)) continue;
+      if (parban.has(a)) continue;
       const ga = geom(a);
       let legjobb: { b: Szoveg; perp: number } | null = null;
       for (const b of mind) {
-        if (b === a || mHasznalt.has(b) || Math.abs(b.szog - a.szog) > 2 || Math.abs(b.meret - a.meret) > a.meret * 0.15) continue;
+        if (b === a || parban.has(b) || Math.abs(b.szog - a.szog) > 2 || Math.abs(b.meret - a.meret) > a.meret * 0.15) continue;
         const gb = geom(b); const dx = gb.cx - ga.cx, dy = gb.cy - ga.cy;
         const menti = Math.abs(dx * ga.dir[0] + dy * ga.dir[1]), perp = dx * ga.fel[0] + dy * ga.fel[1];
         if (menti > a.meret * 1.0 || Math.abs(perp) < a.meret * 0.9 || Math.abs(perp) > a.meret * 1.9) continue;
@@ -187,22 +190,24 @@ export function nyilasFeliratok(sz0: Szoveg[], utvonalak?: { muvelet: string; po
       }
       if (!legjobb) continue;
       const gb = geom(legjobb.b);
-      const x = (ga.cx + gb.cx) / 2, y = (ga.cy + gb.cy) / 2;
-      let pm: (typeof pmek)[number] | undefined; let pmT = Infinity;
-      for (const q of pmek) {
-        if (pmHasznalt.has(q.t)) continue;
-        const g = geom(q.t); const d = Math.hypot(g.cx - x, g.cy - y);
-        if (d <= a.meret * 5 && d < pmT) { pmT = d; pm = q; }
-      }
       const [felso, also] = legjobb.perp > 0 ? [legjobb.b, a] : [a, legjobb.b];
-      const w = mSz(felso), h = mSz(also);
-      // két cm-es szám párja az első körben dőlt el; vegyes / méteres pár mellvéd nélkül csak ajtóméretű lehet
-      if (!SZAM_M.test(a.s.trim()) && !SZAM_M.test(legjobb.b.s.trim())) continue;
-      if (!pm) { if (SZAM_M.test(a.s.trim()) && SZAM_M.test(legjobb.b.s.trim()) && w >= 0.7 && w <= 1.3 && h >= 2.0 && h <= 2.6) ajtok.push({ a, b: legjobb.b, w, h, x, y, fal: Math.abs(ga.fel[0]) >= Math.abs(ga.fel[1]) ? 'v' : 'f' }); continue; }
-      if (h < 0.3 || h > 3.5) continue;
-      pmHasznalt.add(pm.t); mHasznalt.add(a); mHasznalt.add(legjobb.b);
-      ki.push({ szel: w, mag: h, pm: pmErtek(pm.m![1]!, pm.m![2]), x, y, fal: Math.abs(ga.fel[0]) >= Math.abs(ga.fel[1]) ? 'v' : 'f' });
+      const cmPar = !SZAM_M.test(a.s.trim()) && !SZAM_M.test(legjobb.b.s.trim());
+      const mPar = SZAM_M.test(a.s.trim()) && SZAM_M.test(legjobb.b.s.trim());
+      // két cm-es szám párja az első körben dőlt el
+      if (cmPar) continue;
+      parban.add(a); parban.add(legjobb.b);
+      parok.push({ a, b: legjobb.b, w: mSz(felso), h: mSz(also), x: (ga.cx + gb.cx) / 2, y: (ga.cy + gb.cy) / 2, fal: Math.abs(ga.fel[0]) >= Math.abs(ga.fel[1]) ? 'v' : 'f', cmPar, mPar });
     }
+    const jeloltPm = parok.flatMap((P, pi) => pmek.filter((q) => !pmHasznalt.has(q.t)).map((q) => ({ pi, q, d: Math.hypot(geom(q.t).cx - P.x, geom(q.t).cy - P.y) })).filter((e) => e.d <= P.a.meret * 5)).sort((u, v) => u.d - v.d);
+    const parPm = new Map<number, (typeof pmek)[number]>();
+    for (const e of jeloltPm) { if (parPm.has(e.pi) || pmHasznalt.has(e.q.t)) continue; const P = parok[e.pi]!; if (P.h < 0.3 || P.h > 3.5) continue; parPm.set(e.pi, e.q); pmHasznalt.add(e.q.t); }
+    parok.forEach((P, pi) => {
+      const pm = parPm.get(pi);
+      // vegyes / méteres pár mellvéd nélkül csak ajtóméretű lehet
+      if (!pm) { if (P.mPar && P.w >= 0.7 && P.w <= 1.3 && P.h >= 2.0 && P.h <= 2.6) ajtok.push({ a: P.a, b: P.b, w: P.w, h: P.h, x: P.x, y: P.y, fal: P.fal }); return; }
+      mHasznalt.add(P.a); mHasznalt.add(P.b);
+      ki.push({ szel: P.w, mag: P.h, pm: pmErtek(pm.m![1]!, pm.m![2]), x: P.x, y: P.y, fal: P.fal });
+    });
     for (const d of ajtok) {
       if (mHasznalt.has(d.a) || mHasznalt.has(d.b)) continue;
       mHasznalt.add(d.a); mHasznalt.add(d.b);
@@ -327,7 +332,7 @@ export function nyilasokHozzarendel(feliratok: NyilasFelirat[], r: Raszter, neve
   const LAKO = /nappali|szoba|háló|halo\b|konyha|étkez|etkez|dolgozó|gyerek|living/i;
   const GARAZS = /gar[aá]zs|gépkocsi|gepkocsi|beálló|autó/i;
   const ptPx = r.mPerPt / r.px;
-  const ki: TervNyilas[] = [];
+  const ki: TervNyilas[] = []; const kiFolt: number[] = [];
   const vanPm = feliratok.some((f) => f.pm !== null);
   // az áthidalt nyílások foltjai; a pixelenkénti irány a vízszintes és függőleges nyílásfutam hosszából
   const W = r.w, H = r.h;
@@ -377,8 +382,12 @@ export function nyilasokHozzarendel(feliratok: NyilasFelirat[], r: Raszter, neve
       let p: { h: number; irany: number; kulso: boolean } | null = null;
       // a nyílásfolt irányára merőleges átnézés előbb (vízszintes folt: fel / le)
       const iranyok = ([[0, -1, 0], [1, 0, 90], [0, 1, 180], [-1, 0, 270]] as const).slice().sort((a, b) => (v === undefined ? 0 : Number((a[0] === 0) !== v) - Number((b[0] === 0) !== v)));
-      for (const [dx, dy, ir] of iranyok) {
+      // a folt egyértelműen hosszúkás (a hossza ≥ 2 × vastagsága): a rá merőleges átnézés a nyílás valódi átjárása – ha
+      // ott két különböző helyiség van, belső nyílás (a homlokzati fal mellé eső belső ajtó nem lesz külső)
+      const hosszukas = v !== undefined && Math.max(hf[best]!, vf[best]!) >= 2 * Math.min(hf[best]!, vf[best]!);
+      for (const [n, [dx, dy, ir]] of iranyok.entries()) {
         const elol = talal(dx, dy), hatul = talal(-dx, -dy);
+        if (n === 0 && hosszukas && hatul >= 2 && elol >= 2 && elol !== hatul) { p = { h: hatul - 2, irany: ir, kulso: false }; break; }
         // a helyiségből (hátul) a nyíláson át kifelé (elöl) nézünk
         if (hatul >= 2 && elol === 1) { p = { h: hatul - 2, irany: ir, kulso: true }; break; }
         if (hatul >= 2 && elol >= 2 && elol !== hatul && !p) p = { h: hatul - 2, irany: ir, kulso: false };
@@ -425,8 +434,48 @@ export function nyilasokHozzarendel(feliratok: NyilasFelirat[], r: Raszter, neve
     const kapu = kulso && f.pm === null && f.mag >= 1.8 && (garazsban ? f.kapuJelolt || f.szel >= 1.8 : !lako && f.kapuJelolt && f.szel >= 2.2);
     const fajta: TervNyilas['fajta'] = kapu ? 'garazskapu' : !kulso ? 'belso_ajto' : f.pm !== null && f.pm > 0.05 ? 'ablak' : f.pm !== null ? 'erkelyajto' : f.mag >= 1.9 ? (tipusLap || lako ? 'erkelyajto' : 'bejarati_ajto') : 'ablak';
     ki.push({ ...f, helyiseg: p?.h ?? null, irany: p?.irany ?? null, kulso, fajta, ...(folt && !elteroIrany ? { hely: kompHely(folt) } : {}) });
+    kiFolt.push(folt && !elteroIrany ? folt : 0);
   }
-  return ki;
+  // tömör homlokzati betét (pl. alumíniumburkolatú panel a portálban): a felirata egy másik felirat nyílásfoltjához
+  // kötődik, a foltcsoport nyitott (falkitöltés nélküli) hossza nem fér el a feliratok összszélességével, és a felirat
+  // alatti falszakaszban a fal teljes vastagságában falkitöltés (sraff) van; csak padlóig érő (mellvéd nélküli) elem
+  const zartOszlop = (b: number[], vizsz: boolean, t: number): boolean => {
+    for (let u = vizsz ? b[1]! : b[0]!; u <= (vizsz ? b[3]! : b[2]!); u++) { const i = vizsz ? u * W + t : t * W + u; if (i >= 0 && i < W * H && r.fal[i]) return true; }
+    return false;
+  };
+  const tomor = (n: TervNyilas, b: number[], vizsz: boolean): boolean => {
+    const fk = vizsz ? (n.x - r.x0) * ptPx : (n.y - r.y0) * ptPx; const fel = n.szel / r.px / 2;
+    let zart = 0, ossz = 0;
+    for (let t = Math.round(fk - fel * 0.8); t <= Math.round(fk + fel * 0.8); t++) { ossz++; if (zartOszlop(b, vizsz, t)) zart++; }
+    return ossz > 0 && zart / ossz >= 0.6;
+  };
+  // a felirattal érintett foltok csoportjai (egymást érintő / átfedő befoglalók)
+  const csop = new Map<number, number>();
+  const fold = [...new Set(kiFolt.filter((c) => c))];
+  const gyoker = (c: number): number => { while (csop.has(c) && csop.get(c) !== c) c = csop.get(c)!; return c; };
+  for (const c of fold) csop.set(c, c);
+  for (let a = 0; a < fold.length; a++) for (let q = a + 1; q < fold.length; q++) {
+    const A = kompBB[fold[a]!]!, B = kompBB[fold[q]!]!;
+    if (A[0]! <= B[2]! + 2 && B[0]! <= A[2]! + 2 && A[1]! <= B[3]! + 2 && B[1]! <= A[3]! + 2) csop.set(gyoker(fold[q]!), gyoker(fold[a]!));
+  }
+  const csopBB = new Map<number, number[]>(), csopTag = new Map<number, number[]>();
+  kiFolt.forEach((c, k) => {
+    if (!c) return; const g = gyoker(c), b = kompBB[c]!;
+    const m = csopBB.get(g); csopBB.set(g, m ? [Math.min(m[0]!, b[0]!), Math.min(m[1]!, b[1]!), Math.max(m[2]!, b[2]!), Math.max(m[3]!, b[3]!)] : [...b]);
+    csopTag.set(g, [...(csopTag.get(g) ?? []), k]);
+  });
+  const kidob = new Set<number>();
+  for (const [g, tagok] of csopTag) {
+    if (tagok.length < 2) continue;
+    const b = csopBB.get(g)!; const vizsz = b[2]! - b[0]! >= b[3]! - b[1]!;
+    const [lo, hi] = vizsz ? [b[0]!, b[2]!] : [b[1]!, b[3]!];
+    let nyitott = 0; for (let t = lo; t <= hi; t++) if (!zartOszlop(b, vizsz, t)) nyitott++;
+    const ossz = tagok.reduce((s2, k) => s2 + ki[k]!.szel, 0);
+    if (ossz <= nyitott * r.px * 1.1 + 0.1) continue;
+    for (const k of tagok) if (ki[k]!.kulso && (ki[k]!.pm ?? 0) <= 0.05 && ki[k]!.mag >= 1.9 && tomor(ki[k]!, b, vizsz)) kidob.add(k);
+  }
+  if ((globalThis as any).DBGNYH) for (const k of kidob) console.log('TOMOR', ki[k]!.szel, ki[k]!.mag, ki[k]!.pm, ki[k]!.x.toFixed(0), ki[k]!.y.toFixed(0));
+  return ki.filter((_, k) => !kidob.has(k));
 }
 
 /**

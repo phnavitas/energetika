@@ -5,6 +5,7 @@
  */
 import type { Lap, Utvonal } from './kinyeres';
 import { tintaFal, type TintaKep } from './tinta';
+import { falVektor } from './falvektor';
 
 export interface RaszterBeallitas {
   /** Pixelméret méterben. */
@@ -478,6 +479,25 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       if (!fal[i]) darabok.splice(k, 1);
     }
   }
+  // vektoros falfelismerés (párhuzamos falsíkpár + metszeti jel): ha bekapcsolt, ez adja a falat és a nyílásokat
+  const vek = (b as { vektorFal?: boolean }).vektorFal ?? !!(globalThis as { VEKTORFAL?: boolean }).VEKTORFAL;
+  let vekNyilas: [number, number][][] = []; let vekAktiv = false;
+  if (vek) {
+    const v = falVektor(lap, mPerPt, [x0, y0, x1, y1]);
+    // (ha a vektoros felismerés alig talál falat – pl. szkennelt lap –, marad a korábbi)
+    const vA = v.savok.reduce((s2, f) => s2 + Math.hypot(f.pontok[1]![0] - f.pontok[0]![0], f.pontok[1]![1] - f.pontok[0]![1]) * mPerPt * f.vastag, 0);
+    if (vA >= 2) {
+    vekAktiv = true; fal.fill(0); darabok.length = 0;
+    for (const f of v.savok) {
+      poliRajzol(fal, w, h, [f.pontok.flat()], tr);
+      // (a tengelyirányú sávok befoglalója a régi, tengelyirányú nyílás-áthidaláshoz; a ferdéké nem)
+      if (Math.min(f.szog % 90, 90 - f.szog % 90) > 1) continue;
+      const xs = f.pontok.map((q) => q[0]), ys = f.pontok.map((q) => q[1]);
+      darabok.push([Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]);
+    }
+    vekNyilas = v.nyilasok;
+    }
+  }
   // térbeli index a nyílásokban lévő rajzelemek (tok, üvegezés, küszöb, ajtólap) kereséséhez
   const RACS = 20; const index = new Map<number, Utvonal[]>();
   for (const u of lap.utvonalak) {
@@ -496,6 +516,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   // nyílások áthidalása: egy egyenesbe eső, azonos falsávba tartozó faldarabok közti rés (ablak, ajtó) lezárása,
   // ha a résben nyílászáró rajzeleme van (az üres rés átjáró, nem nyílás)
   const nyilas = new Uint8Array(w * h);
+  if (vekAktiv) { const t = new Uint8Array(w * h); for (const q of vekNyilas) poliRajzol(t, w, h, [q.flat()], tr); for (let i = 0; i < w * h; i++) if (t[i] && !fal[i]) nyilas[i] = 1; }
   const maxRes = (b.maxNyilas ?? 2.8) / mPerPt, minHossz = 0.15 / mPerPt, maxV = maxFal / mPerPt;
   for (const fuggo of [false, true]) {
     // fuggo = false: vízszintes falak (x mentén hosszúak); true: függőlegesek – koordinátacserével ugyanaz a logika
@@ -731,13 +752,13 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   // tinta-fal: a lapképen falvastagságú tintasáv (mintával, sraffozással, vastag vonallal rajzolt fal is) – a vektoros
   // elemzés után, hogy a már felismert nyílások (ablakkeret, üvegfal: a zárás után tömör tintafolt) nyílások maradjanak
   let tintaDb = 0;
-  if (b.tinta) {
+  if (b.tinta && !vekAktiv) {
     const t = tintaFal(b.tinta, x0, y0, ptPx, w, h, px, lap.szovegek);
     for (let i = 0; i < w * h; i++) if (t[i] && !fal[i] && !nyilas[i]) { fal[i] = 1; tintaDb++; }
   }
   if (b.szinKep) szinHatar(fal, w, h, b.szinKep.hatar ?? [150, 230, 252], (x, y) => { const k = b.szinKep!; const ix = Math.round((x0 + (x + 0.5) / ptPx) * k.ptPx), iy = Math.round((y0 + (y + 0.5) / ptPx) * k.ptPx); return ix >= 0 && iy >= 0 && ix < k.w && iy < k.h ? k.adat[iy * k.w + ix]! : 255; });
   // sraffozott falaknál a nyílások (ablak, ajtó) rajzeleme nem kitöltés – a falsávban lévő réseket zárjuk (≤ 2,7 m)
-  const resM = b.resZaras ?? (sraffMod || tintaDb * px * px > 2 ? 2.7 : 0);
+  const resM = b.resZaras ?? (vekAktiv ? 0 : sraffMod || tintaDb * px * px > 2 ? 2.7 : 0);
   // (sraffozott falnál a nyílások közti falpillér gyakran különálló folt – ott nem kell azonos falhálózat)
   if (resM) resZar(fal, nyilas, w, h, Math.round(resM / px), Math.round(0.6 / px), sraffMod && !b.resZaras ? new Int32Array(w * h).fill(1) : falKomponensek(fal, w, h), Math.max(2, Math.round(0.25 / px)), Math.round(0.18 / px), Math.round(1.2 / px));
   // feliratos széles nyílások (kapuk): a felirat 2,5 m-es környezetében az a falirányú rés, amelynek hossza a felirat
