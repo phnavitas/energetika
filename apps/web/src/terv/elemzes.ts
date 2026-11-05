@@ -289,14 +289,21 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
     const kapuk = nyilasFeliratok(lap.szovegek, lap.utvonalak).filter((f) => f.kapuJelolt && f.szel >= 2.5).map((f) => ({ x: f.x, y: f.y, szel: f.szel, fal: f.fal }));
     const alap = { ...(kulsoPontok.length ? { kulsoPontok } : {}), ...(kapuk.length ? { kapuk } : {}) };
     const valtozatok: RaszterBeallitas[] = [alap, { ...alap, ablaksor: false }, ...(tinta ? [{ ...alap, tinta }, { ...alap, tinta, ablaksor: false }] : [])];
-    let leg: { r: Raszter; p: number } | null = null;
+    let leg: { r: Raszter; p: number } | null = null; let legBeall: RaszterBeallitas | null = null;
     for (const v of valtozatok) {
       const rv = raszterEpit(lap, e.mPerPt, magok, v);
       const p = pecsetEgyezes(rv, magHelyisegek);
       // az alapváltozattól csak egyértelmű javulásnál (≥ 3 százalékpont) térünk el – a hajszálnyi különbség zaj
-      if (!leg || p > leg.p + 0.03) leg = { r: rv, p };
+      if (!leg || p > leg.p + 0.03) { leg = { r: rv, p }; legBeall = v; }
     }
     r = leg!.r;
+    // a pecsét helyén nincs helyiség (kívül írt, szaggatott mutatóvonallal kötött pecsét): a mutatóvonal végével újra
+    const tartalek = magHelyisegek.map((h, i) => (h.mutatoTartalek && !h.mutato && (r.helyisegek[i]?.A ?? 0) < 0.3 * h.A ? i : -1)).filter((i) => i >= 0);
+    if (tartalek.length) {
+      for (const i of tartalek) { const h = magHelyisegek[i]!; h.mutato = h.mutatoTartalek; magok[i] = { ...h.mutato!, A: h.A }; }
+      const v = valtozatok.find((x) => x === legBeall) ?? alap;
+      r = raszterEpit(lap, e.mPerPt, magok, v);
+    }
   }
   kotaEllenoriz(r, lap.szovegek);
   talajOldal(lap, r, e.helyisegek.filter((h) => h.forras === 'pecset' && !h.kulter).map((h) => h.mutato ?? h));

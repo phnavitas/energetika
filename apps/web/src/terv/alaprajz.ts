@@ -16,6 +16,8 @@ export interface TervHelyiseg {
   bbox?: [number, number, number, number];
   /** Ha a pecsét mutatóvonallal (pont / nyíl végű vonal) jelöli a helyiséget: a mutatott pont. */
   mutato?: { x: number; y: number };
+  /** Szaggatott (végjel nélküli) mutatóvonal végpontja – csak akkor használjuk, ha a pecsét helyén nincs helyiség. */
+  mutatoTartalek?: { x: number; y: number };
   egyseg?: string;
   forras: 'pecset' | 'jegyzek';
   /** A helyiségjegyzékben szereplő terület (ha van és eltér, figyelmeztetünk). */
@@ -251,7 +253,30 @@ export function mutatokKeres(lap: Lap, hs: TervHelyiseg[]): void {
         if (!legjobb || hossz > legjobb.d) legjobb = { x: (pont.bbox[0] + pont.bbox[2]) / 2, y: (pont.bbox[1] + pont.bbox[3]) / 2, d: hossz };
       }
     }
-    if (legjobb) h.mutato = { x: legjobb.x, y: legjobb.y };
+    if (legjobb) { h.mutato = { x: legjobb.x, y: legjobb.y }; continue; }
+    // szaggatott (rövid, egy vonalba eső szakaszokból álló) mutatóvonal végjel nélkül: a pecsét keretének egyik
+    // oldalától merőlegesen indul, legalább 3 szakasz; a lánc vége a mutatott pont (kicsit tovább, a helyiségbe)
+    const rovid = lap.utvonalak.filter((u) => u.muvelet === 'stroke' && u.pontok.length === 1 && u.pontok[0]!.length === 4 && u.vastagsag < 0.3);
+    let lanc: { x: number; y: number; d: number } | null = null;
+    for (const [ir, x0, y0] of [[0, (bx0 + bx1) / 2, by1], [1, (bx0 + bx1) / 2, by0], [2, bx0, (by0 + by1) / 2], [3, bx1, (by0 + by1) / 2]] as const) {
+      const fugg = ir < 2; const elojel = ir === 0 || ir === 3 ? 1 : -1;
+      // a kerethez legközelebbi indulás: a keret oldalán belül (a teljes szélességben), merőleges szakasz
+      const jelolt = rovid.filter((u) => { const p = u.pontok[0]!; const L = Math.hypot(p[2]! - p[0]!, p[3]! - p[1]!); if (L < 1 || L > 6) return false; return fugg ? Math.abs(p[0]! - p[2]!) < 0.2 : Math.abs(p[1]! - p[3]!) < 0.2; });
+      const kezd = jelolt.find((u) => { const p = u.pontok[0]!; const k = fugg ? Math.min(p[1]!, p[3]!) * elojel : Math.min(p[0]!, p[2]!) * elojel; const kr = (fugg ? y0 : x0) * elojel; const a = fugg ? p[0]! : p[1]!; const ok = fugg ? a > bx0 && a < bx1 : a > by0 && a < by1; return ok && Math.abs((fugg ? (elojel > 0 ? Math.min(p[1]!, p[3]!) : Math.max(p[1]!, p[3]!)) : (elojel > 0 ? Math.min(p[0]!, p[2]!) : Math.max(p[0]!, p[2]!))) - (fugg ? y0 : x0)) < 3 && k >= kr - 3; });
+      if (!kezd) continue;
+      const tengely = fugg ? kezd.pontok[0]![0]! : kezd.pontok[0]![1]!;
+      const egyvonal = jelolt.filter((u) => Math.abs((fugg ? u.pontok[0]![0]! : u.pontok[0]![1]!) - tengely) < 0.3).map((u) => { const p = u.pontok[0]!; const a = fugg ? [p[1]!, p[3]!] : [p[0]!, p[2]!]; return elojel > 0 ? [Math.min(...a), Math.max(...a)] : [-Math.max(...a), -Math.min(...a)]; }).sort((a, b) => a[0]! - b[0]!);
+      let veg = egyvonal.find((q) => Math.abs(q[0]! - (elojel > 0 ? (fugg ? y0 : x0) : -(fugg ? y0 : x0))) < 3)?.[1]; let db = 1;
+      if (veg === undefined) continue;
+      for (const q of egyvonal) if (q[0]! > veg - 0.1 && q[0]! - veg <= 2.5) { veg = q[1]!; db++; }
+      if (db < 3) continue;
+      const vegKoord = (elojel > 0 ? veg : -veg) + elojel * 3;
+      const pt = fugg ? { x: tengely, y: vegKoord } : { x: vegKoord, y: tengely };
+      const d = Math.abs(vegKoord - (fugg ? y0 : x0));
+      if (!lanc || d > lanc.d) lanc = { ...pt, d };
+    }
+    // csak tartalék: a raszter ezt akkor használja, ha a pecsét helyén nem talál helyiséget (ld. alaprajzFeldolgoz)
+    if (lanc && lanc.d >= 10 && lanc.d <= 90) h.mutatoTartalek = { x: lanc.x, y: lanc.y };
   }
 }
 
