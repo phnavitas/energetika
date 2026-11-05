@@ -47,7 +47,8 @@ export function falVektor(lap: Lap, mPerPt: number, bb?: [number, number, number
       // nagy, zömök kitöltés (terep, burkolat, színezett helyiség) nem falmetszet: a „vastagsága” (2A/K) ≤ 0,9 m
       for (const p of u.pontok) {
         const A = poliTerulet(p) * mPerPt * mPerPt; let K = 0; for (let i = 0; i + 3 < p.length; i += 2) K += Math.hypot(p[i + 2]! - p[i]!, p[i + 3]! - p[i + 1]!); K *= mPerPt;
-        if (A <= 0 || K <= 0 || 2 * A / K > 0.9) continue;
+        // (a kis helyiség mintás / színezett padlókitöltése sem: a falmetszet ≤ 0,6 m vastag és ≥ 2,5 × olyan hosszú)
+        if (A <= 0 || K <= 0 || 2 * A / K > 0.6 || K / 2 - 2 * A / K < 2.5 * (2 * A / K)) continue;
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (let i = 0; i + 1 < p.length; i += 2) { x0 = Math.min(x0, p[i]!); x1 = Math.max(x1, p[i]!); y0 = Math.min(y0, p[i + 1]!); y1 = Math.max(y1, p[i + 1]!); }
         kit.push({ p, bb: [x0, y0, x1, y1] });
       }
@@ -93,6 +94,12 @@ export function falVektor(lap: Lap, mPerPt: number, bb?: [number, number, number
   const rekesz = new Map<number, Sz[]>();
   for (const s of hosszu) { const k = Math.round(szogOf(s) * 2) % 360; const l = rekesz.get(k); if (l) l.push(s); else rekesz.set(k, [s]); }
   const ki: FalSav[] = [];
+  // tollosztály (vonalvastagság + szín): a metszett fal síkjait a rajz egy (vagy néhány) tollal húzza – ahol a jeles
+  // (kitöltött / sraffozott) falak síkjai is ezzel a tollal futnak, ott a jel nélküli (üres) vonalpár is fal
+  const toll = (u: Utvonal) => (u.muvelet === 'fill' ? 'kit' : `${u.vastagsag.toFixed(2)}|${u.vonalSzin}`);
+  const tollHossz = new Map<string, number>(), tollJel = new Map<string, number>();
+  for (const s0 of hosszu) { const k = toll(s0.u); tollHossz.set(k, (tollHossz.get(k) ?? 0) + Math.hypot(s0.x2 - s0.x1, s0.y2 - s0.y1) * mPerPt); }
+  const ures: { a: number; o0: number; o1: number; ca: number; cb: number; tk: string }[] = [];
   const LEPES = 0.05 / mPerPt; // a sáv menti mintavétel
   for (const [k, grp0] of rekesz) {
     const a = k / 2; const th = a * Math.PI / 180; const ux = Math.cos(th), uy = Math.sin(th), nx = -uy, ny = ux;
@@ -110,6 +117,11 @@ export function falVektor(lap: Lap, mPerPt: number, bb?: [number, number, number
         const o0 = Math.max(p.t0, q.t0), o1 = Math.min(p.t1, q.t1);
         if ((o1 - o0) * mPerPt < 0.15) continue;
         const ca = p.c, cb = q.c, cm = (ca + cb) / 2, sz = cb - ca;
+        // periodikus vonalsor (lépcsőfokok, parketta, burkolat, polc): a pár mindkét külső oldalán ugyanilyen távolságra újabb
+        // párhuzamos vonal fut – nem fal
+        { const tol2 = 0.015 / mPerPt; let mindket = 0;
+          for (const c of [ca - sz, cb + sz]) { let lo2 = 0, hi2 = B.length; while (lo2 < hi2) { const m = (lo2 + hi2) >> 1; if (B[m]!.c < c - tol2) lo2 = m + 1; else hi2 = m; } for (let k2 = lo2; k2 < B.length && B[k2]!.c <= c + tol2; k2++) { const r2 = B[k2]!; if (Math.min(r2.t1, o1) - Math.max(r2.t0, o0) >= 0.5 * (o1 - o0)) { mindket++; break; } } }
+          if (mindket === 2 && (globalThis as { PERIOD?: boolean }).PERIOD) continue; }
         // mintavétel a sáv mentén: kitöltés a sáv közepén, ill. a sávot átfogó sraffvonal
         const n = Math.max(1, Math.round((o1 - o0) / LEPES));
         const jel = new Uint8Array(n + 1); let kitDb = 0;
@@ -156,7 +168,17 @@ export function falVektor(lap: Lap, mPerPt: number, bb?: [number, number, number
             for (let i = i0; i <= i1; i++) jel[i] |= 2;
           }
         }
-        if (!kitDb && srDb < 2) continue;
+        if (!kitDb && srDb < 2) {
+          // jel nélküli vonalpár: azonos tollal húzott, falvastagságú (6–60 cm), legalább 0,3 m-es közös szakasz – a tollosztály
+          // eldöntése után lehet fal
+          const tk = toll(p.s.u);
+          // (a periodikus vonalsor – parketta, burkolat, lépcső – nem fal: a pár valamelyik külső oldalán ugyanilyen
+          // távolságra újabb párhuzamos vonal fut)
+          const periodikus = () => { const tol2 = 0.015 / mPerPt; for (const c of [ca - sz, cb + sz]) { let lo2 = 0, hi2 = B.length; while (lo2 < hi2) { const m = (lo2 + hi2) >> 1; if (B[m]!.c < c - tol2) lo2 = m + 1; else hi2 = m; } for (let k2 = lo2; k2 < B.length && B[k2]!.c <= c + tol2; k2++) { const r2 = B[k2]!; if (Math.min(r2.t1, o1) - Math.max(r2.t0, o0) >= 0.5 * (o1 - o0)) return true; } } return false; };
+          if (tk === toll(q.s.u) && tk !== 'kit' && sz * mPerPt >= 0.06 && sz * mPerPt <= 0.6 && (o1 - o0) * mPerPt >= 0.3 && !periodikus()) ures.push({ a, o0, o1, ca, cb, tk });
+          continue;
+        }
+        { const tk = toll(p.s.u); if (tk === toll(q.s.u)) tollJel.set(tk, (tollJel.get(tk) ?? 0) + (o1 - o0) * mPerPt); }
         // a jelzett futamok (≥ 0,15 m) lesznek falsávok
         let i = 0;
         while (i <= n) {
@@ -172,12 +194,28 @@ export function falVektor(lap: Lap, mPerPt: number, bb?: [number, number, number
       }
     }
   }
+  // a falsík-tollak: a vonalhosszuk legalább negyede jeles falpár része (és legalább 5 m)
+  const sotet = (k: string) => { const m = /#(..)(..)(..)$/.exec(k); return !!m && (parseInt(m[1]!, 16) + parseInt(m[2]!, 16) + parseInt(m[3]!, 16)) / 3 < 100; };
+  // (csak sötét toll: a világos-szürke vonalak burkolat-, parketta-, sraffrajzolatok)
+  const falToll = new Set([...tollJel.entries()].filter(([k, l]) => sotet(k) && l >= 5 && l >= 0.25 * (tollHossz.get(k) ?? Infinity)).map(([k]) => k));
+  if ((globalThis as { DBGTOLL?: boolean }).DBGTOLL) console.log('TOLL', [...tollHossz.entries()].map(([k, l]) => `${k}:${l.toFixed(0)}/${(tollJel.get(k) ?? 0).toFixed(0)}`).join(' '), [...falToll]);
+  const uStat = new Map<string, number>();
+  // (kikapcsolva: a tollosztály a parketta-, lépcső-, bútorvonalakat is falnak vette – helyette a falháló zárása kell)
+  if ((globalThis as { TOLLFAL?: boolean }).TOLLFAL) for (const e of ures) {
+    if (!falToll.has(e.tk)) continue;
+    uStat.set(e.tk + '|' + Math.round((e.cb - e.ca) * mPerPt * 100), (uStat.get(e.tk + '|' + Math.round((e.cb - e.ca) * mPerPt * 100)) ?? 0) + (e.o1 - e.o0) * mPerPt);
+    const th = e.a * Math.PI / 180; const ux = Math.cos(th), uy = Math.sin(th), nx = -uy, ny = ux;
+    const P = (t: number, c: number): [number, number] => [ux * t + nx * c, uy * t + ny * c];
+    ki.push({ pontok: [P(e.o0, e.ca), P(e.o1, e.ca), P(e.o1, e.cb), P(e.o0, e.cb)], vastag: (e.cb - e.ca) * mPerPt, szog: e.a, jel: 'sraff' });
+  }
+  if ((globalThis as { DBGTOLL?: boolean }).DBGTOLL) console.log('USTAT', [...uStat.entries()].sort((x, y) => y[1] - x[1]).slice(0, 25).map(([k, v]) => k + ':' + v.toFixed(0)).join(' '));
   const savok = halozat(ki, mPerPt);
   // nyílások: azonos falsíkpár (irány ±1°, mindkét falsík ±2 cm) egymást követő darabjai közti 0,3–3 m-es rés, ha a résben
   // legalább két rajzelem (tok, üvegezés, ajtólap, küszöb) van – az üres rés átjáró / falvég
   const nyilasok: [number, number][][] = [];
   const csop = new Map<string, { t0: number; t1: number; ca: number; cb: number; a: number }[]>();
   for (const f of savok) {
+    if (f.vastag < 0.08) continue;
     const th = f.szog * Math.PI / 180; const ux = Math.cos(th), uy = Math.sin(th), nx = -uy, ny = ux;
     const t0 = f.pontok[0]![0] * ux + f.pontok[0]![1] * uy, t1 = f.pontok[1]![0] * ux + f.pontok[1]![1] * uy;
     const ca = f.pontok[0]![0] * nx + f.pontok[0]![1] * ny, cb = f.pontok[3]![0] * nx + f.pontok[3]![1] * ny;

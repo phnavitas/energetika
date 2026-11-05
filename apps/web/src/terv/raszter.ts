@@ -487,9 +487,28 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
     // (ha a vektoros felismerés alig talál falat – pl. szkennelt lap –, marad a korábbi)
     const vA = v.savok.reduce((s2, f) => s2 + Math.hypot(f.pontok[1]![0] - f.pontok[0]![0], f.pontok[1]![1] - f.pontok[0]![1]) * mPerPt * f.vastag, 0);
     if (vA >= 2) {
-    vekAktiv = true; fal.fill(0); darabok.length = 0;
+    vekAktiv = true;
+    // vegyes módszer: a vektoros falsávok (V) biztosak; a korábbi (kitöltés / sraff / lapkép szerinti) falfoltok közül
+    // azok maradnak, amelyek legalább 15 %-ban vektoros falsávon fekszenek (a falréteg, falvég, pillér) – a vektoros fallal
+    // nem érintkező foltok (szöveg, méretlánc, pecsét, bútor tintája) kiesnek
+    const regi = new Uint8Array(fal);
+    if (b.tinta) { const t = tintaFal(b.tinta, x0, y0, ptPx, w, h, px, lap.szovegek); for (let i = 0; i < w * h; i++) if (t[i]) regi[i] = 1; }
+    const V = new Uint8Array(w * h);
+    for (const f of v.savok) poliRajzol(V, w, h, [f.pontok.flat()], tr);
+    const Vt = tagit(V, w, h, 2);
+    const komp = new Int32Array(w * h); const tart: boolean[] = [false];
+    for (let i = 0; i < w * h; i++) {
+      if (!regi[i] || komp[i]) continue;
+      const id = tart.length; const sor = [i]; komp[i] = id; let fed = 0;
+      for (let k = 0; k < sor.length; k++) { const q = sor[k]!, x = q % w; if (Vt[q]) fed++; for (const n of [x > 0 ? q - 1 : -1, x < w - 1 ? q + 1 : -1, q - w, q + w]) if (n >= 0 && n < w * h && regi[n] && !komp[n]) { komp[n] = id; sor.push(n); } }
+      tart.push(fed >= 0.15 * sor.length);
+    }
+    // (a korábbi fal csak a vektoros falak 15 cm-es sávjában egészít ki – falréteg, vakolat, falvég; a falsávtól távoli
+    // foltja – burkolat, bútor, felirat – nem kerül át)
+    const Vs = tagit(V, w, h, Math.max(1, Math.round(0.15 / px)));
+    for (let i = 0; i < w * h; i++) fal[i] = V[i] || (regi[i] && tart[komp[i]!] && Vs[i]) ? 1 : 0;
+    for (let k = darabok.length - 1; k >= 0; k--) { const q = darabok[k]!; const [cx, cy] = tr((q[0] + q[2]) / 2, (q[1] + q[3]) / 2); const i = Math.min(h - 1, Math.max(0, Math.floor(cy))) * w + Math.min(w - 1, Math.max(0, Math.floor(cx))); if (!fal[i]) darabok.splice(k, 1); }
     for (const f of v.savok) {
-      poliRajzol(fal, w, h, [f.pontok.flat()], tr);
       // (a tengelyirányú sávok befoglalója a régi, tengelyirányú nyílás-áthidaláshoz; a ferdéké nem)
       if (Math.min(f.szog % 90, 90 - f.szog % 90) > 1) continue;
       const xs = f.pontok.map((q) => q[0]), ys = f.pontok.map((q) => q[1]);

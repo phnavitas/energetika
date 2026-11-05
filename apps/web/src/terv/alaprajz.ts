@@ -188,6 +188,13 @@ export function jegyzekSorok(sz: Szoveg[]): TervHelyiseg[] {
     if (s) s.push(t); else sorok.push([t]);
   }
   const ki: TervHelyiseg[] = [];
+  // egymás mellé tett táblázatok egy sorban: minden „szintnév + helyiségkód” párnál új sor kezdődik
+  const SZINTSZO0 = /^(földszint|emelet|pince|tetőtér|alagsor|\d+\.\s*emelet)$/i, KOD0 = /^[A-ZÁÉ]{1,4}\d{1,3}$/;
+  for (let k0 = 0; k0 < sorok.length; k0++) {
+    const r = sorok[k0]!; r.sort((p, q) => p.x - q.x);
+    const v = r.findIndex((t, k) => k > 0 && SZINTSZO0.test(t.s.trim()) && KOD0.test(r[k + 1]?.s.trim() ?? ''));
+    if (v > 0) { sorok.push(r.slice(v)); r.splice(v); }
+  }
   for (const r of sorok) {
     r.sort((p, q) => p.x - q.x);
     // műleírás-táblázat: a terület után még a burkolat oszlopa áll („01 ELŐTÉR 12,03 greslap”)
@@ -195,9 +202,25 @@ export function jegyzekSorok(sz: Szoveg[]): TervHelyiseg[] {
     if (r.length >= 4 && BURKOLAT.test(r.at(-1)!.s) && /^\d{1,4}[,.]\d{1,2}$/.test(r.at(-2)!.s)) vegBurkolat = r.pop()!.s;
     if (r.length < 3) continue;
     const utolso = r.at(-1)!.s;
-    if (!/^\d{1,4}[,.]\d{1,2}$/.test(utolso)) continue;
+    if (!/^\d{1,4}[,.]\d{1,2}$/.test(utolso)) {
+      // terület nélküli helyiséglista („Földszint | F01 | előtér | kerámia”): szintnév, helyiségkód, név, burkolat – a terület
+      // a rajzból adódik (A = 0)
+      // (egymás mellé tett táblázatok egy sorban: minden „szintnév + kód” párnál új sor kezdődik)
+      const SZINTSZO = /^(földszint|emelet|pince|tetőtér|alagsor|\d+\.\s*emelet)$/i, KOD = /^[A-ZÁÉ]{1,4}\d{1,3}$/;
+      const darabok: (typeof r)[] = [];
+      for (let k = 0; k < r.length; k++) { const t = r[k]!.s.trim(); if ((SZINTSZO.test(t) && KOD.test(r[k + 1]?.s.trim() ?? '')) || !darabok.length) darabok.push([]); darabok.at(-1)!.push(r[k]!); }
+      for (const d of darabok) {
+        const tk = d.map((t) => t.s.trim());
+        const ki0 = SZINTSZO.test(tk[0]!) ? 1 : 0;
+        if (tk.length - ki0 >= 3 && KOD.test(tk[ki0]!) && BURKOLAT.test(tk.at(-1)!)) {
+          const nev = tk.slice(ki0 + 1, -1).join(' ');
+          if (/\p{L}{2}/u.test(nev) && !/összesen|össz\.|sum/i.test(nev)) ki.push({ kod: tk[ki0]!, nev: nagybetuJavit(nev), burkolat: tk.at(-1)!, A: 0, x: kozep(d[ki0]!), y: d[ki0]!.y, forras: 'jegyzek', kulter: kulterE(nev), egyseg: egysegKod(tk[ki0]!) });
+        }
+      }
+      continue;
+    }
     // a kód az első egy-két elemből áll össze („L01.” + „01”)
-    let kod = ''; let i = 0;
+    let kod = ''; let i = SZINTSZO0.test(r[0]!.s.trim()) && r.length >= 4 ? 1 : 0;
     // több épület azonos helyiségei egy sorban: „Cfsz01 Bfsz01 Afsz01 előszoba 3,89” – minden kód külön sor
     const ONALLO = /^[A-ZÁÉ][A-Za-zÁÉáé]{0,4}\d{1,3}$/;
     const kodok: string[] = [];
