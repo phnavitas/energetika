@@ -269,7 +269,12 @@ function zonaHelyisegek(zonak: NonNullable<Lap['zonak']>, pecsetek: TervHelyiseg
     const nev0 = zonak[tagok[0]!]!.nev.replace(/\s+/g, ' ').trim();
     const m = /^(\S*\d\S*)\s+(.+)$/.exec(nev0);
     const kod = m ? m[1] : undefined, nev = m ? m[2]! : nev0 || 'Helyiség';
-    const pecset = pecsetek.find((h) => !foglalt.has(h) && poli.some((p) => poliBenne(p, (h.mutato ?? h).x, (h.mutato ?? h).y)));
+    // a zóna pecsétje: az azonos kódú (a lapon egyetlen) pecsét; ennek híján a zónán belüli, ha a kódja vagy a területe
+    // egyezik (a zónába eső, más kódú és területű pecsét – pl. a szomszéd kis helyiség mutatóvonal nélküli pecsétje – nem)
+    const kn = (q?: string) => (q ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const azonos = kod ? pecsetek.filter((h) => !foglalt.has(h) && kn(h.kod) === kn(kod)) : [];
+    const pecset = azonos.length === 1 ? azonos[0] : pecsetek.find((h) => !foglalt.has(h) && poli.some((p) => poliBenne(p, (h.mutato ?? h).x, (h.mutato ?? h).y))
+      && (!kod || !h.kod || kn(h.kod) === kn(kod) || !(h.A > 0) || Math.abs(h.A - A) <= 0.25 * A));
     if (pecset) foglalt.add(pecset);
     const h: TervHelyiseg = pecset
       ? { ...pecset, kod: pecset.kod ?? kod, nev: pecset.nev || nev, A: pecset.A > 0 ? pecset.A : Math.round(A * 100) / 100, x, y, mutato: undefined, mutatoTartalek: undefined }
@@ -434,6 +439,15 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
     if (!bejaratos.length) { for (const n of l) n.fajta = 'ablak'; continue; }
     const ajto = bejaratos.reduce((a, b) => (b.szel > a.szel ? b : a));
     for (const n of l) n.fajta = n === ajto ? 'bejarati_uvegajto' : 'ablak';
+  }
+  // zónás helyiség (a falszakaszok a zóna éleiből, ferde falnál a valódi irányukkal): a homlokzati nyílás iránya a hozzá
+  // legközelebbi (≤ 2 m) külső zónaél iránya – a nyílásfolt átnézése csak a négy fő irányt ismeri
+  for (const n of nyilasok) {
+    if (!n.kulso || n.helyiseg === null) continue;
+    const H = r.helyisegek[n.helyiseg]; if (!H?.szakaszok.some((sg) => sg.zona)) continue;
+    let leg = 2 / r.mPerPt, ir: number | null = null;
+    for (const sg of H.szakaszok) if (sg.zona && sg.tul === 'kulso') for (const q of sg.pontok) { const d = Math.hypot(q[0] - n.x, q[1] - n.y); if (d < leg) { leg = d; ir = sg.irany; } }
+    if (ir !== null) n.irany = ir;
   }
   // falhoz nem rendelt nyílásfeliratok (pl. a raszterben nem lezárt, üvegfalas helyiség homlokzatán): a szerkesztett hőburok használja
   const arva = feliratok.filter((f) => !nyilasok.some((n) => Math.hypot(n.x - f.x, n.y - f.y) < 2));

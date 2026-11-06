@@ -59,6 +59,8 @@ export interface FalSzakasz {
   /** Külső szakasznál: a fal mögött szomszédos épület áll („szomszédos épület”, „zártsorú”, „tűzfal” felirat) –
    * zártsorú / ikres csatlakozás, nem homlokzati fal. */
   szomszed?: boolean;
+  /** A szakasz az ArchiCAD-zóna körvonalának éléből (pontos hossz és irány, ferde falnál is) – a kótaigazítás kihagyja. */
+  zona?: boolean;
 }
 
 export interface Raszter {
@@ -892,8 +894,29 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
     const Z = new Int32Array(w * h); const t = new Uint8Array(w * h);
     b.zonaPoli.forEach((pl, k) => { if (!pl) return; t.fill(0); poliRajzol(t, w, h, pl, tr); for (let i = 0; i < w * h; i++) if (t[i]) Z[i] = 2 + k; });
     const zonas = new Set<number>(); b.zonaPoli.forEach((pl, k) => { if (pl) zonas.add(2 + k); });
+    // a zóna menti (≤ 0,6 m) sáv, ahol se fal, se nyílás nincs (a korábban a helyiséghez vagy a külső térhez sorolt rész):
+    // a rajzon kitöltetlen falbelső (csak a fal síkjai vannak megrajzolva) – gát, a külső tér ne érjen a zóna széléig
+    // (csak a zóna és a fal/nyílás vonala közé zárt pixel: egy tengelyirányban a zóna, az ellenkezőben fal vagy nyílás
+    // 0,6 m-en belül – a fal külső síkján túli külső tér nem)
+    const R = Math.max(1, Math.round(0.6 / px));
+    const kozott = (i: number) => {
+      const x = i % w, y = (i / w) | 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        let zona = false, falV = false;
+        for (let k = 1; k <= R && !zona; k++) { const qx = x - dx * k, qy = y - dy * k; if (qx < 0 || qy < 0 || qx >= w || qy >= h) break; if (Z[qy * w + qx]) zona = true; }
+        if (!zona) continue;
+        for (let k = 1; k <= R && !falV; k++) { const qx = x + dx * k, qy = y + dy * k; if (qx < 0 || qy < 0 || qx >= w || qy >= h) break; const q = qy * w + qx; if (fal[q] || nyilas[q]) falV = true; }
+        if (falV) return true;
+      }
+      return false;
+    };
+    const Zb = new Uint8Array(w * h); for (let i = 0; i < w * h; i++) if (Z[i]) Zb[i] = 1;
+    const Zt = tagit(Zb, w, h, R);
+    const zar = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) if (!Z[i] && Zt[i] && !fal[i] && !nyilas[i] && (zonas.has(helyCimke[i]!) || helyCimke[i]! <= 1) && kozott(i)) zar[i] = 1;
     for (let i = 0; i < w * h; i++) {
       if (Z[i]) { helyCimke[i] = Z[i]!; fal[i] = 0; nyilas[i] = 0; gat[i] = 0; }
+      else if (zar[i]) { helyCimke[i] = 0; gat[i] = 1; szabadKicsi[i] = 0; }
       else if (zonas.has(helyCimke[i]!)) helyCimke[i] = 0;
     }
   }
@@ -1044,12 +1067,15 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       H.szak.set(kulcs, s);
     }
   }
+  // zónás helyiség: a falszakaszok a zóna körvonalának éleiből (a pixelirányok helyett) – a ferde fal a saját irányával,
+  // valós hosszával; a túloldal az élről kifelé, a falon át haladva az első nem saját helyiség vagy a külső tér
+  const zonaSz = b.zonaPoli?.some(Boolean) ? b.zonaPoli.map((pl, k) => (pl ? zonaSzakaszok(pl, k + 2, helyCimke, gat, fal, nyilas, w, h, px, mPerPt, tr, maxLep * px) : undefined)) : undefined;
   return {
     w, h, px, x0, y0, mPerPt, fal, cimke: helyCimke, stilus, ...(retegesFal ? { reteges: true } : {}),
     nyilas, uvegfalak,
     helyisegek: helyisegek.map((H, k) => ({
       A: H.A, szivarog: szivarog[k]!,
-      szakaszok: [...H.szak.entries()].map(([k, s]) => { const [ir, t] = k.split('|'); return { irany: Number(ir), tul: t === 'kulso' ? 'kulso' : t === 'ismeretlen' ? 'ismeretlen' : Number(t), hossz: falsikHossz(s.mely, px), nyilasHossz: s.ny.size * px, vastagsag: s.v / s.n, pontok: s.pontok } as FalSzakasz; })
+      szakaszok: zonaSz?.[k] ?? [...H.szak.entries()].map(([k, s]) => { const [ir, t] = k.split('|'); return { irany: Number(ir), tul: t === 'kulso' ? 'kulso' : t === 'ismeretlen' ? 'ismeretlen' : Number(t), hossz: falsikHossz(s.mely, px), nyilasHossz: s.ny.size * px, vastagsag: s.v / s.n, pontok: s.pontok } as FalSzakasz; })
         .filter((s) => s.hossz >= 0.1).sort((a, b) => b.hossz - a.hossz),
     })),
   };
@@ -1151,4 +1177,66 @@ function szinHatar(fal: Uint8Array, w: number, h: number, hatar: [number, number
     if ((jobb && jobb !== a && !fal[i + 1]) || (le && le !== a && !fal[i + w])) jelol.push(i);
   }
   for (const i of jelol) fal[i] = 1;
+}
+
+/** Pont a lapos ([x0, y0, x1, y1, …]) sokszögben. */
+function laposBenne(p: number[], x: number, y: number): boolean {
+  let b = false; const n = p.length / 2;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = p[2 * i]!, yi = p[2 * i + 1]!, xj = p[2 * j]!, yj = p[2 * j + 1]!;
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) b = !b;
+  }
+  return b;
+}
+
+/**
+ * Zónás helyiség falszakaszai a zóna (ArchiCAD-helyiség) körvonalának éleiből. A zóna a fal belső síkjáig tart, így az
+ * él hossza a nettó falhossz, iránya a fal valódi iránya (ferde falnál is). Élenként 10 cm-enként kifelé haladunk a
+ * falon (fal, gát, nyílás, hajszálrés) át: az első nem saját helyiség (vagy a külső tér) a túloldal. Az ajtóbéllet
+ * (azonos nevű kis zónadarab, < 1,5 m²) élei nem falak – a fő zóna ajtó előtti éle a bélleten át néz ki.
+ */
+function zonaSzakaszok(pl: number[][], c: number, cimke: Int32Array, gat: Uint8Array, fal: Uint8Array, nyilas: Uint8Array, w: number, h: number, px: number, mPerPt: number,
+  tr: (x: number, y: number) => [number, number], maxM: number): FalSzakasz[] {
+  const ter = (p: number[]) => { let s0 = 0; const n = p.length / 2; for (let i = 0; i < n; i++) { const j = (i + 1) % n; s0 += p[2 * i]! * p[2 * j + 1]! - p[2 * j]! * p[2 * i + 1]!; } return Math.abs(s0 / 2) * mPerPt * mPerPt; };
+  const terek = pl.map(ter); const legT = Math.max(...terek);
+  const darabok = pl.filter((_, i) => terek[i]! >= 1.5 || terek[i] === legT);
+  const gy = new Map<string, { hossz: number; ny: number; v: number; n: number; pontok: [number, number][] }>();
+  const lepM = Math.max(0.02, px * 0.5);
+  for (const p of darabok) {
+    const n = p.length / 2;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n; const ax = p[2 * i]!, ay = p[2 * i + 1]!, bx = p[2 * j]!, by = p[2 * j + 1]!;
+      const Lpt = Math.hypot(bx - ax, by - ay), Lm = Lpt * mPerPt; if (Lm < 0.05) continue;
+      const ux = (bx - ax) / Lpt, uy = (by - ay) / Lpt;
+      // fülke oldala (ablak-, ajtókáva, pillérfülke): rövid (< 0,6 m) él két egymással párhuzamos, rá merőleges él között –
+      // nem falfelület, a fal a két párhuzamos élen folytatódik
+      if (Lm < 0.6) {
+        const ir = (k: number) => { const q = ((k % n) + n) % n, r2 = (q + 1) % n; const dx = p[2 * r2]! - p[2 * q]!, dy = p[2 * r2 + 1]! - p[2 * q + 1]!, l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l] as const; };
+        const [px0, py0] = ir(i - 1), [px1, py1] = ir(i + 1);
+        if (Math.abs(px0 * px1 + py0 * py1) > 0.98 && Math.abs(px0 * ux + py0 * uy) < 0.2) continue;
+      }
+      let nx = uy, ny = -ux; const mx = (ax + bx) / 2, my = (ay + by) / 2, e = 0.1 / mPerPt;
+      if (laposBenne(p, mx + nx * e, my + ny * e)) { nx = -nx; ny = -ny; }
+      let ir = ((Math.round((Math.atan2(nx, -ny) * 180) / Math.PI) % 360) + 360) % 360;
+      const t90 = Math.round(ir / 90) * 90; if (Math.abs(ir - t90) <= 4) ir = t90 % 360;
+      const db = Math.max(1, Math.round(Lm / 0.1)), dl = Lm / db;
+      for (let s0 = 0; s0 < db; s0++) {
+        const t = (s0 + 0.5) / db, x = ax + (bx - ax) * t, y = ay + (by - ay) * t;
+        let tul: 'kulso' | number | 'ismeretlen' = 'ismeretlen', atNy = false, d = 0.02;
+        for (; d <= maxM; d += lepM) {
+          const [qxf, qyf] = tr(x + (nx * d) / mPerPt, y + (ny * d) / mPerPt); const qx = Math.floor(qxf), qy = Math.floor(qyf);
+          if (qx < 0 || qy < 0 || qx >= w || qy >= h) { tul = 'kulso'; break; }
+          const qi = qy * w + qx; if (nyilas[qi]) atNy = true;
+          if (gat[qi] || fal[qi]) continue;
+          const l = cimke[qi]!; if (l === 0 || l === c) continue;
+          tul = l === 1 ? 'kulso' : l - 2; break;
+        }
+        const kulcs = `${ir}|${tul}`; const g = gy.get(kulcs) ?? { hossz: 0, ny: 0, v: 0, n: 0, pontok: [] };
+        g.hossz += dl; if (atNy) g.ny += dl; g.v += Math.min(d, maxM); g.n++; g.pontok.push([x - (nx * 0.05) / mPerPt, y - (ny * 0.05) / mPerPt]);
+        gy.set(kulcs, g);
+      }
+    }
+  }
+  return [...gy.entries()].map(([k, g]) => { const [ir, t] = k.split('|'); return { irany: Number(ir), tul: t === 'kulso' ? 'kulso' : t === 'ismeretlen' ? 'ismeretlen' : Number(t), hossz: Math.round(g.hossz * 100) / 100, nyilasHossz: g.ny, vastagsag: g.v / g.n, pontok: g.pontok, zona: true } as FalSzakasz; })
+    .filter((s0) => s0.hossz >= 0.1).sort((a, b) => b.hossz - a.hossz);
 }

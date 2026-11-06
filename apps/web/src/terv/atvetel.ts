@@ -210,15 +210,18 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
   const iranyHossz = (ir: number) => a.helyisegek.filter(burok).reduce((s, h) => s + h.falak.filter((f) => f.irany === ir).reduce((q, f) => q + f.hossz, 0), 0);
   // tetőtér: az eresz a hosszabb homlokzatpár mentén fut (nyeregtető) – ott térdfal és ferde tetősáv, a másik pár oromfal
   const tt = a.tetoter && a.tetoter.terdfal !== null && legfelso ? a.tetoter : null;
-  const ereszIr = tt ? (iranyHossz(0) + iranyHossz(180) >= iranyHossz(90) + iranyHossz(270) ? [0, 180] : [90, 270]) : [];
+  // (a ferde – pl. a lapon elforgatott épület 8°-os – falak a legközelebbi fő irányhoz számítanak)
+  const tengely = (ir: number) => (Math.round(ir / 90) * 90) % 360;
+  const tengelyHossz = (ax: number) => a.helyisegek.filter(burok).reduce((s, h) => s + h.falak.filter((f) => tengely(f.irany) === ax).reduce((q, f) => q + f.hossz, 0), 0);
+  const ereszIr = tt ? (tengelyHossz(0) + tengelyHossz(180) >= tengelyHossz(90) + tengelyHossz(270) ? [0, 180] : [90, 270]) : [];
   // eresz menti hossz irányonként: a homlokzatról mért oromzat-szélesség levonásával (összetett, pl. L alakú tetőnél a
   // homlokzaton az eresz és a szárny oromzata is látszik); homlokzati rajz híján a hosszabb homlokzatpár az eresz
   const ereszHossz: Record<number, number> = {};
   if (tt) {
     const orom = tt.orom ?? {};
-    const sajat = (ir: number) => (orom[ir] !== undefined ? Math.max(0, iranyHossz(ir) - orom[ir]!) : null);
+    const sajat = (ir: number) => (orom[ir] !== undefined ? Math.max(0, tengelyHossz(ir) - orom[ir]!) : null);
     for (const ir of [0, 90, 180, 270]) {
-      const L = iranyHossz(ir); if (L < 0.2) continue;
+      const L = tengelyHossz(ir); if (L < 0.2) continue;
       const e = sajat(ir);
       ereszHossz[ir] = e !== null ? e : ereszIr.includes(ir) ? L : 0;
     }
@@ -227,7 +230,9 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
     const hossz = kerek(iranyHossz(ir));
     if (hossz < 0.2) continue;
     const t = egtaj(ir, a.eszakSzog);
-    const Le = tt ? Math.min(hossz, ereszHossz[ir] ?? 0) : 0;
+    // (a fő irány eresz menti hossza a hozzá tartozó irányok közt arányosan)
+    const ax = tengely(ir), Lax = tengelyHossz(ax);
+    const Le = tt && Lax > 0 ? Math.min(hossz, hossz * Math.min(1, (ereszHossz[ax] ?? 0) / Lax)) : 0;
     if (tt && Le >= 0.2) {
       // eresz menti rész: térdfal; a maradék oromfal (a belmagasságig, a két felső sarokháromszög nélkül – közelítés)
       const m = tt.terdfal!;

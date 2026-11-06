@@ -38,7 +38,7 @@ export function kotaEllenoriz(r: Raszter, sz: Szoveg[]): number {
   const k = kotak(sz);
   let db = 0;
   for (const H of r.helyisegek) for (const s of H.szakaszok) {
-    if (s.tul !== 'kulso' || s.hossz < 0.3 || !s.pontok.length) continue;
+    if (s.tul !== 'kulso' || s.zona || s.hossz < 0.3 || !s.pontok.length) continue;
     const vizsz = s.irany === 0 || s.irany === 180;
     const menti = s.pontok.map((p) => (vizsz ? p[0] : p[1]));
     const kereszt = s.pontok.map((p) => (vizsz ? p[1] : p[0]));
