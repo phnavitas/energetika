@@ -9,7 +9,7 @@ import type { HomlokzatKeret } from './homlokzat';
 import type { NezetOszlopok } from './homlokzatProfil';
 
 /** Egy homlokzati nézet: a fal-sziluett oszlopai, a benne felismert nyílászárókeretek, a lépték és (ha a címből ismert) az égtáj. */
-export interface HomlokzatNezetAdat { ny: NezetOszlopok; keretek: HomlokzatKeret[]; mPerPt: number; az?: number }
+export interface HomlokzatNezetAdat { ny: NezetOszlopok; keretek: HomlokzatKeret[]; mPerPt: number; az?: number; /** A homlokzati lap sorszáma (az azonos lapon lévő nézetek függőleges alapja közös módon adódik). */ lap?: number }
 
 const SZT = 0.12;
 const szogKul = (a: number, b: number) => { const d = Math.abs((((a - b) % 360) + 360) % 360); return Math.min(d, 360 - d); };
@@ -29,7 +29,9 @@ export interface FalMagassagModell {
  * `nyilasok`: az alaprajz nyílásai (a feliratos, mellvédes nyílások rögzítik a függőleges helyzetet), `mPerPt` az
  * alaprajz léptéke, `zf` a lap padlószintje (m, ±0,00-hoz), `nezetek` a homlokzati rajzok nézetei.
  */
-export function falMagassagModell(nyilasok: TervNyilas[], mPerPt: number, eszakSzog: number, nezetek: HomlokzatNezetAdat[], zf: number, falak: { irany: number; pontok: [number, number][] }[] = []): FalMagassagModell {
+export function falMagassagModell(nyilasok: TervNyilas[], mPerPt: number, eszakSzog: number, nezetek: HomlokzatNezetAdat[], zf: number, falak: { irany: number; pontok: [number, number][] }[] = [],
+  /** Az épület teljes alaprajzi kiterjedése (m) a homlokzat irányában (az összes fal vetülete): ablak nélküli homlokzat illesztéséhez. */
+  kiterjedes?: (irany: number) => [number, number] | null): FalMagassagModell {
   const kulso = nyilasok.filter((n) => n.kulso && n.irany !== null && n.fajta !== 'falfulke' && n.szel > 0.3);
   const s = (t: number, x: number, y: number) => { const r = t * Math.PI / 180; return (-Math.cos(r) * x - Math.sin(r) * y) * mPerPt; };
   const iranyok = [...new Set(kulso.map((n) => n.irany!))];
@@ -84,6 +86,31 @@ export function falMagassagModell(nyilasok: TervNyilas[], mPerPt: number, eszakS
   for (const j of (jeloltek as (Illesztes & { ir: number })[]).sort((a2, b2) => b2.tam - a2.tam)) {
     if (ill.has(j.ir) || foglalt.has(j.v)) continue;
     ill.set(j.ir, j); foglalt.add(j.v);
+  }
+  // ablak nélküli (vagy kevés ablakos) homlokzat: a nézet fal-sziluettjének szélessége az épület alaprajzi kiterjedésével
+  // egyezik (± 5 %, ± 0,5 m), az égtáj a nézet címe szerint stimmel; a függőleges alap a lap már illesztett nézeteiből
+  // (a ±0,00 és a fal-sziluett alja közti különbség), ennek híján a sziluett alja
+  if (kiterjedes) {
+    const szel = (v: HomlokzatNezetAdat): [number, number, number] | null => {
+      let a = -1, b = -1, alja = -Infinity;
+      for (let q = 0; q < v.ny.teto.length; q++) if (!Number.isNaN(v.ny.teto[q]!)) { if (a < 0) a = q; b = q; alja = Math.max(alja, v.ny.alja[q]!); }
+      return a < 0 ? null : [(v.ny.x0 + a * v.ny.dx) * v.mPerPt, (v.ny.x0 + (b + 1) * v.ny.dx) * v.mPerPt, alja];
+    };
+    const iranyokF = [...new Set(falak.map((f) => f.irany))].filter((ir) => !ill.has(ir));
+    for (const ir of iranyokF) {
+      const k = kiterjedes(ir); if (!k) continue; const W = k[1] - k[0];
+      let leg: { v: HomlokzatNezetAdat; o: number; y0: number; d: number } | null = null;
+      for (const v of nezetek) {
+        if (foglalt.has(v) || v.az === undefined || szogKul(ir - eszakSzog, v.az) > 30) continue;
+        const sz = szel(v); if (!sz) continue; const w = sz[1] - sz[0];
+        const d = Math.abs(w - W); if (d > Math.max(0.5, 0.05 * W)) continue;
+        // a lap illesztett nézeteiből a ±0,00 és a sziluett alja közti különbség
+        const tars = [...ill.values()].filter((x) => x.v.lap !== undefined && x.v.lap === v.lap).map((x) => { const s2 = szel(x.v); return s2 ? x.y0 - s2[2] : null; }).filter((x): x is number => x !== null);
+        const y0 = sz[2] + (tars.length ? tars.sort((a2, b2) => a2 - b2)[Math.floor(tars.length / 2)]! : 0);
+        if (!leg || d < leg.d) leg = { v, o: sz[0] - k[0], y0, d };
+      }
+      if (leg) { ill.set(ir, { v: leg.v, o: leg.o, y0: leg.y0, tam: 0 }); foglalt.add(leg.v); }
+    }
   }
   return {
     db: ill.size,

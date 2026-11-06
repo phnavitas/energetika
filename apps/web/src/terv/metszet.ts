@@ -449,6 +449,8 @@ export interface TetoterAdat {
   /** Térdfal-felirat híján becslés: a tetőtéri padló feletti 0,3–2,0 m-es, legalább kétszer azonos magasságban (egy
    * vonalban) kiírt szintjel – jellemzően az eresz / koszorú szintje. Csak javaslat (az átvételkor rákérdezünk). */
   terdfalTipp?: number | null;
+  /** A térdfal forrása: a metszet rajzolata (födémre álló, a tetőbe futó fal) vagy a „térdfal” felirat melletti szintjel. */
+  terdfalForras?: 'rajz' | 'felirat';
   /** A tetőtér belmagassága (kész padló – kalapfödém alsó síkja), ha megállapítható. */
   belmagassag: number | null;
   /** A tetőtéri kész padló szintje (m, ±0,00-hoz). */

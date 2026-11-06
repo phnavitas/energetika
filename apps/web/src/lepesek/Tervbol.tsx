@@ -19,7 +19,8 @@ import { Burok3D, modellOsszesites, type Burok3DSzint } from './Burok3D';
 import { homlokzatRajzok, mertMagassagok, eszakHomlokzatbol, tetoAblakokHomlokzatrol, oromSzelessegek, type HomlokzatRajz, type MertMagassag } from '../terv/homlokzatIllesztes';
 import { nezetOszlopok } from '../terv/homlokzatProfil';
 import { falMagassagModell, type HomlokzatNezetAdat } from '../terv/homlokzatModell';
-import { vonalIndex, keretek } from '../terv/homlokzat';
+import { vonalIndex, keretek, homlokzatIrany } from '../terv/homlokzat';
+const AZ_TAJ: Record<string, number> = { 'É': 0, 'ÉK': 45, 'K': 90, 'DK': 135, 'D': 180, 'DNy': 225, 'Ny': 270, 'ÉNy': 315 };
 import type { Lap } from '../terv/kinyeres';
 
 type Modosit = (f: (q: Projekt) => void) => void;
@@ -219,7 +220,7 @@ const homlokzatGy = new WeakMap<object, Map<number, HomlokzatRajz[]>>();
 /** Homlokzati nézetek (fal-réteg sziluett oszloponként, a benne lévő nyílászárókeretekkel) – a falmagasság-modellhez. */
 const nezetGy = new WeakMap<object, Map<number, HomlokzatNezetAdat[]>>();
 function homlokzatNezetTar(lapok: Lap[], M?: number | null): HomlokzatNezetAdat[] {
-  return lapok.flatMap((l) => {
+  return lapok.flatMap((l, li) => {
     let m = nezetGy.get(l); if (!m) { m = new Map(); nezetGy.set(l, m); }
     const k = M ?? 0; let v = m.get(k);
     if (!v) {
@@ -230,8 +231,11 @@ function homlokzatNezetTar(lapok: Lap[], M?: number | null): HomlokzatNezetAdat[
         v = ix ? nezetOszlopok(l, ix.mPerPt).map((ny) => {
           const kk = ker.filter((q) => (q.x0 + q.x1) / 2 >= ny.bb[0] && (q.x0 + q.x1) / 2 <= ny.bb[2] && (q.y0 + q.y1) / 2 >= ny.bb[1] - 2 && (q.y0 + q.y1) / 2 <= ny.bb[3] + 2);
           const r = rz.map((x) => ({ x, db: x.keretek.filter((q) => (q.x0 + q.x1) / 2 >= ny.bb[0] && (q.x0 + q.x1) / 2 <= ny.bb[2]).length })).sort((a, c) => c.db - a.db)[0];
-          return { ny, keretek: kk, mPerPt: ix.mPerPt, ...(r && r.db ? { az: r.x.az } : {}) };
-        }).filter((x) => x.keretek.length >= 2) : [];
+          // ablak nélküli nézet égtája: a hozzá legközelebbi (alatta / fölötte, vízszintesen átfedő) homlokzat-cím
+          const cim = r && r.db ? null : l.szovegek.flatMap((t) => { if (!/homlokzat/i.test(t.s)) return []; const ir = homlokzatIrany(t.s); if (!ir) return []; const dx = t.x < ny.bb[0] ? ny.bb[0] - t.x : t.x > ny.bb[2] ? t.x - ny.bb[2] : 0; const dy = t.y > ny.bb[3] ? t.y - ny.bb[3] : t.y < ny.bb[1] ? ny.bb[1] - t.y : 0; return [{ az: AZ_TAJ[ir]!, d: dy + 2 * dx }]; }).sort((a, c) => a.d - c.d)[0];
+          const az = r && r.db ? r.x.az : cim && cim.d * ix.mPerPt < 8 ? cim.az : undefined;
+          return { ny, keretek: kk, mPerPt: ix.mPerPt, lap: li, ...(az !== undefined ? { az } : {}) };
+        }).filter((x) => x.keretek.length >= 2 || x.az !== undefined) : [];
       } catch { v = []; }
       m.set(k, v);
     }
@@ -742,7 +746,15 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
       const zf = padlok[idx] ?? idx * ((bm ?? 2.7) + 0.35);
       const zc = zf + (tetoterLap ? me?.tetoter?.belmagassag ?? bm ?? 2.6 : bm ?? 2.7);
       const fl = a.r.helyisegek.flatMap((H) => H.szakaszok.filter((sg) => sg.tul === 'kulso' && sg.hossz >= 0.3).map((sg) => ({ irany: sg.irany, pontok: sg.pontok })));
-      const mod = falMagassagModell(a.nyilasok, a.e.mPerPt, o.eszak, nz, zf, fl); if (!mod.db) return undefined;
+      // az épület alaprajzi kiterjedése irányonként (a falpixelek vetülete, ritkítva)
+      const r0 = a.r; const kit = new Map<number, [number, number] | null>();
+      const kiterjedes = (ir: number) => {
+        if (kit.has(ir)) return kit.get(ir)!;
+        const t = ir * Math.PI / 180, c = -Math.cos(t), sn = -Math.sin(t); let lo = Infinity, hi = -Infinity;
+        for (let y = 0; y < r0.h; y += 3) for (let x = 0; x < r0.w; x += 3) if (r0.fal[y * r0.w + x]) { const px = r0.x0 + (x + 0.5) * r0.px / r0.mPerPt, py = r0.y0 + (y + 0.5) * r0.px / r0.mPerPt; const v = (c * px + sn * py) * a.e.mPerPt!; if (v < lo) lo = v; if (v > hi) hi = v; }
+        const e: [number, number] | null = lo < hi ? [lo, hi] : null; kit.set(ir, e); return e;
+      };
+      const mod = falMagassagModell(a.nyilasok, a.e.mPerPt, o.eszak, nz, zf, fl, kiterjedes); if (!mod.db) return undefined;
       return (sg: FalSzakasz) => mod.magassag(sg.irany, sg.pontok, zf, zc);
     })();
     const { helyisegek: hs, nyilasok: ny } = atvetelReszek(a, k, mert, falMag);
