@@ -17,6 +17,9 @@ import type { Raszter, FalSzakasz } from '../terv/raszter';
 import { MintaLakasok } from './MintaLakasok';
 import { Burok3D, modellOsszesites, type Burok3DSzint } from './Burok3D';
 import { homlokzatRajzok, mertMagassagok, eszakHomlokzatbol, tetoAblakokHomlokzatrol, oromSzelessegek, type HomlokzatRajz, type MertMagassag } from '../terv/homlokzatIllesztes';
+import { nezetOszlopok } from '../terv/homlokzatProfil';
+import { falMagassagModell, type HomlokzatNezetAdat } from '../terv/homlokzatModell';
+import { vonalIndex, keretek } from '../terv/homlokzat';
 import type { Lap } from '../terv/kinyeres';
 
 type Modosit = (f: (q: Projekt) => void) => void;
@@ -213,6 +216,28 @@ const eszakHomGy = new WeakMap<object, number | null>();
 /** Homlokzati rajzok (keretekkel) lapcsoportonként gyorstárazva. */
 const homlokzatGy = new WeakMap<object, Map<number, HomlokzatRajz[]>>();
 /** `M`: tartalék lépték (az alaprajzé), ha a homlokzati lapon nincs, vagy hibás a léptékfelirat. */
+/** Homlokzati nézetek (fal-réteg sziluett oszloponként, a benne lévő nyílászárókeretekkel) – a falmagasság-modellhez. */
+const nezetGy = new WeakMap<object, Map<number, HomlokzatNezetAdat[]>>();
+function homlokzatNezetTar(lapok: Lap[], M?: number | null): HomlokzatNezetAdat[] {
+  return lapok.flatMap((l) => {
+    let m = nezetGy.get(l); if (!m) { m = new Map(); nezetGy.set(l, m); }
+    const k = M ?? 0; let v = m.get(k);
+    if (!v) {
+      try {
+        const ix = vonalIndex(l, M ?? undefined);
+        const rz = homlokzatRajzTar([l], M);
+        const ker = ix ? keretek(ix) : [];
+        v = ix ? nezetOszlopok(l, ix.mPerPt).map((ny) => {
+          const kk = ker.filter((q) => (q.x0 + q.x1) / 2 >= ny.bb[0] && (q.x0 + q.x1) / 2 <= ny.bb[2] && (q.y0 + q.y1) / 2 >= ny.bb[1] - 2 && (q.y0 + q.y1) / 2 <= ny.bb[3] + 2);
+          const r = rz.map((x) => ({ x, db: x.keretek.filter((q) => (q.x0 + q.x1) / 2 >= ny.bb[0] && (q.x0 + q.x1) / 2 <= ny.bb[2]).length })).sort((a, c) => c.db - a.db)[0];
+          return { ny, keretek: kk, mPerPt: ix.mPerPt, ...(r && r.db ? { az: r.x.az } : {}) };
+        }).filter((x) => x.keretek.length >= 2) : [];
+      } catch { v = []; }
+      m.set(k, v);
+    }
+    return v;
+  });
+}
 function homlokzatRajzTar(lapok: Lap[], M?: number | null): HomlokzatRajz[] {
   return lapok.flatMap((l) => {
     let m = homlokzatGy.get(l); if (!m) { m = new Map(); homlokzatGy.set(l, m); }
@@ -250,7 +275,7 @@ function burokNyilasokPt(al: AlaprajzFeldolgozas, k: Kijeloles, b: Poligon[]) {
 }
 
 /** Egy alaprajz átvehető helyiségei (külső falakkal) és nyílászárói a kijelölés szerint. */
-function atvetelReszek(al: AlaprajzFeldolgozas, k: Kijeloles, mert?: Map<TervNyilas, MertMagassag>): { helyisegek: AtvettHelyiseg[]; nyilasok: AtvettNyilas[]; ri: number[] } {
+function atvetelReszek(al: AlaprajzFeldolgozas, k: Kijeloles, mert?: Map<TervNyilas, MertMagassag>, falMag?: (s: FalSzakasz) => number | null): { helyisegek: AtvettHelyiseg[]; nyilasok: AtvettNyilas[]; ri: number[] } {
   const hs = al.e.helyisegek;
   const egysegben = (i: number) => !al.e.egysegek.length || !hs[i]!.egyseg || k.egysegek.has(hs[i]!.egyseg!);
   const valasztott = hs.map((h, i) => egysegben(i) && !h.kulter && !k.kizartH.has(i) && !k.kulterH?.has(i));
@@ -262,7 +287,7 @@ function atvetelReszek(al: AlaprajzFeldolgozas, k: Kijeloles, mert?: Map<TervNyi
   const kiv = hs.map((h, i) => ({ h, i })).filter(({ i }) => valasztott[i]);
   const index = new Map(kiv.map(({ i }, j) => [i, j]));
   const helyisegek = kiv.map(({ h, i }) => ({
-    kod: h.kod, nev: h.nev, burkolat: h.burkolat, A: h.hasznosA ?? h.A, ...(h.hasznosA ? { teljesA: h.A } : {}), kategoria: kategoria(i), egyseg: h.egyseg ? (al.e.egysegInfo[h.egyseg]?.nev ?? h.egyseg) : undefined, falak: falak(i).map((f) => ({ irany: f.irany, hossz: f.hossz, ...("talaj" in f && f.talaj ? { talaj: true } : {}) })),
+    kod: h.kod, nev: h.nev, burkolat: h.burkolat, A: h.hasznosA ?? h.A, ...(h.hasznosA ? { teljesA: h.A } : {}), kategoria: kategoria(i), egyseg: h.egyseg ? (al.e.egysegInfo[h.egyseg]?.nev ?? h.egyseg) : undefined, falak: falak(i).map((f) => { const m = falMag && 'pontok' in f ? falMag(f as FalSzakasz) : null; return { irany: f.irany, hossz: f.hossz, ...("talaj" in f && f.talaj ? { talaj: true } : {}), ...(m !== null ? { magassag: m } : {}) }; }),
     // fal fűtetlen (gyengén kapcsolt) helyiség felé, pl. garázs
     futetlenFalak: (() => { const x = ri(i); if (!al.r || x < 0) return []; return al.r.helyisegek[x]!.szakaszok.filter((s) => typeof s.tul === 'number' && s.hossz >= 0.3).flatMap((s) => {
       const mi = hs.indexOf(al.magHelyisegek[s.tul as number]!); return mi >= 0 && valasztott[mi] && kategoria(mi) === 'gyengen_kapcsolt' && kategoria(i) !== 'gyengen_kapcsolt' ? [{ hossz: s.hossz, fele: hs[mi]!.nev }] : []; }); })(),
@@ -706,7 +731,21 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     // méretfelirat nélküli nyílások magassága a homlokzati lapokról (a lap szintjének sorszáma alulról)
     const szintSor = [...new Set(alaprajzLapok.flatMap(({ i }) => lapSzintek(i)))].sort((x, y) => SZINT_SOR.indexOf(x) - SZINT_SOR.indexOf(y));
     const mert = a.r && a.e.mPerPt && a.nyilasok.some((n) => n.mert) ? mertMagassagok(a.nyilasok, a.e.mPerPt, o.eszak, homlokzatRajzTar(homlokzatLapok.map(({ l }) => l.lap), a.e.meretarany), Math.max(0, szintSor.indexOf(o.szintek[0] ?? 'F')), szintSor.length) : undefined;
-    const { helyisegek: hs, nyilasok: ny } = atvetelReszek(a, k, mert);
+    // falmagasság a homlokzatokról: a lap padló- és mennyezetszintje közti látható falsáv (oromfal, térdfal, eltérő párkány)
+    const falMag = (() => {
+      if (!a.r || !a.e.mPerPt || !homlokzatLapok.length) return undefined;
+      const nz = homlokzatNezetTar(homlokzatLapok.map(({ l }) => l.lap), a.e.meretarany); if (!nz.length) return undefined;
+      const fut = szintSor.filter((x) => x !== 'P'); const idx = Math.max(0, fut.indexOf(o.szintek.find((x) => x !== 'P') ?? 'F'));
+      // csak a legfelső fűtött szint lapján (oromfal, térdfal, eltérő párkány ott van; a közbenső szintek fala teljes magasságú)
+      if (!o.szintek.includes(fut[fut.length - 1] ?? 'F')) return undefined;
+      const padlok = (me?.szintek.padlo ?? []).filter((v) => v > -1);
+      const zf = padlok[idx] ?? idx * ((bm ?? 2.7) + 0.35);
+      const zc = zf + (tetoterLap ? me?.tetoter?.belmagassag ?? bm ?? 2.6 : bm ?? 2.7);
+      const fl = a.r.helyisegek.flatMap((H) => H.szakaszok.filter((sg) => sg.tul === 'kulso' && sg.hossz >= 0.3).map((sg) => ({ irany: sg.irany, pontok: sg.pontok })));
+      const mod = falMagassagModell(a.nyilasok, a.e.mPerPt, o.eszak, nz, zf, fl); if (!mod.db) return undefined;
+      return (sg: FalSzakasz) => mod.magassag(sg.irany, sg.pontok, zf, zc);
+    })();
+    const { helyisegek: hs, nyilasok: ny } = atvetelReszek(a, k, mert, falMag);
     // szomszédos épülethez csatlakozó (zártsorú, ikres) falak: nem homlokzati falak – fűtött szomszédnál kimaradnak,
     // fűtetlennél fal fűtetlen tér felé
     let szomszedH = 0;

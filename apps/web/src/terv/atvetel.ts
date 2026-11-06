@@ -18,7 +18,7 @@ export interface AtvettHelyiseg {
   egyseg?: string;
   /** Külső falak a homlokzat lapiránya szerint (nettó belső hossz, m). */
   /** Külső falszakaszok; `talaj`: a fal mögött az épület körvonalán kívüli tér (terepszint alatt: talaj). */
-  falak: { irany: number; hossz: number; talaj?: boolean }[];
+  falak: { irany: number; hossz: number; talaj?: boolean; /** A homlokzatról mért falmagasság (m) a szint sávjában. */ magassag?: number }[];
   /** Fal fűtetlen, gyengén kapcsolt helyiség (pl. garázs) felé. */
   futetlenFalak?: { hossz: number; fele: string }[];
 }
@@ -191,6 +191,7 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
 
   // homlokzati falak tájolás szerint
   const falFel: Record<number, string> = {};
+  let homDb = 0;
   // a fűtetlen (gyengén kapcsolt) helyiség – pl. garázs – külső fala és nyílászárói nem a hőburok részei
   const burok = (h: AtvettHelyiseg) => h.kategoria !== 'gyengen_kapcsolt';
   const iranyok = terep ? [] : [...new Set(a.helyisegek.filter(burok).flatMap((h) => h.falak.map((f) => f.irany)))].sort((x, y) => x - y);
@@ -234,6 +235,16 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
     const hossz = kerek(iranyHossz(ir));
     if (hossz < 0.2) continue;
     const t = egtaj(ir, a.eszakSzog);
+    // a homlokzati rajz szerinti falmagasság (alaprajz + homlokzat összevetése): ha az irány falainak legalább 80 %-a
+    // látszik a homlokzaton, a felület a mért magasságokkal (oromfal, térdfal, eltérő párkány a rajz szerint)
+    { const fl = a.helyisegek.filter(burok).flatMap((h) => h.falak.filter((f) => f.irany === ir));
+      const mert = fl.filter((f) => f.magassag !== undefined).reduce((q, f) => q + f.hossz, 0);
+      if (mert >= 0.8 * hossz) {
+        const A = fl.reduce((q, f) => q + f.hossz * (f.magassag ?? a.belmagassag), 0);
+        const f: Felulet = { id: ujId(), nev: `Homlokzati fal – ${t}`, fajta: 'opak', retegrendId: falRid, hatar: 'kulso', tajolas: t, hajlasszog: 90, meret: { hossz: kerek(hossz * n), magassag: kerek(A / hossz) }, A: kerek(A * n), chi: 0.2 };
+        p.feluletek.push(f); falFel[ir] = f.id; homDb++;
+        continue;
+      } }
     // (a fő irány eresz menti hossza a hozzá tartozó irányok közt arányosan)
     const ax = tengely(ir), Lax = tengelyHossz(ax);
     const Le = tt && Lax > 0 ? Math.min(hossz, hossz * Math.min(1, (ereszHossz[ax] ?? 0) / Lax)) : 0;
@@ -252,6 +263,7 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
     p.feluletek.push(f); if (!falFel[ir] || Lo > Le) falFel[ir] = f.id;
   }
 
+  if (homDb) uz.push(`${homDb} homlokzati falfelület a homlokzati rajz szerinti falmagassággal (az alaprajzi falak a homlokzati nézethez illesztve: oromfal, térdfal, eltérő párkánymagasság) – ellenőrizd a Határolás lépésben.`);
   // fal fűtetlen helyiség felé (b tényezővel)
   const futetlen = new Map<string, number>();
   if (a.szomszedFutetlen && a.szomszedFutetlen >= 0.3) futetlen.set('szomszédos (fűtetlen) épület', a.szomszedFutetlen);

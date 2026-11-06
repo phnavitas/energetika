@@ -63,3 +63,24 @@ export function homlokzatNezetek(lap: Lap, mPerPt: number): HomlokzatNezet[] {
   }
   return ki.sort((a, b) => a.bb[1] - b.bb[1] || a.bb[0] - b.bb[0]);
 }
+
+/** Egy homlokzati nézet oszloponként: a fal-réteg legfelső és legalsó pontja (lap-y, pt; NaN: nincs fal az oszlopban). */
+export interface NezetOszlopok { bb: [number, number, number, number]; x0: number; dx: number; teto: Float32Array; alja: Float32Array }
+
+/** A nézetek oszlopprofilja (≈ 5 cm-es oszlopok) – a homlokzat és az alaprajz összevetéséhez. */
+export function nezetOszlopok(lap: Lap, mPerPt: number): NezetOszlopok[] {
+  const px = 0.05, ki: NezetOszlopok[] = [];
+  for (const v of homlokzatNezetek(lap, mPerPt)) {
+    const bb = v.bb; const wM = (bb[2] - bb[0]) * mPerPt, hM = (bb[3] - bb[1]) * mPerPt;
+    const w = Math.ceil(wM / px) + 1, h = Math.ceil(hM / px) + 1; const M = new Uint8Array(w * h);
+    const tr = (x: number, y: number): [number, number] => [(x - bb[0]) * mPerPt / px, (y - bb[1]) * mPerPt / px];
+    for (const u of lap.utvonalak) if (falE(u) && u.bbox[0] >= bb[0] - 1 && u.bbox[2] <= bb[2] + 1 && u.bbox[1] >= bb[1] - 1 && u.bbox[3] <= bb[3] + 1) poliRajzol(M, w, h, u.pontok, tr);
+    const teto = new Float32Array(w).fill(NaN), alja = new Float32Array(w).fill(NaN);
+    for (let x = 0; x < w; x++) {
+      let a = -1, b = -1; for (let y = 0; y < h; y++) if (M[y * w + x]) { if (a < 0) a = y; b = y; }
+      if (a >= 0) { teto[x] = bb[1] + (a * px) / mPerPt; alja[x] = bb[1] + ((b + 1) * px) / mPerPt; }
+    }
+    ki.push({ bb, x0: bb[0], dx: px / mPerPt, teto, alja });
+  }
+  return ki;
+}
