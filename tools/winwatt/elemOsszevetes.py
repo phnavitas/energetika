@@ -23,7 +23,7 @@ for m,z in MAP.items():
   NYT={n['id']:n for n in p['nyilaszarok']}
   for s in p['feluletek']:
     if s['fajta']=='nyilaszaro': n=NYT[s['nyilaszaroId']]; s['A']=n['szelesseg']*n['magassag']*s.get('darab',1)
-  mf=[s for s in p['feluletek'] if s['nev'].startswith(('Homlokzati fal','Térdfal'))]
+  mf=[s for s in p['feluletek'] if s['nev'].startswith(('Homlokzati fal','Térdfal','Oromfal'))]
   # nyílászáró: a fűtetlen tér felé nyíló ajtó is (a WinWatt-elemlista azt is tartalmazza); a nettó homlokzati falból csak a külső vonódik le
   mny=[s for s in p['feluletek'] if s['fajta']=='nyilaszaro']
   mnyk=[s for s in mny if s.get('hatar')=='kulso']

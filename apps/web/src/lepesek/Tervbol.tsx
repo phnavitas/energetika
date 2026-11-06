@@ -118,6 +118,8 @@ const norm = (d: number) => ((Math.round(d * 10) / 10) % 360 + 360) % 360;
 interface Kijeloles { egysegek: Set<string>; kizartH: Set<number>; kat: Record<number, HelyisegKategoria>; kizartNy: Set<number>; mindFutott?: boolean;
   /** A felhasználó által kültérnek jelölt helyiségek (pl. nyitott terasz, átjáró): nem kerülnek át, a feléjük eső fal külső fal. */
   kulterH?: Set<number>;
+  /** A számított épületrészen kívüli (részkód szerint kizárt) helyiségek: a fűtetlen közülük (raktár, garázs) felé eső fal fal fűtetlen tér felé. */
+  reszKizart?: Set<number>;
   /** Ismeretlen túloldalú falszakaszok, amelyeket a felhasználó külső falnak jelölt („raszterindex|szakaszindex”). */
   ismKulso?: Set<string>;
   /** A felhasználó által szerkesztett hőburok-körvonal (pt): ha megadott, a homlokzati falak és a külső nyílászárók ebből. */
@@ -294,7 +296,7 @@ function atvetelReszek(al: AlaprajzFeldolgozas, k: Kijeloles, mert?: Map<TervNyi
     kod: h.kod, nev: h.nev, burkolat: h.burkolat, A: h.hasznosA ?? h.A, ...(h.hasznosA ? { teljesA: h.A } : {}), kategoria: kategoria(i), egyseg: h.egyseg ? (al.e.egysegInfo[h.egyseg]?.nev ?? h.egyseg) : undefined, falak: falak(i).map((f) => { const m = falMag && 'pontok' in f ? falMag(f as FalSzakasz) : null; return { irany: f.irany, hossz: f.hossz, ...("talaj" in f && f.talaj ? { talaj: true } : {}), ...(m !== null ? { magassag: m } : {}) }; }),
     // fal fűtetlen (gyengén kapcsolt) helyiség felé, pl. garázs
     futetlenFalak: (() => { const x = ri(i); if (!al.r || x < 0) return []; return al.r.helyisegek[x]!.szakaszok.filter((s) => typeof s.tul === 'number' && s.hossz >= 0.3).flatMap((s) => {
-      const mi = hs.indexOf(al.magHelyisegek[s.tul as number]!); return mi >= 0 && valasztott[mi] && kategoria(mi) === 'gyengen_kapcsolt' && kategoria(i) !== 'gyengen_kapcsolt' ? [{ hossz: s.hossz, fele: hs[mi]!.nev }] : []; }); })(),
+      const mi = hs.indexOf(al.magHelyisegek[s.tul as number]!); return mi >= 0 && (valasztott[mi] || !!k.reszKizart?.has(mi)) && !hs[mi]!.kulter && kategoria(mi) === 'gyengen_kapcsolt' && kategoria(i) !== 'gyengen_kapcsolt' ? [{ hossz: s.hossz, fele: hs[mi]!.nev }] : []; }); })(),
   }));
   const nyilasok = burokNyilasok(al, k)
     .map(({ n, kk }) => ({ n, kk, hi: hs.indexOf(al.magHelyisegek[n.helyiseg!]!) }))
@@ -357,7 +359,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     const k = kijelolesek[i] ?? alapKijeloles(a); const rk = reszKizar(a);
     const kat = { ...k.kat };
     a.e.helyisegek.forEach((h, j) => { if (kat[j] === undefined && futottValasz[kerdesKulcs(h.nev)] && kategoriaJavaslat(h.nev) === 'gyengen_kapcsolt') kat[j] = 'kondicionalt'; });
-    return { ...k, kat, kizartH: rk.length ? new Set([...k.kizartH, ...rk]) : k.kizartH, mindFutott };
+    return { ...k, kat, kizartH: rk.length ? new Set([...k.kizartH, ...rk]) : k.kizartH, mindFutott, ...(rk.length ? { reszKizart: new Set(rk) } : {}) };
   };
   const [rrKi, setRrKi] = useState<Record<string, boolean>>({});
   const [bm, setBm] = useState<number | undefined>(undefined);
