@@ -6,10 +6,13 @@
 import type { Lap, Utvonal } from './kinyeres';
 
 const FAL = /\bfal\b|fal-szerk|falak|főfal|fal,|tartószerkezet|pillér|\bvb\b|födém/i;
-const NEM = /válasz|burkolat|csempe|bútor|terep/i;
+const NEM = /válasz|burkolat|csempe|bútor|terep|magasság|méretez|felirat|környezet/i;
+const EPULET = /épület|egyéb szerkezeti/i;
 
 export function terdfalGeometria(lap: Lap, mPerPt: number): number | null {
-  const fills = lap.utvonalak.filter((u) => !!u.reteg && FAL.test(u.reteg) && !NEM.test(u.reteg) && u.muvelet !== 'stroke' && u.muvelet !== 'none');
+  // kitöltés, vagy (a csak vonallal rajzoló irodáknál, pl. „_ÉPÜLET” réteg) zárt körvonal
+  const zartE = (u: Utvonal) => u.pontok.some((p) => p.length >= 8 && Math.hypot(p[0]! - p[p.length - 2]!, p[1]! - p[p.length - 1]!) < 0.5) || u.zart.some(Boolean);
+  const fills = lap.utvonalak.filter((u) => !!u.reteg && (FAL.test(u.reteg) || EPULET.test(u.reteg)) && !NEM.test(u.reteg) && u.muvelet !== 'none' && (u.muvelet !== 'stroke' || zartE(u)));
   if (!fills.length) return null;
   const m = (v: number) => v * mPerPt;
   const fodem = fills.filter((u) => m(u.bbox[2] - u.bbox[0]) >= 3 && m(u.bbox[3] - u.bbox[1]) >= 0.12 && m(u.bbox[3] - u.bbox[1]) <= 0.6);
