@@ -130,7 +130,8 @@ export function automatikusHelyisegek(lap: Lap, mPerPt: number, kep?: SzurkeKep,
       for (const n of [x > 0 ? q - 1 : -1, x < w - 1 ? q + 1 : -1, q - w, q + w]) if (n >= 0 && n < w * h && jelolt(n) && !latott[n]) { latott[n] = 1; komp.push(n); }
     }
     const A = komp.length * px * px;
-    if (szel || A < 1 || A > 120) continue;
+    // (rétegzett lapon a burok le van zárva: a nagy, szabálytalan nyitott tér – nappali-étkező-konyha – is helyiség)
+    if (szel || A < 1 || A > (r.reteges ? 600 : 120)) continue;
     if (eb) { let sx0 = 0, sy0 = 0; for (const q of komp) { sx0 += q % w; sy0 += (q / w) | 0; } sx0 /= komp.length; sy0 /= komp.length; if (sx0 < eb[0] || sx0 > eb[2] || sy0 < eb[1] || sy0 > eb[3]) continue; }
     // befoglaló téglalap kitöltöttsége: a helyiség zömök (≥ 45%), a rajzok közti „zseb” szabálytalan, hosszú
     let bx0 = w, by0 = h, bx1 = 0, by1 = 0;
@@ -144,7 +145,8 @@ export function automatikusHelyisegek(lap: Lap, mPerPt: number, kep?: SzurkeKep,
       for (let t = 0; t < komp.length; t += Math.max(1, Math.floor(komp.length / 200))) { const q = komp[t]!; const ix = Math.round((r.x0 + ((q % w) + 0.5) * px / mPerPt) * kep.ptPx), iy = Math.round((r.y0 + (((q / w) | 0) + 0.5) * px / mPerPt) * kep.ptPx); if (ix >= 0 && iy >= 0 && ix < kep.w && iy < kep.h) g.push(kep.adat[iy * kep.w + ix]!); }
       g.sort((a, b) => a - b); szinezett = g.length > 0 && osztalyFv(kep)(g[Math.floor(g.length / 2)]!) !== 3 && g[Math.floor(g.length / 2)]! >= 120;
     }
-    if (!szinezett && (kitolt < 0.45 || nyulank > 8)) continue;
+    // (rétegzett lapon csak a nagy, nyitott tér mentes az alakszűrő alól – a falak, tokok közti kis zseb nem helyiség)
+    if (!szinezett && !(r.reteges && A >= 15) && (kitolt < 0.45 || nyulank > 8)) continue;
     // belső pont: a komponens súlypontjához legközelebbi saját pixel
     let sx = 0, sy = 0; for (const q of komp) { sx += q % w; sy += (q / w) | 0; }
     sx /= komp.length; sy /= komp.length;

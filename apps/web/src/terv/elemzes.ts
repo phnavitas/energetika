@@ -3,7 +3,9 @@
  * felismerése, alaprajz (helyiségek, északjel, raszter, külső falak, nyílászárók) és metszet (rétegrendek, szintek).
  */
 import { lapKinyer, type Lap } from './kinyeres';
-import { alaprajzElemez, szintekCimbol, eszakjelKeres, jegyzekSorok, type AlaprajzEredmeny, type TervHelyiseg } from './alaprajz';
+import { alaprajzElemez, kulterNev, szintekCimbol, eszakjelKeres, jegyzekSorok, type AlaprajzEredmeny, type TervHelyiseg } from './alaprajz';
+import { retegSzures } from './retegek';
+import { pdfZonakNyers, zonakSzur, poliTer, poliBenne, belsoPont } from './zonak';
 import { raszterEpit, type Raszter, type RaszterBeallitas } from './raszter';
 import { kotaEllenoriz } from './kota';
 import type { TintaKep } from './tinta';
@@ -127,19 +129,26 @@ export function lapFeloszt(lap: Lap): { lap: Lap; cim: string }[] {
     cim: c.t.s.trim(),
     lap: { szel: lap.szel, mag: lap.mag,
       szovegek: lap.szovegek.filter((t) => resz(t.x, t.y) === i || jel(t.x, t.y) || tabla(t.x, t.y)),
-      utvonalak: lap.utvonalak.filter((u) => { const x = (u.bbox[0] + u.bbox[2]) / 2, y = (u.bbox[1] + u.bbox[3]) / 2; return resz(x, y) === i || (jel(x, y) && Math.max(u.bbox[2] - u.bbox[0], u.bbox[3] - u.bbox[1]) < 200); }) },
+      utvonalak: lap.utvonalak.filter((u) => { const x = (u.bbox[0] + u.bbox[2]) / 2, y = (u.bbox[1] + u.bbox[3]) / 2; return resz(x, y) === i || (jel(x, y) && Math.max(u.bbox[2] - u.bbox[0], u.bbox[3] - u.bbox[1]) < 200); }),
+      ...(lap.retegek ? { retegek: lap.retegek } : {}), ...(zonakSzur(lap.zonak, (x, y) => resz(x, y) === i) ? { zonak: zonakSzur(lap.zonak, (x, y) => resz(x, y) === i) } : {}) },
   }));
 }
 
 export async function pdfLapok(f: File, kepSzel = 2000, halad?: (kesz: number, ossz: number) => void): Promise<TervLap[]> {
   const pdfjs = await pdfjsBetolt();
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(await f.arrayBuffer()), verbosity: 0, isEvalSupported: false }).promise;
+  const bajtok = new Uint8Array(await f.arrayBuffer());
+  // ArchiCAD-zónák (helyiségkörvonalak) a lapszótárból – a pdf.js a bájtokat átviszi a workerbe, ezért előtte olvassuk
+  const zonakNyers = await pdfZonakNyers(bajtok);
+  const doc = await pdfjs.getDocument({ data: bajtok, verbosity: 0, isEvalSupported: false }).promise;
   const ki: TervLap[] = [];
   const ossz = Math.min(doc.numPages, 30);
+  // PDF-rétegek (ArchiCAD-rétegek): a réteg neve a fal / hőszigetelés / helyiség felismeréséhez
+  const oc = await doc.getOptionalContentConfig().catch(() => null);
   halad?.(0, ossz);
   for (let n = 1; n <= ossz; n++) {
     const page = await doc.getPage(n);
-    const lap = await lapKinyer(pdfjs, page);
+    const lap = await lapKinyer(pdfjs, page, oc);
+    { const zn = zonakNyers.get(n - 1); const vpz = page.getViewport({ scale: 1 }); if (zn) lap.zonak = zn.map((z) => ({ nev: z.nev, pontok: z.pdf.map(([x, y]) => vpz.convertToViewportPoint(x, y) as [number, number]) })); }
     const vp0 = page.getViewport({ scale: 1 });
     const scale = Math.min(3, kepSzel / vp0.width);
     const vp = page.getViewport({ scale });
@@ -233,7 +242,49 @@ function leirasParosit(e: AlaprajzEredmeny, mag: TervHelyiseg[], lista: TervHely
   return { parositott: hFoglalt.size, csakListaban: csak.filter((j) => !j.kulter).length };
 }
 
-export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: SzurkeKep, tinta?: TintaKep, leirasJegyzek?: TervHelyiseg[]): AlaprajzFeldolgozas {
+/**
+ * ArchiCAD-zónákból helyiségek: az azonos nevű, egymás mellett (≤ 0,6 m) fekvő darabok (a helyiség és ajtóbélletei)
+ * egy helyiség. A név első, számot tartalmazó szava a kód. A zónán belüli pecsét adja a kódot, nevet, burkolatot és a
+ * pecsétben írt területet; pecsét nélkül a zóna területe számít.
+ */
+function zonaHelyisegek(zonak: NonNullable<Lap['zonak']>, pecsetek: TervHelyiseg[], mPerPt: number): { h: TervHelyiseg; poli: [number, number][][]; pecset?: TervHelyiseg }[] {
+  const n = zonak.length; const szulo = zonak.map((_, i) => i);
+  const gyoker = (i: number): number => (szulo[i] === i ? i : (szulo[i] = gyoker(szulo[i]!)));
+  const bb = zonak.map((z) => [Math.min(...z.pontok.map((q) => q[0])), Math.min(...z.pontok.map((q) => q[1])), Math.max(...z.pontok.map((q) => q[0])), Math.max(...z.pontok.map((q) => q[1]))]);
+  const tav = 0.6 / mPerPt;
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+    if (zonak[i]!.nev !== zonak[j]!.nev) continue;
+    const a = bb[i]!, b = bb[j]!;
+    if (a[0]! - tav <= b[2]! && b[0]! - tav <= a[2]! && a[1]! - tav <= b[3]! && b[1]! - tav <= a[3]!) szulo[gyoker(i)] = gyoker(j);
+  }
+  const csop = new Map<number, number[]>(); for (let i = 0; i < n; i++) { const g = gyoker(i); csop.set(g, [...(csop.get(g) ?? []), i]); }
+  const foglalt = new Set<TervHelyiseg>();
+  const ki: { h: TervHelyiseg; poli: [number, number][][]; pecset?: TervHelyiseg }[] = [];
+  for (const tagok of csop.values()) {
+    const poli = tagok.map((i) => zonak[i]!.pontok);
+    const A = poli.reduce((s2, p) => s2 + Math.abs(poliTer(p)), 0) * mPerPt * mPerPt;
+    if (A < 0.3) continue;
+    const fo = poli.reduce((a, b) => (Math.abs(poliTer(b)) > Math.abs(poliTer(a)) ? b : a));
+    const [x, y] = belsoPont(fo);
+    const nev0 = zonak[tagok[0]!]!.nev.replace(/\s+/g, ' ').trim();
+    const m = /^(\S*\d\S*)\s+(.+)$/.exec(nev0);
+    const kod = m ? m[1] : undefined, nev = m ? m[2]! : nev0 || 'Helyiség';
+    const pecset = pecsetek.find((h) => !foglalt.has(h) && poli.some((p) => poliBenne(p, (h.mutato ?? h).x, (h.mutato ?? h).y)));
+    if (pecset) foglalt.add(pecset);
+    const h: TervHelyiseg = pecset
+      ? { ...pecset, kod: pecset.kod ?? kod, nev: pecset.nev || nev, A: pecset.A > 0 ? pecset.A : Math.round(A * 100) / 100, x, y, mutato: undefined, mutatoTartalek: undefined }
+      : { kod, nev, A: Math.round(A * 100) / 100, x, y, forras: 'pecset', kulter: kulterNev(nev) };
+    ki.push({ h, poli, ...(pecset ? { pecset } : {}) });
+  }
+  return ki;
+}
+
+export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: SzurkeKep, tinta0?: TintaKep, leirasJegyzek?: TervHelyiseg[]): AlaprajzFeldolgozas {
+  // rétegzett PDF: a bútor, környezet, burkolat, födém/tető, raszter rétegek vonalai nélkül; ilyenkor a lapkép
+  // „tintája” (amely minden réteget – bútort, burkolatot – tartalmaz) nem kell: a falat a réteg adja
+  const lap = retegSzures(lap0);
+  const reteges = lap !== lap0;
+  const tinta = reteges ? undefined : tinta0;
   const e = alaprajzElemez(lap);
   if (meretarany && meretarany > 0) { e.meretarany = meretarany; e.mPerPt = (25.4 / 72) / 1000 * meretarany; }
   // lépték nélküli lap (pl. kicsinyített típusalaprajz): a méretláncokból becsülve
@@ -244,16 +295,26 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
     const Mk = meretaranyKotabol(lap.szovegek, lap.utvonalak);
     if (Mk && Math.abs(Mk - e.meretarany) / e.meretarany > 0.04) e.figyelmeztetesek.push(`A lapon írt méretarány (1:${e.meretarany}) eltér a méretláncok szerint becsülttől (≈ 1:${Mk}). Ellenőrizd egy ismert méreten; ha a rajz kicsinyítve került a lapra, add meg a méretarányt kézzel.`);
   }
+  // ArchiCAD-zónák: a helyiségek körvonala és területe a modellből (a pecsét adatával)
+  const zonaPoliMap = new Map<TervHelyiseg, [number, number][][]>();
+  if (lap.zonak?.length && e.mPerPt) {
+    const zr = zonaHelyisegek(lap.zonak, e.helyisegek.filter((h) => h.forras === 'pecset'), e.mPerPt);
+    if (zr.length) {
+      const hasznalt = new Set(zr.map((z) => z.pecset).filter(Boolean));
+      e.helyisegek = [...zr.map((z) => z.h), ...e.helyisegek.filter((h) => !hasznalt.has(h))];
+      for (const z of zr) zonaPoliMap.set(z.h, z.poli);
+    }
+  }
   let magHelyisegek = e.helyisegek.filter((h) => h.forras === 'pecset' && !h.kulter);
   let leiras: AlaprajzFeldolgozas['leiras'];
   // pecsét nélküli (egyszerűsített) alaprajz: a falakkal körbezárt terek a helyiségek
   const auto = !magHelyisegek.length && !!e.mPerPt;
   if (auto && szurke && !szurke.hatar) szurke = { ...szurke, hatar: arnyalatHatarok(szurke) };
   if (auto) {
-    magHelyisegek = automatikusHelyisegek(lap, e.mPerPt!, szurke, tinta);
+    magHelyisegek = automatikusHelyisegek(lap, e.mPerPt!, reteges ? undefined : szurke, tinta);
     // a szürke árnyalat (lakásszínezés) a falhatárt is adja; ha viszont a lapon a szürke sraffozás, minta (burkolat,
     // anyagjelölés), akkor a helyiségeket szétszabdalja: ilyenkor a színkép nélküli felismerés ad több valódi helyiséget
-    if (szurke) {
+    if (szurke && !reteges) {
       const pont = (l: TervHelyiseg[]) => l.reduce((s2, h) => s2 + (h.A >= 4 ? h.A : 0), 0);
       const nelkul = automatikusHelyisegek(lap, e.mPerPt!, undefined, tinta);
       if (pont(nelkul) > 1.2 * pont(magHelyisegek)) { magHelyisegek = nelkul; szurke = undefined; }
@@ -270,7 +331,7 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
     // pecsét nélküli lap: a zárt terekből indított elárasztás. Az a „helyiség”, amely a végső raszterben a lap széléig
     // kifolyik, vagy a zárt térként mért területének többszörösére nő (a rajz körüli méretlánc-zseb, keretmező),
     // nem helyiség – kihagyjuk, és újraépítjük a raszter nélküle (különben az egész lapot elárasztja).
-    const opc = { px: 0.04, resZaras: 3.0, vastagVonalFal: 0.05, ...(szurke ? { szinKep: szurke } : {})};
+    const opc = { px: 0.04, resZaras: 3.0, vastagVonalFal: 0.05, ...(szurke && !reteges ? { szinKep: szurke } : {})};
     r = raszterEpit(lap, e.mPerPt, magok, opc);
     for (let kor = 0; kor < 12; kor++) {
       const db = new Map<number, number>(); for (let k = 0; k < r.w * r.h; k++) { const c = r.cimke[k]!; if (c >= 2) db.set(c - 2, (db.get(c - 2) ?? 0) + 1); }
@@ -289,7 +350,8 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
     // önellenőrzés: több felismerési változat (vektoros fal / + lapkép-„tinta”, ablaksor-szabállyal / nélküle) közül az,
     // amelyben a helyiségek kiterjedése a pecsétben írt területhez a legjobban illik (területtel súlyozott egyezés)
     const kapuk = nyilasFeliratok(lap.szovegek, lap.utvonalak).filter((f) => f.kapuJelolt && f.szel >= 2.5).map((f) => ({ x: f.x, y: f.y, szel: f.szel, fal: f.fal }));
-    const alap = { ...(kulsoPontok.length ? { kulsoPontok } : {}), ...(kapuk.length ? { kapuk } : {}) };
+    const zonaPoli = zonaPoliMap.size ? magHelyisegek.map((h) => zonaPoliMap.get(h)?.map((p) => p.flat())) : undefined;
+    const alap = { ...(kulsoPontok.length ? { kulsoPontok } : {}), ...(kapuk.length ? { kapuk } : {}), ...(zonaPoli?.some(Boolean) ? { zonaPoli } : {}) };
     const valtozatok: RaszterBeallitas[] = [alap, { ...alap, ablaksor: false }, ...(tinta ? [{ ...alap, tinta }, { ...alap, tinta, ablaksor: false }] : [])];
     const vektoros: RaszterBeallitas[] = [{ ...alap, vektorFal: true }, ...(tinta ? [{ ...alap, tinta, vektorFal: true }] : [])];
     let leg: { r: Raszter; p: number } | null = null; let legBeall: RaszterBeallitas | null = null;

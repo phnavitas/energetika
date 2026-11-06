@@ -6,8 +6,12 @@
 import type { Lap, Utvonal } from './kinyeres';
 import { tintaFal, type TintaKep } from './tinta';
 import { falVektor } from './falvektor';
+import { retegTipus, type RetegTipus } from './retegek';
 
 export interface RaszterBeallitas {
+  /** ArchiCAD-zónák a magok sorrendjében (helyiségenként a darabok lapivel, lapos [x, y, …] pontlistával): a helyiség
+   * kiterjedése maga a zóna, nem elárasztás. */
+  zonaPoli?: (number[][] | undefined)[];
   /** vektoros falfelismerés (párhuzamos falsíkpár + metszeti jel) a korábbi fal helyett/mellett */
   vektorFal?: boolean;
   /** Pixelméret méterben. */
@@ -62,6 +66,8 @@ export interface Raszter {
   /** A rács bal felső sarka lapkoordinátában (pt) és a pt→m szorzó. */
   x0: number; y0: number; mPerPt: number;
   fal: Uint8Array;
+  /** Rétegzett lap: a falat / hőszigetelést a PDF-réteg adta, a burok réseit körvonal-zárással lezártuk. */
+  reteges?: boolean;
   /** Falanyag-stílus azonosító pixelenként (0 = nincs). */
   stilus: Uint16Array;
   /** 0 = nincs, 1 = külső tér, 2+i = i. helyiség */
@@ -320,6 +326,26 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       darabok.push(u.bbox);
     }
   }
+  // rétegzett PDF: a hőszigetelés-réteg (pl. „RÉTEG - homlokzati hőszigetelés”, „Külső határolószerkezet”) a hőburok
+  // síkja – a kitöltése falnak számítanak akkor is, ha a fal ott csak üvegezés közti keskeny pillér
+  const retegNyilas: number[][][] = [];
+  let retegesFal = false;
+  const zarGyuru = new Uint8Array(w * h);
+  if (lap.retegek?.length) {
+    const tip = new Map<string, RetegTipus>();
+    const hsz = (n?: string) => { if (!n) return false; let v = tip.get(n); if (!v) { v = retegTipus(n); tip.set(n, v); } return v === 'hoszig'; };
+    retegesFal = lap.utvonalak.some((u) => { if (!u.reteg) return false; let v = tip.get(u.reteg); if (!v) { v = retegTipus(u.reteg); tip.set(u.reteg, v); } return v === 'fal' || v === 'valaszfal'; });
+    for (const u of lap.utvonalak) {
+      if (!hsz(u.reteg) || u.bbox[2] < x0 || u.bbox[0] > x1 || u.bbox[3] < y0 || u.bbox[1] > y1) continue;
+      if (Math.max(u.bbox[2] - u.bbox[0], u.bbox[3] - u.bbox[1]) * mPerPt > 40) continue;
+      if (u.muvelet === 'stroke') continue;
+      // fehér, keskeny, hosszúkás kitöltés a rétegen: nyílászáró tokja (az iroda a homlokzati nyílászárót a
+      // hőszigetelés rétegére tette) – nyílás, nem fal; a színes / mintás kitöltés a hőszigetelés
+      const [bw, bh] = [(u.bbox[2] - u.bbox[0]) * mPerPt, (u.bbox[3] - u.bbox[1]) * mPerPt].sort((a, b) => a - b);
+      if (feher(u.toltoSzin) && !u.minta) { if (bw! <= 0.35 && bh! >= 0.3 && bh! <= 4) retegNyilas.push(u.pontok); continue; }
+      poliRajzol(fal, w, h, u.pontok, tr);
+    }
+  }
   let sraffMod = false; let sraffMaszk: Uint8Array | null = null;
   // kitöltés nélkül, csak sraffozással rajzolt falak (pl. ArchiCAD PDF-export: a falréteg mintázata vékony ferde vonalak,
   // a falsík vonala külön szakasz): a sűrű, rövid, ferde vékony vonalak mezője a fal. Csak akkor, ha a kitöltésekből
@@ -537,6 +563,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   // nyílások áthidalása: egy egyenesbe eső, azonos falsávba tartozó faldarabok közti rés (ablak, ajtó) lezárása,
   // ha a résben nyílászáró rajzeleme van (az üres rés átjáró, nem nyílás)
   const nyilas = new Uint8Array(w * h);
+  if (retegNyilas.length) { const t = new Uint8Array(w * h); for (const q of retegNyilas) poliRajzol(t, w, h, q, tr); for (let i = 0; i < w * h; i++) if (t[i] && !fal[i]) nyilas[i] = 1; }
   if (vekAktiv) { const t = new Uint8Array(w * h); for (const q of vekNyilas) poliRajzol(t, w, h, [q.flat()], tr); for (let i = 0; i < w * h; i++) if (t[i] && !fal[i]) nyilas[i] = 1; }
   const maxRes = (b.maxNyilas ?? 2.8) / mPerPt, minHossz = 0.15 / mPerPt, maxV = maxFal / mPerPt;
   for (const fuggo of [false, true]) {
@@ -809,6 +836,23 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
     if (egy.length < 2 || egy.length > Math.round(0.8 / px)) continue;
     for (const x of egy) for (let q = x.a; q <= x.e; q++) { const i = vizsz ? x.s * w + q : q * w + x.s; if (!fal[i]) nyilas[i] = 1; }
   }
+  // rétegzett lap (a falat és a hőszigetelést a réteg adja): a burok résein (külső ajtó, tok nélküli nyílás, ≤ 2 m) a
+  // külső tér ne folyjon be – az alaprajz körvonalát 1 m-es morfológiai zárással lezárjuk, és a zárt körvonal mentén
+  // a fal nélküli cellák nyílásnak számítanak (a szélesebb behúzás, kapu, garázsnyílás nyitva marad)
+  if (retegesFal) {
+    const B = new Uint8Array(w * h); for (let i = 0; i < w * h; i++) B[i] = fal[i] || nyilas[i] ? 1 : 0;
+    const R = Math.max(2, Math.round(1.0 / px));
+    const D = tagit(B, w, h, R);
+    const kint = new Uint8Array(w * h); const sor: number[] = [];
+    for (let x = 0; x < w; x++) for (const y of [0, h - 1]) { const i = y * w + x; if (!D[i] && !kint[i]) { kint[i] = 1; sor.push(i); } }
+    for (let y = 0; y < h; y++) for (const x of [0, w - 1]) { const i = y * w + x; if (!D[i] && !kint[i]) { kint[i] = 1; sor.push(i); } }
+    for (let k = 0; k < sor.length; k++) { const q = sor[k]!, x = q % w; for (const n of [x > 0 ? q - 1 : -1, x < w - 1 ? q + 1 : -1, q - w, q + w]) if (n >= 0 && n < w * h && !D[n] && !kint[n]) { kint[n] = 1; sor.push(n); } }
+    const K = tagit(kint, w, h, R); // a zárt alaprajzon kívüli rész
+    for (let i = 0; i < w * h; i++) {
+      if (K[i] || B[i]) continue; const x = i % w;
+      if ((x > 0 && K[i - 1]) || (x < w - 1 && K[i + 1]) || (i >= w && K[i - w]) || (i + w < w * h && K[i + w])) { nyilas[i] = 1; zarGyuru[i] = 1; }
+    }
+  }
   const gat = new Uint8Array(w * h);
   for (let i = 0; i < w * h; i++) gat[i] = fal[i] || nyilas[i] ? 1 : 0;
   // helyiségek: a pecsétekből indított versengő elárasztás a (hajszálrésekre kissé tágított) gáton belül
@@ -843,6 +887,16 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   const kpTer = new Uint8Array(w * h);
   for (let i = 0; i < w * h; i++) if (helyCimke[i] === kpCimke) { helyCimke[i] = 0; kpTer[i] = 1; }
   szivargoPotlas(helyCimke, gat, magok, w, h, px, tr);
+  if (b.zonaPoli?.some(Boolean)) {
+    // zónás lap: a zónás helyiség pontosan a zóna (a fal belső síkjáig); a zónán belüli „fal” (bútor, burkolatvonal) nem fal
+    const Z = new Int32Array(w * h); const t = new Uint8Array(w * h);
+    b.zonaPoli.forEach((pl, k) => { if (!pl) return; t.fill(0); poliRajzol(t, w, h, pl, tr); for (let i = 0; i < w * h; i++) if (t[i]) Z[i] = 2 + k; });
+    const zonas = new Set<number>(); b.zonaPoli.forEach((pl, k) => { if (pl) zonas.add(2 + k); });
+    for (let i = 0; i < w * h; i++) {
+      if (Z[i]) { helyCimke[i] = Z[i]!; fal[i] = 0; nyilas[i] = 0; gat[i] = 0; }
+      else if (zonas.has(helyCimke[i]!)) helyCimke[i] = 0;
+    }
+  }
   if (sraffMod) {
     // a rács széléig kifutó „helyiség” (pl. a pecsétje a külső térben van: fedett bejáró, kukatároló) a külső tér része
     const kifut = new Set<number>();
@@ -870,6 +924,18 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   }
   for (let i = 0; i < w * h; i++) if (kpTer[i] && nemHely[i]) kulsoMag[i] = 1;
   araszt(kulsoMag, nemHely, w, h);
+  // a burok-zárással (rétegzett lap) elrekesztett, helyiség nélküli zseb – behúzott bejárat, fedett előtér – külső tér:
+  // az ajtaja homlokzati ajtó marad
+  if (retegesFal) {
+    const gy = tagit(zarGyuru, w, h, rAjto + 1);
+    const latott = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+      if (!nemHely[i] || kulsoMag[i] || latott[i]) continue;
+      const komp = [i]; latott[i] = 1; let er = false;
+      for (let k = 0; k < komp.length; k++) { const q = komp[k]!, x = q % w; if (gy[q]) er = true; for (const n of [x > 0 ? q - 1 : -1, x < w - 1 ? q + 1 : -1, q - w, q + w]) if (n >= 0 && n < w * h && nemHely[n] && !kulsoMag[n] && !latott[n]) { latott[n] = 1; komp.push(n); } }
+      if (er) for (const q of komp) kulsoMag[q] = 1;
+    }
+  }
   // a zseb egy áthidalt nyíláson (≤ 0,6 m) át legalább 0,3 m hosszan érintkezik-e pecsételt helyiséggel
   const nyilasonHelyiseg = (komp: number[]) => {
     const lepes = Math.round(0.6 / px); let db = 0;
@@ -979,7 +1045,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
     }
   }
   return {
-    w, h, px, x0, y0, mPerPt, fal, cimke: helyCimke, stilus,
+    w, h, px, x0, y0, mPerPt, fal, cimke: helyCimke, stilus, ...(retegesFal ? { reteges: true } : {}),
     nyilas, uvegfalak,
     helyisegek: helyisegek.map((H, k) => ({
       A: H.A, szivarog: szivarog[k]!,

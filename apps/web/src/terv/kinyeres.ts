@@ -5,8 +5,14 @@
 export interface Szoveg { s: string; x: number; y: number; meret: number; szog: number; szel: number }
 export interface Utvonal { pontok: number[][]; zart: boolean[]; muvelet: 'stroke' | 'fill' | 'fillStroke' | 'none'; vastagsag: number; vonalSzin: string; toltoSzin: string; bbox: [number, number, number, number];
   /** Mintázattal (tiling pattern) kitöltött felület. */
-  minta?: boolean }
-export interface Lap { szel: number; mag: number; szovegek: Szoveg[]; utvonalak: Utvonal[] }
+  minta?: boolean;
+  /** A PDF réteg (optional content group, pl. ArchiCAD-réteg) neve, amelyen az elem van. */
+  reteg?: string }
+export interface Lap { szel: number; mag: number; szovegek: Szoveg[]; utvonalak: Utvonal[];
+  /** A lapon előforduló PDF-rétegek neve (ha a PDF rétegzett). */
+  retegek?: string[];
+  /** ArchiCAD-zónák (helyiségek) a PDF-ből: név és körvonal lapkoordinátában (pt). */
+  zonak?: { nev: string; pontok: [number, number][] }[] }
 
 type M = [number, number, number, number, number, number];
 const szoroz = (a: M, b: M): M => [a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1], a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3], a[0] * b[4] + a[2] * b[5] + a[4], a[1] * b[4] + a[3] * b[5] + a[5]];
@@ -20,7 +26,8 @@ const szin = (a: unknown): string => {
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function lapKinyer(pdfjs: any, page: any): Promise<Lap> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function lapKinyer(pdfjs: any, page: any, oc?: { getGroup(id: string): { name?: string } | null } | null): Promise<Lap> {
   const vp = page.getViewport({ scale: 1 });
   const alap: M = vp.transform as M; // PDF → nézet (y lefelé)
   const tc = await page.getTextContent();
@@ -39,9 +46,19 @@ export async function lapKinyer(pdfjs: any, page: any): Promise<Lap> {
   const verem: { ctm: M; lw: number; vs: string; ts: string; minta: boolean }[] = [];
   let lw = 1, vs = '#000000', ts = '#000000', minta = false;
   const formVerem: M[] = [];
+  // rétegek (BDC /OC … EMC): a jelölt tartalom verme; az aktuális réteg a legbelső OC-jelölés
+  const mcVerem: (string | null)[] = []; let reteg: string | undefined; const retegek = new Set<string>();
+  const ocNev = (p: unknown): string | null => {
+    const q = p as { id?: string; ids?: string[] } | undefined; const id = q?.id ?? q?.ids?.[0];
+    if (!id || !oc) return null; try { return oc.getGroup(id)?.name ?? null; } catch { return null; }
+  };
+  const aktReteg = () => { for (let k = mcVerem.length - 1; k >= 0; k--) if (mcVerem[k]) return mcVerem[k]!; return undefined; };
   for (let i = 0; i < ol.fnArray.length; i++) {
     const fn = ol.fnArray[i], a = ol.argsArray[i];
     switch (fn) {
+      case O.beginMarkedContent: mcVerem.push(null); break;
+      case O.beginMarkedContentProps: { const n = a?.[0] === 'OC' ? ocNev(a[1]) : null; mcVerem.push(n); if (n) retegek.add(n); reteg = aktReteg(); break; }
+      case O.endMarkedContent: mcVerem.pop(); reteg = aktReteg(); break;
       case O.save: verem.push({ ctm, lw, vs, ts, minta }); break;
       case O.restore: { const s = verem.pop(); if (s) ({ ctm, lw, vs, ts, minta } = s); break; }
       case O.transform: ctm = szoroz(ctm, a as M); break;
@@ -84,10 +101,10 @@ export async function lapKinyer(pdfjs: any, page: any): Promise<Lap> {
         const muvelet = rajz === O.stroke || rajz === O.closeStroke ? 'stroke' : rajz === O.fill || rajz === O.eoFill ? 'fill' : rajz === O.fillStroke || rajz === O.eoFillStroke || rajz === O.closeFillStroke || rajz === O.closeEOFillStroke ? 'fillStroke' : 'none';
         if (muvelet === 'none' || !pontok.length) break;
         const sk = Math.sqrt(Math.abs(ctm[0] * ctm[3] - ctm[1] * ctm[2]));
-        utvonalak.push({ pontok, zart, muvelet, vastagsag: lw * sk, vonalSzin: vs, toltoSzin: ts, bbox: [minx, miny, maxx, maxy], ...(minta && muvelet !== 'stroke' ? { minta: true } : {}) });
+        utvonalak.push({ pontok, zart, muvelet, vastagsag: lw * sk, vonalSzin: vs, toltoSzin: ts, bbox: [minx, miny, maxx, maxy], ...(minta && muvelet !== 'stroke' ? { minta: true } : {}), ...(reteg ? { reteg } : {}) });
         break;
       }
     }
   }
-  return { szel: vp.width, mag: vp.height, szovegek, utvonalak };
+  return { szel: vp.width, mag: vp.height, szovegek, utvonalak, ...(retegek.size ? { retegek: [...retegek] } : {}) };
 }
