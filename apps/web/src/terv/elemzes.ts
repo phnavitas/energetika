@@ -452,6 +452,32 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
     for (const sg of H.szakaszok) if (sg.zona && sg.tul === 'kulso') for (const q of sg.pontok) { const d = Math.hypot(q[0] - n.x, q[1] - n.y); if (d < leg) { leg = d; ir = sg.irany; } }
     if (ir !== null) n.irany = ir;
   }
+  // zónás lap: a falhoz nem rendelt, zónán kívül (a falban vagy előtte) írt felirat, amelyhez 1,2 m-en belül külső zónaél
+  // tartozik – a rajzon nyílásként nem jelölt üvegfal, portál (pl. ferde függönyfalas előcsarnok): annak a helyiségnek a
+  // homlokzati nyílása
+  if (r.helyisegek.some((H) => H.szakaszok.some((sg) => sg.zona))) {
+    const ptPx = r.mPerPt / r.px;
+    // (a helyiség nélkül maradt – falnyíláshoz nem köthető – nyílás is)
+    const jeloltF = [...feliratok.filter((f) => !nyilasok.some((n) => Math.hypot(n.x - f.x, n.y - f.y) < 2 || (Math.abs(n.szel - f.szel) < 0.01 && Math.hypot(n.x - f.x, n.y - f.y) * r.mPerPt < 0.9 * f.szel))),
+      ...nyilasok.filter((n) => n.helyiseg === null && !n.mert)];
+    for (const f of jeloltF) {
+      const cx = Math.floor((f.x - r.x0) * ptPx), cy = Math.floor((f.y - r.y0) * ptPx);
+      if (cx >= 0 && cy >= 0 && cx < r.w && cy < r.h && r.cimke[cy * r.w + cx]! >= 2) continue;
+      // a felirat 1 m-es környezetében valódi külső tér (nem zóna nélküli belső tér, pl. lépcsőház, közös folyosó)
+      { const R = Math.round(1.0 / r.px); let kint = false;
+        for (let y = Math.max(0, cy - R); y <= Math.min(r.h - 1, cy + R) && !kint; y++) for (let x = Math.max(0, cx - R); x <= Math.min(r.w - 1, cx + R); x++) if (r.cimke[y * r.w + x] === 1) { kint = true; break; }
+        if (!kint) continue; }
+      let leg = 1.2 / r.mPerPt, hi = -1, ir = 0;
+      r.helyisegek.forEach((H, k) => { for (const sg of H.szakaszok) if (sg.zona && sg.tul === 'kulso') for (const q of sg.pontok) { const d = Math.hypot(q[0] - f.x, q[1] - f.y); if (d < leg) { leg = d; hi = k; ir = sg.irany; } } });
+      if (hi < 0) continue;
+      const fajta: TervNyilas['fajta'] = f.pm !== null && f.pm > 0.05 ? 'ablak' : f.mag >= 1.9 ? 'erkelyajto' : 'ablak';
+      const i0 = nyilasok.indexOf(f as TervNyilas);
+      const n: TervNyilas = { ...f, helyiseg: hi, irany: ir, kulso: true, fajta };
+      // falfülke (ill. a lapon falfülkének talált azonos méretű felirat): nem nyílás
+      if (falfulkeE(n, r, lap) || nyilasok.some((m) => m.fajta === 'falfulke' && Math.abs(m.szel - f.szel) < 0.01 && Math.abs(m.mag - f.mag) < 0.01 && m.pm === f.pm)) continue;
+      if (i0 >= 0) nyilasok[i0] = n; else nyilasok.push(n);
+    }
+  }
   // falhoz nem rendelt nyílásfeliratok (pl. a raszterben nem lezárt, üvegfalas helyiség homlokzatán): a szerkesztett hőburok használja
   // (az azonos szélességű, a nyílással átfedő felirat – ugyanannak a nyílásnak másik feliratsora – sem árva)
   const arva = feliratok.filter((f) => !nyilasok.some((n) => Math.hypot(n.x - f.x, n.y - f.y) < 2 || (Math.abs(n.szel - f.szel) < 0.01 && f.szel >= 0.6 && Math.hypot(n.x - f.x, n.y - f.y) * r.mPerPt < 0.9 * f.szel)));
