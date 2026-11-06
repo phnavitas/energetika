@@ -417,9 +417,16 @@ export function szintekKeres(sz: Szoveg[]): SzintEredmeny {
   for (let k = 0; k < 6; k++) {
     // födém alsó síkja: a függőleges méretszámmal igazolt magasság, ill. amely fölött 15–80 cm-en belül újabb szint (födém teteje) van
     const legfelso = Math.max(...jelek.map((j) => j.ertek));
-    const jeloltek = belsoTiszta.filter((v) => v >= f + 2.2 && v <= f + 4.2 && v < legfelso);
-    const pont = (c: number) => (fuggoMeretek.some((m) => Math.abs(m - (c - f)) < 0.015) ? 2 : 0) + (belsoTiszta.some((v) => v > c + 0.15 && v <= c + 0.8) ? 1 : 0);
-    const c = jeloltek.sort((a, b) => pont(b) - pont(a) || a - b)[0];
+    // (a szintmagasság – a következő padlószint – nem födémalsó: ha a kétszerese is szintjel, ismétlődő emelet)
+    const ismetlodo = (c: number) => jelek.some((j) => Math.abs(j.ertek - (f + 2 * (c - f))) < 0.02);
+    // (a ±0,00 oszlopán kívüli szintjel is jelölt, ha függőleges méretszám igazolja – pl. a másik metszet-oszlop födémalsója)
+    const merettel = jelek.map((j) => j.ertek).filter((v) => !kulsoErtekek.has(v) && fuggoMeretek.some((m) => Math.abs(m - (v - f)) < 0.015));
+    const jeloltek0 = [...new Set([...belsoTiszta, ...merettel])].filter((v) => v >= f + 2.2 && v <= f + 4.2 && v < legfelso);
+    const jeloltek = jeloltek0.filter((v) => !ismetlodo(v)).length ? jeloltek0.filter((v) => !ismetlodo(v)) : jeloltek0;
+    // a belmagasság méretszámát a metszeten helyiségenként, többször is kiírják: a gyakoribb méretszám erősebb jelölt
+    const db = (c: number) => fuggoMeretek.filter((m) => Math.abs(m - (c - f)) < 0.015).length;
+    const pont = (c: number) => 2 * db(c) + (belsoTiszta.some((v) => v > c + 0.15 && v <= c + 0.8) ? 1 : 0);
+    const c = jeloltek.sort((a, b) => pont(b) - pont(a) || (db(a) && db(b) ? b - a : a - b))[0];
     if (c === undefined) break;
     padlo.push(f); bm.push(Math.round((c - f) * 100) / 100);
     const kov = belsoTiszta.find((v) => v > c && v <= c + 0.8);
