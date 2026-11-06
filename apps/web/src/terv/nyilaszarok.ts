@@ -24,6 +24,8 @@ export interface TervNyilas {
   mert?: { magForras: 'homlokzat' | 'homlokzat_takart' | 'becsult' };
   /** A hozzárendelt (áthidalt) falnyílás befoglalója a lapon (pt): x0, y0, x1, y1 – a megjelenítéshez. */
   hely?: [number, number, number, number];
+  /** Belső nyílásnál a túloldali helyiség indexe a raszterben (fűtetlen helyiség felé nyíló ajtóhoz). */
+  masik?: number;
 }
 
 /** Nyílásméret cm-ben; a „+30” toldás (redőnytok, tokszélesítés) a magasság mellett – a nyílásméret az első szám. */
@@ -379,7 +381,7 @@ export function nyilasokHozzarendel(feliratok: NyilasFelirat[], r: Raszter, neve
         }
         return 0;
       };
-      let p: { h: number; irany: number; kulso: boolean } | null = null;
+      let p: { h: number; irany: number; kulso: boolean; masik?: number } | null = null;
       // a nyílásfolt irányára merőleges átnézés előbb (vízszintes folt: fel / le)
       const iranyok = ([[0, -1, 0], [1, 0, 90], [0, 1, 180], [-1, 0, 270]] as const).slice().sort((a, b) => (v === undefined ? 0 : Number((a[0] === 0) !== v) - Number((b[0] === 0) !== v)));
       // a folt egyértelműen hosszúkás (a hossza ≥ 2 × vastagsága): a rá merőleges átnézés a nyílás valódi átjárása – ha
@@ -387,15 +389,15 @@ export function nyilasokHozzarendel(feliratok: NyilasFelirat[], r: Raszter, neve
       const hosszukas = v !== undefined && Math.max(hf[best]!, vf[best]!) >= 2 * Math.min(hf[best]!, vf[best]!);
       for (const [n, [dx, dy, ir]] of iranyok.entries()) {
         const elol = talal(dx, dy), hatul = talal(-dx, -dy);
-        if (n === 0 && hosszukas && hatul >= 2 && elol >= 2 && elol !== hatul) { p = { h: hatul - 2, irany: ir, kulso: false }; break; }
+        if (n === 0 && hosszukas && hatul >= 2 && elol >= 2 && elol !== hatul) { p = { h: hatul - 2, irany: ir, kulso: false, masik: elol - 2 }; break; }
         // a helyiségből (hátul) a nyíláson át kifelé (elöl) nézünk
         if (hatul >= 2 && elol === 1) { p = { h: hatul - 2, irany: ir, kulso: true }; break; }
-        if (hatul >= 2 && elol >= 2 && elol !== hatul && !p) p = { h: hatul - 2, irany: ir, kulso: false };
+        if (hatul >= 2 && elol >= 2 && elol !== hatul && !p) p = { h: hatul - 2, irany: ir, kulso: false, masik: elol - 2 };
       }
       return p;
     };
     // az első olyan folt, amely helyiséghez tartozik (a járdaszegély, kerítés „nyílásai” kiesnek)
-    let p: { h: number; irany: number; kulso: boolean } | null = null;
+    let p: { h: number; irany: number; kulso: boolean; masik?: number } | null = null;
     let elteroIrany = false; let folt = 0;
     for (const [, { i, v }] of jeloltek.slice(0, 6)) { p = vizsgal(i, v); if (p) { elteroIrany = v !== (f.fal === 'v'); folt = komp[i]!; break; } }
     // ajtófelirat, de csak a feliratra merőleges falban találtunk nyílást (az ajtónyílás nincs áthidalva, pl. fedett
@@ -433,7 +435,7 @@ export function nyilasokHozzarendel(feliratok: NyilasFelirat[], r: Raszter, neve
     const lako = p ? LAKO.test(nevek[p.h] ?? '') : false;
     const kapu = kulso && f.pm === null && f.mag >= 1.8 && (garazsban ? f.kapuJelolt || f.szel >= 1.8 : !lako && f.kapuJelolt && f.szel >= 2.2);
     const fajta: TervNyilas['fajta'] = kapu ? 'garazskapu' : !kulso ? 'belso_ajto' : f.pm !== null && f.pm > 0.05 ? 'ablak' : f.pm !== null ? 'erkelyajto' : f.mag >= 1.9 ? (tipusLap || lako ? 'erkelyajto' : 'bejarati_ajto') : 'ablak';
-    ki.push({ ...f, helyiseg: p?.h ?? null, irany: p?.irany ?? null, kulso, fajta, ...(folt && !elteroIrany ? { hely: kompHely(folt) } : {}) });
+    ki.push({ ...f, helyiseg: p?.h ?? null, irany: p?.irany ?? null, kulso, fajta, ...(folt && !elteroIrany ? { hely: kompHely(folt) } : {}), ...(!kulso && p?.masik !== undefined ? { masik: p.masik } : {}) });
     kiFolt.push(folt && !elteroIrany ? folt : 0);
   }
   // tömör homlokzati betét (pl. alumíniumburkolatú panel a portálban): a felirata egy másik felirat nyílásfoltjához
@@ -562,6 +564,24 @@ export function jeloletlenNyilasok(r: Raszter, meglevo: TervNyilas[]): TervNyila
     const helyiseg = (a >= 2 ? a : b) - 2;
     const irany = fuggo ? (a === 1 ? 270 : 90) : (a === 1 ? 0 : 180);
     ki.push({ szel: Math.round(L * 100) / 100, mag: 0, pm: null, x: X, y: Y, helyiseg, irany, kulso: true, fajta: 'ablak', mert: { magForras: 'becsult' }, hely: [lapX(x0), lapY(y0), lapX(x1 + 1), lapY(y1 + 1)] });
+  }
+  // ugyanannak a nyílásnak a falsávon belül egymás mellett / mögött futó foltjai (tok, üvegezés, párkány vonalai): azonos
+  // helyiség és irány, a fal mentén átfedő (≤ 0,2 m réssel) és a falra merőlegesen ≤ 0,6 m-re lévő foltok egy nyílás
+  const tol = 0.2 / r.mPerPt, mer = 0.6 / r.mPerPt;
+  for (let i = ki.length - 1; i >= 0; i--) {
+    const a = ki[i]!, ha = a.hely!; const fa = ha[3] - ha[1] > ha[2] - ha[0];
+    const j = ki.findIndex((b, k) => {
+      if (k === i || b.helyiseg !== a.helyiseg || b.irany !== a.irany) return false;
+      const hb = b.hely!; if ((hb[3] - hb[1] > hb[2] - hb[0]) !== fa) return false;
+      return fa ? hb[1] - tol <= ha[3] && ha[1] - tol <= hb[3] && Math.abs((ha[0] + ha[2]) / 2 - (hb[0] + hb[2]) / 2) <= mer
+        : hb[0] - tol <= ha[2] && ha[0] - tol <= hb[2] && Math.abs((ha[1] + ha[3]) / 2 - (hb[1] + hb[3]) / 2) <= mer;
+    });
+    if (j < 0) continue;
+    const b = ki[j]!, hb = b.hely!;
+    const h: [number, number, number, number] = [Math.min(ha[0], hb[0]), Math.min(ha[1], hb[1]), Math.max(ha[2], hb[2]), Math.max(ha[3], hb[3])];
+    const L = (fa ? h[3] - h[1] : h[2] - h[0]) * r.mPerPt;
+    ki[j] = { ...b, szel: Math.round(Math.min(L, Math.max(a.szel, b.szel) + 0.3) * 100) / 100, x: (h[0] + h[2]) / 2, y: (h[1] + h[3]) / 2, hely: h };
+    ki.splice(i, 1);
   }
   return ki;
 }

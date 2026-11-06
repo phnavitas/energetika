@@ -27,7 +27,7 @@ for m, z in MAP.items():
     # WinWatt: L × H, db; a szélesség és magasság sorrendje a mérethez kötött
     kk = (k5(x['L']), k5(x['H'])); ww[kk] += x['db']; wwT.setdefault(kk, Counter())[EG.get(x['az'], x['az'])] += x['db']
   for s in p['feluletek']:
-    if s['fajta'] != 'nyilaszaro' or s.get('hatar') != 'kulso': continue
+    if s['fajta'] != 'nyilaszaro': continue
     n = NYT[s['nyilaszaroId']]; kk = (k5(n['szelesseg']), k5(n['magassag'])); db = s.get('darab', 1)
     mi[kk] += db; miT.setdefault(kk, Counter())[s.get('tajolas') or '?'] += db
   print(f'== {m}  WW {sum(ww.values())} db {sum(k[0]*k[1]*v for k,v in ww.items()):.1f} m²  ·  mi {sum(mi.values())} db {sum(k[0]*k[1]*v for k,v in mi.items()):.1f} m²')

@@ -236,7 +236,17 @@ function atvetelReszek(al: AlaprajzFeldolgozas, k: Kijeloles, mert?: Map<TervNyi
       if (m) return { fajta: m.mag >= 2 ? 'erkelyajto' : 'ablak', szel: n.szel, mag: m.mag, pm: m.mag >= 2 ? 0 : 0.9, helyiseg: index.get(hi)!, irany: n.irany! };
       return { fajta: n.fajta as AtvettNyilas['fajta'], szel: n.szel, mag: n.mag, pm: n.pm, helyiseg: index.get(hi)!, irany: n.irany! };
     });
-  return { helyisegek, nyilasok, ri: kiv.map(({ i }) => ri(i)) };
+  // fűtött és fűtetlen (gyengén kapcsolt) helyiség közti ajtó: a fűtetlen tér felé eső falból vonódik le
+  const futetlenNy = al.nyilasok.flatMap((n): AtvettNyilas[] => {
+    if (n.kulso || n.fajta !== 'belso_ajto' || n.helyiseg === null || n.masik === undefined || !(n.mag > 0)) return [];
+    const a = hs.indexOf(al.magHelyisegek[n.helyiseg]!), b = hs.indexOf(al.magHelyisegek[n.masik]!);
+    if (a < 0 || b < 0 || !valasztott[a] || !valasztott[b]) return [];
+    const ga = kategoria(a) === 'gyengen_kapcsolt', gb = kategoria(b) === 'gyengen_kapcsolt';
+    if (ga === gb) return [];
+    const [fi, ui] = ga ? [b, a] : [a, b];
+    return [{ fajta: 'bejarati_ajto', szel: n.szel, mag: n.mag, pm: n.pm, helyiseg: index.get(fi)!, irany: n.irany ?? 0, fele: hs[ui]!.nev }];
+  });
+  return { helyisegek, nyilasok: [...nyilasok, ...futetlenNy], ri: kiv.map(({ i }) => ri(i)) };
 }
 
 /** A beolvasott, de még át nem vett alaprajz-lapok száma (a lépés elhagyásakor figyelmeztetéshez). */

@@ -402,9 +402,12 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
     .map((n) => (n.fajta !== 'belso_ajto' && falfulkeE(n, r, lap) ? { ...n, fajta: 'falfulke' as const, kulso: false } : n));
   // ugyanannak a kapunak két felirata (pl. falnyílás- és tokmagasság külön: „3,75 / 2,25” és „3,75 / 2,40”): azonos
   // helyiség, irány és szélesség, a kapu szélességén belül egymás mellett → egy kapu (az alacsonyabb marad)
+  // (általánosan: két azonos szélességű külső nyílásfelirat egymástól a szélesség 90 %-ánál közelebb – a két nyílás
+  // átfedne, tehát ugyanaz a nyílás két feliratsorral; a különböző helyiséghez rendelt felirat is)
   for (let i = nyilasok.length - 1; i >= 0; i--) {
-    const a = nyilasok[i]!; if (a.fajta !== 'garazskapu') continue;
-    const j = nyilasok.findIndex((b, k) => k !== i && b.fajta === 'garazskapu' && b.helyiseg === a.helyiseg && b.irany === a.irany && Math.abs(b.szel - a.szel) < 0.01 && Math.hypot(b.x - a.x, b.y - a.y) * r.mPerPt < a.szel);
+    const a = nyilasok[i]!; if (!a.kulso || a.szel < 0.6) continue;
+    const j = nyilasok.findIndex((b, k) => k !== i && b.kulso && Math.abs(b.szel - a.szel) < 0.01 && (a.fajta === 'garazskapu' && b.fajta === 'garazskapu' && b.helyiseg === a.helyiseg && b.irany === a.irany
+      ? Math.hypot(b.x - a.x, b.y - a.y) * r.mPerPt < a.szel : Math.hypot(b.x - a.x, b.y - a.y) * r.mPerPt < 0.9 * a.szel && a.mag > 0 && b.mag > 0));
     if (j >= 0) { const b = nyilasok[j]!; if (a.mag < b.mag) nyilasok[j] = a; nyilasok.splice(i, 1); }
   }
   // felirat nélküli függönyfalak, üvegfalak (széles, üvegezett falszakasz a fűtött helyiség és a külső tér határán)
@@ -450,7 +453,8 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
     if (ir !== null) n.irany = ir;
   }
   // falhoz nem rendelt nyílásfeliratok (pl. a raszterben nem lezárt, üvegfalas helyiség homlokzatán): a szerkesztett hőburok használja
-  const arva = feliratok.filter((f) => !nyilasok.some((n) => Math.hypot(n.x - f.x, n.y - f.y) < 2));
+  // (az azonos szélességű, a nyílással átfedő felirat – ugyanannak a nyílásnak másik feliratsora – sem árva)
+  const arva = feliratok.filter((f) => !nyilasok.some((n) => Math.hypot(n.x - f.x, n.y - f.y) < 2 || (Math.abs(n.szel - f.szel) < 0.01 && f.szel >= 0.6 && Math.hypot(n.x - f.x, n.y - f.y) * r.mPerPt < 0.9 * f.szel)));
   return { e, magHelyisegek, r, ...(r3d ? { r3d } : {}), nyilasok, auto, arvaFeliratok: arva, ...(leiras ? { leiras } : {}) };
 }
 

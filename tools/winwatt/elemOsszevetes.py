@@ -24,16 +24,18 @@ for m,z in MAP.items():
   for s in p['feluletek']:
     if s['fajta']=='nyilaszaro': n=NYT[s['nyilaszaroId']]; s['A']=n['szelesseg']*n['magassag']*s.get('darab',1)
   mf=[s for s in p['feluletek'] if s['nev'].startswith(('Homlokzati fal','Térdfal'))]
-  mny=[s for s in p['feluletek'] if s['fajta']=='nyilaszaro' and s.get('hatar')=='kulso']
+  # nyílászáró: a fűtetlen tér felé nyíló ajtó is (a WinWatt-elemlista azt is tartalmazza); a nettó homlokzati falból csak a külső vonódik le
+  mny=[s for s in p['feluletek'] if s['fajta']=='nyilaszaro']
+  mnyk=[s for s in mny if s.get('hatar')=='kulso']
   WL=sum(x['L']*x['db'] for x in fal); WA=sum(x['A']-x['ny'] for x in fal); WNY=sum(x['A'] for x in ny)
-  ML=sum(s.get('meret',{}).get('hossz',0) for s in mf); MA=sum(s['A'] for s in mf); MNY=sum(s['A'] for s in mny)
+  ML=sum(s.get('meret',{}).get('hossz',0) for s in mf); MA=sum(s['A'] for s in mf); MNY=sum(s['A'] for s in mny); MNYK=sum(s['A'] for s in mnyk)
   pct=lambda a,b: f"{(b-a)/a*100:+.1f}%" if a else '-'
   print(f"== {m}")
   if os.environ.get('NEVEK'):
     from collections import Counter
     c=Counter(); [c.update({x['nev']:x['A']-x['ny']}) for x in fal]; print('   WW falnevek', {k:round(v,1) for k,v in c.items()})
   print(f"  falhossz  WW {WL:7.1f}  mi {ML:7.1f}  {pct(WL,ML)}   magasság WW {sorted({x['H'] for x in fal})} mi {sorted({s['meret']['magassag'] for s in mf if 'meret' in s})}")
-  print(f"  nettó fal WW {WA:7.1f}  mi {MA-MNY:7.1f}  {pct(WA,MA-MNY)}")
+  print(f"  nettó fal WW {WA:7.1f}  mi {MA-MNYK:7.1f}  {pct(WA,MA-MNYK)}")
   print(f"  nyílás    WW {WNY:7.1f}  mi {MNY:7.1f}  {pct(WNY,MNY)}   db WW {sum(x['db'] for x in ny)} mi {sum(s.get('darab',1) for s in mny)}")
   o={}
   for x in ny: o.setdefault(EG.get(x['az'],x['az']),[0,0])[0]+=x['A']

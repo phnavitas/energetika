@@ -28,6 +28,8 @@ export interface AtvettNyilas {
   szel: number; mag: number; pm: number | null;
   /** Index az `helyisegek` tömbben. */
   helyiseg: number; irany: number;
+  /** Fűtetlen (gyengén kapcsolt) helyiség felé nyíló ajtó: annak a neve (a „Fal – … felé” felületből vonódik le). */
+  fele?: string;
 }
 export interface TervAtvetel {
   helyisegek: AtvettHelyiseg[];
@@ -253,9 +255,11 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
   if (a.szomszedFutetlen && a.szomszedFutetlen >= 0.3) futetlen.set('szomszédos (fűtetlen) épület', a.szomszedFutetlen);
   for (const h of a.helyisegek.filter(burok)) for (const f of h.futetlenFalak ?? []) futetlen.set(f.fele, (futetlen.get(f.fele) ?? 0) + f.hossz);
   const belsoFal = a.retegrendek.find((x) => x.becsles.szerep === 'fal' && /teherhordó|belső/i.test(x.rr.cim));
+  const futFel: Record<string, { id: string; hatar: 'garazs' | 'futetlen_helyiseg' }> = {};
   for (const [fele, hossz] of futetlen) {
     const b = /garázs|garazs/i.test(fele) ? 'garazs' : 'futetlen_helyiseg';
-    p.feluletek.push({ id: ujId(), nev: `Fal – ${fele} felé`, fajta: 'opak', retegrendId: (belsoFal && rrIdM.get(belsoFal.rr)) ?? falRid, hatar: b, hajlasszog: 90, tajolas: null, meret: { hossz: kerek(hossz * n), magassag: a.belmagassag }, A: kerek(hossz * n * a.belmagassag), chi: 0.1 });
+    const fid = ujId(); futFel[fele] = { id: fid, hatar: b };
+    p.feluletek.push({ id: fid, nev: `Fal – ${fele} felé`, fajta: 'opak', retegrendId: (belsoFal && rrIdM.get(belsoFal.rr)) ?? falRid, hatar: b, hajlasszog: 90, tajolas: null, meret: { hossz: kerek(hossz * n), magassag: a.belmagassag }, A: kerek(hossz * n * a.belmagassag), chi: 0.1 });
   }
 
   // talajon fekvő padló(k) – burkolat szerint a megfelelő padló-rétegrendre; a kerület a terület arányában oszlik meg
@@ -378,19 +382,20 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
       if (t) tipusok.set(k, t);
     }
     if (!t) { t = nyilaszaroTipus(p, ny); tipusok.set(k, t); p.nyilaszarok.push(t); }
-    const ck = `${ny.helyiseg}|${ny.irany}|${k}`;
+    const ck = `${ny.helyiseg}|${ny.irany}|${k}|${ny.fele ?? ''}`;
     const c = csoport.get(ck); if (c) c.db++; else csoport.set(ck, { ny, db: 1, tipus: t });
   }
   for (const { ny, db, tipus } of csoport.values()) {
     const h = a.helyisegek[ny.helyiseg];
     const t: Tajolas = egtaj(ny.irany, a.eszakSzog);
+    const ff = ny.fele ? futFel[ny.fele] : undefined;
     p.feluletek.push({
-      id: ujId(), nev: `${h ? h.nev : ''} – ${tipus.nev.split(' – ')[0]}`, helyisegId: helyIdk[ny.helyiseg], fajta: 'nyilaszaro', nyilaszaroId: tipus.id,
-      hatar: 'kulso', darab: db * n, tajolas: t, hajlasszog: 90, szuloId: falFel[ny.irany],
+      id: ujId(), nev: `${h ? h.nev : ''} – ${tipus.nev.split(' – ')[0]}${ny.fele ? ` (${ny.fele} felé)` : ''}`, helyisegId: helyIdk[ny.helyiseg], fajta: 'nyilaszaro', nyilaszaroId: tipus.id,
+      hatar: ny.fele ? ff?.hatar ?? (/garázs|garazs/i.test(ny.fele) ? 'garazs' : 'futetlen_helyiseg') : 'kulso', darab: db * n, tajolas: ny.fele ? null : t, hajlasszog: 90, szuloId: ny.fele ? ff?.id : falFel[ny.irany],
       ...(szintek.some(Boolean) ? { szintek: szintek.filter(Boolean).map((sz) => szintNev(sz)) } : {}),
     });
   }
-  const nyilasNelkul = a.nyilasok.filter((ny) => (!a.helyisegek[ny.helyiseg] || burok(a.helyisegek[ny.helyiseg]!)) && !falFel[ny.irany]).length;
+  const nyilasNelkul = a.nyilasok.filter((ny) => !ny.fele && (!a.helyisegek[ny.helyiseg] || burok(a.helyisegek[ny.helyiseg]!)) && !falFel[ny.irany]).length;
   if (nyilasNelkul) uz.push(`${nyilasNelkul} nyílászáróhoz nem tartozik homlokzati fal azonos irányban – a falból nem vonódik le, a Határolás lépésben rendeld falhoz.`);
   // azonos falfelületek, padlók összevonása (ismételt, mellé olvasott beolvasásnál is egy felület tájolásonként)
   if (n > 1) uz.push(`${n} azonos szint (${szintek.map(szintCimke).join(', ')}): a helyiségek szintenként, a homlokzati falak és nyílászárók ${n}-szeresen kerültek át.`);

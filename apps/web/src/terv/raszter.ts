@@ -1222,13 +1222,17 @@ function zonaSzakaszok(pl: number[][], c: number, cimke: Int32Array, gat: Uint8A
       const db = Math.max(1, Math.round(Lm / 0.1)), dl = Lm / db;
       for (let s0 = 0; s0 < db; s0++) {
         const t = (s0 + 0.5) / db, x = ax + (bx - ax) * t, y = ay + (by - ay) * t;
-        let tul: 'kulso' | number | 'ismeretlen' = 'ismeretlen', atNy = false, d = 0.02;
+        // (zónás lapon minden helyiség zóna: a falon túli, legalább 1 m-es zónán kívüli szabad tér – lapostető, terasz,
+        // le nem zárt külső udvar – külső tér, akkor is, ha a raszter nem kötötte össze a külső térrel)
+        let tul: 'kulso' | number | 'ismeretlen' = 'ismeretlen', atNy = false, d = 0.02, falon = false, szabad = 0;
         for (; d <= maxM; d += lepM) {
           const [qxf, qyf] = tr(x + (nx * d) / mPerPt, y + (ny * d) / mPerPt); const qx = Math.floor(qxf), qy = Math.floor(qyf);
           if (qx < 0 || qy < 0 || qx >= w || qy >= h) { tul = 'kulso'; break; }
           const qi = qy * w + qx; if (nyilas[qi]) atNy = true;
-          if (gat[qi] || fal[qi]) continue;
-          const l = cimke[qi]!; if (l === 0 || l === c) continue;
+          if (gat[qi] || fal[qi] || nyilas[qi]) { falon = true; szabad = 0; continue; }
+          const l = cimke[qi]!;
+          if (l === c) continue;
+          if (l === 0) { if (falon && (szabad += lepM) >= 1.0) { tul = 'kulso'; break; } continue; }
           tul = l === 1 ? 'kulso' : l - 2; break;
         }
         const kulcs = `${ir}|${tul}`; const g = gy.get(kulcs) ?? { hossz: 0, ny: 0, v: 0, n: 0, pontok: [] };
