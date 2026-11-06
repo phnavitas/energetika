@@ -199,7 +199,7 @@ const vartTer = (a: AlaprajzFeldolgozas) => (a.auto ? [] : a.magHelyisegek.map((
 /** Automatikus hőburok lapokra gyorstárazva (a 3D ábrához). */
 const burok3dTar = new Map<string, Poligon[]>();
 function burok3dCache(i: number, r: NonNullable<AlaprajzFeldolgozas['r']>, fut: Set<number>, lap?: Lap, a?: AlaprajzFeldolgozas, belso = false): Poligon[] {
-  const kulcs = `${i}|${r.w}x${r.h}|${[...fut].sort((a, b) => a - b).join(',')}|${belso ? 'b' : 'k'}`;
+  const kulcs = `${i}|${r.w}x${r.h}|${a?.r3d === r ? 'v' : ''}|${[...fut].sort((a, b) => a - b).join(',')}|${belso ? 'b' : 'k'}`;
   // belső méret: a helyiségek széle (a fal belső síkja); külső méret: a fal / hőszigetelés külső síkja
   let v = burok3dTar.get(kulcs); if (!v) { v = belso ? burokAuto(r, fut, lap ? nevFeliratok(lap) : undefined, a ? vartTer(a) : undefined) : burokTomeg(r, fut, lap ? nevFeliratok(lap) : undefined, a ? vartTer(a) : undefined); burok3dTar.set(kulcs, v); }
   return v;
@@ -501,11 +501,12 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                 const el = i === sor[0]!.i ? { dx: 0, dy: 0 } : eltolas(alap, r) ?? { dx: 0, dy: 0 };
                 const m = (x: number, y: number): [number, number] => [(x - el.dx) * r.mPerPt, (y - el.dy) * r.mPerPt];
                 const belso = mod === 'belso';
-                const polPt = k.burok && !belso ? k.burok : burok3dCache(i, r, futottRiK(a, k), lapok[i]?.lap, a, belso);
+                const r3 = a.r3d ?? r;
+                const polPt = k.burok && !belso ? k.burok : burok3dCache(i, r3, futottRiK(a, k), lapok[i]?.lap, a, belso);
                 const pol = polPt.map((q) => q.map(([x, y]) => m(x, y)));
                 // belső méretnél: a belső falak csatlakozása a külső falhoz (levonódik a külső fal felületéből)
-                const csatl = belso ? csatlakozasok(r, polPt) : undefined;
-                  const kornyezet = k.burok && !belso ? undefined : elKornyezet(r, polPt, futottRiK(a, k));
+                const csatl = belso ? csatlakozasok(r3, polPt) : undefined;
+                  const kornyezet = k.burok && !belso ? undefined : elKornyezet(r3, polPt, futottRiK(a, k));
                 const ny = burokNyilasokPt(a, k, pol.length ? polPt : []).map((n) => { const [x, y] = m(n.x, n.y); return { x, y, szel: n.szel, mag: n.mag, pm: n.pm ?? 0 }; });
                 const szk = lapSzintek(i).length ? lapSzintek(i) : ['F'];
                 for (const sz0 of szk) {

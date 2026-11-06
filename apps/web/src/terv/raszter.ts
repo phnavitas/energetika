@@ -8,6 +8,8 @@ import { tintaFal, type TintaKep } from './tinta';
 import { falVektor } from './falvektor';
 
 export interface RaszterBeallitas {
+  /** vektoros falfelismerés (párhuzamos falsíkpár + metszeti jel) a korábbi fal helyett/mellett */
+  vektorFal?: boolean;
   /** Pixelméret méterben. */
   px?: number;
   /** A falmetszet legnagyobb vastagsága (m) – ennél vastagabb kitöltés nem fal (burkolat, terep). */
@@ -480,7 +482,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
     }
   }
   // vektoros falfelismerés (párhuzamos falsíkpár + metszeti jel): ha bekapcsolt, ez adja a falat és a nyílásokat
-  const vek = (b as { vektorFal?: boolean }).vektorFal ?? !!(globalThis as { VEKTORFAL?: boolean }).VEKTORFAL;
+  const vek = b.vektorFal ?? !!(globalThis as { VEKTORFAL?: boolean }).VEKTORFAL;
   let vekNyilas: [number, number][][] = []; let vekAktiv = false;
   if (vek) {
     const v = falVektor(lap, mPerPt, [x0, y0, x1, y1]);

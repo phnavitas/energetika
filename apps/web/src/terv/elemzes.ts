@@ -177,6 +177,8 @@ export interface AlaprajzFeldolgozas {
   /** A raszter magjai: a pecséttel rendelkező, nem külső terű helyiségek (a raszter-indexek ehhez igazodnak). */
   magHelyisegek: TervHelyiseg[];
   r: Raszter | null;
+  /** A 3D modellhez és a burokhoz: a vektoros falfelismerés raszterje (azonos helyiség-indexekkel), ha jobban illik. */
+  r3d?: Raszter;
   nyilasok: TervNyilas[];
   /** Falhoz nem rendelt nyílásfeliratok (méret, mellvéd, hely). */
   arvaFeliratok?: NyilasFelirat[];
@@ -263,7 +265,7 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
   if (!e.mPerPt || !magHelyisegek.length) return { e, magHelyisegek, r: null, nyilasok: [] };
   const kulsoPontok = e.helyisegek.filter((h) => h.kulter && h.forras === 'pecset').map((h) => h.mutato ?? h);
   const magok = magHelyisegek.map((h) => ({ ...(h.mutato ?? h), A: h.A }));
-  let r: Raszter;
+  let r: Raszter; let r3d: Raszter | undefined; let r3dP = 0;
   if (auto) {
     // pecsét nélküli lap: a zárt terekből indított elárasztás. Az a „helyiség”, amely a végső raszterben a lap széléig
     // kifolyik, vagy a zárt térként mért területének többszörösére nő (a rajz körüli méretlánc-zseb, keretmező),
@@ -289,6 +291,7 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
     const kapuk = nyilasFeliratok(lap.szovegek, lap.utvonalak).filter((f) => f.kapuJelolt && f.szel >= 2.5).map((f) => ({ x: f.x, y: f.y, szel: f.szel, fal: f.fal }));
     const alap = { ...(kulsoPontok.length ? { kulsoPontok } : {}), ...(kapuk.length ? { kapuk } : {}) };
     const valtozatok: RaszterBeallitas[] = [alap, { ...alap, ablaksor: false }, ...(tinta ? [{ ...alap, tinta }, { ...alap, tinta, ablaksor: false }] : [])];
+    const vektoros: RaszterBeallitas[] = [{ ...alap, vektorFal: true }, ...(tinta ? [{ ...alap, tinta, vektorFal: true }] : [])];
     let leg: { r: Raszter; p: number } | null = null; let legBeall: RaszterBeallitas | null = null;
     for (const v of valtozatok) {
       const rv = raszterEpit(lap, e.mPerPt, magok, v);
@@ -297,6 +300,14 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
       if (!leg || p > leg.p + 0.03) { leg = { r: rv, p }; legBeall = v; }
     }
     r = leg!.r;
+    // vektoros falfelismerés (párhuzamos falsíkpár + metszeti jel) csak a 3D modellhez és a burokhoz: akkor, ha a
+    // helyiségek kiterjedése vele egyértelműen (≥ 3 százalékpont) jobban illik a pecsétterülethez. A helyiségek és a
+    // nyílászárók a fenti raszterből jönnek (ott a korábbi felismerés pontosabb).
+    for (const v of vektoros) {
+      const rv = raszterEpit(lap, e.mPerPt, magok, v);
+      const p = pecsetEgyezes(rv, magHelyisegek);
+      if (p > leg!.p + 0.03 && (!r3d || p > r3dP)) { r3d = rv; r3dP = p; }
+    }
     // a pecsét helyén nincs helyiség (kívül írt, szaggatott mutatóvonallal kötött pecsét): a mutatóvonal végével újra
     const tartalek = magHelyisegek.map((h, i) => (h.mutatoTartalek && !h.mutato && (r.helyisegek[i]?.A ?? 0) < 0.3 * h.A ? i : -1)).filter((i) => i >= 0);
     if (tartalek.length) {
@@ -364,7 +375,7 @@ export function alaprajzFeldolgoz(lap: Lap, meretarany?: number, szurke?: Szurke
   }
   // falhoz nem rendelt nyílásfeliratok (pl. a raszterben nem lezárt, üvegfalas helyiség homlokzatán): a szerkesztett hőburok használja
   const arva = feliratok.filter((f) => !nyilasok.some((n) => Math.hypot(n.x - f.x, n.y - f.y) < 2));
-  return { e, magHelyisegek, r, nyilasok, auto, arvaFeliratok: arva, ...(leiras ? { leiras } : {}) };
+  return { e, magHelyisegek, r, ...(r3d ? { r3d } : {}), nyilasok, auto, arvaFeliratok: arva, ...(leiras ? { leiras } : {}) };
 }
 
 export interface MetszetFeldolgozas {
