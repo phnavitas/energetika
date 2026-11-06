@@ -28,6 +28,8 @@ export interface AtvettNyilas {
   szel: number; mag: number; pm: number | null;
   /** Index az `helyisegek` tömbben. */
   helyiseg: number; irany: number;
+  /** A tájolás becsült (ellenőrizendő). */
+  iranyTipp?: boolean;
   /** Fűtetlen (gyengén kapcsolt) helyiség felé nyíló ajtó: annak a neve (a „Fal – … felé” felületből vonódik le). */
   fele?: string;
 }
@@ -382,7 +384,7 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
       if (t) tipusok.set(k, t);
     }
     if (!t) { t = nyilaszaroTipus(p, ny); tipusok.set(k, t); p.nyilaszarok.push(t); }
-    const ck = `${ny.helyiseg}|${ny.irany}|${k}|${ny.fele ?? ''}`;
+    const ck = `${ny.helyiseg}|${ny.irany}|${k}|${ny.fele ?? ''}|${ny.iranyTipp ? 't' : ''}`;
     const c = csoport.get(ck); if (c) c.db++; else csoport.set(ck, { ny, db: 1, tipus: t });
   }
   for (const { ny, db, tipus } of csoport.values()) {
@@ -391,6 +393,7 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
     const ff = ny.fele ? futFel[ny.fele] : undefined;
     p.feluletek.push({
       id: ujId(), nev: `${h ? h.nev : ''} – ${tipus.nev.split(' – ')[0]}${ny.fele ? ` (${ny.fele} felé)` : ''}`, helyisegId: helyIdk[ny.helyiseg], fajta: 'nyilaszaro', nyilaszaroId: tipus.id,
+      ...(ny.iranyTipp && !ny.fele ? { tajolasTipp: true } : {}),
       hatar: ny.fele ? ff?.hatar ?? (/garázs|garazs/i.test(ny.fele) ? 'garazs' : 'futetlen_helyiseg') : 'kulso', darab: db * n, tajolas: ny.fele ? null : t, hajlasszog: 90, szuloId: ny.fele ? ff?.id : falFel[ny.irany],
       ...(szintek.some(Boolean) ? { szintek: szintek.filter(Boolean).map((sz) => szintNev(sz)) } : {}),
     });

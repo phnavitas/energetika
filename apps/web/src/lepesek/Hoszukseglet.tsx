@@ -11,6 +11,8 @@ const NYILAS_NEV: Record<H.NyilasSzam, string> = { tobb: 'Több homlokzaton', eg
 export function HoszuksegletLepes({ p, modosit }: { p: Projekt; modosit: Modosit }) {
   const be = { ...HSZ_ALAP, ...p.hoszukseglet };
   const [nyitott, setNyitott] = useState<string | null>(null);
+  /** Több lakás (egység): lakásonként összevont sor, kattintásra a helyiségei nyílnak le. */
+  const [nyitottCs, setNyitottCs] = useState<Set<string>>(new Set());
   const { eredmeny, hibak, osszevetes } = useMemo(() => {
     const b = hoszuksegletBemenet(p);
     return { eredmeny: H.helyisegHoszukseglet(b.bemenet), hibak: b.hibak, osszevetes: b.osszevetes };
@@ -64,13 +66,23 @@ export function HoszuksegletLepes({ p, modosit }: { p: Projekt; modosit: Modosit
         <h2>Helyiségek</h2>
         <p class="halk">A külső falak hossza a tervből vagy a helyiség Részleteinél adható meg; jelöld, ha a helyiség padlás alatt vagy talajon fekszik. A nyílászárók a Határolás lépésből jönnek (ahol helyiséghez vannak rendelve), és levonódnak a falból.</p>
         {!falak.length && <div class="figyelmeztetes" style="margin-bottom:12px">Nincs homlokzati fal rétegrend. Előbb vegyél fel egyet a Rétegrendek lépésben.</div>}
+        {new Set(futott.map((h) => h.egyseg).filter(Boolean)).size >= 2 && (
+          <div style="display:flex;gap:8px;margin-bottom:8px">
+            <button class="gomb halk-gomb semleges" onClick={() => setNyitottCs(new Set(futott.map((h) => h.egyseg ?? '')))}>Mindent kinyit</button>
+            <button class="gomb halk-gomb semleges" onClick={() => { setNyitottCs(new Set()); setNyitott(null); }}>Mindent összecsuk</button>
+          </div>
+        )}
         <div class="tabla-gorgeto">
           <table class="tabla hsz-tabla">
             <thead>
               <tr><th>Helyiség</th><th class="szam" title="Belső méretezési hőmérséklet">Belső hőm.</th><th class="szam" title="A helyiséghez rendelt külső falszakaszok nettó hossza (a tervből vagy a Részletekben)">Külső fal</th><th>Padlás / tető</th><th>Talaj</th><th class="szam" title="Transzmissziós hőveszteség">Transzm.</th><th class="szam" title="Szellőzési hőveszteség">Szellőz.</th><th class="szam">Hőszükséglet{be.napLevon ? <br /> : ''}{be.napLevon ? <span class="halkabb">napnyereséggel</span> : ''}</th><th class="szam">W/m²</th><th class="szam" title="A helyiség nyílászáróinak passzív szoláris nyeresége: fűtési idényre (kWh) és januári átlagteljesítményként (W)">Napnyereség<br /><span class="halkabb">idény / jan. átl.</span></th><th></th></tr>
             </thead>
             <tbody>
-              {futott.map((h) => {
+              {(() => {
+                // lakásonként (egységenként) csoportosítva, ha legalább két egység van
+                const cs = [...new Set(futott.map((h) => h.egyseg ?? ''))].sort((a, b) => (a ? 0 : 1) - (b ? 0 : 1) || a.localeCompare(b, 'hu', { numeric: true }));
+                const csoportos = cs.filter(Boolean).length >= 2;
+                const sor = (h: Helyiseg) => {
                 const hz = h.hsz ?? hszUres();
                 const r = eredmeny.helyisegek.find((x) => x.id === h.id);
                 const alap = hszAlapertek(h.nev, { ...HSZ_ALAP, ...p.hoszukseglet }.csoportTheta);
@@ -101,7 +113,30 @@ export function HoszuksegletLepes({ p, modosit }: { p: Projekt; modosit: Modosit
                     )}
                   </>
                 );
-              })}
+                };
+                if (!csoportos) return futott.map(sor);
+                return cs.map((c) => {
+                  const tagok = futott.filter((h) => (h.egyseg ?? '') === c);
+                  const rs = tagok.map((h) => eredmeny.helyisegek.find((x) => x.id === h.id));
+                  const A = tagok.reduce((t, h) => t + h.A, 0), T = rs.reduce((t, r) => t + (r?.PhiT ?? 0), 0), V = rs.reduce((t, r) => t + (r?.PhiV ?? 0), 0);
+                  const HL = tagok.reduce((t, h) => t + (netto(h.id, eredmeny.helyisegek.find((x) => x.id === h.id)?.PhiHL) ?? 0), 0);
+                  const fal = tagok.reduce((t, h) => t + (h.hsz?.kulsoFalak ?? []).reduce((q, x) => q + x.hossz, 0), 0);
+                  const ny = nyitottCs.has(c);
+                  const valt = () => setNyitottCs((x) => { const y = new Set(x); if (y.has(c)) y.delete(c); else y.add(c); return y; });
+                  return (
+                    <>
+                      <tr class="csoport-fej" style="cursor:pointer" onClick={valt}>
+                        <td style="white-space:nowrap"><button class="link-gomb" aria-expanded={ny} onClick={(e) => { e.stopPropagation(); valt(); }}><strong>{ny ? '▾' : '▸'} {c || 'Egység nélkül'}</strong></button><small class="halkabb" style="display:block">{tagok.length} helyiség · {sz(A, 1)} m²</small></td>
+                        <td /><td class="szam">{fal > 0 ? `${sz(fal, 2)} m` : '–'}</td><td /><td />
+                        <td class="szam">{sz(T, 0)}</td><td class="szam">{sz(V, 0)}</td>
+                        <td class="szam hsz-oszlop"><span class="hsz-sav" style={`width:${Math.min(100, (HL / Math.max(1, ...cs.map((c2) => futott.filter((h) => (h.egyseg ?? '') === c2).reduce((t, h) => t + (netto(h.id, eredmeny.helyisegek.find((x) => x.id === h.id)?.PhiHL) ?? 0), 0)))) * 100)}%`} aria-hidden="true" /><strong>{sz(HL, 0)} W</strong></td>
+                        <td class="szam">{sz(A > 0 ? HL / A : 0, 0)}</td><td /><td />
+                      </tr>
+                      {ny && tagok.map(sor)}
+                    </>
+                  );
+                });
+              })()}
             </tbody>
             <tfoot>
               <tr><td>Összesen</td><td /><td class="szam">{sz(futott.reduce((a, h) => a + (h.hsz?.kulsoFalak ?? []).reduce((b, x) => b + x.hossz, 0), 0), 2)} m</td><td class="szam">{sz(osszevetes.padlasHelyisegek, 1)} m²</td><td class="szam">{sz(osszevetes.padloHelyisegek, 1)} m²</td>

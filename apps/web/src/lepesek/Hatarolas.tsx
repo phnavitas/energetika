@@ -190,7 +190,7 @@ export function HatarolasLepes({ p, modosit, eredmeny }: { p: Projekt; modosit: 
                         setNyJelzes(null); darabOsszes([...ids], uj);
                       }} /></span>
                       : <span class="szam" style="display:block;text-align:right" title="A helyiségenkénti darabszám a kibontott sorokban módosítható">{sz(db, Number.isInteger(db) ? 0 : 1)}</span>}</td>
-                    <td style="min-width:84px"><Valaszto cimke="Tájolás" ertek={f.tajolas ?? undefined} valt={(v) => fvCs((x) => { x.tajolas = v; })} opciok={TAJOLASOK} /></td>
+                    <td style="min-width:84px"><Valaszto cimke="Tájolás" ertek={f.tajolas ?? undefined} valt={(v) => fvCs((x) => { x.tajolas = v; delete x.tajolasTipp; })} opciok={TAJOLASOK} />{tagok.some((x) => x.tajolasTipp) && <small class="jel" style="display:inline-block;margin-top:2px;background:#FEF3C7;color:#92400E" title="Tervből: a nyílás nem volt egyértelműen falhoz köthető, a tájolás becsült – ellenőrizd (módosításkor a jelölés eltűnik).">becsült tájolás</small>}</td>
                     <td style="min-width:124px"><Valaszto cimke="Dőlés" ertek={String(f.hajlasszog ?? 90)} valt={(v) => fvCs((x) => { x.hajlasszog = Number(v) as Felulet['hajlasszog']; })} opciok={HAJLAS} /></td>
                     <td style="min-width:120px"><Valaszto cimke="Szülő fal" ertek={f.szuloId} ures="Nincs levonás" valt={(v) => fvCs((x) => { x.szuloId = v || undefined; })} opciok={opak.map((o) => ({ ertek: o.id, nev: o.nev }))} /></td>
                     <td class="halkabb" style="min-width:90px">{helyek.length === 1 ? helyek[0] : helyek.length ? `${helyek.length} helyiség` : '–'}</td>

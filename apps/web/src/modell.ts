@@ -106,6 +106,8 @@ export interface Felulet {
   /** Tervből: a darabszám mely szintekre oszlik (azonos szintek együtt beolvasva) – csoportosításhoz, szűréshez. */
   szintek?: string[];
   tajolas?: Tajolas | null;
+  /** Tervből: a tájolás becsült (a nyílás nem köthető egyértelműen falhoz) – ellenőrizendő. */
+  tajolasTipp?: boolean;
   hajlasszog?: 0 | Hajlasszog;
   /** Opak felület méretből: határoló hossz × magasság (a bruttó felület A ebből adódik). */
   meret?: { hossz: number; magassag: number };

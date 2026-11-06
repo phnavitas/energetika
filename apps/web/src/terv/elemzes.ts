@@ -472,7 +472,7 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
       if (hi < 0) continue;
       const fajta: TervNyilas['fajta'] = f.pm !== null && f.pm > 0.05 ? 'ablak' : f.mag >= 1.9 ? 'erkelyajto' : 'ablak';
       const i0 = nyilasok.indexOf(f as TervNyilas);
-      const n: TervNyilas = { ...f, helyiseg: hi, irany: ir, kulso: true, fajta };
+      const n: TervNyilas = { ...f, helyiseg: hi, irany: ir, kulso: true, fajta, iranyTipp: true };
       // falfülke (ill. a lapon falfülkének talált azonos méretű felirat): nem nyílás
       if (falfulkeE(n, r, lap) || nyilasok.some((m) => m.fajta === 'falfulke' && Math.abs(m.szel - f.szel) < 0.01 && Math.abs(m.mag - f.mag) < 0.01 && m.pm === f.pm)) continue;
       if (i0 >= 0) nyilasok[i0] = n; else nyilasok.push(n);

@@ -446,6 +446,9 @@ export interface TetoterAdat {
   hajlas: number;
   /** A térdfal magassága a tetőtéri padlótól (m), ha a metszeten „térdfal” felirat mellett szintjel áll. */
   terdfal: number | null;
+  /** Térdfal-felirat híján becslés: a tetőtéri padló feletti 0,3–2,0 m-es, legalább kétszer azonos magasságban (egy
+   * vonalban) kiírt szintjel – jellemzően az eresz / koszorú szintje. Csak javaslat (az átvételkor rákérdezünk). */
+  terdfalTipp?: number | null;
   /** A tetőtér belmagassága (kész padló – kalapfödém alsó síkja), ha megállapítható. */
   belmagassag: number | null;
   /** A tetőtéri kész padló szintje (m, ±0,00-hoz). */
@@ -480,5 +483,15 @@ export function tetoterKeres(sz: Szoveg[], szintek: SzintEredmeny): TetoterAdat 
     }
     if (db.size) terdfal = [...db.entries()].sort((a, b) => b[1] - a[1])[0]![0];
   }
-  return { hajlas, terdfal, belmagassag, padlo: z0 ?? null };
+  let terdfalTipp: number | null = null;
+  if (z0 !== undefined && terdfal === null) {
+    const gy = new Map<number, number>();
+    for (const j of jelek) {
+      const h = Math.round((j.v - z0) * 100) / 100; if (h < 0.3 || h > 2.0) continue;
+      // ugyanaz az érték legalább két helyen, közel azonos sorban (a metszet két homlokzati falánál)
+      if (jelek.some((q) => q !== j && q.v === j.v && Math.abs(q.y - j.y) < 3 && Math.abs(q.x - j.x) > 20)) gy.set(h, (gy.get(h) ?? 0) + 1);
+    }
+    if (gy.size) terdfalTipp = [...gy.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]![0];
+  }
+  return { hajlas, terdfal, terdfalTipp, belmagassag, padlo: z0 ?? null };
 }
