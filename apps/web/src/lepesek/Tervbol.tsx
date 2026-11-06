@@ -50,6 +50,28 @@ const SZEREPEK: { ertek: Szerep; nev: string; szin: string }[] = [
   { ertek: 'kulter', nev: 'Kültér', szin: '#22C55E' },
 ];
 const SZEREP_SZIN = Object.fromEntries(SZEREPEK.map((x) => [x.ertek, x.szin])) as Record<Szerep, string>;
+/**
+ * A rajzon helyiségként fel nem ismert terület (a kattintott ponttól elárasztva, fal és nyílás nélkül) melletti, bizonytalan
+ * túloldalú falszakaszok kulcsai („raszterindex|szakaszindex”) – ezek jelölhetők külső falnak (a terület kültér).
+ */
+function teruletKulcsok(r: Raszter, cx: number, cy: number): string[] {
+  const { w, h } = r; const T = new Uint8Array(w * h); const sor = [cy * w + cx]; T[sor[0]!] = 1;
+  for (let k = 0; k < sor.length && sor.length < 600000; k++) {
+    const q = sor[k]!, x = q % w;
+    for (const n of [x > 0 ? q - 1 : -1, x < w - 1 ? q + 1 : -1, q - w, q + w]) if (n >= 0 && n < w * h && !T[n] && r.cimke[n] === 0 && !r.fal[n] && !r.nyilas[n]) { T[n] = 1; sor.push(n); }
+  }
+  // a terület 0,8 m-rel tágítva (a fal vastagságán át a helyiség felőli szakaszpontokig)
+  const R = Math.max(1, Math.round(0.8 / r.px)); const A = new Uint8Array(w * h), B = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) { let utolso = -1e9; for (let x = 0; x < w; x++) { if (T[y * w + x]) utolso = x; if (x - utolso <= R) A[y * w + x] = 1; } utolso = 1e9; for (let x = w - 1; x >= 0; x--) { if (T[y * w + x]) utolso = x; if (utolso - x <= R) A[y * w + x] = 1; } }
+  for (let x = 0; x < w; x++) { let utolso = -1e9; for (let y = 0; y < h; y++) { if (A[y * w + x]) utolso = y; if (y - utolso <= R) B[y * w + x] = 1; } utolso = 1e9; for (let y = h - 1; y >= 0; y--) { if (A[y * w + x]) utolso = y; if (utolso - y <= R) B[y * w + x] = 1; } }
+  const ptPx = r.mPerPt / r.px; const ki: string[] = [];
+  r.helyisegek.forEach((H, ri) => H.szakaszok.forEach((sg, j) => {
+    if (sg.tul !== 'ismeretlen' || sg.hossz < 0.3) return;
+    const be = sg.pontok.filter(([x, y]) => { const gx = Math.floor((x - r.x0) * ptPx), gy = Math.floor((y - r.y0) * ptPx); return gx >= 0 && gy >= 0 && gx < w && gy < h && B[gy * w + gx]; }).length;
+    if (be >= Math.max(1, 0.5 * sg.pontok.length)) ki.push(`${ri}|${j}`);
+  }));
+  return ki;
+}
 /** A kültérnek jelölt helyiségek raszterindexei (a feléjük eső fal külső fal). */
 function kulterRaszter(al: AlaprajzFeldolgozas, k: Kijeloles): Set<number> {
   const ki = new Set<number>();
@@ -488,7 +510,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     return { ...k, kizartH: kizart, kulterH: kulter, kat: kt };
   });
   /** A rajzon kattintással megnyitott besorolás-menü (a rajz-konténerhez viszonyított helyen). */
-  const [menu, setMenu] = useState<{ i: number; x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<{ i: number; x: number; y: number; kulcsok?: string[] } | null>(null);
   useEffect(() => setMenu(null), [aIdx]);
   // hőburok-körvonal: a felismert (fűtött helyiségek összevonva), vagy a felhasználó által szerkesztett
   const futottKulcs = al ? [...futottRiK(al, kj)].sort((a, b) => a - b).join(',') : '';
@@ -1170,7 +1192,17 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             })()
             ) : (
             <div class="kartya" style="padding:0;overflow:auto;max-height:80vh;position:relative">
-              {menu && helyisegek[menu.i] && (
+              {menu && menu.i === -1 && menu.kulcsok && (
+                <div role="menu" aria-label="Fel nem ismert terület besorolása" style={`position:absolute;left:${Math.max(4, menu.x + 8)}px;top:${menu.y + 8}px;z-index:5;background:#fff;border:1px solid #D1D5DB;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.18);padding:6px;min-width:260px`} onClick={(e) => e.stopPropagation()}>
+                  <div style="font-weight:700;padding:4px 8px 6px">Helyiségként fel nem ismert terület <span class="halkabb" style="font-weight:400;display:block">{menu.kulcsok.length} bizonytalan falszakasz mellette</span></div>
+                  {([['kulter', 'Kültér – a mellette lévő falak külső falak', '#22C55E', true], ['nem', 'Fűtött / szomszéd tér – nem hőátadó fal', '#9CA3AF', false]] as const).map(([k0, nev, szin, be]) => {
+                    const aktiv = be === menu.kulcsok!.every((kk) => kj.ismKulso?.has(kk));
+                    return <button role="menuitemradio" aria-checked={aktiv} class="link-gomb" key={k0} style={`display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:6px 8px;border-radius:6px;${aktiv ? 'background:#F3F4F6;font-weight:700' : ''}`}
+                      onClick={() => { setIsmKulso(menu.kulcsok!, be); setMenu(null); }}><span style={`display:inline-block;width:14px;height:14px;border-radius:3px;background:${szin}`} /> {nev}</button>;
+                  })}
+                </div>
+              )}
+              {menu && menu.i >= 0 && helyisegek[menu.i] && (
                 <div role="menu" aria-label={`${helyisegek[menu.i]!.nev} besorolása`} style={`position:absolute;left:${Math.max(4, menu.x + 8)}px;top:${menu.y + 8}px;z-index:5;background:#fff;border:1px solid #D1D5DB;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.18);padding:6px;min-width:230px`} onClick={(e) => e.stopPropagation()}>
                   <div style="font-weight:700;padding:4px 8px 6px">{helyisegek[menu.i]!.kod ? `${helyisegek[menu.i]!.kod} ` : ''}{helyisegek[menu.i]!.nev} <span class="halkabb" style="font-weight:400">· {sz(helyisegek[menu.i]!.A)} m²</span></div>
                   {SZEREPEK.map((o) => (
@@ -1198,10 +1230,17 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                     const c = cx >= 0 && cy >= 0 && cx < r.w && cy < r.h ? r.cimke[cy * r.w + cx]! : 0;
                     const i = c >= 2 ? helyisegek.indexOf(al.magHelyisegek[c - 2]!) : -1;
                     setKivH(i >= 0 && i !== kivH ? i : null);
-                    // besorolás-menü a kattintás helyén (a rajz-konténerhez viszonyítva)
+                    // besorolás-menü a kattintás helyén (a rajz-konténerhez viszonyítva); a lap nem görgetődik
                     const kont = (svg.parentElement as HTMLElement | null); const kr = kont?.getBoundingClientRect();
-                    setMenu(i >= 0 && kont && kr ? { i, x: e.clientX - kr.left + kont.scrollLeft, y: e.clientY - kr.top + kont.scrollTop } : null);
-                    if (i >= 0) setTimeout(() => document.getElementById(`hs-sor-${i}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 30);
+                    const hely = kont && kr ? { x: e.clientX - kr.left + kont.scrollLeft, y: e.clientY - kr.top + kont.scrollTop } : null;
+                    if (i >= 0 && hely) setMenu({ i, ...hely });
+                    // helyiségként fel nem ismert, zárt (vagy félig zárt) terület: a mellette lévő bizonytalan falak külső falként
+                    else if (c === 0 && hely && cx >= 0 && cy >= 0 && cx < r.w && cy < r.h && !r.fal[cy * r.w + cx]) {
+                      const kulcsok = teruletKulcsok(r, cx, cy);
+                      setMenu(kulcsok.length ? { i: -1, kulcsok, ...hely } : null);
+                    } else setMenu(null);
+                    // a helyiséglista sora kiemelve; csak a lista saját görgetősávja mozdul (a lap nem ugrik)
+                    if (i >= 0) setTimeout(() => { const sor = document.getElementById(`hs-sor-${i}`); const g = sor?.closest('.tabla-gorgeto') as HTMLElement | null; if (sor && g && g.scrollHeight > g.clientHeight) g.scrollTop = Math.max(0, sor.offsetTop - g.clientHeight / 2); }, 30);
                     return;
                   }
                   const p0 = rajzol[0];
