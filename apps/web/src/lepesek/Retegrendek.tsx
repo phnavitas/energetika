@@ -173,8 +173,8 @@ function Szerkeszto({ r, m, kijelolt, jelol, torol }: { r: Retegrend; m: (fn: (r
               return (
                 <tr style={rHiba ? 'box-shadow:inset 3px 0 0 var(--hiba)' : kijelolt === x.id ? 'background:var(--kijelolt)' : ''} onFocusIn={() => jelol(x.id)} {...huzasProps(`reteg-${r.id}`, x.id, retegAthelyez)}>
                   <td style="white-space:nowrap"><Fogantyu cimke={`${i + 1}. réteg`} fel={() => i > 0 && retegAthelyez(x.id, r.retegek[i - 1]!.id)} le={() => i < r.retegek.length - 1 && retegAthelyez(x.id, r.retegek[i + 1]!.id)} /> {i + 1}</td>
-                  <td style="min-width:240px">
-                    <select aria-label={`${i + 1}. réteg anyaga`} value={x.anyagId ?? (x.R !== undefined ? '_r' : x.legreteg ? '_leg' : '_sajat')} onChange={(e) => {
+                  <td style="min-width:300px;width:40%">
+                    <select aria-label={`${i + 1}. réteg anyaga`} title={a?.nev ?? x.nev ?? ''} style="width:100%;max-width:none" value={x.anyagId ?? (x.R !== undefined ? '_r' : x.legreteg ? '_leg' : '_sajat')} onChange={(e) => {
                       const v = (e.target as HTMLSelectElement).value;
                       m((q) => {
                         const t = q.retegek[i]!;
@@ -239,7 +239,7 @@ function Szerkeszto({ r, m, kijelolt, jelol, torol }: { r: Retegrend; m: (fn: (r
                       })()}
                   </td>
                   <td class="szam">{R !== undefined ? sz(R, 3) : '–'}</td>
-                  <td style="width:96px" title={muAlap(x).forras}><Szam cimke="Páradiffúziós ellenállási szám" ertek={muAlap(x).mu} valt={(v) => m((q) => { q.retegek[i]!.mu = v > 0 ? v : undefined; })} /></td>
+                  <td style="width:96px;min-width:80px" title={muAlap(x).forras}><Szam cimke="Páradiffúziós ellenállási szám" ertek={muAlap(x).mu} valt={(v) => m((q) => { q.retegek[i]!.mu = v > 0 ? v : undefined; })} /></td>
                   <td style="white-space:nowrap">
                     <button class="gomb halk-gomb" onClick={() => m((q) => { q.retegek.splice(i, 1); })}>Törlés</button>
                   </td>
