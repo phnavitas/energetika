@@ -550,12 +550,25 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const [burokVazlat, setBurokVazlat] = useState<Poligon[] | null>(null);
   const [burokSzerk, setBurokSzerk] = useState(false);
   const [huz, setHuz] = useState<{ p: number; v: number } | null>(null);
+  /** Húzás végén egy másik pontra ejtett pont: összevonás kérdése (a mentés a válaszig vár). */
+  const [osszevon, setOsszevon] = useState<{ b: Poligon[]; p: number; v: number; w: number } | null>(null);
   /** Kézi hőburok-rajzolás: a lerakott pontok (pt); null: nincs rajzolás. */
   const [rajzol, setRajzol] = useState<[number, number][] | null>(null);
-  const burok = burokVazlat ?? kj.burok ?? burokFelismert;
+  const burok = burokVazlat ?? osszevon?.b ?? kj.burok ?? burokFelismert;
   // a körvonal élei a valódi falsávhoz illesztve: belső sík, hossz, vastagság (a rajzolt / felismert vonal csak irány)
   const burokMert = useMemo(() => (al?.r && !burokVazlat ? burokMeres(al.r, burok) : []), [al, burok, burokVazlat]);
   const burokMent = (b: Poligon[] | undefined) => kjMod((k) => { const u = { ...k }; if (b) u.burok = b; else delete u.burok; return u; });
+  // húzás vége: ha a pont egy másik pontra került (fogási távolságon belül), kérdés: összevonjuk-e a kettőt
+  const huzVege = () => {
+    if (!huz) return;
+    const b = burokVazlat;
+    setBurokVazlat(null); setHuz(null);
+    if (!b) return;
+    const q = b[huz.p]!; const [x, y] = q[huz.v]!;
+    const w = q.findIndex(([x2, y2], j) => j !== huz.v && Math.hypot(x2 - x, y2 - y) < 9 * fogo);
+    if (w >= 0 && q.length > 3) { setOsszevon({ b, p: huz.p, v: huz.v, w }); return; }
+    burokMent(b);
+  };
   const nyilasok = (al ? burokNyilasok(al, kj) : []).map(({ n, kk }) => ({ n, k: kk }))
     .map(({ n, k }) => ({ n, k, hi: helyisegek.indexOf(al!.magHelyisegek[n.helyiseg!]!) }))
     .filter(({ hi }) => hi >= 0 && valasztott[hi]);
@@ -1276,6 +1289,13 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             })()
             ) : (
             <div class="kartya" style="padding:0;overflow:auto;max-height:80vh;position:relative">
+              {osszevon && (
+                <div role="alertdialog" aria-label="Pontok összevonása" style="position:sticky;top:8px;left:8px;z-index:6;display:inline-flex;gap:10px;align-items:center;margin:8px;background:#fff;border:1px solid #F97316;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.18);padding:8px 12px">
+                  <strong>Két pont egymáson – összevonjam?</strong>
+                  <button class="gomb" onClick={() => { const { b, p: pi, v } = osszevon; burokMent(b.map((z, zi) => (zi === pi ? z.filter((_, j) => j !== v) : z))); setOsszevon(null); }}>Igen, egyesítsd</button>
+                  <button class="gomb halk-gomb" onClick={() => { burokMent(osszevon.b); setOsszevon(null); }}>Nem</button>
+                </div>
+              )}
               {menu && menu.i === -1 && menu.kulcsok && (
                 <div role="menu" aria-label="Fel nem ismert terület besorolása" style={`position:absolute;left:${Math.max(4, menu.x + 8)}px;top:${menu.y + 8}px;z-index:5;background:#fff;border:1px solid #D1D5DB;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.18);padding:6px;min-width:260px`} onClick={(e) => e.stopPropagation()}>
                   <div style="font-weight:700;padding:4px 8px 6px">Helyiségként fel nem ismert terület <span class="halkabb" style="font-weight:400;display:block">{menu.kulcsok.length} bizonytalan falszakasz mellette</span></div>
@@ -1333,8 +1353,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   setRajzol([...rajzol, [Math.round(pt.x * 10) / 10, Math.round(pt.y * 10) / 10]]);
                 }}
                 onDblClick={() => { if (rajzol && rajzol.length >= 3) { burokMent([...(kj.burok ?? burokFelismert), rajzol]); setRajzol(null); } }}
-                onPointerUp={() => { if (huz) { if (burokVazlat) burokMent(burokVazlat); setBurokVazlat(null); setHuz(null); } }}
-                onPointerLeave={() => { if (huz) { if (burokVazlat) burokMent(burokVazlat); setBurokVazlat(null); setHuz(null); } }}>
+                onPointerUp={() => huzVege()}
+                onPointerLeave={() => huzVege()}>
                 <image href={aLap.kep} x={0} y={0} width={aLap.lap.szel} height={aLap.lap.mag} />
                 {al.r && (retegek.size > 0 || kivH !== null) && (() => {
                   const r = al.r; const W = r.w * r.px / r.mPerPt, H = r.h * r.px / r.mPerPt; const m = 1 / r.mPerPt;
@@ -1427,10 +1447,21 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                       </>;
                     })()}
                     {burokSzerk && q.map(([x, y], vi) => { const [x2, y2] = q[(vi + 1) % q.length]!; return (
-                      <rect x={(x + x2) / 2 - 5 * fogo} y={(y + y2) / 2 - 5 * fogo} width={10 * fogo} height={10 * fogo} fill="#fff" stroke="#F97316" stroke-width={2} vector-effect="non-scaling-stroke" style="cursor:copy"
-                        onPointerDown={(e) => { e.stopPropagation(); (e.currentTarget as SVGGraphicsElement).ownerSVGElement?.setPointerCapture?.(e.pointerId); const u = burok.map((z) => z.map((v) => [...v] as [number, number])); u[pi]!.splice(vi + 1, 0, [(x + x2) / 2, (y + y2) / 2]); setBurokVazlat(u); setHuz({ p: pi, v: vi + 1 }); }}>
-                        <title>Új pont beszúrása (húzd)</title>
-                      </rect>
+                      <line x1={x} y1={y} x2={x2} y2={y2} stroke="#F97316" stroke-opacity={0.001} stroke-width={16} vector-effect="non-scaling-stroke" style="cursor:copy"
+                        onPointerDown={(e) => {
+                          // élre kattintás: új pont a kattintás helyén (az élre vetítve); lenyomva tartva rögtön húzható
+                          e.stopPropagation();
+                          const svg = (e.currentTarget as SVGGraphicsElement).ownerSVGElement; const m = svg?.getScreenCTM(); if (!svg || !m) return;
+                          svg.setPointerCapture?.(e.pointerId);
+                          const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
+                          const dx = x2 - x, dy = y2 - y, L2 = dx * dx + dy * dy || 1;
+                          const t = Math.min(0.98, Math.max(0.02, ((pt.x - x) * dx + (pt.y - y) * dy) / L2));
+                          const u = burok.map((z) => z.map((v) => [...v] as [number, number]));
+                          u[pi]!.splice(vi + 1, 0, [Math.round((x + dx * t) * 10) / 10, Math.round((y + dy * t) * 10) / 10]);
+                          setBurokVazlat(u); setHuz({ p: pi, v: vi + 1 });
+                        }}>
+                        <title>Kattints az élre: új pont beszúrása (lenyomva tartva húzható)</title>
+                      </line>
                     ); })}
                     {burokSzerk && q.map(([x, y], vi) => (
                       <circle cx={x} cy={y} r={7 * fogo} fill="#F97316" stroke="#fff" stroke-width={2} vector-effect="non-scaling-stroke" style="cursor:move"

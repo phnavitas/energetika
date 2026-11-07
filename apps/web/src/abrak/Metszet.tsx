@@ -7,7 +7,8 @@
  * (padló, pincefödém) felül.
  *
  * Anyagjelölés: falazat 45°-os vonalkázás; beton kavicsjel; vasbeton kettős vonalkázás; szálas hőszigetelés egy hullám
- * a teljes rétegvastagságban (a réteg mentén futó hurkos vonal); hab hőszigetelés cikcakk a vastagságban; vakolat,
+ * a teljes rétegvastagságban (a szélein felváltva hurok, középen keresztező vonalak); EPS cikcakk a vastagságban, XPS
+ * kettős (kereszt) ferde vonalkázás; vakolat,
  * habarcs pontozás; fa évgyűrű-vonalak a réteg mentén; fólia, lemez vastag vonal; burkolat a rétegre merőleges osztás;
  * talaj, feltöltés ferde vonalkázás ponttal; légréteg üres.
  */
@@ -33,6 +34,9 @@ function Mintak() {
       <pattern id="p-vakolat" width="5" height="5" patternUnits="userSpaceOnUse">
         <circle cx="1.5" cy="1.5" r="0.55" fill={s} /><circle cx="4" cy="3.8" r="0.45" fill={s} />
       </pattern>
+      <pattern id="p-xps" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <line x1="0" y1="0" x2="0" y2="9" stroke={s} stroke-width="0.8" /><line x1="0" y1="0" x2="9" y2="0" stroke={s} stroke-width="0.8" />
+      </pattern>
       <pattern id="p-talaj" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
         <line x1="0" y1="0" x2="0" y2="12" stroke={s} stroke-width="0.8" /><circle cx="6" cy="6" r="0.7" fill={s} />
       </pattern>
@@ -56,20 +60,30 @@ type Tegl = { x: number; y: number; w: number; h: number };
  * A réteg irányához igazodó jelölés útvonala (szálas / hab hőszigetelés, fa, burkolat), null: mintával töltött réteg.
  * `fugg`: a réteg függőleges (fal) – a réteg hossza függőleges, a vastagsága vízszintes.
  */
-export function retegJel(sraff: Sraffozas, t: Tegl, fugg: boolean): string | null {
+export function retegJel(sraff: Sraffozas | 'xps', t: Tegl, fugg: boolean): string | null {
   // helyi koordináták: u a réteg mentén, v a vastagságban
   const L = fugg ? t.h : t.w, D = fugg ? t.w : t.h;
   const pt = (u: number, v: number) => (fugg ? `${(t.x + v).toFixed(1)} ${(t.y + u).toFixed(1)}` : `${(t.x + u).toFixed(1)} ${(t.y + D - v).toFixed(1)}`);
   if (D < 3) return null;
   if (sraff === 'hoszigeteles_szalas') {
-    // egy hullám a teljes vastagságban: hurkos (Schlangenlinie) vonal, a félhullám ≈ a vastagság fele
-    const fel = Math.max(3, Math.min(D * 0.55, 90)), m = D / 2, a = D * 0.46;
-    let p = `M ${pt(0, m)}`;
-    for (let u = 0, k = 0; u < L; u += fel, k++) {
-      const s = k % 2 === 0 ? 1 : -1, u1 = u + fel;
-      p += ` C ${pt(u, m + s * a * 1.33)} ${pt(u1, m + s * a * 1.33)} ${pt(u1, m)}`;
+    // szálas hőszigetelés (DIN 1356-1 / MSZ): a két szélen felváltva körívek (csepp alak); egy csepp két nyakából a
+    // vonalak a szemközti oldal szomszédos cseppjeihez futnak, a csepp előtt keresztezve egymást – egy hullám a teljes
+    // vastagságban
+    const R = D * 0.21, s = D * 0.21, g = (62 * Math.PI) / 180;
+    let p = '';
+    for (let k = -1; (k - 1) * s < L + R; k++) {
+      const also = k % 2 === 0; const cu = k * s, cv = also ? R : D - R, be = also ? 1 : -1;
+      // belépés az előre néző nyakon, ív a szél felől, kilépés a hátra néző nyakon
+      const aBe = Math.atan2(be * Math.cos(g), Math.sin(g)), aKi = Math.atan2(be * Math.cos(g), -Math.sin(g)), aSzel = Math.atan2(-be, 0);
+      const n = (v: number) => ((v % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+      let d = n(aKi - aBe); if (!(n(aSzel - aBe) <= d)) d -= 2 * Math.PI;
+      for (let i = 0; i <= 20; i++) { const a = aBe + (d * i) / 20; p += `${p ? ' L' : 'M'} ${pt(cu + R * Math.cos(a), cv + R * Math.sin(a))}`; }
     }
     return p;
+  }
+  if (sraff === 'xps') {
+    // extrudált polisztirol: kettős (kereszt) ferde vonalkázás
+    return null;
   }
   if (sraff === 'hoszigeteles_hab') {
     // cikcakk a teljes vastagságban
@@ -172,11 +186,12 @@ export function Metszet(p: { r: Retegrend; thetaI?: number; thetaE?: number; kij
           const nev = a?.nev ?? x.nev ?? '';
           const vasbeton = a?.sraffozas === 'beton' && /vasbeton|vb\.|monolit/i.test(nev);
           const talaj = /kavics|homok|zúzott|talaj|feltöltés/i.test(nev);
+          const xps = /xps|extrud/i.test(nev);
           const sraff: Sraffozas = x.legreteg ? 'legreteg' : a?.sraffozas ?? (/gyapot|cellul|szálas/i.test(nev) ? 'hoszigeteles_szalas' : /szigetel|eps|xps|pir/i.test(nev) ? 'hoszigeteles_hab' : 'vakolat');
           const kij = p.kijelolt === x.id || hover === i;
           const t = sav(mely[i]!, mely[i + 1]!);
-          const jel = vasbeton || talaj ? null : retegJel(sraff, t, fugg);
-          const minta = vasbeton ? 'vasbeton' : talaj ? 'talaj' : sraff;
+          const jel = vasbeton || talaj || xps ? null : retegJel(sraff, t, fugg);
+          const minta = vasbeton ? 'vasbeton' : talaj ? 'talaj' : xps ? 'xps' : sraff;
           const vastagPx = fugg ? t.w : t.h;
           return (
             <g onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} onClick={() => p.jelol?.(x.id)} style="cursor:pointer">

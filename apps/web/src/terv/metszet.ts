@@ -440,7 +440,15 @@ export function anyagKepez(leiras: string, dCm: number | null, szerep: Szerep | 
   if (/stroprock/.test(n)) return { anyagId: 'rw_stroprock_g' };
   if (/\bpir\b|poliizocianur/.test(n)) return { anyagId: /kingspan|therma/.test(n) ? 'kingspan_tr26' : 'bauder_pir_fa' };
   // Austrotherm AT-N100 / ATN 100 / AT-N150…: lépésálló EPS
-  if (/\bat-?n ?(\d{3})\b/.test(n)) { const v = /\bat-?n ?(\d{3})\b/.exec(n)![1]; return { anyagId: v === '150' ? 'at_n150' : v === '200' ? 'at_n200' : 'eps100_feher' }; }
+  // Austrotherm jelölések: AT-N100 / ATN 100 / AT N150 (lépésálló EPS), AT-H80 (homlokzati EPS), AT-L… (EPS)
+  const at = /\bat[- ]?([nhl])[- ]?(\d{1,3})\b/.exec(n);
+  if (at && !/xps/.test(n)) {
+    const v = Number(at[2]);
+    if (at[1] === 'n') return { anyagId: v >= 200 ? 'at_n200' : v >= 150 ? 'at_n150' : 'eps100_feher' };
+    return { anyagId: /grafit/.test(n) ? (v >= 100 ? 'eps100_grafit' : 'eps80_grafit') : v >= 100 ? 'eps100_feher' : 'eps80_feher' };
+  }
+  // EPS kereskedelmi / köznapi nevei: hungarocell, nikecell, styropor, polisztirolhab
+  if (/hungarocell|nikecell|styropor|polisztirol|polystyrol/.test(n) && !/xps|extrud/.test(n)) return { anyagId: szerep === 'padlo' || /lépésálló|terhel/.test(n) ? (/grafit/.test(n) ? 'eps100_grafit' : 'eps100_feher') : (/grafit/.test(n) ? 'eps80_grafit' : 'eps80_feher') };
   // „grafit L5 hőszigetelés”, „grafitos hőszigetelés”: szürke (grafitos) EPS
   if (/grafit/.test(n) && /hőszig|hoszig|szigetel/.test(n) && !/xps|kőzet|gyapot/.test(n)) return { anyagId: szerep === 'padlo' ? 'eps100_grafit' : 'eps80_grafit' };
   if (/eps ?100|lépésálló/.test(n)) return { anyagId: /grafit/.test(n) ? 'eps100_grafit' : 'eps100_feher' };
@@ -451,6 +459,8 @@ export function anyagKepez(leiras: string, dCm: number | null, szerep: Szerep | 
     const id = szerep === 'fal' ? 'kozetgyapot_homlokzati' : szerep === 'teto' ? 'asvanyiyapot_szarufa' : 'asvanyiyapot_lemez_padlas';
     return { anyagId: id, megjegyzes: tartoval ? 'Inhomogén réteg (faszerkezet a hőszigetelés síkjában) – a fa részarányát ellenőrizd, szükség esetén csökkentsd a λ-t vagy vedd fel kétirányú rétegként.' : undefined };
   }
+  // anyagmegnevezés nélküli („sima”) hőszigetelés: EPS – padlóban, terhelt helyen lépésálló
+  if (/hőszig|hoszig|hőszigetel/.test(n) && !/gyapot|cellul|perlit|kender|szalma|fa ?rost|farost|xps|extrud|pir\b|pur\b|poliuretán|habüveg|üveghab|vakolat|fólia|lemez|aerogél|vákuum|porotherm|vázkerámia|tégla|blokk|falaz|ytong|pórusbeton|beton|alátámaszt|rögzít|tartó|keresztmetszet/.test(n)) return { anyagId: szerep === 'padlo' || /lépésálló|terhel/.test(n) ? 'eps100_feher' : 'eps80_feher', megjegyzes: 'Anyag nélküli „hőszigetelés”: EPS-ként (hungarocell) vettük – ellenőrizd.' };
   if (/vázkerámia|porotherm|kerámia falaz|hanggátló/.test(n)) {
     const d = dCm ?? 0;
     if (/hanggátló/.test(n)) return { megjegyzes: 'Hanggátló falazóblokk – λ-ját a gyártói adatlapból add meg.' };
