@@ -4,6 +4,7 @@
  * alsó határ. Nézetenként: szélesség, falmagasság-profil a szélesség mentén, bruttó falfelület (m²).
  */
 import type { Lap, Utvonal } from './kinyeres';
+import type { HomlokzatKeret } from './homlokzat';
 import { poliRajzol } from './raszter';
 
 export interface HomlokzatNezet {
@@ -98,6 +99,43 @@ export function nezetOszlopok(lap: Lap, mPerPt: number): NezetOszlopok[] {
       if (a >= 0) { teto[x] = bb[1] + (a * px) / mPerPt; alja[x] = bb[1] + ((b + 1) * px) / mPerPt; }
     }
     ki.push({ bb, x0: bb[0], dx: px / mPerPt, teto, alja });
+  }
+  return ki;
+}
+
+/**
+ * Nyílások a kitöltéssel rajzolt homlokzaton: a fal-réteg kitöltésében lévő, minden irányból fallal körülvett téglalap
+ * alakú lyukak (falnyílás-méret). A vonalas keretfelismerés kiegészítése ott, ahol a nyílászáró nem külön rétegen,
+ * hanem a falkitöltés kivágásaként jelenik meg.
+ */
+export function nezetLyukak(lap: Lap, mPerPt: number): HomlokzatKeret[] {
+  const px = 0.025, ki: HomlokzatKeret[] = [];
+  for (const v of homlokzatNezetek(lap, mPerPt)) {
+    const bb = v.bb; const w = Math.ceil(((bb[2] - bb[0]) * mPerPt) / px) + 1, h = Math.ceil(((bb[3] - bb[1]) * mPerPt) / px) + 1;
+    if (w * h > 6e6) continue;
+    const M = new Uint8Array(w * h);
+    const tr = (x: number, y: number): [number, number] => [(x - bb[0]) * mPerPt / px, (y - bb[1]) * mPerPt / px];
+    let db = 0;
+    for (const u of lap.utvonalak) if (falE(u) && kitoltE(u) && u.bbox[0] >= bb[0] - 1 && u.bbox[2] <= bb[2] + 1 && u.bbox[1] >= bb[1] - 1 && u.bbox[3] <= bb[3] + 1) { poliRajzol(M, w, h, u.pontok, tr); db++; }
+    if (db < 3) continue;
+    // a falkitöltésen kívüli, de oszlopában és sorában is fal közé zárt pontok
+    const fent = new Int32Array(w).fill(-1), lent = new Int32Array(w).fill(-1), bal = new Int32Array(h).fill(-1), jobb = new Int32Array(h).fill(-1);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (M[y * w + x]) { if (fent[x] < 0) fent[x] = y; lent[x] = y; if (bal[y] < 0) bal[y] = x; jobb[y] = x; }
+    const L = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; if (!M[i] && y > fent[x]! && y < lent[x]! && x > bal[y]! && x < jobb[y]!) L[i] = 1; }
+    const lat = new Uint8Array(w * h);
+    for (let i0 = 0; i0 < w * h; i0++) {
+      if (!L[i0] || lat[i0]) continue;
+      const sor = [i0]; lat[i0] = 1; let x0 = w, x1 = 0, y0 = h, y1 = 0, n = 0, szel = false;
+      for (let k = 0; k < sor.length; k++) {
+        const q = sor[k]!, x = q % w, y = (q / w) | 0; n++;
+        if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+        for (const r of [x > 0 ? q - 1 : -1, x < w - 1 ? q + 1 : -1, q - w, q + w]) { if (r < 0 || r >= w * h) { szel = true; continue; } if (!M[r] && !L[r]) szel = true; if (L[r] && !lat[r]) { lat[r] = 1; sor.push(r); } }
+      }
+      const sz = (x1 - x0 + 1) * px, mg = (y1 - y0 + 1) * px;
+      if (szel || sz < 0.4 || sz > 6 || mg < 0.4 || mg > 3.6 || n < 0.8 * (x1 - x0 + 1) * (y1 - y0 + 1)) continue;
+      ki.push({ x0: bb[0] + (x0 * px) / mPerPt, x1: bb[0] + ((x1 + 1) * px) / mPerPt, y0: bb[1] + (y0 * px) / mPerPt, y1: bb[1] + ((y1 + 1) * px) / mPerPt, szel: Math.round(sz * 100) / 100, mag: Math.round(mg * 100) / 100, takart: false });
+    }
   }
   return ki;
 }

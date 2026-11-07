@@ -623,6 +623,27 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     return szint3;
   };
   // ellenőrzéshez (regresszió): a modell felületei mindkét méretezéssel, igény szerint lekérdezhetők
+  /**
+   * Külső méretes számítás: az átvett (belső méretű) határoló felületek a 3D modell külső / belső arányával –
+   * falak tájolásonként, padló, födém, tető típusonként. A nyílászárók nem változnak.
+   */
+  const kulsoMeretre = (q: Projekt, uj: Set<string>): string | null => {
+    const b0 = modellSzintek('belso'), k0 = modellSzintek('kulso'); if (!b0 || !k0) return null;
+    const B = modellOsszesites(b0, eszakSz), K = modellOsszesites(k0, eszakSz);
+    const ar = (k?: number, b?: number) => (k && b && b > 0.5 ? Math.min(1.6, Math.max(0.8, k / b)) : null);
+    const falOssz = ar(K.tipus.fal, B.tipus.fal);
+    let db = 0;
+    for (const f of q.feluletek) {
+      if (!uj.has(f.id) || f.fajta === 'nyilaszaro') continue;
+      const fuggo = (f.hajlasszog ?? 90) >= 75;
+      const x = f.fajta === 'padlo' ? ar(K.tipus.padlo, B.tipus.padlo) : fuggo ? (f.tajolas && f.hatar === 'kulso' ? ar(K.falTaj[f.tajolas], B.falTaj[f.tajolas]) ?? falOssz : falOssz) : ar(K.tipus.teto, B.tipus.teto);
+      if (!x || Math.abs(x - 1) < 0.002) continue;
+      if (f.meret) { f.meret = { ...f.meret, hossz: Math.round(f.meret.hossz * x * 100) / 100 }; f.A = Math.round(f.meret.hossz * f.meret.magassag * 100) / 100; }
+      else if (typeof f.A === 'number') f.A = Math.round(f.A * x * 100) / 100;
+      db++;
+    }
+    return db ? `Külső méret: ${db} határoló felület a hőburok külső síkja szerint (a 3D modell külső/belső arányával; falak tájolásonként) – a belső méretre a 2D/3D nézet „Belső méret” gombjával válthatsz.` : null;
+  };
   try { (globalThis as any).__modell3d = () => ({ belso: (() => { const x = modellSzintek('belso'); return x ? modellOsszesites(x, eszakSz) : null; })(), kulso: (() => { const x = modellSzintek('kulso'); return x ? modellOsszesites(x, eszakSz) : null; })() }); } catch { /* */ }
   // az átvételkor ténylegesen használt tetőablakok (homlokzatról azonosítva, ennek híján az alaprajzi feliratokból)
   const tetoablakSzoveg = useMemo(() => {
@@ -737,17 +758,17 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     // méretfelirat nélküli nyílások magassága a homlokzati lapokról (a lap szintjének sorszáma alulról)
     const szintSor = [...new Set(alaprajzLapok.flatMap(({ i }) => lapSzintek(i)))].sort((x, y) => SZINT_SOR.indexOf(x) - SZINT_SOR.indexOf(y));
     const mert = a.r && a.e.mPerPt && a.nyilasok.some((n) => n.mert) ? mertMagassagok(a.nyilasok, a.e.mPerPt, o.eszak, homlokzatRajzTar(homlokzatLapok.map(({ l }) => l.lap), a.e.meretarany), Math.max(0, szintSor.indexOf(o.szintek[0] ?? 'F')), szintSor.length) : undefined;
-    // falmagasság a homlokzatokról: a lap padló- és mennyezetszintje közti látható falsáv (oromfal, térdfal, eltérő párkány)
-    const falMag = (() => {
-      if (!a.r || !a.e.mPerPt || !homlokzatLapok.length) return undefined;
-      const nz = homlokzatNezetTar(homlokzatLapok.map(({ l }) => l.lap), a.e.meretarany); if (!nz.length) return undefined;
+    // alaprajz + homlokzat: a homlokzati nézetek illesztése a lap homlokzati falaihoz – a legfelső fűtött szinten a falmagasság
+    // (oromfal, térdfal, eltérő párkány), minden szinten az alaprajzon nem jelölt, a homlokzaton látszó nyílások
+    const hModell = (() => {
+      if (!a.r || !a.e.mPerPt || !homlokzatLapok.length) return null;
+      const nz = homlokzatNezetTar(homlokzatLapok.map(({ l }) => l.lap), a.e.meretarany); if (!nz.length) return null;
       const fut = szintSor.filter((x) => x !== 'P'); const idx = Math.max(0, fut.indexOf(o.szintek.find((x) => x !== 'P') ?? 'F'));
-      // csak a legfelső fűtött szint lapján (oromfal, térdfal, eltérő párkány ott van; a közbenső szintek fala teljes magasságú)
-      if (!o.szintek.includes(fut[fut.length - 1] ?? 'F')) return undefined;
       const padlok = (me?.szintek.padlo ?? []).filter((v) => v > -1);
       const zf = padlok[idx] ?? idx * ((bm ?? 2.7) + 0.35);
       const zc = zf + (tetoterLap ? me?.tetoter?.belmagassag ?? bm ?? 2.6 : bm ?? 2.7);
-      const fl = a.r.helyisegek.flatMap((H) => H.szakaszok.filter((sg) => sg.tul === 'kulso' && sg.hossz >= 0.3).map((sg) => ({ irany: sg.irany, pontok: sg.pontok })));
+      const felso = o.szintek.includes(fut[fut.length - 1] ?? 'F');
+      const fl = a.r.helyisegek.flatMap((H, ri) => H.szakaszok.filter((sg) => sg.tul === 'kulso' && sg.hossz >= 0.3).map((sg) => ({ irany: sg.irany, pontok: sg.pontok, h: ri })));
       // az épület alaprajzi kiterjedése irányonként (a falpixelek vetülete, ritkítva)
       const r0 = a.r; const kit = new Map<number, [number, number] | null>();
       const kiterjedes = (ir: number) => {
@@ -756,10 +777,18 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
         for (let y = 0; y < r0.h; y += 3) for (let x = 0; x < r0.w; x += 3) if (r0.fal[y * r0.w + x]) { const px = r0.x0 + (x + 0.5) * r0.px / r0.mPerPt, py = r0.y0 + (y + 0.5) * r0.px / r0.mPerPt; const v = (c * px + sn * py) * a.e.mPerPt!; if (v < lo) lo = v; if (v > hi) hi = v; }
         const e: [number, number] | null = lo < hi ? [lo, hi] : null; kit.set(ir, e); return e;
       };
-      const mod = falMagassagModell(a.nyilasok, a.e.mPerPt, o.eszak, nz, zf, fl, kiterjedes); if (!mod.db) return undefined;
-      return (sg: FalSzakasz) => mod.magassag(sg.irany, sg.pontok, zf, zc);
+      const mod = falMagassagModell(a.nyilasok, a.e.mPerPt, o.eszak, nz, zf, fl, kiterjedes); if (!mod.db) return null;
+      return { mod, zf, zc, felso, fl };
     })();
-    const { helyisegek: hs, nyilasok: ny } = atvetelReszek(a, k, mert, falMag);
+    const falMag = hModell?.felso ? (sg: FalSzakasz) => hModell.mod.magassag(sg.irany, sg.pontok, hModell.zf, hModell.zc) : undefined;
+    const { helyisegek: hs, nyilasok: ny0, ri: riL } = atvetelReszek(a, k, mert, falMag);
+    // a homlokzaton látszó, az alaprajzon nem jelölt nyílások (a helyiség a homlokzati falszakasza szerint)
+    const plusz = hModell ? hModell.mod.pluszNyilasok(hModell.fl, hModell.zf, hModell.zc).flatMap((q): AtvettNyilas[] => {
+      const hi = riL.indexOf(q.h); if (hi < 0) return [];
+      return [{ fajta: q.mag >= 1.9 ? (q.pm < 0.1 ? 'erkelyajto' : 'ablak') : 'ablak', szel: q.szel, mag: q.mag, pm: q.pm, helyiseg: hi, irany: q.irany }];
+    }) : [];
+    const pluszUz = plusz.length ? [`${plusz.length} nyílás a homlokzati rajzról (az alaprajzon nem jelölt, a homlokzaton látszó nyílászáró a falszakasz helyiségéhez) – ellenőrizd.`] : [];
+    const ny = [...ny0, ...plusz];
     // szomszédos épülethez csatlakozó (zártsorú, ikres) falak: nem homlokzati falak – fűtött szomszédnál kimaradnak,
     // fűtetlennél fal fűtetlen tér felé
     let szomszedH = 0;
@@ -781,13 +810,13 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
       ...(mintaFajta === 'blokkos' ? { alapFalSablon: 'fal_blokk_kohosalak' } : {}),
       forras: [o.fajl, mLap?.fajl].filter(Boolean).join(', '), szintek: o.szintek,
       ...(terepAlatt ? { terepAlatt: true, ...(pinceMelyseg ? { terepMelyseg: pinceMelyseg } : {}) } : {}),
-    }).uzenetek.concat(extraUz);
+    }).uzenetek.concat(extraUz, pluszUz);
   }
 
   function atvesz() {
     if (!al) return;
     let uzenetek: string[] = [];
-    modosit((q) => { uzenetek = egyAtvetel(q, al, kj, { csere, padloAt, tetoAt, eszak: eszakSz, szintek: lapSzintek(aIdx), fajl: aLap?.fajl }); });
+    modosit((q) => { const elotte = new Set(q.feluletek.map((f) => f.id)); uzenetek = egyAtvetel(q, al, kj, { csere, padloAt, tetoAt, eszak: eszakSz, szintek: lapSzintek(aIdx), fajl: aLap?.fajl }); if (meretMod === 'kulso') { const m = kulsoMeretre(q, new Set(q.feluletek.filter((f) => !elotte.has(f.id)).map((f) => f.id))); if (m) uzenetek.push(m); } });
     if (pecset && pecsetBe) modosit((q) => pecsetAtvesz(q, pecset));
     if (al.e.eszak) eszakJavitasMent(al.e.eszak.alairas, eszakSz - al.e.eszak.szog);
     setKesz(uzenetek);
@@ -884,6 +913,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     // laponként: a projektbe került helyiségek helye (szintenként azonos sorrendben) a szintek egymásra vetítéséhez
     const lapAdat: { a: AlaprajzFeldolgozas; sz: string[]; reszek: ReturnType<typeof atvetelReszek>; kezd: number; felIds: Set<string> }[] = [];
     modosit((q) => {
+      const elotteMind = new Set(q.feluletek.map((f) => f.id));
       sor.forEach(({ l, i }, n) => {
         const a = elemzesek[i] as AlaprajzFeldolgozas;
         // a megnyitott lapnál a kézi kijelölés, a többinél az alapértelmezett
@@ -998,6 +1028,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
           uz.push(`${szintNev(s0)}: ${sz2(dA)} m² nyúlik túl az alatta lévő szinten → árkád / konzol feletti födém${arkad ? ` (${arkad.nev})` : ' – a metszeten nincs ilyen rétegrend, a Határolás lépésben válassz'}.`);
         }
       });
+      if (meretMod === 'kulso') { const m = kulsoMeretre(q, new Set(q.feluletek.filter((f) => !elotteMind.has(f.id)).map((f) => f.id))); if (m) uz.push(m); }
     });
     if (pecset && pecsetBe) modosit((q) => pecsetAtvesz(q, pecset));
     setAtvett((x) => new Set([...x, ...sor.map(({ i }) => i)]));
@@ -1385,8 +1416,16 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                 {(retegek.has('burok') || rajzol || huz) && burok.map((q, pi) => (
                   <g>
                     {/* a vonal a nagyítástól függetlenül vastag (képernyő-pixelben): fehér kontúr + lila */}
-                    <polygon points={q.map(([x, y]) => `${x},${y}`).join(' ')} fill="none" stroke="#fff" stroke-width={10} vector-effect="non-scaling-stroke" stroke-linejoin="round" pointer-events="none" opacity={0.9} />
-                    <polygon points={q.map(([x, y]) => `${x},${y}`).join(' ')} fill="#F97316" fill-opacity={0.08} stroke="#F97316" stroke-width={kj.burok ? 7 : 6} vector-effect="non-scaling-stroke" stroke-linejoin="round" pointer-events="none" />
+                    {(() => {
+                      // a megjelenített sík a méretezés szerint: belső méret – a fal belső síkja (mért), külső – a körvonal; szerkesztéskor mindig a körvonal
+                      const belsoQ = meretMod === 'belso' && !burokSzerk && !rajzol && !huz && burokMert[pi]?.length === q.length ? burokMert[pi]!.map((e) => e.belso[0]) : null;
+                      const pts = (belsoQ ?? q).map(([x, y]) => `${x},${y}`).join(' ');
+                      return <>
+                        {belsoQ && <polygon points={q.map(([x, y]) => `${x},${y}`).join(' ')} fill="none" stroke="#F97316" stroke-width={1.5} vector-effect="non-scaling-stroke" stroke-dasharray="4 3" pointer-events="none" opacity={0.6} />}
+                        <polygon points={pts} fill="none" stroke="#fff" stroke-width={10} vector-effect="non-scaling-stroke" stroke-linejoin="round" pointer-events="none" opacity={0.9} />
+                        <polygon points={pts} fill="#F97316" fill-opacity={0.08} stroke="#F97316" stroke-width={kj.burok ? 7 : 6} vector-effect="non-scaling-stroke" stroke-linejoin="round" pointer-events="none" />
+                      </>;
+                    })()}
                     {burokSzerk && q.map(([x, y], vi) => { const [x2, y2] = q[(vi + 1) % q.length]!; return (
                       <rect x={(x + x2) / 2 - 5 * fogo} y={(y + y2) / 2 - 5 * fogo} width={10 * fogo} height={10 * fogo} fill="#fff" stroke="#F97316" stroke-width={2} vector-effect="non-scaling-stroke" style="cursor:copy"
                         onPointerDown={(e) => { e.stopPropagation(); (e.currentTarget as SVGGraphicsElement).ownerSVGElement?.setPointerCapture?.(e.pointerId); const u = burok.map((z) => z.map((v) => [...v] as [number, number])); u[pi]!.splice(vi + 1, 0, [(x + x2) / 2, (y + y2) / 2]); setBurokVazlat(u); setHuz({ p: pi, v: vi + 1 }); }}>
@@ -1403,14 +1442,15 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   </g>
                 ))}
                 {/* mért belső falsíkok: zöld szaggatott = fal megtalálva; piros = ennél az élnél nincs falsáv (a hossz bizonytalan) */}
-                {retegek.has('burok') && burokMert.flat().filter((e) => e.rajzolt >= 0.8).map((e) => {
-                  const [a, b2] = e.belso; const mx = (a[0] + b2[0]) / 2, my = (a[1] + b2[1]) / 2; const jo = e.lefedett >= 0.3;
+                {retegek.has('burok') && burokMert.flatMap((l, pi) => l.map((e) => ({ e, q: burok[pi]! }))).filter(({ e }) => e.rajzolt >= 0.8).map(({ e, q }) => {
+                  const kulsoM = meretMod === 'kulso';
+                  const [a, b2] = kulsoM ? [q[e.i]!, q[(e.i + 1) % q.length]!] : e.belso; const mx = (a[0] + b2[0]) / 2, my = (a[1] + b2[1]) / 2; const jo = e.lefedett >= 0.3;
                   const fugg = Math.abs(b2[1] - a[1]) > Math.abs(b2[0] - a[0]);
                   return (
                     <g pointer-events="none">
                       <line x1={a[0]} y1={a[1]} x2={b2[0]} y2={b2[1]} stroke={jo ? '#059669' : '#DC2626'} stroke-width={2.5} vector-effect="non-scaling-stroke" stroke-dasharray="6 4" />
                       <text x={mx} y={my} transform={fugg ? `rotate(-90 ${mx} ${my})` : undefined} dy={-4 * fogo} font-size={10 * fogo} text-anchor="middle" fill={jo ? '#065F46' : '#B91C1C'} font-family="system-ui" font-weight="600" paint-order="stroke" stroke="#fff" stroke-width={3 * fogo}>
-                        {sz(e.hossz)} m{e.vastag !== null ? ` · ${Math.round(e.vastag * 100)} cm` : ' · nincs fal'}
+                        {sz(kulsoM ? e.rajzolt : e.hossz)} m{e.vastag !== null ? ` · ${Math.round(e.vastag * 100)} cm` : ' · nincs fal'}
                       </text>
                     </g>
                   );
@@ -1438,13 +1478,16 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
           </div>
           <div class="gombsor" style="margin:8px 0 16px;gap:16px;flex-wrap:wrap">
             <button class="gomb halk-gomb semleges" onClick={() => setNagyit(!nagyit)}>{nagyit ? 'Teljes lap' : 'Nagyítás az épületre'}</button>
+            <span style="display:inline-flex;gap:4px;align-items:center" title="A hőburok síkja a rajzon és a számításban (a 3D nézet kapcsolójával együtt vált): belső méret – a fal belső síkja, külső méret – a fal / hőszigetelés külső síkja.">
+              {(['belso', 'kulso'] as const).map((mm) => <button aria-pressed={meretMod === mm} onClick={() => setMeretMod(mm)} style={`padding:3px 10px;font:600 12px system-ui;border:1px solid #D1D5DB;border-radius:6px;cursor:pointer;${meretMod === mm ? 'background:#1F2937;color:#fff' : 'background:#fff;color:#374151'}`}>{mm === 'belso' ? 'Belső méret' : 'Külső méret'}</button>)}
+            </span>
             <button class={`gomb halk-gomb${burokSzerk ? '' : ' semleges'}`} aria-pressed={burokSzerk} onClick={() => { setBurokSzerk(!burokSzerk); if (!burokSzerk) setNagyit(true); }}>{burokSzerk ? 'Hőburok szerkesztése kész' : 'Hőburok szerkesztése'}</button>
             {kj.burok && <button class="gomb halk-gomb semleges" onClick={() => burokMent(undefined)}>Hőburok: vissza a felismertre</button>}
             <button class={`gomb halk-gomb${rajzol ? '' : ' semleges'}`} aria-pressed={!!rajzol} onClick={() => { if (rajzol) setRajzol(null); else { setRajzol([]); setBurokSzerk(false); setNagyit(true); } }}>{rajzol ? 'Rajzolás megszakítása' : 'Hőburok rajzolása'}</button>
             {rajzol && <span class="figyelmeztetes" style="margin:0">Kattints a hőburok sarokpontjaira a hőszigetelt fal külső síkján körbe; az első pontra kattintva (vagy dupla kattintással) a körvonal bezárul.</span>}
             {!burok.length && !rajzol && <span class="figyelmeztetes" style="margin:0">Zárt fűtött körvonalat nem ismertem fel ezen a lapon – a „Hőburok rajzolása” gombbal rajzold meg (ebből számolom a homlokzati falakat és a 3D nézetet).</span>}
-            <span class="halkabb"><span style="display:inline-block;width:22px;height:6px;background:#F97316;vertical-align:middle;margin-right:4px;border-radius:2px" />hőburok {kj.burok ? '(szerkesztett – a homlokzati falak és a külső nyílászárók ebből)' : '(felismert)'}</span>
-            <span class="halkabb" title="A hőburok minden élénél a program megkeresi a valódi falsávot, és a fal belső síkján méri a hosszt (a sarkoknál a szomszédos belső síkok metszéspontjáig) és a falvastagságot. Zöld: a falsáv megvan; piros: az élnél nincs fal a rajzon (a hossz bizonytalan)."><span style="display:inline-block;width:18px;border-top:3px dashed #059669;vertical-align:middle;margin-right:4px" />mért belső falsík: hossz · falvastagság (<span style="color:#DC2626">piros: nincs falsáv</span>)</span>
+            <span class="halkabb"><span style="display:inline-block;width:22px;height:6px;background:#F97316;vertical-align:middle;margin-right:4px;border-radius:2px" />hőburok {meretMod === 'belso' && !burokSzerk ? 'a fal belső síkján (szaggatott: külső sík)' : 'a fal külső síkján'} {kj.burok ? '(szerkesztett – a homlokzati falak és a külső nyílászárók ebből)' : '(felismert)'}</span>
+            <span class="halkabb" title="A hőburok minden élénél a program megkeresi a valódi falsávot, és a fal belső síkján méri a hosszt (a sarkoknál a szomszédos belső síkok metszéspontjáig) és a falvastagságot. Zöld: a falsáv megvan; piros: az élnél nincs fal a rajzon (a hossz bizonytalan)."><span style="display:inline-block;width:18px;border-top:3px dashed #059669;vertical-align:middle;margin-right:4px" />mért falsík ({meretMod === 'kulso' ? 'külső' : 'belső'}): hossz · falvastagság (<span style="color:#DC2626">piros: nincs falsáv</span>)</span>
             {[0, 90, 180, 270].map((ir) => <span class="halkabb"><span style={`display:inline-block;width:10px;height:10px;border-radius:2px;background:${IRANY_SZIN[ir]};margin-right:4px`} />{IRANY_NEV[ir]} → {egtaj(ir, eszakSz)}</span>)}
           </div>
           {problemak.length > 0 && (

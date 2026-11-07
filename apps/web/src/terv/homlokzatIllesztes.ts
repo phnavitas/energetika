@@ -7,6 +7,7 @@
 import type { Lap } from './kinyeres';
 import type { TervNyilas } from './nyilaszarok';
 import { homlokzatIrany, keretek, vonalIndex, type HomlokzatKeret } from './homlokzat';
+import { nezetLyukak } from './homlokzatProfil';
 
 /** Szélességtűrés az illesztésnél: az alaprajzi falnyílás és a homlokzati tok mérete eltérhet (tokbeépítés, takarás). */
 const SZT = 0.2;
@@ -22,7 +23,10 @@ export function homlokzatRajzok(lap: Lap, tartalekM?: number): HomlokzatRajz[] {
   if (!cimek.length) return [];
   // a rajzcím a rajz alatt vagy fölött áll (lapon belül egységesen): mindkét elrendezéssel hozzárendeljük a kereteket
   // a legközelebbi címhez, és az a változat érvényes, amelyben a keretek összesen közelebb esnek a címükhöz
-  const kk = keretek(ix);
+  // a vonalas keretek mellé a falkitöltés téglalap alakú lyukai (kitöltéssel rajzolt homlokzat), ha nem fedik egymást
+  const kk0 = keretek(ix);
+  const fed = (a: HomlokzatKeret, b: HomlokzatKeret) => { const ix0 = Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)), iy0 = Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0)); return ix0 * iy0 > 0.3 * Math.min((a.x1 - a.x0) * (a.y1 - a.y0), (b.x1 - b.x0) * (b.y1 - b.y0)); };
+  const kk = [...kk0, ...nezetLyukak(lap, ix.mPerPt).filter((l) => !kk0.some((k) => fed(k, l)))];
   const rendel = (alatta: boolean) => {
     const ki = cimek.map((c) => ({ az: c.az, mPerPt: ix.mPerPt, keretek: [] as HomlokzatKeret[] }));
     let ossz = 0;

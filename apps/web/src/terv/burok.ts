@@ -435,7 +435,8 @@ export function kulsoSraff(r: Raszter): Uint8Array {
 
 function elSavok(r: Raszter, p: Poligon) {
   const sraff = kulsoSraff(r);
-  const gat = (x: number, y: number) => { const cx = Math.floor(((x - r.x0) * r.mPerPt) / r.px), cy = Math.floor(((y - r.y0) * r.mPerPt) / r.px); if (cx < 0 || cy < 0 || cx >= r.w || cy >= r.h) return false; const k = cy * r.w + cx; return !!((r.fal[k] && !sraff[k]) || r.nyilas[k]); };
+  const hid = ablakHidak(r);
+  const gat = (x: number, y: number) => { const cx = Math.floor(((x - r.x0) * r.mPerPt) / r.px), cy = Math.floor(((y - r.y0) * r.mPerPt) / r.px); if (cx < 0 || cy < 0 || cx >= r.w || cy >= r.h) return false; const k = cy * r.w + cx; return !!((r.fal[k] && !sraff[k]) || r.nyilas[k] || hid[k]); };
   const n = p.length;
     const elek = p.map((a, i) => {
       const b = p[(i + 1) % n]!;
@@ -636,6 +637,44 @@ const zar = (m: Uint8Array, w: number, h: number, R: number) => { const d = tagi
 const nyit = (m: Uint8Array, w: number, h: number, R: number) => { const e = tagitR(m, w, h, R, 0); const er = new Uint8Array(w * h); for (let k = 0; k < w * h; k++) er[k] = e[k] ? 0 : 1; return tagitR(er, w, h, R, 1).map((v, k) => (v && m[k] ? 1 : 0)) as Uint8Array; };
 
 /**
+ * Üvegfal / nagy nyílás hídja: ahol a helyiség széle és a külső tér között nincs falkitöltés (csak az üvegezés
+ * vékony vonalai), de a nyílás két végén ugyanabban a sávban falcsonk áll, a két falcsonk összetartozik – a köztük
+ * lévő sáv (legfeljebb 6 m hosszan, 0,7 m mélyen) a fal része. Egy oszlop/sor nem-fal futama akkor híd, ha mindkét
+ * végén fal van, és minden cellájától a fal-sávra merőlegesen, falon át nem haladva 0,7 m-en belül helyiség kezdődik
+ * (a loggia, bejárati fülke hátsó fala mögötti helyiség nem: oda falon át vezet az út).
+ */
+const hidTar = new WeakMap<Raszter, Uint8Array>();
+export function ablakHidak(r: Raszter): Uint8Array {
+  const kesz = hidTar.get(r); if (kesz) return kesz;
+  const { w, h } = r; const N = w * h;
+  const sraff = kulsoSraff(r);
+  let F: Uint8Array = new Uint8Array(N); for (let k = 0; k < N; k++) if ((r.fal[k] && !sraff[k]) || r.nyilas[k]) F[k] = 1;
+  F = nyit(F, w, h, Math.max(1, Math.round(0.08 / r.px))); // az üvegezés, tok vékony vonalai nem fal
+  const szoba = (k: number) => r.cimke[k]! >= 2;
+  const L = Math.round(6 / r.px), D = Math.max(2, Math.round(0.7 / r.px));
+  const ki = new Uint8Array(N);
+  // fuggo: oszloponként (függőleges falsáv), különben soronként
+  for (const fuggo of [true, false]) {
+    const A = fuggo ? w : h, B = fuggo ? h : w;
+    const idx = (a: number, b: number) => (fuggo ? b * w + a : a * w + b);
+    for (let a = 0; a < A; a++) {
+      let b = 0;
+      while (b < B) {
+        if (F[idx(a, b)] || szoba(idx(a, b))) { b++; continue; }
+        const b0 = b; while (b < B && !F[idx(a, b)] && !szoba(idx(a, b))) b++;
+        const b1 = b - 1;
+        if (b0 === 0 || b >= B || !F[idx(a, b0 - 1)] || !F[idx(a, b)] || b1 - b0 + 1 > L || (b1 - b0 + 1) * r.px < 0.6) continue;
+        // merőlegesen (a ± irányban) helyiség 0,7 m-en belül, falon át nem
+        const oldal = (s: number) => { let db = 0; for (let t = b0; t <= b1; t++) { for (let d = 1; d <= D; d++) { const aa = a + s * d; if (aa < 0 || aa >= A) break; const k = idx(aa, t); if (szoba(k)) { db++; break; } if (F[k]) break; } } return db; };
+        const n = b1 - b0 + 1;
+        if (oldal(1) >= 0.9 * n || oldal(-1) >= 0.9 * n) for (let t = b0; t <= b1; t++) ki[idx(a, t)] = 1;
+      }
+    }
+  }
+  hidTar.set(r, ki); return ki;
+}
+
+/**
  * A hőburok a falak külső síkján, az épülettömegből: a fűtött helyiségek + a köréjük (0,9 m-en belül) eső falsávok
  * (hőszigeteléssel, a külső sraffozott burkolatok nélkül), a lyukak kitöltve. A kisebb (≤ 1 m²) beugrásokat kitölti –
  * az épületsarkot pozitívnak feltételezi –, a nagyobb, külső térre nyíló beugrás (bejárati fülke, loggia) megmarad.
@@ -655,7 +694,8 @@ export function burokTomeg(r: Raszter, futott: ReadonlySet<number>, zsebTilto?: 
   // falsávok a fűtött terek körül (legfeljebb 0,9 m vastag fal + hőszigetelés)
   const kozel = tagitR(H, w, h, Math.max(1, Math.round(0.9 / r.px)));
   let M: Uint8Array = new Uint8Array(N);
-  for (let k = 0; k < N; k++) if (H[k] || (kozel[k] && r.cimke[k]! < 2 && ((r.fal[k] && !sraff[k]) || r.nyilas[k]))) M[k] = 1;
+  const hid = ablakHidak(r);
+  for (let k = 0; k < N; k++) if (H[k] || (kozel[k] && r.cimke[k]! < 2 && ((r.fal[k] && !sraff[k]) || r.nyilas[k] || hid[k]))) M[k] = 1;
   // a fűtött terekkel nem összefüggő falfoltok (kerítés, szomszéd épület) kimaradnak: csak a fűtött cellát tartalmazó komponensek
   const komp = new Int32Array(N); let kn = 0; const jo = new Set<number>();
   for (let i = 0; i < N; i++) {
