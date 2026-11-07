@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ujId as ujIdT, type Projekt, type HelyisegKategoria } from '../modell';
 const sz2 = (x: number) => x.toLocaleString('hu-HU', { maximumFractionDigits: 1 });
 import { Szam, Valaszto, sz, MindJelolo } from '../ui';
@@ -552,6 +552,9 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const [huz, setHuz] = useState<{ p: number; v: number } | null>(null);
   /** Húzás végén egy másik pontra ejtett pont: összevonás kérdése (a mentés a válaszig vár). */
   const [osszevon, setOsszevon] = useState<{ b: Poligon[]; p: number; v: number; w: number } | null>(null);
+  /** Húzás közben a fogott pont / él (kiemeléshez és az összevonáshoz). */
+  const huzIdo = useRef(0);
+  const [fogas, setFogas] = useState<{ x: number; y: number; tipus: 'pont' | 'el' } | null>(null);
   /** Kézi hőburok-rajzolás: a lerakott pontok (pt); null: nincs rajzolás. */
   const [rajzol, setRajzol] = useState<[number, number][] | null>(null);
   const burok = burokVazlat ?? osszevon?.b ?? kj.burok ?? burokFelismert;
@@ -561,11 +564,14 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   // húzás vége: ha a pont egy másik pontra került (fogási távolságon belül), kérdés: összevonjuk-e a kettőt
   const huzVege = () => {
     if (!huz) return;
+    huzIdo.current = Date.now(); // a felengedés utáni „click” ne nyissa meg a helyiség-menüt
     const b = burokVazlat;
     setBurokVazlat(null); setHuz(null);
     if (!b) return;
+    const f = fogas; setFogas(null);
     const q = b[huz.p]!; const [x, y] = q[huz.v]!;
-    const w = q.findIndex(([x2, y2], j) => j !== huz.v && Math.hypot(x2 - x, y2 - y) < 9 * fogo);
+    // másik pontra fogva (vagy ugyanoda ejtve): összevonás kérdése
+    const w = q.findIndex(([x2, y2], j) => j !== huz.v && Math.hypot(x2 - x, y2 - y) < (f?.tipus === 'pont' ? 1e-3 : 3 * fogo));
     if (w >= 0 && q.length > 3) { setOsszevon({ b, p: huz.p, v: huz.v, w }); return; }
     burokMent(b);
   };
@@ -1322,9 +1328,28 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   if (!huz) return;
                   const svg = e.currentTarget as SVGSVGElement; const m = svg.getScreenCTM(); if (!m) return;
                   const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
-                  setBurokVazlat((b) => { const u = (b ?? burok).map((q) => q.map((v) => [...v] as [number, number])); u[huz.p]![huz.v] = [Math.round(pt.x * 10) / 10, Math.round(pt.y * 10) / 10]; return u; });
+                  // fogás: a képernyőn 14 px-en belüli másik pontra pontosan rá, különben a közeli élre (merőleges vetítéssel)
+                  const fr = 14 / Math.max(1e-6, Math.hypot(m.a, m.b));
+                  const alap = burokVazlat ?? burok;
+                  let cel: { x: number; y: number; tipus: 'pont' | 'el' } | null = null, dMin = fr;
+                  alap.forEach((q, pi) => q.forEach(([x, y], vi) => { if (pi === huz.p && vi === huz.v) return; const d = Math.hypot(x - pt.x, y - pt.y); if (d < dMin) { dMin = d; cel = { x, y, tipus: 'pont' }; } }));
+                  if (!cel) {
+                    dMin = fr;
+                    alap.forEach((q, pi) => q.forEach(([x, y], vi) => {
+                      const vj = (vi + 1) % q.length; const [x2, y2] = q[vj]!;
+                      if (pi === huz.p && (vi === huz.v || vj === huz.v)) return; // a húzott pont saját élei nem
+                      const dx = x2 - x, dy = y2 - y, L2 = dx * dx + dy * dy; if (L2 < 1e-9) return;
+                      const t = Math.max(0, Math.min(1, ((pt.x - x) * dx + (pt.y - y) * dy) / L2));
+                      const px = x + dx * t, py = y + dy * t, d = Math.hypot(px - pt.x, py - pt.y);
+                      if (d < dMin) { dMin = d; cel = { x: px, y: py, tipus: 'el' }; }
+                    }));
+                  }
+                  setFogas(cel);
+                  const uj: [number, number] = cel ? [(cel as { x: number }).x, (cel as { y: number }).y] : [Math.round(pt.x * 10) / 10, Math.round(pt.y * 10) / 10];
+                  setBurokVazlat((b) => { const u = (b ?? burok).map((q) => q.map((v) => [...v] as [number, number])); u[huz.p]![huz.v] = uj; return u; });
                 }}
                 onClick={(e) => {
+                  if (Date.now() - huzIdo.current < 400) return;
                   const svg = e.currentTarget as SVGSVGElement; const m = svg.getScreenCTM(); if (!m) return;
                   const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
                   if (!rajzol) {
@@ -1472,6 +1497,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                     ))}
                   </g>
                 ))}
+                {huz && fogas && <circle cx={fogas.x} cy={fogas.y} r={13 * fogo} fill="none" stroke={fogas.tipus === 'pont' ? '#DC2626' : '#2563EB'} stroke-width={2.5} vector-effect="non-scaling-stroke" pointer-events="none" />}
                 {/* mért belső falsíkok: zöld szaggatott = fal megtalálva; piros = ennél az élnél nincs falsáv (a hossz bizonytalan) */}
                 {retegek.has('burok') && burokMert.flatMap((l, pi) => l.map((e) => ({ e, q: burok[pi]! }))).filter(({ e }) => e.rajzolt >= 0.8).map(({ e, q }) => {
                   const kulsoM = meretMod === 'kulso';

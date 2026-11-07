@@ -484,10 +484,10 @@ export function burokMeres(r: Raszter, pol: Poligon[]): BurokEl[][] {
     const vonal = (e: (typeof elek)[number]) => { const d = eltol(e) / r.mPerPt; return { px: e.a[0] + e.nx * d, py: e.a[1] + e.ny * d, vx: e.b[0] - e.a[0], vy: e.b[1] - e.a[1] }; };
     const metsz = (e1: (typeof elek)[number], e2: (typeof elek)[number], csucs: [number, number]): [number, number] => {
       const A = vonal(e1), B = vonal(e2); const det = A.vx * B.vy - A.vy * B.vx;
-      if (Math.abs(det) < 1e-6 * Math.hypot(A.vx, A.vy) * Math.hypot(B.vx, B.vy)) { const d = eltol(e2) / r.mPerPt; return [csucs[0] + e2.nx * d, csucs[1] + e2.ny * d]; }
+      if (Math.abs(det) <= 1e-6 * Math.hypot(A.vx, A.vy) * Math.hypot(B.vx, B.vy)) { const d = eltol(e2) / r.mPerPt; return [csucs[0] + e2.nx * d, csucs[1] + e2.ny * d]; }
       const t = ((B.px - A.px) * B.vy - (B.py - A.py) * B.vx) / det; const q: [number, number] = [A.px + A.vx * t, A.py + A.vy * t];
       // közel párhuzamos élek metszése messzire eshet: legfeljebb 1,2 m-re a csúcstól, különben az eltolt csúcs
-      if (Math.hypot(q[0] - csucs[0], q[1] - csucs[1]) * r.mPerPt > 1.2) { const d = eltol(e2) / r.mPerPt; return [csucs[0] + e2.nx * d, csucs[1] + e2.ny * d]; }
+      if (!Number.isFinite(q[0]) || !Number.isFinite(q[1]) || Math.hypot(q[0] - csucs[0], q[1] - csucs[1]) * r.mPerPt > 1.2) { const d = eltol(e2) / r.mPerPt; return [csucs[0] + e2.nx * d, csucs[1] + e2.ny * d]; }
       return q;
     };
     return elek.map((e, k) => {
@@ -582,7 +582,7 @@ export function kulsoSikra(r: Raszter, pol: Poligon[]): Poligon[] {
       const d1 = eltol(elozo) / r.mPerPt, d2 = eltol(e) / r.mPerPt;
       const atlag: [number, number] = [e.a[0] + (elozo.nx * d1 + e.nx * d2) / 2, e.a[1] + (elozo.ny * d1 + e.ny * d2) / 2];
       let q: [number, number] = atlag;
-      if (Math.abs(det) >= 0.05 * Math.hypot(A.vx, A.vy) * Math.hypot(B.vx, B.vy)) {
+      if (Math.abs(det) > 0.05 * Math.hypot(A.vx, A.vy) * Math.hypot(B.vx, B.vy)) {
         const t = ((B.px - A.px) * B.vy - (B.py - A.py) * B.vx) / det; const m: [number, number] = [A.px + A.vx * t, A.py + A.vy * t];
         if (Math.hypot(m[0] - e.a[0], m[1] - e.a[1]) <= maxEl) q = m;
       }
