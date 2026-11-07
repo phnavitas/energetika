@@ -16,6 +16,25 @@ export function Szoveg(p: { ertek: string; valt: (v: string) => void; hely?: str
 }
 
 /** Tizedesvesszős számmező: gépelés közben a beírt szöveget tartja, elhagyáskor magyar formára alakít. */
+/**
+ * Gépelés közbeni újraszámolásnál a mező fölötti tartalom (eredmények, figyelmeztetések) magassága változhat: a mező a
+ * képernyőn ugyanott marad (a görgetés a változással együtt korrigálódik), hogy a lap ne „ugorjon”.
+ */
+export function helybenTart(el: HTMLElement, f: () => void) {
+  const y0 = el.getBoundingClientRect().top;
+  f();
+  const igazit = () => {
+    if (!el.isConnected) return;
+    const d = el.getBoundingClientRect().top - y0;
+    if (Math.abs(d) < 1) return;
+    let p: HTMLElement | null = el.parentElement;
+    while (p && p !== document.body) { const st = getComputedStyle(p); if (/(auto|scroll)/.test(st.overflowY) && p.scrollHeight > p.clientHeight) { p.scrollTop += d; return; } p = p.parentElement; }
+    window.scrollBy(0, d);
+  };
+  // a Preact a módosítást a következő mikrotaszkban rajzolja ki
+  requestAnimationFrame(() => { igazit(); requestAnimationFrame(igazit); });
+}
+
 export function Szam(p: { ertek: number | undefined; valt: (v: number) => void; egyseg?: string; lepes?: number; min?: number; cimke?: string; /** csak kilépéskor / Enterre ír vissza (pl. származtatott összeg) */ kilepeskor?: boolean }) {
   const [szerk, setSzerk] = useState<string | null>(null);
   const megj = p.ertek === undefined || Number.isNaN(p.ertek) ? '' : String(Number(p.ertek.toFixed(6))).replace('.', ',');
@@ -33,7 +52,7 @@ export function Szam(p: { ertek: number | undefined; valt: (v: number) => void; 
         setSzerk(t);
         if (p.kilepeskor) return;
         const v = ertelmez(t);
-        if (!Number.isNaN(v) && (p.min === undefined || v >= p.min)) p.valt(v);
+        if (!Number.isNaN(v) && (p.min === undefined || v >= p.min)) helybenTart(e.target as HTMLElement, () => p.valt(v));
       }}
     />
   );

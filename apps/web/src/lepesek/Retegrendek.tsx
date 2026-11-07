@@ -196,6 +196,31 @@ function Szerkeszto({ r, m, kijelolt, jelol, torol }: { r: Retegrend; m: (fn: (r
                     {sajat && x.nev !== undefined && <div style="margin-top:4px"><Szoveg ertek={x.nev} valt={(v) => m((q) => { q.retegek[i]!.nev = v; })} /></div>}
                     {a && !a.ellenorzott && <small class="halkabb ellenorizendo" title={a.forras}>ellenőrizendő érték</small>}
                     {rHiba && <small style="display:block;color:var(--hiba)">{rHiba}</small>}
+                    {!x.legreteg && (x.borda ? (() => {
+                      const b = x.borda;
+                      const mb = (f: (t: NonNullable<typeof b>) => void) => m((q) => { const t = q.retegek[i]!.borda; if (t) { f(t); delete t.becsult; } });
+                      const arany = b.tavCm > 0 ? Math.min(1, b.szelCm / b.tavCm) : 0;
+                      return (
+                        <div class="borda-doboz" style="margin-top:6px;padding:6px 8px;border:1px dashed #D6C7A1;border-radius:6px;background:#FFFBF0;font-size:12px">
+                          <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
+                            <strong>Bordák a rétegben</strong>
+                            {b.becsult && <span class="jel figy" title="A metszet szövegéből, jellemző méretekkel – ellenőrizd">becsült</span>}
+                            <button class="link-gomb" onClick={() => m((q) => { delete q.retegek[i]!.borda; })}>törlés</button>
+                          </div>
+                          <select aria-label="Borda anyaga" style="margin:4px 0;width:100%" value={b.lambda !== undefined && !b.anyagId ? '_acel' : b.anyagId ?? 'puhafa'} onChange={(e) => { const v = (e.target as HTMLSelectElement).value; mb((t) => { if (v === '_acel') { delete t.anyagId; t.lambda = 50; t.nev = 'Acél borda'; } else { t.anyagId = v; delete t.lambda; delete t.nev; } }); }}>
+                            <optgroup label="Fa">{ANYAGOK.filter((a2) => a2.kategoria === 'Fa').map((a2) => <option value={a2.id}>{a2.nev}</option>)}</optgroup>
+                            <optgroup label="Beton">{ANYAGOK.filter((a2) => a2.kategoria === 'Beton').map((a2) => <option value={a2.id}>{a2.nev}</option>)}</optgroup>
+                            <optgroup label="Egyéb"><option value="_acel">Acél (λ = 50 W/mK)</option></optgroup>
+                          </select>
+                          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px">
+                            <label>szélesség<Szam cimke="Borda szélessége" ertek={b.szelCm} egyseg="cm" min={0.1} valt={(v) => mb((t) => { t.szelCm = v; })} /></label>
+                            <label>tengelytáv<Szam cimke="Borda tengelytávolsága" ertek={b.tavCm} egyseg="cm" min={1} valt={(v) => mb((t) => { t.tavCm = v; })} /></label>
+                            <label title="A borda magassága a rétegen belül; üres: teljes rétegvastagság">magasság<Szam cimke="Borda magassága a rétegben" ertek={b.magCm ?? x.dCm} egyseg="cm" min={0.1} valt={(v) => mb((t) => { if (Math.abs(v - x.dCm) < 1e-6) delete t.magCm; else t.magCm = Math.min(v, x.dCm); })} /></label>
+                          </div>
+                          <small class="halkabb">Bordaarány {sz(arany * 100, 1)} %{(b.magCm ?? x.dCm) < x.dCm ? ` · a borda a réteg ${sz(((b.magCm ?? x.dCm) / x.dCm) * 100, 0)} %-án` : ' · teljes vastagságban'} – inhomogén réteg (1. függ. 4.1.4, felső és alsó határ átlaga)</small>
+                        </div>
+                      );
+                    })() : (x.dCm >= 3 && (!a || a.kategoria === 'Hőszigetelés' || a.kategoria === 'Egyéb')) && <button class="link-gomb" style="display:block;margin-top:4px;font-size:12px" title="Szarufa, fogópár, fagerenda, fedélszék, vázszerkezet a hőszigetelésben – hőhíd a rétegben" onClick={() => m((q) => { q.retegek[i]!.borda = { anyagId: 'puhafa', szelCm: 10, tavCm: 90 }; })}>+ bordák a rétegben (szarufa, fogópár, gerenda)</button>)}
                   </td>
                   <td style="width:130px"><Szam cimke="Vastagság" ertek={x.dCm} egyseg="cm" valt={(v) => m((q) => { q.retegek[i]!.dCm = v; })} /></td>
                   <td style="width:120px" class="szam">

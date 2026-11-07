@@ -218,6 +218,7 @@ export function modellOsszesites(szintek: Burok3DSzint[], eszakSzog: number) {
   return ki;
 }
 
+const KAMERA = 3;
 export function Burok3D({ szintek, eszakSzog, magassag = 560, meretMod, onMeretMod }: { szintek: Burok3DSzint[]; eszakSzog: number; magassag?: number; meretMod?: 'belso' | 'kulso'; onMeretMod?: (m: 'belso' | 'kulso') => void }) {
   const [forg, setForg] = useState(-35);
   const [dol, setDol] = useState(30);
@@ -253,7 +254,10 @@ export function Burok3D({ szintek, eszakSzog, magassag = 560, meretMod, onMeretM
     const X = (x - kozep[0]) * Math.cos(a) - (y - kozep[1]) * Math.sin(a);
     const Y = (x - kozep[0]) * Math.sin(a) + (y - kozep[1]) * Math.cos(a);
     const Z = z - kozep[2];
-    return [X, -Z * Math.cos(t) + Y * Math.sin(t), Y * Math.cos(t) + Z * Math.sin(t)];
+    const mely = Y * Math.cos(t) + Z * Math.sin(t);
+    // perspektíva: a néző a modell középpontjától 3 R-re; a középpont síkjában a lépték változatlan
+    const f = KAMERA * R / Math.max(0.2 * R, KAMERA * R - mely);
+    return [X * f, (-Z * Math.cos(t) + Y * Math.sin(t)) * f, mely];
   };
   // a fény iránya (világkoordinátában: bal-elöl-fent) és a néző iránya
   const feny: P3 = (() => { const v: P3 = [-0.45, 0.55, 0.7]; const l = Math.hypot(...v); return [v[0] / l, v[1] / l, v[2] / l]; })();

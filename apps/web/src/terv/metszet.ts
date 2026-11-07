@@ -301,8 +301,11 @@ export function retegrendBlokkok(sz: Szoveg[]): TervRetegrend[] {
   for (const b of tart) {
     const sajat = new Set(b.retegek.map((r) => kulcs(r.leiras)));
     const fi = fej.findIndex((f) => f.retegek.filter((r) => sajat.has(kulcs(r.leiras))).length >= Math.min(2, sajat.size) || (!/^R\d+$/.test(b.kod) && f.kod.replace(/[\s.]/g, '') === b.kod.replace(/[\s.]/g, '')));
-    // átfedésnél a fejléces olvasat marad (a jel, cím és a több soros leírások tagolása ott megbízhatóbb)
+    // átfedésnél a fejléces olvasat marad (a jel, cím és a több soros leírások tagolása ott megbízhatóbb) – kivéve, ha
+    // ugyanaz a tábla (azonos jel), és a tartalmi olvasat több sort különít el (a fejléces összevonta őket)
     if (fi < 0) ki.push(b);
+    else if (!/^R\d+$/.test(b.kod) && ki[fi]!.kod.replace(/[\s.]/g, '') === b.kod.replace(/[\s.]/g, '') && b.retegek.length > ki[fi]!.retegek.length
+      && ki[fi]!.retegek.some((r) => b.retegek.filter((q) => r.leiras.includes(q.leiras) && q.leiras.length >= 4).length >= 2)) ki[fi] = { ...ki[fi]!, retegek: b.retegek };
   }
   return ki;
 }
@@ -389,7 +392,7 @@ export function anyagKepez(leiras: string, dCm: number | null, szerep: Szerep | 
   // PVC vízszigetelő lemez: hőtechnikailag elhanyagolható, de a páradiffúziós vizsgálatban a külső oldali párafékező réteg – ezért anyagként kerül át
   if (/\bpvc\b/.test(n) && /lemez|szig/.test(n)) return { anyagId: 'pvc_vizszig_lemez' };
   if (/(szelemen|gerenda|fedélszerkezet|fedélszék|rácsos|tartóváz|váz|léc).*(közte|között)/.test(n)) return { kimarad: 'Teherhordó váz – a közte lévő hőszigetelés külön rétegként szerepel; a fa részarányát ellenőrizd.', megjegyzes: 'Inhomogén réteg.' };
-  if (/cd profil|ud profil|direktrögzítő|álmennyezeti váz/.test(n)) return { legreteg: 'zart', megjegyzes: 'Álmennyezeti szerelőváz – zárt légrétegként.' };
+  if (/cd profil|ud profil|direktrögzítő|álmennyezeti váz|gipszkarton tartószerkezet|gipszkarton tartóváz|gipszk\. vázszerkezet|gipszkarton vázszerkezet/.test(n)) return { legreteg: 'zart', megjegyzes: 'Álmennyezeti szerelőváz – zárt légrétegként.' };
   if (/elasztomer|bitumen|bit\. ?lemez|talajnedv|talajvíz|vízszig|vízzáró|visszatapadó/.test(n)) return { anyagId: 'bitumenes_lemez' };
   if (/pe fólia|polietilén|pe párazáró|párazáró|technológiai szig|védőfólia|páraáteresztő|tetőfólia/.test(n)) return { anyagId: 'pe_folia' };
   if (/gipszkarton|gipszrost/.test(n)) return { anyagId: /rost/.test(n) ? 'gipszrost' : 'gipszkarton_rb' };
@@ -403,6 +406,10 @@ export function anyagKepez(leiras: string, dCm: number | null, szerep: Szerep | 
     const id = tekt ? `tektalan_a2_st_${Math.round(v * 10)}` : `heratekta_c3_031_${Math.round(v * 10)}`;
     return { anyagId: id, megjegyzes: `${tekt ? 'Tektalan A2-SmartTec (kőzetgyapot magos)' : 'Heratekta C3 031 (grafitos EPS magos)'} ${String(v).replace('.', ',')} cm-es lap gyártói R-je alapján${Math.abs(v - d) > 0.5 ? ` – a ${String(d).replace('.', ',')} cm-es vastagsághoz egyenértékű λ-val; ellenőrizd a terv szerinti terméket (kőzetgyapot vagy EPS mag)` : ''}.` };
   }
+  // fagyapot: lap (Heraklith, építőlemez) – vagy vastag (≥ 10 cm) laza / befújt „fagyapot hőszigetelés” padláson, ahol a
+  // terv a szálas (farost / cellulóz jellegű) hőszigetelést nevezi így – ez λ ≈ 0,04 körüli
+  if (/cellul/.test(n)) return { anyagId: 'celluloz_befujt' };
+  if (/fagyapot/.test(n) && !/heraklith|lap\b|tábla|építőlemez/.test(n) && (dCm ?? 0) >= 10) return { anyagId: 'celluloz_befujt', megjegyzes: 'A terv „fagyapot hőszigetelés”-t ír vastag, laza rétegben: szálas (cellulóz / farost jellegű) hőszigetelésként – ellenőrizd a terméket (fagyapot lapnál λ ≈ 0,09).' };
   if (/fagyapot|heraklith/.test(n)) return { anyagId: 'fagyapot_heraklith' };
   if (/laminált|parketta/.test(n)) return { anyagId: 'parketta' };
   // általános / meg nem nevezett padlóburkolat: greslap / kerámia
@@ -432,6 +439,10 @@ export function anyagKepez(leiras: string, dCm: number | null, szerep: Szerep | 
   if (/steprock/.test(n)) return { anyagId: 'rw_steprock_nd' };
   if (/stroprock/.test(n)) return { anyagId: 'rw_stroprock_g' };
   if (/\bpir\b|poliizocianur/.test(n)) return { anyagId: /kingspan|therma/.test(n) ? 'kingspan_tr26' : 'bauder_pir_fa' };
+  // Austrotherm AT-N100 / ATN 100 / AT-N150…: lépésálló EPS
+  if (/\bat-?n ?(\d{3})\b/.test(n)) { const v = /\bat-?n ?(\d{3})\b/.exec(n)![1]; return { anyagId: v === '150' ? 'at_n150' : v === '200' ? 'at_n200' : 'eps100_feher' }; }
+  // „grafit L5 hőszigetelés”, „grafitos hőszigetelés”: szürke (grafitos) EPS
+  if (/grafit/.test(n) && /hőszig|hoszig|szigetel/.test(n) && !/xps|kőzet|gyapot/.test(n)) return { anyagId: szerep === 'padlo' ? 'eps100_grafit' : 'eps80_grafit' };
   if (/eps ?100|lépésálló/.test(n)) return { anyagId: /grafit/.test(n) ? 'eps100_grafit' : 'eps100_feher' };
   if (/eps ?80|eps ?70|homlokzati eps|hőszigetelő vakolatrendszer/.test(n)) return { anyagId: /grafit/.test(n) ? 'eps80_grafit' : 'eps80_feher' };
   if (/eps|polisztirol/.test(n)) return { anyagId: szerep === 'padlo' ? (/grafit/.test(n) ? 'eps100_grafit' : 'eps100_feher') : (/grafit/.test(n) ? 'eps80_grafit' : 'eps80_feher') };
@@ -479,6 +490,45 @@ const RTG_CM: Record<string, number> = { pe_folia: 0.02, bitumenes_lemez: 0.4, g
 export interface TervRetegUI extends RetegUI { forras: string; kimarad?: string; megjegyzes?: string }
 
 /** Rétegrend → program-rétegek (belülről kifelé, ahogy a modell várja). */
+const BORDA_SZO = /szarufa|fogópár|fogopar|gerend|fedélszék|fedelszek|fedélszerkezet|szeglemez|szelemen|faváz|fa váz|pallóváz|párnafa|ellenléc|\bléc|bordá|c-profil|cw[- ]?profil/i;
+const KOZTE = /közt(?:e|ük)|közötte|között|\bközé\b/i;
+const HOSZIG_SZO = /hőszig|hoszig|gyapot|cellulóz|celluloz|\beps\b|\bxps\b|\bpir\b|fagyapot|kender|szalma|perlit/i;
+/**
+ * A rétegben futó bordák (szarufa, fogópár, fedélszék, gerenda, léc) a tervszövegből: „10/15 cm szarufa, közte …
+ * hőszigetelés”, ill. „szeglemezes fedélszék közötte:” + a következő hőszigetelés-sor. A méret a szövegből („10/15”),
+ * különben jellemző érték – becsültként jelölve.
+ */
+function bordakTervbol(rr: TervRetegrend, ki: TervRetegUI[]) {
+  rr.retegek.forEach((r, j) => {
+    const l = r.leiras;
+    if (!BORDA_SZO.test(l) || !KOZTE.test(l)) return;
+    const meret = /(\d+(?:[,.]\d+)?)\s*\/\s*(\d+(?:[,.]\d+)?)/.exec(l);
+    const keskeny = /fedélszék|fedelszek|szeglemez|fogópár|fogopar|profil/i.test(l);
+    const leces = /\bléc|ellenléc/i.test(l) && !/szarufa|gerend/i.test(l);
+    const szel = meret ? Number(meret[1]!.replace(',', '.')) : keskeny ? 5 : leces ? 5 : 10;
+    const tavM = /(\d+(?:[,.]\d+)?)\s*cm-(?:ként|enként|kent)|tengelyt[áa]v\w*\s*(\d+(?:[,.]\d+)?)/i.exec(l);
+    const tav = tavM ? Number((tavM[1] ?? tavM[2])!.replace(',', '.')) : leces ? 60 : 90;
+    const mag = meret ? Number(meret[2]!.replace(',', '.')) : undefined;
+    const nev = (/(szarufa|fogópár|gerenda|fedélszék|ellenléc|léc|vázszerkezet|párnafa)/i.exec(l)?.[1] ?? 'borda').toLowerCase();
+    const borda = (cel: TervRetegUI) => { cel.borda = { anyagId: /acél|profil/i.test(l) ? undefined : 'puhafa', ...(/acél|profil/i.test(l) ? { lambda: 50, nev: 'Acél profil' } : { nev: nev.charAt(0).toUpperCase() + nev.slice(1) }), szelCm: szel, tavCm: tav, ...(mag !== undefined && mag < cel.dCm ? { magCm: mag } : {}), becsult: true }; cel.megjegyzes = [cel.megjegyzes, `bordák a rétegben: ${nev} ${szel}${mag ? '/' + mag : ''} cm, ${tav} cm-enként (${tavM ? 'a terv szerint' : 'becsült tengelytáv'}) – ellenőrizd`].filter(Boolean).join(' · '); };
+    // a sor maga a hőszigetelés („szarufa, közte … hőszigetelés”): a réteg anyaga a hőszigetelés, a borda benne
+    if (HOSZIG_SZO.test(l)) {
+      const cel = ki[j]!;
+      const utan = l.split(KOZTE).slice(1).join(' ');
+      const k = anyagKepez(utan.trim() || l, cel.dCm, 'teto');
+      if (k.anyagId && !k.kimarad) { cel.anyagId = k.anyagId; delete cel.nev; }
+      delete cel.kimarad; // („ellenléc, közte … hőszigetelés”: a hőszigetelés a hőburok része, nem átszellőztetett fedésréteg)
+      borda(cel);
+      return;
+    }
+    // „… fedélszék közötte:” – a következő hőszigetelés-sor bordája; maga a sor nem folytonos réteg
+    const kov = rr.retegek.findIndex((q, i) => i > j && HOSZIG_SZO.test(q.leiras));
+    if (kov < 0 || kov > j + 2) return;
+    borda(ki[kov]!);
+    ki[j]!.kimarad = 'Borda (a hőszigetelés-rétegben figyelembe véve)';
+  });
+}
+
 export function retegekEpit(rr: TervRetegrend, sz: SzerepBecsles, ujId: () => string): TervRetegUI[] {
   const ki: TervRetegUI[] = [];
   for (const r of rr.retegek) {
@@ -491,10 +541,12 @@ export function retegekEpit(rr: TervRetegrend, sz: SzerepBecsles, ujId: () => st
     const leirasVastag = r.dCm === null && !r.rtg ? /^(\d+(?:[,.]\d+)?)\s*cm\b/.exec(r.leiras) : null;
     let dCm = r.dCm ?? (leirasVastag ? Number(leirasVastag[1]!.replace(',', '.')) : k.anyagId && r.rtg ? (RTG_CM[k.anyagId] ?? 0) * r.rtg : 0);
     if (k.anyagId === 'pe_folia' && r.dCm === null) dCm = 0.02;
+    if (k.anyagId === 'gipszkarton_rb' && r.dCm === null && !r.rtg) dCm = 1.25; // vastagság nélkül: egy réteg 12,5 mm-es lap
     const forras = `${r.dCm !== null ? `${String(r.dCm).replace('.', ',')} cm` : r.rtg ? `${r.rtg} rtg.` : '–'} ${r.leiras}`;
     const sajatL = !k.kimarad && lambda !== undefined && lambda >= 0.01 && lambda <= 3 && dCm > 0 ? { lambda } : {};
     ki.push({ id: ujId(), anyagId: k.kimarad ? undefined : k.anyagId, nev: k.anyagId ? undefined : r.leiras, dCm: Math.round(dCm * 100) / 100, legreteg: k.legreteg, forras, kimarad: k.kimarad, ...sajatL, megjegyzes: lambda !== undefined && sajatL.lambda ? [k.megjegyzes, `λ a tervből: ${String(lambda).replace('.', ',')} W/mK`].filter(Boolean).join(' · ') : k.megjegyzes });
   }
+  bordakTervbol(rr, ki);
   // A tervlapok a rétegeket általában belülről kifelé (falnál) ill. felülről lefelé (padló, födém) sorolják.
   // A program rétegsorrendje: belső oldaltól a külső felé – padlónál és padlásfödémnél ez megegyezik a felülről/alulról olvasással:
   // padló: felülről (belső) lefelé (talaj) ✓; padlásfödém: a terv felülről (padlás, külső) sorol → megfordítjuk.

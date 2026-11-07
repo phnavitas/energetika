@@ -207,7 +207,8 @@ export async function jegyzokonyvPdf(p: Projekt, e: EpuletEredmeny, atal: Atalak
     const retegTabla = tabla(['#', 'Réteg (belülről kifelé)', 'd [cm]', 'λ [W/mK]', 'R [m²K/W]'], [
       ...r.retegek.map((x, i) => {
         const a = anyag(x.anyagId);
-        return [String(i + 1), x.nev ?? a?.nev ?? '–', f(x.dCm, 1), x.lambda !== undefined ? `${f(x.lambda, 3)}${a ? ' (kézi)' : ''}` : a?.lambda !== undefined ? f(a.lambda, 3) : x.legreteg ? 'légréteg' : 'R', f(er!.retegR[i], 3)];
+        const bn = x.borda ? ` + ${x.borda.nev ?? anyag(x.borda.anyagId ?? 'puhafa')?.nev ?? 'borda'} ${f(x.borda.szelCm, 0)} cm / ${f(x.borda.tavCm, 0)} cm${x.borda.magCm !== undefined && x.borda.magCm < x.dCm ? `, ${f(x.borda.magCm, 1)} cm magasan` : ''} (inhomogén, 4.1.4)` : '';
+        return [String(i + 1), (x.nev ?? a?.nev ?? '–') + bn, f(x.dCm, 1), x.lambda !== undefined ? `${f(x.lambda, 3)}${a ? ' (kézi)' : ''}` : a?.lambda !== undefined ? f(a.lambda, 3) : x.legreteg ? 'légréteg' : 'R', f(er!.retegR[i], 3)];
       }),
       ['', { text: `Rsi + Rse = ${f(er.Rsi)} + ${f(er.Rse)}`, color: SZIN.halk }, '', '', f(er.Rsi + er.Rse, 3)],
     ], [14, '*', 40, 45, 50], [2, 3, 4]);

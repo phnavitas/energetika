@@ -106,21 +106,20 @@ export function retegrendU(b: RetegrendBemenet): RetegrendEredmeny {
   } else {
     // 4.1.4 – felső és alsó határ számtani közepe (4.5–4.9).
     const inh = szamitott.map((r, i) => ({ r, i })).filter((x) => x.r.tipus === 'inhomogen') as { r: Extract<Reteg, { tipus: 'inhomogen' }>; i: number }[];
-    if (inh.length > 1) {
-      // Több inhomogén réteg esetén a szeletek kombinációját egyetlen szeletosztásra vezetjük vissza: feltétel az azonos arányok.
-      const arany0 = inh[0]!.r.szeletek.map((s) => s.arany).join(',');
-      if (!inh.every((x) => x.r.szeletek.map((s) => s.arany).join(',') === arany0)) {
-        throw new Error('Több eltérő szeletosztású inhomogén réteg: részletes (numerikus) módszer szükséges.');
-      }
-    }
     const homogenOsszeg = retegR.filter((x) => !Number.isNaN(x)).reduce((a, x) => a + x, 0);
-    const szeletSzam = inh[0]!.r.szeletek.length;
-    // Felső határ (4.6): szeletenként soros ellenállás, majd párhuzamos kapcsolás.
+    // Felső határ (4.6): szeletenként soros ellenállás, majd párhuzamos kapcsolás. Több inhomogén rétegnél (pl. egymást
+    // keresztező kötőgerenda és szelemen) a szeletek a rétegek szeleteinek kombinációi, területarányuk a szorzat
+    // (egymástól független kiosztás); azonos osztású rétegeknél (azonos arányok) a szeletek egymás fölött vannak.
+    const azonos = inh.every((x) => x.r.szeletek.map((s) => s.arany).join(',') === inh[0]!.r.szeletek.map((s) => s.arany).join(','));
+    if (inh.length > 1 && !azonos) fw.push({ kod: 'INHOMOGEN_KERESZT', uzenet: 'Több, eltérő kiosztású inhomogén réteg: a szeletek a kiosztások kombinációi (egymást keresztező bordák közelítése).', forras: '1. függ. 4.1.4' });
+    const kombok: { arany: number; idx: number[] }[] = azonos
+      ? inh[0]!.r.szeletek.map((s, k) => ({ arany: s.arany, idx: inh.map(() => k) }))
+      : inh.reduce<{ arany: number; idx: number[] }[]>((acc, x) => acc.flatMap((c) => x.r.szeletek.map((s, k) => ({ arany: c.arany * s.arany, idx: [...c.idx, k] }))), [{ arany: 1, idx: [] }]);
     let invFelso = 0;
-    for (let s = 0; s < szeletSzam; s++) {
-      const arany = inh[0]!.r.szeletek[s]!.arany;
-      const Rszelet = Rsi + homogenOsszeg + RseHasznalt + inh.reduce((a, x) => a + x.r.d / x.r.szeletek[s]!.lambda, 0);
-      invFelso += arany / Rszelet;
+    for (const c of kombok) {
+      if (c.arany <= 0) continue;
+      const Rszelet = Rsi + homogenOsszeg + RseHasznalt + inh.reduce((a, x, j) => a + x.r.d / x.r.szeletek[c.idx[j]!]!.lambda, 0);
+      invFelso += c.arany / Rszelet;
     }
     const Rfelso = 1 / invFelso;
     // Alsó határ (4.7–4.9): rétegenként egyenértékű λ.

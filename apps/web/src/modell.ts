@@ -47,7 +47,20 @@ export interface HoszuksegletBeallitas {
 export const HSZ_ALAP: HoszuksegletBeallitas = { thetaE: -15, n50: 3, vedettseg: 'mersekelt', Gw: 1, fRH: 0 };
 
 export type Szerep = 'fal' | 'padlas' | 'teto' | 'pincefodem' | 'padlo' | 'belso';
-export interface RetegUI { id: string; anyagId?: string; nev?: string; dCm: number; lambda?: number; R?: number; legreteg?: 'zart' | 'intenziv'; /** Páradiffúziós ellenállási szám kézi értéke (üres: katalógus / jellemző érték). */ mu?: number; }
+export interface RetegUI { id: string; anyagId?: string; nev?: string; dCm: number; lambda?: number; R?: number; legreteg?: 'zart' | 'intenziv'; /** Páradiffúziós ellenállási szám kézi értéke (üres: katalógus / jellemző érték). */ mu?: number;
+  /** A rétegben futó bordák (szarufa, fogópár, fagerenda, fedélszék, váz): inhomogén réteg (4.1.4). */
+  borda?: RetegBorda; }
+export interface RetegBorda {
+  /** A borda anyaga (alapból puhafa). */
+  anyagId?: string; lambda?: number; nev?: string;
+  /** Borda szélessége és tengelytávolsága (cm) – a területarány szel / tav. */
+  szelCm: number; tavCm: number;
+  /** A borda magassága a rétegben (cm); üres: a teljes rétegvastagság. Kisebb magasságnál a borda-szelet a borda és a
+   * fölötte / alatta folytonos hőszigetelés soros ellenállása. */
+  magCm?: number;
+  /** A tervből becsült (a metszet szövegéből, alapértelmezett méretekkel) – ellenőrizendő. */
+  becsult?: boolean;
+}
 export interface Retegrend {
   id: string; nev: string; szerep: Szerep; kovetelmenyKod: string;
   hoaramIrany: HoaramIrany; kulsoOldal: 'kulso' | 'futetlen' | 'belso';
@@ -312,8 +325,27 @@ export function retegrendAutoNev(r: Retegrend): string {
   return `${SZEREP_NEV[r.szerep]}${reszek.length ? ` – ${reszek.join(' + ')}` : ''}`;
 }
 
+/** A borda (szarufa, fogópár…) λ-ja. */
+export function bordaLambda(b: RetegBorda): number | undefined { return b.lambda ?? anyag(b.anyagId ?? 'puhafa')?.lambda; }
+
 export function magRetegek(r: Retegrend): Reteg[] {
-  return r.retegek.map((x): Reteg => {
+  return r.retegek.map((x0): Reteg => {
+    const alap0 = magReteg(x0);
+    const b = x0.borda;
+    // termék-R-es (ellenállással megadott) hőszigetelésnél is: egyenértékű λ = d / R
+    const alap = alap0.tipus === 'ellenallas' && b && alap0.d > 0 ? { tipus: 'homogen' as const, nev: alap0.nev, d: alap0.d, lambda: alap0.d / alap0.R } : alap0;
+    if (!b || alap.tipus !== 'homogen' || !(b.szelCm > 0) || !(b.tavCm > 0)) return alap0;
+    const lb = bordaLambda(b); if (!lb) throw new Error(`Hiányzó hővezetési adat: borda a „${alap.nev}” rétegben`);
+    const arany = Math.min(1, b.szelCm / b.tavCm);
+    const d = alap.d, db = Math.min(d, (b.magCm ?? x0.dCm) / 100);
+    // részleges magasságú borda: a borda-szeletben a borda és a maradék hőszigetelés sorosan (egyenértékű λ)
+    const lSzelet = d / (db / lb + (d - db) / alap.lambda);
+    return { tipus: 'inhomogen', nev: alap.nev, d, szeletek: [{ nev: alap.nev, lambda: alap.lambda, arany: 1 - arany }, { nev: b.nev ?? anyag(b.anyagId ?? 'puhafa')?.nev ?? 'borda', lambda: lSzelet, arany }] };
+  });
+}
+
+function magReteg(x: RetegUI): Reteg {
+  {
     const a = anyag(x.anyagId);
     const nev = x.nev ?? a?.nev ?? 'réteg';
     const d = x.dCm / 100;
@@ -324,7 +356,7 @@ export function magRetegek(r: Retegrend): Reteg[] {
     if (a?.R) return { tipus: 'homogen', nev, d, lambda: a.R.d / a.R.R };
     if (a?.lambda) return { tipus: 'homogen', nev, d, lambda: a.lambda };
     throw new Error(`Hiányzó hővezetési adat: ${nev}`);
-  });
+  }
 }
 
 export function retegrendSzamitas(r: Retegrend) {
