@@ -69,7 +69,7 @@ export function retegJel(sraff: Sraffozas | 'xps', t: Tegl, fugg: boolean): stri
     // szálas hőszigetelés (DIN 1356-1 / MSZ): a két szélen felváltva körívek (csepp alak); egy csepp két nyakából a
     // vonalak a szemközti oldal szomszédos cseppjeihez futnak, a csepp előtt keresztezve egymást – egy hullám a teljes
     // vastagságban
-    const R = D * 0.2, s = D * 0.2, g = (75 * Math.PI) / 180;
+    const R = D * 0.2, s = D * 0.2, g = Math.PI / 2; // a nyak a két szomszédos csepp érintési pontján: a vonalak ott találkoznak, nem kereszteznek
     let p = '';
     for (let k = -1; (k - 1) * s < L + R; k++) {
       const also = k % 2 === 0; const cu = k * s, cv = also ? R : D - R, be = also ? 1 : -1;
