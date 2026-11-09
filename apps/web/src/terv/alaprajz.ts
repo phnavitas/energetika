@@ -459,6 +459,9 @@ export function eszakjelKeres(lap: Lap, kizar: [number, number, number, number][
 
 /** Lapirány (a „felfelé” iránytól óramutató szerint, fok) → égtáj, adott északjel-szög mellett. */
 export function egtaj(lapIrany: number, eszakSzog: number): 'É' | 'ÉK' | 'K' | 'DK' | 'D' | 'DNy' | 'Ny' | 'ÉNy' {
+  // a lapon tengelyirányú fal (± 2°): a körvonal pontatlansága ne vigye át a szomszédos égtájba, ha az északjel
+  // éppen egy égtájhatárra esik (pl. 113° → minden homlokzat 22,5°-os határ közelében)
+  const t = Math.round(lapIrany / 90) * 90; if (Math.abs(lapIrany - t) <= 2) lapIrany = t;
   const az = szogNorm(lapIrany - eszakSzog);
   return (['É', 'ÉK', 'K', 'DK', 'D', 'DNy', 'Ny', 'ÉNy'] as const)[Math.round(az / 45) % 8]!;
 }

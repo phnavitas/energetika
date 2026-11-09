@@ -535,13 +535,13 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   };
   /** A helyiség szerepe a hőburokban: fűtött, fűtetlen (lakótéren belüli / b-tényezős), szomszéd épület (nem számított), kültér. */
   const szerep = (i: number): Szerep => (helyisegek[i]?.kulter || kj.kulterH?.has(i) ? 'kulter' : !egysegben(i) || kizartH.has(i) ? 'szomszed' : kategoria(i) === 'kondicionalt' ? 'futott' : kategoria(i) === 'erosen_kapcsolt' ? 'erosen' : 'futetlen');
-  const setSzerep = (i: number, v: Szerep) => kjMod((k) => {
+  const setSzerep = (i: number, v: Szerep) => { kjMod((k) => {
     const kizart = new Set(k.kizartH), kulter = new Set(k.kulterH ?? []), kt = { ...k.kat };
     kizart.delete(i); kulter.delete(i);
     if (v === 'szomszed') kizart.add(i); else if (v === 'kulter') kulter.add(i);
     else kt[i] = v === 'futott' ? 'kondicionalt' : v === 'erosen' ? 'erosen_kapcsolt' : 'gyengen_kapcsolt';
     return { ...k, kizartH: kizart, kulterH: kulter, kat: kt };
-  });
+  }); };
   /** A rajzon kattintással megnyitott besorolás-menü (a rajz-konténerhez viszonyított helyen). */
   const [menu, setMenu] = useState<{ i: number; x: number; y: number; kulcsok?: string[] } | null>(null);
   useEffect(() => setMenu(null), [aIdx]);
@@ -1601,10 +1601,10 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   return (<>
                     {csoportFej}
                     <tr id={`hs-sor-${i}`} style={`${valasztott[i] ? '' : 'opacity:.55;'}${kivH === i ? 'background:#FEF3C7;outline:2px solid #F59E0B;outline-offset:-2px' : ''}`} onClick={() => setKivH(kivH === i ? null : i)}>
-                      <td><input type="checkbox" aria-label={`${h.nev} átvétele`} disabled={h.kulter} checked={valasztott[i]} onChange={(e) => { if ((e.target as HTMLInputElement).checked) setSzerep(i, kategoria(i) === 'kondicionalt' ? 'futott' : kategoria(i) === 'erosen_kapcsolt' ? 'erosen' : 'futetlen'); else setSzerep(i, 'szomszed'); }} /></td>
+                      <td onClick={(e) => e.stopPropagation()}><input type="checkbox" aria-label={`${h.nev} átvétele`} disabled={h.kulter} checked={valasztott[i]} onChange={(e) => { if ((e.target as HTMLInputElement).checked) setSzerep(i, kategoria(i) === 'kondicionalt' ? 'futott' : kategoria(i) === 'erosen_kapcsolt' ? 'erosen' : 'futetlen'); else setSzerep(i, 'szomszed'); }} /></td>
                       <td>{h.kod ?? '–'}</td>
                       <td>{h.nev}{h.burkolat && <span class="halkabb"> · {h.burkolat}</span>}</td>
-                      <td style="min-width:210px">{!h.kulter && <div style="display:flex;align-items:center;gap:6px"><span aria-hidden="true" style={`flex:none;display:inline-block;width:12px;height:12px;border-radius:3px;background:${SZEREP_SZIN[szerep(i)]}`} /><Valaszto cimke="Besorolás" ertek={szerep(i)} opciok={SZEREPEK} valt={(v) => setSzerep(i, v as Szerep)} /></div>}</td>
+                      <td style="min-width:210px" onClick={(e) => e.stopPropagation()}>{!h.kulter && <div style="display:flex;align-items:center;gap:6px"><span aria-hidden="true" style={`flex:none;display:inline-block;width:12px;height:12px;border-radius:3px;background:${SZEREP_SZIN[szerep(i)]}`} /><Valaszto cimke="Besorolás" ertek={szerep(i)} opciok={SZEREPEK} valt={(v) => setSzerep(i, v as Szerep)} /></div>}</td>
                       <td class="szam">{sz(h.A)} m²</td>
                       <td>{fl.length ? fl.map((f) => <span style="white-space:nowrap;margin-right:8px"><span style={`color:${IRANY_SZIN[f.irany]}`}>■</span> {egtaj(f.irany, eszakSz)} {sz(f.hossz)} m</span>) : <span class="halkabb">–</span>}</td>
                       <td class="halkabb">{megj.join('; ')}</td>

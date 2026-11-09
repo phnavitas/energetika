@@ -18,7 +18,7 @@ export interface TervRetegrend {
   x: number; y: number;
 }
 
-const FEJLEC_KOD = /^[A-ZÁÉ]{1,3}[-. ]?\d{1,3}(?:\.\d{1,2})?[a-z]?[*'’]{0,3}\.?$/;
+const FEJLEC_KOD = /^[A-ZÁÉ]{1,3}[-. ]?\d{1,3}(?:\.\d{1,2})?[a-z]?[*'’´`]{0,3}\.?$/;
 const FEJLEC_CIM = /rétegrend|rétegfelépítés|réteg-?rend/i;
 /** Szerkezetnév a rétegrend-fejlécben („homlokzati fal”, „emelet födém”, „zöldtető”). */
 const SZERKEZET_SZO = /fal\b|fal |padló|padlo|födém|fodem|tető|teto|lemez|aljzat|szerkezet|rétegrend/i;
@@ -96,7 +96,7 @@ function fejlecBlokkok(sz: Szoveg[]): TervRetegrend[] {
       const sorban2 = vsz.filter((t) => t !== k && Math.abs(t.y - k.y) < k.meret * 0.4 && t.x > k.x && t.x - (k.x + k.szel) < k.meret * 15).sort((a, b) => a.x - b.x);
       if (!sorban2[0] || !/\p{L}{3}/u.test(sorban2[0].s)) continue;
       // „F1  külső vékonyvakolat rendszer” (vastagság nélküli első réteg), a következő sor a vastagság-oszlopban kezdődik
-      const kov = vsz.filter((t) => t.y > k.y + k.meret * 0.6 && t.y < k.y + k.meret * 1.9 && t.x >= k.x - k.meret && t.x < sorban2[0]!.x - k.meret * 0.3);
+      const kov = vsz.filter((t) => t.y > k.y + k.meret * 0.6 && t.y < k.y + k.meret * 3.6 && t.x >= k.x - k.meret && t.x < sorban2[0]!.x - k.meret * 0.3); // (a következő 1–3 sor egyikében)
       if (kov.some((t) => VASTAG.test(t.s.trim()) && !/^-{1,3}$|^–$/.test(t.s.trim()))) fejlecek.push({ kod: k, cim: { ...sorban2[0], s: '' }, fejNelkul: true });
     }
   }
@@ -135,6 +135,16 @@ function fejlecBlokkok(sz: Szoveg[]): TervRetegrend[] {
       const s = sorok.find((r) => Math.abs(r[0]!.y - t.y) < t.meret * 0.45);
       if (s) s.push(t); else sorok.push([t]);
     }
+    // a tábla vége: nagy függőleges hézag a sorok között (alatta már a rajzpecsét, megjegyzés)
+    {
+      const kozok = sorok.slice(1).map((r, i) => r[0]!.y - sorok[i]![0]!.y).sort((a, b) => a - b);
+      const tipikus = kozok.length ? kozok[kozok.length >> 1]! : kod.meret * 1.3;
+      const elso = sorok.length ? sorok[0]![0]!.y - kod.y : 0;
+      for (let i = 1; i < sorok.length; i++) if (sorok[i]![0]!.y - sorok[i - 1]![0]!.y > Math.max(tipikus * 2.5, kod.meret * 2.5)) { sorok.splice(i); break; }
+      if (sorok.length && elso > Math.max(tipikus * 3, kod.meret * 4)) sorok.splice(0);
+    }
+    // rajzpecsét / cégadat sorok (cégnév, cím, adószám, telefon) nem rétegek
+    for (let i = sorok.length - 1; i >= 0; i--) { const t = sorok[i]!.map((x) => x.s).join(' '); if (/adósz|adószám|\bkft\.?|\bbt\.?\b|\bzrt\.?|\bnyrt|\btel\.?:|telefon|e-?mail|@|\bhrsz|^\d{4}\s+\p{Lu}\p{Ll}+$|\bu\.\s*\d+|utca\s+\d|tervező|megrendelő|építtető/iu.test(t)) sorok.splice(i, 1); }
     const retegek: TervReteg[] = [];
     let elozoY = kod.y;
     // jelölt táblázat: minden réteg sora a vastagság-oszlopban kezdődik („8 cm”, „1 rtg”, vagy „-” vastagság nélkül);
@@ -258,7 +268,7 @@ export function tartalmiBlokkok(sz: Szoveg[]): TervRetegrend[] {
     for (const q of tagok) {
       const rr = retegOlvas(q.s);
       if (rr) retegek.push(rr);
-      else if (retegek.length && !anyagSor(q.s)) retegek.at(-1)!.leiras += ' ' + q.s.trim();
+      else if (retegek.length && (!anyagSor(q.s) || retegek.at(-1)!.leiras.endsWith(','))) retegek.at(-1)!.leiras += ' ' + q.s.trim();
       else retegek.push({ dCm: null, leiras: q.s.trim() });
     }
     // cím: a csoport fölötti, közeli, nem rétegsor (a jel vele egy sorban vagy tőle balra)
@@ -293,6 +303,7 @@ export function tartalmiBlokkok(sz: Szoveg[]): TervRetegrend[] {
 }
 
 /** Rétegrend-táblák a lapon: a tartalom szerint (egymás alatti rétegsorok) és a fejléc szerint; az átfedők közül a fejléces. */
+const vastagDb = (rs: TervReteg[]) => rs.filter((r) => r.dCm !== null || r.rtg).length;
 export function retegrendBlokkok(sz: Szoveg[]): TervRetegrend[] {
   const fej = fejlecBlokkok(sz);
   const tart = tartalmiBlokkok(sz);
@@ -304,7 +315,7 @@ export function retegrendBlokkok(sz: Szoveg[]): TervRetegrend[] {
     // átfedésnél a fejléces olvasat marad (a jel, cím és a több soros leírások tagolása ott megbízhatóbb) – kivéve, ha
     // ugyanaz a tábla (azonos jel), és a tartalmi olvasat több sort különít el (a fejléces összevonta őket)
     if (fi < 0) ki.push(b);
-    else if (!/^R\d+$/.test(b.kod) && ki[fi]!.kod.replace(/[\s.]/g, '') === b.kod.replace(/[\s.]/g, '') && b.retegek.length > ki[fi]!.retegek.length
+    else if (!/^R\d+$/.test(b.kod) && ki[fi]!.kod.replace(/[\s.]/g, '') === b.kod.replace(/[\s.]/g, '') && vastagDb(b.retegek) > vastagDb(ki[fi]!.retegek)
       && ki[fi]!.retegek.some((r) => b.retegek.filter((q) => r.leiras.includes(q.leiras) && q.leiras.length >= 4).length >= 2)) ki[fi] = { ...ki[fi]!, retegek: b.retegek };
   }
   return ki;

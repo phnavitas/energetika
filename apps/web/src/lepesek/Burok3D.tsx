@@ -162,8 +162,12 @@ export function modellSikok(szintek: Burok3DSzint[], eszakSzog: number) {
             for (const [u0, u1] of cs) { if (u0 > u) falDarab(u, u0); darab(u0, u1, 'csatl', `${tj} oldali külső falhoz csatlakozó belső fal · ${sz((u1 - u0) * l)} m széles`); u = u1; }
             if (u < 1) falDarab(u, 1);
           }
+          const falJ = sikok.length;
           for (const n of s.nyilasok) {
             const tt = ((n.x - A[0]) * dx + (n.y - A[1]) * dy) / (l * l);
+            // a nyílást tartalmazó faldarab (a fal a belső falak csatlakozásainál és a környezet szerint darabolt): a
+            // rajzolási sorrendben ennek a darabnak a mélysége után jön
+            const darabI = (() => { for (let j = falI; j < falJ; j++) { const q = sikok[j]!.pts; const u0 = ((q[0]![0] - A[0]) * dx + (q[0]![1] - A[1]) * dy) / (l * l), u1 = ((q[1]![0] - A[0]) * dx + (q[1]![1] - A[1]) * dy) / (l * l); if (tt >= Math.min(u0, u1) - 1e-6 && tt <= Math.max(u0, u1) + 1e-6) return j; } return falI; })();
             const dist = Math.abs((n.x - A[0]) * dy - (n.y - A[1]) * dx) / l;
             if (tt < 0 || tt > 1 || dist > 2.5) continue;
             // csak külső tér felé néző falszakaszon (a fűtetlen tér felé nyíló ajtó más határolás)
@@ -175,7 +179,7 @@ export function modellSikok(szintek: Burok3DSzint[], eszakSzog: number) {
             sikok.push({
               tipus: 'nyilas',
               pts: [[A[0] + dx * t0 + ex, A[1] + dy * t0 + ey, s.z0 + h0], [A[0] + dx * t1 + ex, A[1] + dy * t1 + ey, s.z0 + h0], [A[0] + dx * t1 + ex, A[1] + dy * t1 + ey, s.z0 + h1], [A[0] + dx * t0 + ex, A[1] + dy * t0 + ey, s.z0 + h1]],
-              n: [nx, ny, 0], szint: s.nev, info: `${tj} tájolású · ${Math.round(n.szel * 100)} × ${Math.round(n.mag * 100)} cm${n.pm > 0 ? ` · mellvéd ${sz(n.pm)} m` : ''}`, terulet: n.szel * n.mag, grp, fal: falI,
+              n: [nx, ny, 0], szint: s.nev, info: `${tj} tájolású · ${Math.round(n.szel * 100)} × ${Math.round(n.mag * 100)} cm${n.pm > 0 ? ` · mellvéd ${sz(n.pm)} m` : ''}`, terulet: n.szel * n.mag, grp, fal: darabI,
             });
           }
         }
@@ -291,6 +295,33 @@ export function Burok3D({ szintek, eszakSzog, magassag = 560, meretMod, onMeretM
     rajz.push({ i, pts: v.map((w) => [w[0], w[1]]), mely, szin, atl: s.cella ? 1 : atl, cella: s.cella, vonal: s.tipus === 'nyilas' ? '#2F6FA8' : s.tipus === 'teto' ? '#7C2D12' : '#6B5E45', kulcs: [Math.round(hasabMely[s.grp]! * 100) / 100, felulrol ? hasabok[s.grp]!.z0 : -hasabok[s.grp]!.z0, kat, m2] });
   });
   rajz.sort((x, y) => x.kulcs[0] - y.kulcs[0] || x.kulcs[1] - y.kulcs[1] || x.kulcs[2] - y.kulcs[2] || x.kulcs[3] - y.kulcs[3]);
+  // nyílászárók: a festő-sorrend a homorú alaprajznál tévedhet (egy hátrébb lévő faldarab rájuk rajzolódik) – sugárvizsgálat
+  // a néző pontjától: amelyik nyílást semmilyen nem átlátszó (elöl lévő fal, tető, padló) sík nem takar, az a végére kerül
+  {
+    const D = KAMERA * R; const szem: P3 = [kozep[0] + nezo[0] * D, kozep[1] + nezo[1] * D, kozep[2] + nezo[2] * D];
+    const takaro = sikok.map((f, j) => ({ f, j })).filter(({ f }) => lathato[f.tipus] && f.tipus !== 'nyilas' && (f.tipus === 'teto' || f.tipus === 'fodem' || f.tipus === 'padlo' || f.n[0] * nezo[0] + f.n[1] * nezo[1] + f.n[2] * nezo[2] > 0));
+    const benne = (q: P3[], n: P3, X: P3) => {
+      // a sík legnagyobb normális-összetevőjét elhagyva 2D-ben
+      const k = Math.abs(n[0]) >= Math.abs(n[1]) && Math.abs(n[0]) >= Math.abs(n[2]) ? 0 : Math.abs(n[1]) >= Math.abs(n[2]) ? 1 : 2;
+      const u = k === 0 ? 1 : 0, v = k === 2 ? 1 : 2; let bent = false;
+      for (let i = 0, j = q.length - 1; i < q.length; j = i++) { const a1 = q[i]!, b1 = q[j]!; if ((a1[v] > X[v]) !== (b1[v] > X[v]) && X[u] < ((b1[u] - a1[u]) * (X[v] - a1[v])) / (b1[v] - a1[v]) + a1[u]) bent = !bent; }
+      return bent;
+    };
+    const lathatoNy = new Set<number>();
+    for (const r0 of rajz) {
+      const w = sikok[r0.i]!; if (w.tipus !== 'nyilas') continue;
+      const c: P3 = [0, 1, 2].map((d) => w.pts.reduce((m, q) => m + q[d]!, 0) / w.pts.length) as P3;
+      const d: P3 = [c[0] - szem[0], c[1] - szem[1], c[2] - szem[2]];
+      const takart = takaro.some(({ f }) => {
+        const nd = f.n[0] * d[0] + f.n[1] * d[1] + f.n[2] * d[2]; if (Math.abs(nd) < 1e-9) return false;
+        const p0 = f.pts[0]!; const tt = (f.n[0] * (p0[0] - szem[0]) + f.n[1] * (p0[1] - szem[1]) + f.n[2] * (p0[2] - szem[2])) / nd;
+        if (!(tt > 1e-4 && tt < 1 - 1e-3)) return false;
+        return benne(f.pts, f.n, [szem[0] + d[0] * tt, szem[1] + d[1] * tt, szem[2] + d[2] * tt]);
+      });
+      if (!takart) lathatoNy.add(r0.i);
+    }
+    if (lathatoNy.size) { const elol = rajz.filter((x) => !lathatoNy.has(x.i)), vege = rajz.filter((x) => lathatoNy.has(x.i)); rajz.length = 0; rajz.push(...elol, ...vege); }
+  }
   // talaj: négyzetrács a legalsó szint alatt, rajta az északjel
   const zMin = Math.min(...szintek.map((s) => s.z0));
   const rr = R * 1.3, lep = Math.max(1, Math.round(rr / 8)), rac: [P3, P3][] = [];
