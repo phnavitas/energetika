@@ -11,7 +11,7 @@ import { kotaEllenoriz } from './kota';
 import type { TintaKep } from './tinta';
 import { meretaranyKotabol, automatikusHelyisegek, lakasCsoportok, arnyalatHatarok, type SzurkeKep } from './autohelyiseg';
 import { terdfalGeometria } from './metszetGeom';
-import { fuggonyfalak, jeloletlenNyilasok, lancNyilasok, nyilasFeliratok, nyilasokHozzarendel, falfulkeE, type TervNyilas, type NyilasFelirat } from './nyilaszarok';
+import { fuggonyfalak, jeloletlenNyilasok, lancNyilasok, tetoablakJelek, type TetoablakJel, nyilasFeliratok, nyilasokHozzarendel, falfulkeE, type TervNyilas, type NyilasFelirat } from './nyilaszarok';
 import { talajOldal } from './talaj';
 import { retegrendBlokkok, szerepBecsles, retegekEpit, szintekKeres, tetoterKeres, type TetoterAdat, type TervRetegrend, type SzerepBecsles, type TervRetegUI, type SzintEredmeny } from './metszet';
 import { ujId } from '../modell';
@@ -70,7 +70,7 @@ function szurkeKep(c: HTMLCanvasElement, scale: number): SzurkeKep | undefined {
  * „Keresztmetszetek”, „Homlokzatok”) – nem szóösszetétel része („keresztmetszetű”, „homlokzati”, „homlokzaton”). */
 const CIM_SZO = /(alaprajz(?:ok)?|(?:kereszt|hossz)?metszet(?:ek)?|homlokzat(?:ok)?|helyszínrajz|tetőfelülnézet)(?![\p{L}])/iu;
 
-export function lapSzerep(lap: Lap, fajlnev = ''): { szerep: TervLap['szerep']; cim: string } {
+export function lapSzerep(lap: Lap, fajlnev = '', tobbLapos = false): { szerep: TervLap['szerep']; cim: string } {
   const sz = lap.szovegek.map((t) => t.s).join(' \n ');
   // a legnagyobb betűméretű cím-jelölt (a rajzpecsét lapcíme vagy a rajz alatti felirat)
   const jeloltek = lap.szovegek.filter((t) => t.s.trim().length <= 70 && CIM_SZO.test(t.s) && !/szerint|lásd|ld\./i.test(t.s));
@@ -83,10 +83,14 @@ export function lapSzerep(lap: Lap, fajlnev = ''): { szerep: TervLap['szerep']; 
   const mondat = lap.szovegek.filter((t) => t.s.trim().length >= 50).length;
   if (/m[űuü]\s*le[íi]r[áa]s|műszaki[_\s-]*leírás|leiras|tervezői\s*nyilatkozat/i.test(fn) || (!cim && lap.utvonalak.length < 40 && mondat >= 8 && /műszaki\s+leírás/i.test(sz))) return { szerep: 'leiras', cim: 'Műszaki leírás' };
   const fajta = (x: string) => (/metszet/i.test(x) ? 'metszet' : /alaprajz/i.test(x) ? 'alaprajz' : /homlokzat/i.test(x) ? 'homlokzat' : null);
-  const f = fajta(cim) ?? fajta(fajlnev.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ').normalize('NFC'));
+  // többlapos PDF: a fájlnév az egész dokumentumé (pl. „Tervdokumentáció”, „Alaprajzok”) – a lap saját címe és
+  // tartalma dönt, a fájlnév csak utolsó tartalék
+  const fNev = fajta(fajlnev.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ').normalize('NFC'));
+  const f = fajta(cim) ?? (tobbLapos ? null : fNev);
   if (f) return { szerep: f, cim: cim || fajlnev.replace(/\.pdf$/i, '') };
   if (/rétegrend/i.test(sz) && /[±+]\d,\d{2}/.test(sz)) return { szerep: 'metszet', cim: cim || 'Metszet' };
   if (/\d+[,.]\d{2}\s*m(²|2)/.test(sz)) return { szerep: 'alaprajz', cim: cim || 'Alaprajz' };
+  if (tobbLapos && fNev) return { szerep: fNev, cim: cim || fajlnev.replace(/\.pdf$/i, '') };
   // típusalaprajz-lap pecsét nélkül: sok nyílásfelirat („pm 90”, „P 90”) és „…típusok” felirat
   if (/típusok\s*:|típusalaprajz/i.test(sz) || lap.szovegek.filter((t) => /^(pm|p)\s*\d{2,3}\b/i.test(t.s.trim())).length >= 5) return { szerep: 'alaprajz', cim: cim || (/(\S+típusok)/i.exec(sz)?.[1] ?? 'Típusalaprajz') };
   return { szerep: 'egyeb', cim: cim || 'Egyéb lap' };
@@ -156,7 +160,7 @@ export async function pdfLapok(f: File, kepSzel = 2000, halad?: (kesz: number, o
     const c = document.createElement('canvas'); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
     const ctx = c.getContext('2d')!; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
     await page.render({ canvasContext: ctx, viewport: vp, canvas: c }).promise;
-    const { szerep, cim } = lapSzerep(lap, f.name);
+    const { szerep, cim } = lapSzerep(lap, f.name, doc.numPages > 1);
     let tinta: TintaKep | undefined;
     if (szerep === 'alaprajz') {
       try {
@@ -192,6 +196,8 @@ export interface AlaprajzFeldolgozas {
   nyilasok: TervNyilas[];
   /** Falhoz nem rendelt nyílásfeliratok (méret, mellvéd, hely). */
   arvaFeliratok?: NyilasFelirat[];
+  /** Az alaprajzon jelölt (X-szel áthúzott keretű) tetősík ablakok. */
+  tetoablakok?: TetoablakJel[];
   /** Pecsét nélküli lap: a helyiségek automatikusan felismert zárt terek. */
   auto?: boolean;
   /** Pecsét nélküli lapnál a műszaki leírás helyiséglistájából átvett sorok száma (párosított / csak listában). */
@@ -490,7 +496,10 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
   // falhoz nem rendelt nyílásfeliratok (pl. a raszterben nem lezárt, üvegfalas helyiség homlokzatán): a szerkesztett hőburok használja
   // (az azonos szélességű, a nyílással átfedő felirat – ugyanannak a nyílásnak másik feliratsora – sem árva)
   const arva = feliratok.filter((f) => !(f.lanc && !f.kapuJelolt) && !nyilasok.some((n) => Math.hypot(n.x - f.x, n.y - f.y) < 2 || (Math.abs(n.szel - f.szel) < 0.01 && f.szel >= 0.6 && Math.hypot(n.x - f.x, n.y - f.y) * r.mPerPt < 0.9 * f.szel)));
-  return { e, magHelyisegek, r, ...(r3d ? { r3d } : {}), nyilasok, auto, arvaFeliratok: arva, ...(leiras ? { leiras } : {}) };
+  // tetősík ablakok a jelükről (a rétegszűrés előtti lapon: a tetőréteg a szűrésben kiesik)
+  let tetoablakok: TetoablakJel[] = [];
+  if (r) { try { tetoablakok = tetoablakJelek(lap0, r); } catch { tetoablakok = []; } }
+  return { e, magHelyisegek, r, ...(r3d ? { r3d } : {}), nyilasok, auto, arvaFeliratok: arva, ...(leiras ? { leiras } : {}), ...(tetoablakok.length ? { tetoablakok } : {}) };
 }
 
 export interface MetszetFeldolgozas {

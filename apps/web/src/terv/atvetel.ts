@@ -64,7 +64,7 @@ export interface TervAtvetel {
   szomszedFutetlen?: number;
   /** Tetősík ablakok (tetőtérben a falhoz nem rendelt, helyiségen belüli méretfelirat): a ferde tetőből vonódnak le,
    * a legközelebbi eresz menti homlokzat tájolásával (tav: homlokzati irány → távolság, m). */
-  tetoablakok?: { helyiseg: number; szel: number; mag: number; tav?: Record<number, number>; irany?: number }[];
+  tetoablakok?: { helyiseg: number; szel: number; mag: number; tav?: Record<number, number>; irany?: number; /** a jelből és a feliratból számolt tetőhajlás (fok) */ hajlas?: number }[];
   /** Az alaprajz által ábrázolt szintek (pl. ['1', '2'] – azonos 1. és 2. emelet): a helyiségek szintenként, a falak, nyílászárók szintszámszorosan. */
   szintek?: string[];
 }
@@ -378,6 +378,34 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
   else if (legfelso && AFelso > 0) {
     p.feluletek.push({ id: ujId(), nev: 'Tető / padlásfödém – legfelső szint felett', fajta: 'opak', hatar: 'kulso', A: kerek(AFelso), tajolas: null, hajlasszog: 0, chi: 0.1 });
     uz.push(`Tető- és padlásfödém-rétegrendet nem találtam a metszeten: a legfelső szint feletti felület (${sz2(Aossz)} m²) rétegrend nélkül került át – válaszd ki a Határolás lépésben (padlásfödémnél a határ: fűtetlen padlás).`);
+  }
+  // tetősík ablakok tetőtéri adatok (metszet) nélkül: az alaprajzi jelükből – a legfelső szint feletti felületből vonódnak le
+  if (!tt && a.tetoablakok?.length) {
+    const fent = [...p.feluletek].reverse().find((f) => f.fajta === 'opak' && f.hajlasszog === 0 && /legfelső szint felett|Padlásfödém|Tető/.test(f.nev) && f.nev !== 'Talajon fekvő padló');
+    const csop = new Map<string, { helyiseg: number; ir: number; szel: number; mag: number; hajlas?: number; db: number }>();
+    for (const ta of a.tetoablakok) {
+      if (!a.helyisegek[ta.helyiseg] || !burok(a.helyisegek[ta.helyiseg]!)) continue;
+      const ir = ta.irany ?? Number(Object.entries(ta.tav ?? {}).sort((x, y) => x[1] - y[1])[0]?.[0] ?? 0);
+      const k = `${ta.helyiseg}|${ir}|${ta.szel}|${ta.mag}`;
+      const c = csop.get(k); if (c) c.db++; else csop.set(k, { helyiseg: ta.helyiseg, ir, szel: ta.szel, mag: ta.mag, hajlas: ta.hajlas, db: 1 });
+    }
+    let tdb = 0; const hajlasok = new Set<number>();
+    for (const c of csop.values()) {
+      const meret = `${String(Math.round(c.szel * 100))}×${String(Math.round(c.mag * 100))}`;
+      let t = p.nyilaszarok.find((x) => x.kovetelmenyKod === 'tetosik_ablak' && Math.abs(x.szelesseg - c.szel) < 1e-6 && Math.abs(x.magassag - c.mag) < 1e-6);
+      if (!t) {
+        const s = NS.NYILASZARO_SABLONOK.find((x) => x.kod === 'pvc_3r')!;
+        t = sablonbolNyilaszaro(s, { id: ujId(), szelesseg: c.szel, magassag: c.mag, kovetelmenyKod: 'tetosik_ablak' });
+        t.nev = `Tetősík ablak ${meret}`; t.kovetelmenyKod = 'tetosik_ablak'; t.csoportId = csoportFajta(p, 'ablak', 'tetősík ablak');
+        p.nyilaszarok.push(t);
+      }
+      const hsz = ([30, 45, 60] as const).reduce((b, x) => (Math.abs(x - (c.hajlas ?? 45)) < Math.abs(b - (c.hajlas ?? 45)) ? x : b));
+      if (c.hajlas) hajlasok.add(c.hajlas);
+      const h = a.helyisegek[c.helyiseg]!;
+      p.feluletek.push({ id: ujId(), nev: `${h.nev} – Tetősík ablak ${meret}`, helyisegId: helyIdk[c.helyiseg], fajta: 'nyilaszaro', nyilaszaroId: t.id, hatar: 'kulso', darab: c.db * n, tajolas: egtaj(c.ir, a.eszakSzog), hajlasszog: hsz, ...(fent ? { szuloId: fent.id } : {}) });
+      tdb += c.db;
+    }
+    if (tdb) uz.push(`${tdb} tetősík ablak az alaprajzi jelük (áthúzott keret) és feliratuk alapján${hajlasok.size ? `; a tető hajlása a jel vetületi hosszából ≈ ${[...hajlasok].map((x) => `${x}°`).join(', ')}` : ''}${fent ? ` – a(z) „${fent.nev}” felületből vonódnak le` : ''}. A ferde tetőt (metszet nélkül) nem bontottam külön: a Határolás lépésben ellenőrizd a tetőfelületet és az ablakok tájolását.`);
   }
 
   // nyílászárók: típus méret és fajta szerint, felület helyiség × tájolás × típus szerint darabszámmal

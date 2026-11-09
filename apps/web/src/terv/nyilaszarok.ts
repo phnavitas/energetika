@@ -753,3 +753,125 @@ export function jeloletlenNyilasok(r: Raszter, meglevo: TervNyilas[]): TervNyila
   }
   return ki;
 }
+
+/** Tetősík ablak az alaprajzon: a ferde tetőben, a helyiség fölött rajzolt, átlósan áthúzott (X) téglalap. */
+export interface TetoablakJel {
+  /** A raszter helyiségindexe (a jel középpontja alatti helyiség). */
+  helyiseg: number;
+  /** Méret (m): a felirat szerint, ennek híján a jelből (a ferde hossz becsült). */
+  szel: number; mag: number; pm: number | null;
+  /** A tetősík lejtésének iránya a lapon (0 / 90 / 180 / 270): a jel hossztengelyén a közelebbi külső fal felé. */
+  irany: number;
+  /** A tető hajlásszöge a jel vetületi hosszából és a felirat szerinti hosszból (fok), ha van felirat. */
+  hajlas?: number;
+  x: number; y: number;
+  /** Felirat nélkül, a jel méretéből becsült. */
+  becsult?: boolean;
+}
+
+const TETO_RETEG = /tet[őo]|roof|h[ée]jal|ablak|window|ny[ií]l[aá]sz[aá]r[oó]|tet[őo]ablak|velux|fakro/i;
+
+/**
+ * Tetősík ablakok az alaprajzon: tengelyirányú, zárt téglalap (0,4–1,4 × 0,5–2,0 m), amelyet mindkét átlója mentén
+ * vonalak húznak át (X – a tetőablak szokásos jele, a kémény, akna is ilyen, ezért: rétegzett rajzon a tető- vagy
+ * nyílászáró-rétegen, rétegek nélkül csak a jel szélességével egyező méretfelirattal). A jel középpontja helyiségben
+ * (vagy ≤ 1 m-re tőle). Méret: a jel mellett (≤ 3 m) a jel szélességével (± 12 cm) egyező szám és a mellette (egymás
+ * mellett / alatt) álló, legalább a jel vetületi hosszát kiadó szám (cm-ben vagy méterben: „78” / „1,40”);
+ * mellvéd: a közeli „P 1,54”, „pm 1,54”.
+ */
+export function tetoablakJelek(lap: Lap, r: Raszter): TetoablakJel[] {
+  const m = r.mPerPt; if (!m) return [];
+  const reteges = lap.utvonalak.some((u) => u.reteg);
+  const atlok: { x1: number; y1: number; x2: number; y2: number; bb: number[] }[] = [];
+  const teglak: { b: number[]; reteg?: string }[] = [];
+  for (const u of lap.utvonalak) {
+    for (const p of u.pontok) {
+      const n = p.length / 2;
+      for (let i = 0; i + 3 < p.length; i += 2) {
+        const x1 = p[i]!, y1 = p[i + 1]!, x2 = p[i + 2]!, y2 = p[i + 3]!;
+        const dx = Math.abs(x2 - x1), dy = Math.abs(y2 - y1);
+        if (dx > 0.5 && dy > 0.5 && dx * m < 2.2 && dy * m < 2.2) atlok.push({ x1, y1, x2, y2, bb: [Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2), Math.max(y1, y2)] });
+      }
+      // zárt, tengelyirányú négyszög (4 csúcs, ill. 5 a záró ponttal)
+      if (n !== 4 && n !== 5) continue;
+      const xs = new Set<number>(), ys = new Set<number>(); let jo = true;
+      for (let i = 0; i < 4; i++) { xs.add(Math.round(p[2 * i]! * 4) / 4); ys.add(Math.round(p[2 * i + 1]! * 4) / 4); }
+      for (let i = 0; i < n - 1 && jo; i++) { const dx = Math.abs(p[2 * i + 2]! - p[2 * i]!), dy = Math.abs(p[2 * i + 3]! - p[2 * i + 1]!); if (dx > 0.3 && dy > 0.3) jo = false; }
+      if (!jo || xs.size !== 2 || ys.size !== 2) continue;
+      const b = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+      const a = (b[2]! - b[0]!) * m, c = (b[3]! - b[1]!) * m;
+      if (Math.min(a, c) < 0.4 || Math.min(a, c) > 1.4 || Math.max(a, c) < 0.5 || Math.max(a, c) > 2.0 || Math.max(a, c) / Math.min(a, c) > 3) continue;
+      teglak.push({ b, reteg: u.reteg });
+    }
+  }
+  // átlós jel a kereten belül: X (két átló) vagy a lejtés irányába mutató nyíl / kettős V – legalább egy-egy emelkedő és
+  // eső ferde vonal (a rövidebb oldal ≥ 40 %-ának megfelelő vetülettel), de legfeljebb 8 (a sraffozás sűrű és egyirányú)
+  const fedett = (b: number[]) => {
+    const tol = 1.0, rov = Math.min(b[2]! - b[0]!, b[3]! - b[1]!);
+    const bent = atlok.filter((s) => s.bb[0]! >= b[0]! - tol && s.bb[2]! <= b[2]! + tol && s.bb[1]! >= b[1]! - tol && s.bb[3]! <= b[3]! + tol && Math.max(s.bb[2]! - s.bb[0]!, s.bb[3]! - s.bb[1]!) >= 0.4 * rov);
+    if (bent.length < 2 || bent.length > 8) return false;
+    const emel = bent.filter((s) => (s.x2 - s.x1) * (s.y2 - s.y1) > 0).length;
+    return emel >= 1 && bent.length - emel >= 1;
+  };
+  const jelek: { b: number[]; reteg?: string }[] = [];
+  for (const t of teglak) {
+    if (!fedett(t.b)) continue;
+    // egymásba rajzolt keretek (tok, szárny): a legkülső marad
+    const cx = (t.b[0]! + t.b[2]!) / 2, cy = (t.b[1]! + t.b[3]!) / 2;
+    const i = jelek.findIndex((j) => Math.hypot((j.b[0]! + j.b[2]!) / 2 - cx, (j.b[1]! + j.b[3]!) / 2 - cy) * m < 0.15);
+    if (i < 0) jelek.push(t);
+    else if ((t.b[2]! - t.b[0]!) * (t.b[3]! - t.b[1]!) > (jelek[i]!.b[2]! - jelek[i]!.b[0]!) * (jelek[i]!.b[3]! - jelek[i]!.b[1]!)) jelek[i] = { b: t.b, reteg: t.reteg ?? jelek[i]!.reteg };
+    else if (!jelek[i]!.reteg && t.reteg) jelek[i]!.reteg = t.reteg;
+  }
+  const szamErt = (s: string) => { const v = s.trim(); return /^\d,\d{2}$/.test(v) ? Number(v.replace(',', '.')) : /^\d{2,3}$/.test(v) ? Number(v) / 100 : null; };
+  const szamok = lap.szovegek.map((t) => ({ t, v: szamErt(t.s) })).filter((x) => x.v !== null) as { t: Szoveg; v: number }[];
+  const pmek = lap.szovegek.map((t) => ({ t, mm: PM.exec(szovegJavit(t.s)) })).filter((x) => x.mm);
+  const ki: TetoablakJel[] = [];
+  const ptPx = m / r.px;
+  for (const j of jelek) {
+    const [x0, y0, x1, y1] = j.b as [number, number, number, number];
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    const fuggo = y1 - y0 >= x1 - x0; // a hossztengely a lapon függőleges
+    const rovid = Math.min(x1 - x0, y1 - y0) * m, hosszu = Math.max(x1 - x0, y1 - y0) * m;
+    // felirat: a jel szélességét adó szám és a mellette álló hossz
+    let felirat: { szel: number; mag: number; x: number; y: number } | null = null; let leg = 3 / m;
+    for (const a of szamok) {
+      if (Math.abs(a.v - rovid) > 0.12) continue;
+      const ga = geom(a.t); const d = Math.hypot(ga.cx - cx, ga.cy - cy); if (d > leg) continue;
+      const b = szamok.find((q) => {
+        if (q === a || Math.abs(q.t.szog - a.t.szog) > 2 || q.v < Math.max(0.8, hosszu * 0.9) || q.v > 2.0) return false;
+        const gb = geom(q.t); const dx = gb.cx - ga.cx, dy = gb.cy - ga.cy;
+        const menti = Math.abs(dx * ga.dir[0] + dy * ga.dir[1]), perp = Math.abs(dx * ga.fel[0] + dy * ga.fel[1]);
+        return menti <= a.t.meret * 1.0 && perp >= a.t.meret * 0.8 && perp <= a.t.meret * 1.9;
+      });
+      if (!b) continue;
+      leg = d; felirat = { szel: a.v, mag: b.v, x: ga.cx, y: ga.cy };
+    }
+    if (reteges ? !(j.reteg && TETO_RETEG.test(j.reteg)) && !felirat : !felirat) continue;
+    // helyiség: a jel középpontja alatt, ennek híján a legközelebbi helyiségpixel (≤ 1 m)
+    const gx = Math.round((cx - r.x0) * ptPx), gy = Math.round((cy - r.y0) * ptPx);
+    let h = -1;
+    if (gx >= 0 && gy >= 0 && gx < r.w && gy < r.h && r.cimke[gy * r.w + gx]! >= 2) h = r.cimke[gy * r.w + gx]! - 2;
+    else {
+      const R = Math.round(1 / r.px); let d0 = Infinity;
+      for (let y = Math.max(0, gy - R); y <= Math.min(r.h - 1, gy + R); y++) for (let x = Math.max(0, gx - R); x <= Math.min(r.w - 1, gx + R); x++) {
+        const c = r.cimke[y * r.w + x]!; const d = (x - gx) ** 2 + (y - gy) ** 2; if (c >= 2 && d < d0) { d0 = d; h = c - 2; }
+      }
+    }
+    if (h < 0 || !r.helyisegek[h]) continue;
+    // lejtésirány: a hossztengely két vége közül a helyiség közelebbi külső fala felé
+    const iranyok = fuggo ? [0, 180] : [90, 270];
+    let irany = iranyok[0]!, dMin = Infinity;
+    for (const s of r.helyisegek[h]!.szakaszok) {
+      if (s.tul !== 'kulso' || !iranyok.includes(s.irany)) continue;
+      for (const q of s.pontok) { const d = fuggo ? Math.abs(q[1] - cy) : Math.abs(q[0] - cx); if (d < dMin) { dMin = d; irany = s.irany; } }
+    }
+    const pmJ = pmek.map((x) => ({ x, d: Math.hypot(geom(x.t).cx - cx, geom(x.t).cy - cy) * m })).filter((x) => x.d <= 3).sort((a, b) => a.d - b.d)[0];
+    const pm = pmJ ? pmErtek(pmJ.x.mm![1]!, pmJ.x.mm![2]) : null;
+    const szel = felirat ? felirat.szel : Math.round(rovid * 100) / 100;
+    const mag = felirat ? felirat.mag : Math.round(hosszu / Math.cos(Math.PI / 4) * 100) / 100;
+    const hajlas = felirat && hosszu < felirat.mag ? Math.round(Math.acos(hosszu / felirat.mag) * 180 / Math.PI) : undefined;
+    ki.push({ helyiseg: h, szel, mag, pm, irany, ...(hajlas ? { hajlas } : {}), x: cx, y: cy, ...(felirat ? {} : { becsult: true }) });
+  }
+  return ki;
+}

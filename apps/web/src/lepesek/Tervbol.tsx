@@ -596,7 +596,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const kivKep = useMemo(() => { if (!al?.r || kivH === null) return ''; const ri = al.magHelyisegek.indexOf(helyisegek[kivH]!); if (ri < 0) return ''; return raszterReteg(al.r, (k) => (al.r!.cimke[k] === ri + 2 ? '#F59E0B' : null)); }, [al, kivH]);
   const falKep = useMemo(() => { if (!al?.r || !retegek.has('fal')) return ''; const sr = kulsoSraff(al.r); return raszterReteg(al.r, (k) => (al.r!.fal[k] ? (sr[k] ? '#6B7280' : '#B91C1C') : null)); }, [al, retegek.has('fal')]);
   const tetoterLapE = aIdx >= 0 && lapSzintek(aIdx).includes('T') && !!me?.tetoter;
-  const tetoablakJeloltek = (al?.r && tetoterLapE ? [...(al.arvaFeliratok ?? []), ...al.nyilasok.filter((n) => !n.kulso && (n.fajta === 'falfulke' || n.fajta === 'ablak'))] : [])
+  // (az alaprajzon jellel rajzolt tetősík ablakok – bármely lapon; ezek híján tetőtéri lapon a falhoz nem köthető feliratok)
+  const tetoablakJeloltek = (al?.r && al.tetoablakok?.length ? al.tetoablakok : al?.r && tetoterLapE ? [...(al.arvaFeliratok ?? []), ...al.nyilasok.filter((n) => !n.kulso && (n.fajta === 'falfulke' || n.fajta === 'ablak'))] : [])
     .filter((f) => f.szel >= 0.4 && f.szel <= 1.6 && f.mag >= 0.6 && f.mag <= 1.8)
     .filter((f, i, l) => l.findIndex((g) => Math.hypot(g.x - f.x, g.y - f.y) * (al?.r?.mPerPt ?? 0.035) < 0.5) === i);
   const belsoAjtok = (al?.nyilasok ?? []).filter((n) => !n.kulso).length;
@@ -683,7 +684,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     padlo: padloAt && burok.length ? `≈ ${sz(korvonalA, 1)} m²` : 'nem ezen a lapon',
     fodem: tetoAt && !tetoterLapE && burok.length ? `≈ ${sz(korvonalA, 1)} m²` : 'nem ezen a lapon',
     teto: tetoAt && tetoterLapE && burok.length ? `≈ ${sz(korvonalA, 1)} m² vetület` : 'nem ezen a lapon',
-    tetoablak: tetoterLapE ? tetoablakSzoveg : 'nem tetőtéri lap',
+    tetoablak: tetoterLapE ? tetoablakSzoveg : al?.tetoablakok?.length ? `${al.tetoablakok.length} db (jel az alaprajzon)` : 'nem tetőtéri lap',
   };
   const kulonE = aIdx in eszakKulon;
   const setEszak = (v: number) => { if (kulonE) setEszakKulon((x) => ({ ...x, [aIdx]: v })); else setEszakKozos(v); };
@@ -739,6 +740,9 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   function tetoAblakok(a: AlaprajzFeldolgozas, hs: ReturnType<typeof atvetelReszek>['helyisegek'], k: Kijeloles, eszak: number) {
     const r = a.r; if (!r) return [];
     const { ri } = atvetelReszek(a, k);
+    // az alaprajzon jellel (áthúzott keret) rajzolt tetősík ablakok: hely, méret, lejtésirány a jelből és a feliratából
+    const jelbol = (a.tetoablakok ?? []).flatMap((t) => { const j = ri.indexOf(t.helyiseg); return j >= 0 && hs[j] ? [{ helyiseg: j, szel: t.szel, mag: t.mag, irany: t.irany, ...(t.hajlas ? { hajlas: t.hajlas } : {}) }] : []; });
+    if (jelbol.length) return jelbol;
     // a felirat a ferde tetősíkban lévő ablaké, ha nincs külső falhoz rendelve (falhoz nem köthető, vagy belső
     // „fülkeként” / belső nyílásként felismert) és ablakméretű
     const jelolt = [...(a.arvaFeliratok ?? []), ...a.nyilasok.filter((n) => !n.kulso && (n.fajta === 'falfulke' || n.fajta === 'ablak'))];
@@ -832,7 +836,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
       helyisegek: hs, retegrendek: blokkok, nyilasok: ny,
       eszakSzog: o.eszak, belmagassag: (tetoterLap ? me?.tetoter?.belmagassag ?? me?.szintek.belmagassag.at(-1) : undefined) ?? bm ?? 2.7, szintszam: szintszam ?? 1, csere: o.csere, padloAt: o.padloAt, tetoAt: o.tetoAt,
       ...(!szomszedFutott && szomszedH >= 0.3 ? { szomszedFutetlen: szomszedH } : {}),
-      ...(tetoterLap && me?.tetoter ? { tetoter: { ...me.tetoter, orom: oromok(o.eszak, a.e.meretarany ?? undefined) }, tetoablakok: tetoAblakok(a, hs, k, o.eszak) } : {}),
+      ...(tetoterLap && me?.tetoter ? { tetoter: { ...me.tetoter, orom: oromok(o.eszak, a.e.meretarany ?? undefined) }, tetoablakok: tetoAblakok(a, hs, k, o.eszak) } : a.tetoablakok?.length ? { tetoablakok: tetoAblakok(a, hs, k, o.eszak) } : {}),
       ...(mintaFajta === 'blokkos' ? { alapFalSablon: 'fal_blokk_kohosalak' } : {}),
       forras: [o.fajl, mLap?.fajl].filter(Boolean).join(', '), szintek: o.szintek,
       ...(terepAlatt ? { terepAlatt: true, ...(pinceMelyseg ? { terepMelyseg: pinceMelyseg } : {}) } : {}),
