@@ -74,6 +74,40 @@ function tokMeret(t: Szoveg): Szoveg {
 }
 
 /** A két (egymás fölötti) szám között a szöveg irányával párhuzamos, hosszú, mindkét oldalon túlnyúló vonal fut-e. */
+/**
+ * Két párhuzamos méretlánc egymás alatti számai: mindkét számnak saját hosszú méretvonala van, ugyanazon az oldalán
+ * (a szám a vonala fölé írva) – a nyílásfelirat két száma között egyetlen vonal fut (tört- vagy falvonal).
+ */
+/** Rétegnév, amelyen biztosan nem méretvonal van (kert, terep, burkolat). */
+const NEM_MERET_RETEG = /kert|környezet|kornyezet|site|terep|járda|jarda|burkolat|növény|noveny|tereprendez|parkol|út\b/i;
+
+function ketMeretvonalE(a: Szoveg, b: Szoveg, utvonalak: { muvelet: string; pontok: number[][]; bbox: number[]; reteg?: string }[]): boolean {
+  const ga = geom(a);
+  const sajat = (t: Szoveg): { d: number }[] => {
+    const g = geom(t); const sz = Math.max(t.szel, t.meret); const ki: { d: number }[] = [];
+    for (const u of utvonalak) {
+      if (u.muvelet === 'fill') continue;
+      // rétegezett rajzon csak a méretezés rétegén (a kert, járda, terep vonalai nem méretvonalak)
+      if (u.reteg && NEM_MERET_RETEG.test(u.reteg)) continue;
+      if (g.cx < u.bbox[0]! - 2 * t.meret || g.cx > u.bbox[2]! + 2 * t.meret || g.cy < u.bbox[1]! - 2 * t.meret || g.cy > u.bbox[3]! + 2 * t.meret) continue;
+      for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) {
+        const x1 = p[i]!, y1 = p[i + 1]!, x2 = p[i + 2]!, y2 = p[i + 3]!;
+        const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy); if (L < 5 * sz) continue;
+        if (Math.abs((dx * ga.dir[0] + dy * ga.dir[1]) / L) < 0.995) continue;
+        const d = (x1 - g.cx) * ga.fel[0] + (y1 - g.cy) * ga.fel[1];
+        if (Math.abs(d) > t.meret * 0.9) continue;
+        const tt = ((g.cx - x1) * dx + (g.cy - y1) * dy) / (L * L), fel = (sz * 1.2) / L;
+        if (tt > fel && tt < 1 - fel) ki.push({ d });
+      }
+    }
+    return ki;
+  };
+  const va = sajat(a), vb = sajat(b);
+  // ugyanazon az oldalon (előjel), és nem ugyanaz a vonal (a két szám között futó egyetlen vonal a nyílásfeliraté)
+  const gb = geom(b); const kozt = (gb.cx - ga.cx) * ga.fel[0] + (gb.cy - ga.cy) * ga.fel[1];
+  return va.some((x) => vb.some((y) => Math.sign(x.d) === Math.sign(y.d) && Math.abs(x.d - (y.d + kozt)) > a.meret * 0.5));
+}
+
 function meretlancE(a: Szoveg, b: Szoveg, utvonalak: { muvelet: string; pontok: number[][]; bbox: number[] }[]): boolean {
   const ga = geom(a), gb = geom(b);
   const mx = (ga.cx + gb.cx) / 2, my = (ga.cy + gb.cy) / 2; const sz = Math.max(a.szel, b.szel);
@@ -239,6 +273,8 @@ export function nyilasFeliratok(sz0: Szoveg[], utvonalak?: { muvelet: string; po
     const gb0 = geom(legjobb.b);
     const kapuSzoveg = () => sz.some((t) => /kapu/i.test(t.s) && Math.hypot(t.x - (ga.cx + gb0.cx) / 2, t.y - (ga.cy + gb0.cy) / 2) < a.meret * 25);
     if (h < 1.8 || h > 6 || (h > 3.2 && !(w >= 4 && kapuSzoveg()))) continue;
+    // két párhuzamos méretlánc egymás alatti számai („2,72” / „2,74⁵”): a számpár között méretvonal fut – nem kapu
+    if (utvonalak && !kapuSzoveg() && ketMeretvonalE(a, legjobb.b, utvonalak)) continue;
     const gb = geom(legjobb.b);
     mHasznalt.add(a); mHasznalt.add(legjobb.b);
     ki.push({ szel: w, mag: h, pm: null, x: (ga.cx + gb.cx) / 2, y: (ga.cy + gb.cy) / 2, fal: Math.abs(ga.fel[0]) >= Math.abs(ga.fel[1]) ? 'v' : 'f', kapuJelolt: true });
