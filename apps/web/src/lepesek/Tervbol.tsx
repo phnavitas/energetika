@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { ujId as ujIdT, type Projekt, type HelyisegKategoria } from '../modell';
+import { ujId as ujIdT, type Projekt, type HelyisegKategoria, type Szerep as RrSzerep, SZEREP_ALAP } from '../modell';
 const sz2 = (x: number) => x.toLocaleString('hu-HU', { maximumFractionDigits: 1 });
 import { Szam, Valaszto, sz, MindJelolo } from '../ui';
 import { kategoriaJavaslat } from './Helyisegek';
@@ -362,6 +362,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     return { ...k, kat, kizartH: rk.length ? new Set([...k.kizartH, ...rk]) : k.kizartH, mindFutott, ...(rk.length ? { reszKizart: new Set(rk) } : {}) };
   };
   const [rrKi, setRrKi] = useState<Record<string, boolean>>({});
+  /** A felhasználó által megadott szerep (a nem hőburokként azonosított rétegrend is beolvasható). */
+  const [rrSzerep, setRrSzerep] = useState<Record<string, RrSzerep>>({});
   const [bm, setBm] = useState<number | undefined>(undefined);
   const [szintszam, setSzintszam] = useState<number | undefined>(undefined);
   const [csere, setCsere] = useState(true);
@@ -624,11 +626,14 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                 const m = (x: number, y: number): [number, number] => [(x - el.dx) * r.mPerPt, (y - el.dy) * r.mPerPt];
                 const belso = mod === 'belso';
                 const r3 = a.r3d ?? r;
-                const polPt = k.burok && !belso ? k.burok : burok3dCache(i, r3, futottRiK(a, k), lapok[i]?.lap, a, belso);
+                // a szerkesztett hőburok a 3D-ben is: külső méretnél a körvonal, belső méretnél a mért belső falsíkok
+                const polPt = k.burok
+                  ? (belso ? burokMeres(r, k.burok).map((l, pi) => (l.length === k.burok![pi]!.length ? l.map((e) => e.belso[0]) : k.burok![pi]!)) : k.burok)
+                  : burok3dCache(i, r3, futottRiK(a, k), lapok[i]?.lap, a, belso);
                 const pol = polPt.map((q) => q.map(([x, y]) => m(x, y)));
                 // belső méretnél: a belső falak csatlakozása a külső falhoz (levonódik a külső fal felületéből)
                 const csatl = belso ? csatlakozasok(r3, polPt) : undefined;
-                  const kornyezet = k.burok && !belso ? undefined : elKornyezet(r3, polPt, futottRiK(a, k));
+                  const kornyezet = k.burok ? undefined : elKornyezet(r3, polPt, futottRiK(a, k));
                 const ny = burokNyilasokPt(a, k, pol.length ? polPt : []).map((n) => { const [x, y] = m(n.x, n.y); return { x, y, szel: n.szel, mag: n.mag, pm: n.pm ?? 0 }; });
                 const szk = lapSzintek(i).length ? lapSzintek(i) : ['F'];
                 for (const sz0 of szk) {
@@ -773,7 +778,9 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     // tetőtéri alaprajz (a legfelső szint tetőtér): a metszet tetőhajlása és térdfala szerint ferde tető + térdfal
     const tetoterLap = o.szintek.includes('T') && o.tetoAt && me?.szintek.belmagassag.length ? true : false;
     const extraUz: string[] = [];
-    const blokkok = (me?.blokkok ?? []).filter((b) => rrKi[b.rr.kod] || (terepAlatt && b.becsles.feltetel === 'terepAlatt'));
+    // a kézzel megadott szerep felülírja a becslést (és a „nem hőburok” kihagyást)
+    const blokkok = (me?.blokkok ?? []).filter((b) => rrKi[b.rr.kod] || (terepAlatt && b.becsles.feltetel === 'terepAlatt'))
+      .map((b) => { const sz0 = rrSzerep[b.rr.kod]; return sz0 ? { ...b, becsles: { szerep: sz0, ...SZEREP_ALAP[sz0] } } : b; });
     // méretfelirat nélküli nyílások magassága a homlokzati lapokról (a lap szintjének sorszáma alulról)
     const szintSor = [...new Set(alaprajzLapok.flatMap(({ i }) => lapSzintek(i)))].sort((x, y) => SZINT_SOR.indexOf(x) - SZINT_SOR.indexOf(y));
     const mert = a.r && a.e.mPerPt && a.nyilasok.some((n) => n.mert) ? mertMagassagok(a.nyilasok, a.e.mPerPt, o.eszak, homlokzatRajzTar(homlokzatLapok.map(({ l }) => l.lap), a.e.meretarany), Math.max(0, szintSor.indexOf(o.szintek[0] ?? 'F')), szintSor.length) : undefined;
@@ -1621,15 +1628,21 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             <label class="mezo"><span>Belmagasság</span><Szam ertek={bm} egyseg="m" valt={setBm} /></label>
             <div class="mezo"><span>Szintmagasság-jelek</span><span class="halk">{me.szintek.szintek.map((v) => (v > 0 ? '+' : v === 0 ? '±' : '') + sz(v)).join(' · ')}</span></div>
           </div>
-          {(() => { const v = me.blokkok.filter((b) => b.becsles.szerep); return v.length > 1 && <div style="margin-bottom:8px"><MindJelolo db={v.filter((b) => rrKi[b.rr.kod]).length} ossz={v.length} szoveg="mind átvételre / egyik sem" valt={(be) => { const k = { ...rrKi }; for (const b of v) k[b.rr.kod] = be; setRrKi(k); }} /></div>; })()}
+          {(() => { const v = me.blokkok; return v.length > 1 && <div style="margin-bottom:8px"><MindJelolo db={v.filter((b) => rrKi[b.rr.kod]).length} ossz={v.length} szoveg="mind átvételre / egyik sem" valt={(be) => { const k = { ...rrKi }; for (const b of v) k[b.rr.kod] = be; setRrKi(k); }} /></div>; })()}
           {me.blokkok.map((b) => (
             <div class="kartya" style="margin-bottom:10px">
               <label style="display:flex;gap:8px;align-items:baseline;font-weight:600">
-                <input type="checkbox" checked={!!rrKi[b.rr.kod]} disabled={!b.becsles.szerep} onChange={(e) => setRrKi({ ...rrKi, [b.rr.kod]: (e.target as HTMLInputElement).checked })} />
+                <input type="checkbox" checked={!!rrKi[b.rr.kod]} onChange={(e) => { const be = (e.target as HTMLInputElement).checked; setRrKi({ ...rrKi, [b.rr.kod]: be }); if (be && !b.becsles.szerep && !rrSzerep[b.rr.kod]) setRrSzerep({ ...rrSzerep, [b.rr.kod]: 'belso' }); }} />
                 {b.rr.kod} {b.rr.cim}
-                <span class="halkabb" style="font-weight:400">{b.becsles.szerep ? { fal: 'külső fal', padlas: 'padlásfödém', teto: 'tető', pincefodem: 'pincefödém', padlo: 'talajon fekvő padló', belso: 'belső szerkezet' }[b.becsles.szerep] : 'nem hőburok'}</span>
               </label>
-              {b.becsles.kihagy && <p class="halkabb" style="margin:4px 0 0 24px">{b.becsles.kihagy}</p>}
+              <div style="margin:4px 0 0 24px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <select aria-label={`${b.rr.kod} szerepe`} value={rrSzerep[b.rr.kod] ?? b.becsles.szerep ?? ''} onChange={(e) => { const v = (e.target as HTMLSelectElement).value as RrSzerep | ''; const u = { ...rrSzerep }; if (v) u[b.rr.kod] = v; else delete u[b.rr.kod]; setRrSzerep(u); if (v) setRrKi({ ...rrKi, [b.rr.kod]: true }); }} style="font-size:13px">
+                  {!b.becsles.szerep && <option value="">nem hőburok – válassz szerepet a beolvasáshoz</option>}
+                  {(Object.entries({ fal: 'külső fal', padlas: 'padlásfödém', teto: 'tető', pincefodem: 'pincefödém', padlo: 'talajon fekvő padló', belso: 'belső szerkezet' }) as [RrSzerep, string][]).map(([k2, n]) => <option value={k2}>{n}{b.becsles.szerep === k2 && !rrSzerep[b.rr.kod] ? ' (felismert)' : ''}</option>)}
+                </select>
+                {rrSzerep[b.rr.kod] && rrSzerep[b.rr.kod] !== b.becsles.szerep && <span class="jel">kézzel megadva</span>}
+              </div>
+              {b.becsles.kihagy && !rrSzerep[b.rr.kod] && <p class="halkabb" style="margin:4px 0 0 24px">{b.becsles.kihagy}{rrKi[b.rr.kod] ? ' – bepipálva: rétegrendként beolvasva (a felületekhez nem rendeli; szerepet választva igen).' : ''}</p>}
               <table class="tabla" style="margin-top:6px">
                 <tbody>
                   {b.retegek.map((r) => (
