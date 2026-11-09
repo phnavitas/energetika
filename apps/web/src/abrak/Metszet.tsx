@@ -69,12 +69,14 @@ export function retegJel(sraff: Sraffozas | 'xps', t: Tegl, fugg: boolean): stri
     // szálas hőszigetelés (DIN 1356-1 / MSZ): a két szélen felváltva körívek (csepp alak); egy csepp két nyakából a
     // vonalak a szemközti oldal szomszédos cseppjeihez futnak, a csepp előtt keresztezve egymást – egy hullám a teljes
     // vastagságban
-    const R = D * 0.21, s = D * 0.21, g = (62 * Math.PI) / 180;
+    const R = D * 0.2, s = D * 0.2, g = (75 * Math.PI) / 180;
     let p = '';
     for (let k = -1; (k - 1) * s < L + R; k++) {
       const also = k % 2 === 0; const cu = k * s, cv = also ? R : D - R, be = also ? 1 : -1;
-      // belépés az előre néző nyakon, ív a szél felől, kilépés a hátra néző nyakon
-      const aBe = Math.atan2(be * Math.cos(g), Math.sin(g)), aKi = Math.atan2(be * Math.cos(g), -Math.sin(g)), aSzel = Math.atan2(-be, 0);
+      // a ferde vonal pontosan fél osztásnyit lép (meredek): az egyik oldalon a csepp hátsó nyakán be, elsőn ki, a
+      // másikon fordítva – így a vonalak a csepp előtt keresztezik egymást
+      const elore = Math.atan2(be * Math.cos(g), Math.sin(g)), hatra = Math.atan2(be * Math.cos(g), -Math.sin(g)), aSzel = Math.atan2(-be, 0);
+      const aBe = also ? hatra : elore, aKi = also ? elore : hatra;
       const n = (v: number) => ((v % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
       let d = n(aKi - aBe); if (!(n(aSzel - aBe) <= d)) d -= 2 * Math.PI;
       for (let i = 0; i <= 20; i++) { const a = aBe + (d * i) / 20; p += `${p ? ' L' : 'M'} ${pt(cu + R * Math.cos(a), cv + R * Math.sin(a))}`; }
