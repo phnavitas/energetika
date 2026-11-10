@@ -122,6 +122,8 @@ export function pecsetek(sz: Szoveg[]): TervHelyiseg[] {
       if (teruletSor(t) && ELOTAG.test(ts)) { hasznos = szamErtek(ts.replace(ELOTAG, '').replace(/\s*m.*$/, '')); akt = t; continue; } // a hasznos-terület sora a teljes fölött
       // másik pecsét / méretszám (a magyar méretszám tizedesvesszős; a pontos „1.01” helyiségkód lehet)
       if (TERULET.test(ts) || /^\d+,\d+$/.test(ts) || /^\d{4,}$/.test(ts)) break;
+      // nyílásfelirat („90” fölött / alatt „210”, „pm 90”): nem a pecsét kódja
+      if (/^\d{2,3}$/.test(ts) && vsz.some((u) => u !== t && /^(\d{2,3}|\d,\d{2}|p\.?m\.?\s*[+-]?\d.*)$/i.test(szovegJavit(u.s).trim()) && Math.abs(u.szog - t.szog) < 2 && Math.abs(u.x - t.x) < t.meret * 1.5 && Math.abs(u.y - t.y) > t.meret * 0.6 && Math.abs(u.y - t.y) < t.meret * 1.9)) break;
       sorok.unshift(t); akt = t;
       if (kodE(ts) || kodE(ts.split(/\s+/)[0] ?? '')) break;
     }
@@ -588,4 +590,38 @@ export function jegyzekenKivul(hl: TervHelyiseg[]): number[] {
   const paros = pec.filter((h) => h.jegyzekA !== undefined).length;
   if (pec.length < 4 || paros < 0.7 * pec.length) return [];
   return hl.map((h, i) => (h.forras === 'pecset' && !h.kulter && !h.kod && h.jegyzekA === undefined ? i : -1)).filter((i) => i >= 0);
+}
+
+/**
+ * A helyiségjegyzék csoportfejlécei („01 emelet, 1.1 lakás”, „01 emelet, Közös használatú”): a fejléc alatti, tőle
+ * jobbra / alatta kezdődő sorok (név … terület) a következő fejlécig tartoznak hozzá. Kód nélküli jegyzéknél ebből
+ * derül ki, melyik pecsét melyik lakásé / a közös tereké.
+ */
+export function jegyzekCsoportok(sz: Szoveg[]): { nev: string; sorok: { nev: string; A: number }[] }[] {
+  const vsz = sz.filter(vizszintes).map((t) => ({ ...t, s: szovegJavit(t.s).trim() }));
+  const FEJ = /(?:^|[\s,])(\d+(?:\.\d+)*\.?\s*(?:lakás|lakas|üzlet|uzlet|iroda|egység|egyseg|rendelő|rendelo)|(?:lakás|lakas|üzlet|iroda|egység)\s*\d+(?:\.\d+)*|közös(?:\s+(?:használatú|hasznalatu|terek|helyiségek|tér))?|kozos(?:\s+\S+)?)\s*$/i;
+  // (a pecsétek, mutatók „1.1 lakás” felirata kisebb betűs, és nincs alatta jegyzéksor – az ilyen „fejléc” sor nélkül kiesik)
+  const fejek = vsz.filter((t) => t.s.length <= 60 && FEJ.test(t.s)).sort((a, b) => a.y - b.y);
+  const ter = (s: string) => (/^\d{1,4},\d{1,2}$/.test(s) ? Number(s.replace(',', '.')) : null);
+  const ki: { nev: string; sorok: { nev: string; A: number }[] }[] = [];
+  for (let i = 0; i < fejek.length; i++) {
+    const f = fejek[i]!; const kov = fejek.slice(i + 1).find((g) => Math.abs(g.x - f.x) < f.meret * 3);
+    const yMax = kov ? kov.y : f.y + f.meret * 40;
+    // a csoport sorai: a fejléc alatt, egy oszlopban a fejléccel vagy tőle jobbra, sorvégi területtel
+    const tartomany = vsz.filter((t) => t.y > f.y + f.meret * 0.5 && t.y < yMax - f.meret * 0.3 && t.x >= f.x - f.meret && t.x < f.x + 400);
+    const sorok: { nev: string; A: number }[] = [];
+    const klaszter: (typeof tartomany)[] = [];
+    for (const t of [...tartomany].sort((a, b) => a.y - b.y)) { const k = klaszter.at(-1); if (k && t.y - k[0]!.y < f.meret * 0.35) k.push(t); else klaszter.push([t]); }
+    for (const k of klaszter) {
+      const sor = k.sort((a, b) => a.x - b.x);
+      // (a sor végén más oszlop – megjegyzés, pecsét – is állhat: a terület a sor első területszáma)
+      const ai = sor.findIndex((t) => ter(t.s) !== null); if (ai < 1) continue;
+      const A = ter(sor[ai]!.s)!;
+      const nev = sor.slice(0, ai).map((t) => t.s).filter((s) => !BURKOLAT.test(s)).join(' ').trim();
+      if (!/\p{L}{2}/u.test(nev) || /összesen|össz\.|sum/i.test(nev)) continue;
+      sorok.push({ nev, A });
+    }
+    if (sorok.length) ki.push({ nev: f.s.replace(/^\d+\.?\s*(emelet|em\.|földszint|fsz\.?|pince|tetőtér|alagsor)\s*,\s*/i, '').trim(), sorok });
+  }
+  return ki;
 }

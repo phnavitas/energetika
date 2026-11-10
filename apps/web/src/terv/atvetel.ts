@@ -322,6 +322,9 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
     });
     uz.push(`Padló-rétegrendet nem találtam a metszeten: a talajon fekvő padló (${sz2(Aossz)} m²) rétegrend nélkül került át – válaszd ki a Határolás lépésben.`);
   }
+  // emeleti alaprajz a legalsó beolvasott szint: alatta valószínűleg (fűtött) szint van, nem talaj
+  if (foldszint && !terep && /^\d+$/.test(szintek[0] ?? '') && Number(szintek[0]) >= 1 && Aossz > 0)
+    uz.push(`A legalsó beolvasott alaprajz ${szintek[0]}. emeleti: a padlóját talajon fekvőként vettem át. Ha alatta fűtött szint van (pl. egy lakás tanúsításánál), kapcsold ki a „Legalsó padló” jelölőt; fűtetlen tér (garázs, pince) vagy külső tér felett a Határolás lépésben állítsd át.`);
   // tetőtér: a térdfal és a kalapfödém (belmagasság) közti ferde tetősáv az eresz menti homlokzatokon; vízszintes
   // vetülete a tetőtér alapterületéből levonódik (a maradék a kalapfödém / padlásfödém)
   let AFelso = AossT;

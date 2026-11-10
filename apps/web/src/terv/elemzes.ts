@@ -3,7 +3,7 @@
  * felismerése, alaprajz (helyiségek, északjel, raszter, külső falak, nyílászárók) és metszet (rétegrendek, szintek).
  */
 import { lapKinyer, type Lap } from './kinyeres';
-import { alaprajzElemez, meretaranyKeres, kulterNev, szintekCimbol, eszakjelKeres, jegyzekSorok, type AlaprajzEredmeny, type TervHelyiseg } from './alaprajz';
+import { alaprajzElemez, meretaranyKeres, kulterNev, szintekCimbol, eszakjelKeres, jegyzekSorok, jegyzekCsoportok, type AlaprajzEredmeny, type TervHelyiseg } from './alaprajz';
 import { retegSzures } from './retegek';
 import { pdfZonakNyers, zonakSzur, poliTer, poliBenne, belsoPont } from './zonak';
 import { raszterEpit, type Raszter, type RaszterBeallitas } from './raszter';
@@ -259,6 +259,11 @@ function zonaHelyisegek(zonak: NonNullable<Lap['zonak']>, pecsetek: TervHelyiseg
   const gyoker = (i: number): number => (szulo[i] === i ? i : (szulo[i] = gyoker(szulo[i]!)));
   const bb = zonak.map((z) => [Math.min(...z.pontok.map((q) => q[0])), Math.min(...z.pontok.map((q) => q[1])), Math.max(...z.pontok.map((q) => q[0])), Math.max(...z.pontok.map((q) => q[1]))]);
   const tav = 0.6 / mPerPt;
+  const elotagNevek = new Map<string, Set<string>>();
+  for (const z of zonak) { const m = /^(\S*\d\S*)\s+(.+)$/.exec(z.nev.replace(/\s+/g, ' ').trim()); if (m) elotagNevek.set(m[1]!, (elotagNevek.get(m[1]!) ?? new Set()).add(m[2]!.toLowerCase())); }
+  const katE = [...elotagNevek].filter(([, v]) => v.size >= 3).map(([k]) => k);
+  // (ha az előtagok legalább fele ilyen kategória, a rajz előtagjai mind kategóriák – a két „1.3 Előtér” is)
+  const kategoriaElotag = new Set(katE.length && katE.length * 2 >= elotagNevek.size ? [...elotagNevek.keys()] : katE);
   const pecsetBenne = (i: number) => pecsetek.find((h) => poliBenne(zonak[i]!.pontok, (h.mutato ?? h).x, (h.mutato ?? h).y));
   for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
     if (zonak[i]!.nev !== zonak[j]!.nev) continue;
@@ -279,7 +284,8 @@ function zonaHelyisegek(zonak: NonNullable<Lap['zonak']>, pecsetek: TervHelyiseg
     const [x, y] = belsoPont(fo);
     const nev0 = zonak[tagok[0]!]!.nev.replace(/\s+/g, ' ').trim();
     const m = /^(\S*\d\S*)\s+(.+)$/.exec(nev0);
-    const kod = m ? m[1] : undefined, nev = m ? m[2]! : nev0 || 'Helyiség';
+    // a több (≥ 3) különböző nevű zóna elején ismétlődő előtag („1.4 Szoba”, „1.4 Nappali”) zónakategória, nem helyiségkód
+    const kod = m && !kategoriaElotag.has(m[1]!) ? m[1] : undefined, nev = m ? m[2]! : nev0 || 'Helyiség';
     // a zóna pecsétje: az azonos kódú (a lapon egyetlen) pecsét; ennek híján a zónán belüli, ha a kódja vagy a területe
     // egyezik (a zónába eső, más kódú és területű pecsét – pl. a szomszéd kis helyiség mutatóvonal nélküli pecsétje – nem)
     const kn = (q?: string) => (q ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -407,6 +413,28 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
       e.figyelmeztetesek.push(`${l.egysegek.length} lakást ismertem fel a szürke színezésből (egy lakás = egy összefüggő színezett terület, az x-szel áthúzott aknák nélkül). Válaszd ki a lakást a táblázatban.`);
     }
   }
+  // kód nélküli helyiségjegyzék csoportfejlécei („1.1 lakás”, „Közös használatú”): a pecsét a név és a terület szerint
+  // a csoport sorához kötődik – így választható ki a lakás (a közös terek nélkül)
+  if (!e.egysegek.length) {
+    const cs = jegyzekCsoportok(lap0.szovegek);
+    if (cs.length >= 2) {
+      const kn = (x: string) => x.toLowerCase().replace(/\s+/g, ' ').trim();
+      const foglalt = new Set<object>(); const info: typeof e.egysegInfo = {}; const egysegek: string[] = [];
+      cs.forEach((c, ci) => {
+        const kulcs = `J${ci + 1}`; let db = 0, A = 0;
+        for (const sor of c.sorok) {
+          const h = e.helyisegek.find((x) => !foglalt.has(x) && !x.egyseg && x.forras !== 'jegyzek' && kn(x.nev) === kn(sor.nev) && Math.abs(x.A - sor.A) <= 0.02);
+          if (!h) continue;
+          foglalt.add(h); h.egyseg = kulcs; db++; A += h.A;
+        }
+        if (db) { egysegek.push(kulcs); info[kulcs] = { nev: c.nev, db, A: Math.round(A * 100) / 100 }; }
+      });
+      if (egysegek.length >= 2) {
+        e.egysegek = egysegek; e.egysegInfo = info;
+        e.figyelmeztetesek.push(`A helyiségjegyzék csoportjai szerint ${egysegek.map((k) => `„${info[k]!.nev}” (${info[k]!.db} helyiség, ${String(info[k]!.A).replace(".", ",")} m²)`).join(', ')} – válaszd ki, mi kerüljön a tanúsításba.`);
+      } else for (const h of e.helyisegek) if (h.egyseg?.startsWith('J')) h.egyseg = undefined;
+    }
+  }
   // falfülke (padlótól induló, sraffozott falszakasz előtti felirat): nem nyílászáró – kimarad az átvételből
   const feliratok = nyilasFeliratok(lap.szovegek, lap.utvonalak);
   const nyilasok = nyilasokHozzarendel(feliratok, r, magHelyisegek.map((h) => h.nev), auto)
@@ -454,7 +482,8 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
   for (const l of csoportok) {
     // ajtó csak ott, ahol előtér / szélfogó is van a csoportban; a magában álló lépcsőházi üvegezés (emeleteken) ablak
     const bejaratos = l.filter((n) => BEJ.test(magHelyisegek[n.helyiseg!]?.nev ?? ''));
-    if (!bejaratos.length) { for (const n of l) n.fajta = 'ablak'; continue; }
+    // (a folyosóról / közlekedőből nyíló ajtószélességű – ≤ 1,25 m – nyílás erkélyajtó marad: loggiára, teraszra nyílik)
+    if (!bejaratos.length) { for (const n of l) if (/lépcső|lepcso/i.test(magHelyisegek[n.helyiseg!]?.nev ?? '') || n.szel > 1.25) n.fajta = 'ablak'; continue; }
     const ajto = bejaratos.reduce((a, b) => (b.szel > a.szel ? b : a));
     for (const n of l) n.fajta = n === ajto ? 'bejarati_uvegajto' : 'ablak';
   }
