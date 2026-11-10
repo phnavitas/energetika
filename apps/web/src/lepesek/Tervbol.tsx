@@ -642,7 +642,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   // tetőtér: a metszetből a hajlás, a térdfal és a padlásfödém (belmagasság) – a 3D-ben a tetősíkok töréseivel
                   const tt = sz0 === 'T' && me?.tetoter ? { hajlas: me.tetoter.hajlas, terdfal: me.tetoter.terdfal ?? 0.9, belmag: me.tetoter.belmagassag ?? (bm ?? 2.6) } : undefined;
                   // belső méret: a falmagasság a belmagasság (a födém vastagsága kimarad); külső méret: teljes szintmagasság
-                  szint3.push({ nev: szintNev(sz0), poligonok: pol, z0: sorszam * emelet, h: tt ? tt.belmag : belso ? emelet - 0.35 : emelet, nyilasok: ny, ...(csatl ? { csatl } : {}), ...(kornyezet ? { kornyezet } : {}), ...(sz0 === 'P' ? { talaj: true } : {}), ...(tt ? { teto: tt, orom: oromok(eszakSz, a.e.meretarany ?? undefined) } : {}) });
+                  szint3.push({ nev: szintNev(sz0), poligonok: pol, z0: sorszam * emelet, h: tt ? tt.belmag : belso ? emelet - 0.35 : emelet, nyilasok: ny, ...(csatl ? { csatl } : {}), ...(kornyezet ? { kornyezet } : {}), ...(sz0 === 'P' ? { talaj: true } : {}), ...(tt ? { teto: tt, orom: oromok(eszakSz, a.e.meretarany ?? undefined) } : {}), ...(lapok[i] ? { forras: { fajl: lapok[i]!.fajl, oldal: lapok[i]!.oldal, pt: polPt } } : {}) });
                 }
               }
     return szint3;
@@ -669,6 +669,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     }
     return db ? `Külső méret: ${db} határoló felület a hőburok külső síkja szerint (a 3D modell külső/belső arányával; falak tájolásonként) – a belső méretre a 2D/3D nézet „Belső méret” gombjával válthatsz.` : null;
   };
+  try { (globalThis as any).__burok3d = () => ({ belso: modellSzintek('belso'), kulso: modellSzintek('kulso') }); } catch { /* */ }
   try { (globalThis as any).__modell3d = () => ({ belso: (() => { const x = modellSzintek('belso'); return x ? modellOsszesites(x, eszakSz) : null; })(), kulso: (() => { const x = modellSzintek('kulso'); return x ? modellOsszesites(x, eszakSz) : null; })() }); } catch { /* */ }
   // az átvételkor ténylegesen használt tetőablakok (homlokzatról azonosítva, ennek híján az alaprajzi feliratokból)
   const tetoablakSzoveg = useMemo(() => {

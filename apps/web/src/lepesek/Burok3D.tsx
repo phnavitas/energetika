@@ -24,6 +24,8 @@ export interface Burok3DSzint {
   kornyezet?: [number, number, 'kulso' | 'futetlen' | 'szomszed' | 'belso'][][][];
   /** Terepszint alatti szint (pince): a falai talajjal érintkeznek. */
   talaj?: boolean;
+  /** (Ellenőrzéshez) a körvonalak lapkoordinátában és a forráslap. */
+  forras?: { fajl: string; oldal: number; pt: [number, number][][] };
 }
 
 type P3 = [number, number, number];
@@ -123,6 +125,19 @@ export function modellSikok(szintek: Burok3DSzint[], eszakSzog: number) {
     const hasabok: { cx: number; cy: number; z0: number; bb: [number, number, number, number] }[] = [];
     for (const s of szintek) {
       const z1 = s.z0 + s.h;
+      // a nyílászáró egyetlen élhez tartozik: a legközelebbihez, amelynek a hosszára esik (sarok közelében két él is
+      // ≤ 2,5 m-re van – ott korábban mindkettőn megjelent)
+      const nyEl = s.nyilasok.map((n) => {
+        let leg: string | null = null, d0 = Infinity;
+        s.poligonok.forEach((p, pi) => { for (let i = 0; i < p.length; i++) {
+          const A = p[i]!, B = p[(i + 1) % p.length]!; const dx = B[0] - A[0], dy = B[1] - A[1], l = Math.hypot(dx, dy); if (l < 0.05) continue;
+          const tt = ((n.x - A[0]) * dx + (n.y - A[1]) * dy) / (l * l); if (tt < 0 || tt > 1) continue;
+          // (csak külső tér felé néző szakasz – ahol a nyílás meg is jelenik)
+          if (!s.talaj && s.kornyezet?.[pi]?.[i]?.some(([a0, a1, f]) => tt >= a0 && tt <= a1 && f !== 'kulso')) continue;
+          const d = Math.abs((n.x - A[0]) * dy - (n.y - A[1]) * dx) / l; if (d < d0) { d0 = d; leg = `${pi}|${i}`; }
+        } });
+        return leg;
+      });
       s.poligonok.forEach((p, pi) => {
         const grp = hasabok.length; hasabok.push({ cx: p.reduce((t, q) => t + q[0], 0) / p.length, cy: p.reduce((t, q) => t + q[1], 0) / p.length, z0: s.z0, bb: [Math.min(...p.map((q) => q[0])), Math.min(...p.map((q) => q[1])), Math.max(...p.map((q) => q[0])), Math.max(...p.map((q) => q[1]))] });
         const A0 = p.reduce((t, [x, y], i) => { const [x2, y2] = p[(i + 1) % p.length]!; return t + x * y2 - x2 * y; }, 0) / 2;
@@ -163,7 +178,8 @@ export function modellSikok(szintek: Burok3DSzint[], eszakSzog: number) {
             if (u < 1) falDarab(u, 1);
           }
           const falJ = sikok.length;
-          for (const n of s.nyilasok) {
+          for (const [ni, n] of s.nyilasok.entries()) {
+            if (nyEl[ni] !== `${pi}|${i}`) continue;
             const tt = ((n.x - A[0]) * dx + (n.y - A[1]) * dy) / (l * l);
             // a nyílást tartalmazó faldarab (a fal a belső falak csatlakozásainál és a környezet szerint darabolt): a
             // rajzolási sorrendben ennek a darabnak a mélysége után jön

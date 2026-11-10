@@ -78,6 +78,96 @@ function ferdeOsszevon(p: Poligon, tures: number, ugras: number, minHossz: numbe
   return ki.length >= 3 ? ki : p;
 }
 
+
+/**
+ * Ablakfülkék, falkiugrások simítása a rácskörvonalon (tengelyirányú élek): a fal síkjától legfeljebb `D` mélyen
+ * kiugró / beugró, legfeljebb `W` hosszú szakasz (az ablak bélletébe kifolyt helyiség, a pillérbemélyedés, a sarkon
+ * álló ablak fülkéje) a szomszédos, hosszabb fal síkjára kerül – a körvonal nem „harapja be” a sarkokat. Ismételve,
+ * amíg van ilyen; a terület legfeljebb 3 %-kal változhat.
+ */
+function fulkeSimit(p: Poligon, D: number, W: number, befele: boolean, Dmin = 0, Lcel = 0, Dsek = 0): Poligon {
+  // (derékszögűsített körvonal: a tengelyirányú élek pontosan tengelyirányúak; a ferde élek érintetlenek)
+  const eq = (u: number, v: number) => Math.abs(u - v) < 1e-6;
+  const tomor = (q: Poligon): Poligon => {
+    const ki: Poligon = [];
+    for (let i = 0; i < q.length; i++) {
+      const a = q[(i - 1 + q.length) % q.length]!, b = q[i]!, c = q[(i + 1) % q.length]!;
+      if ((eq(a[0], b[0]) && eq(b[0], c[0])) || (eq(a[1], b[1]) && eq(b[1], c[1]))) continue;
+      if (eq(a[0], b[0]) && eq(a[1], b[1])) continue;
+      ki.push(b);
+    }
+    return ki;
+  };
+  const tengely = (a: [number, number], b: [number, number]) => eq(a[0], b[0]) || eq(a[1], b[1]);
+  let q = tomor(p);
+  // tengelyhez közeli (≤ 12°), legfeljebb `D` oldaleltérésű ferde él két tengelyirányú él között: a sarkon álló ablak
+  // fülkéje miatt a körvonal átlósan vágja a sarkot („beharapott sarok”) → derékszögű lépcső a fal belső (belső méretnél)
+  // ill. külső (külső méretnél) oldalán; a lépcsőt a fülkesimítás utána a fal síkjára húzza
+  if (Dmin === 0) {
+    const ki: Poligon = [];
+    for (let i = 0; i < q.length; i++) {
+      const a = q[i]!, b = q[(i + 1) % q.length]!, e = q[(i - 1 + q.length) % q.length]!, c = q[(i + 2) % q.length]!;
+      ki.push(a);
+      const dx = b[0] - a[0], dy = b[1] - a[1];
+      if (tengely(a, b) || !tengely(e, a) || !tengely(b, c)) continue;
+      const kicsi = Math.min(Math.abs(dx), Math.abs(dy)), nagy = Math.max(Math.abs(dx), Math.abs(dy));
+      if (kicsi > Math.max(D, 1.7 * D) || kicsi > nagy * Math.tan(12 * Math.PI / 180)) continue;
+      const c1: [number, number] = [a[0], b[1]], c2: [number, number] = [b[0], a[1]];
+      // a lépcső hosszú ága a ferde éllel párhuzamos: azon az oldalon, ahol egy szomszédos, vele párhuzamos tengelyél
+      // egyenese közelebb van (ahhoz igazodik majd); ennek híján a terület szerint
+      const fugg = Math.abs(dy) > Math.abs(dx);
+      const vonal = (u: [number, number], v: [number, number]) => (fugg ? (eq(u[0], v[0]) ? u[0] : null) : (eq(u[1], v[1]) ? u[1] : null));
+      const szomsz = [vonal(q[(i - 2 + 2 * q.length) % q.length]!, e), vonal(c, q[(i + 3) % q.length]!)].filter((x): x is number => x !== null);
+      const k1 = fugg ? a[0] : a[1], k2 = fugg ? b[0] : b[1];
+      const tav = (k: number) => Math.min(Infinity, ...szomsz.map((x) => Math.abs(x - k)));
+      if (szomsz.length && Math.abs(tav(k1) - tav(k2)) > 1e-6) { ki.push(fugg ? (tav(k1) < tav(k2) ? c1 : c2) : (tav(k1) < tav(k2) ? c2 : c1)); continue; }
+      const t1 = [...ki, c1, ...q.slice(i + 1)], t2 = [...ki, c2, ...q.slice(i + 1)];
+      const A1 = Math.abs(terulet(t1)), A2 = Math.abs(terulet(t2));
+      ki.push(befele ? (A1 <= A2 ? c1 : c2) : (A1 >= A2 ? c1 : c2));
+    }
+    q = tomor(ki);
+  }
+  const A0 = Math.abs(terulet(p));
+  const tiltott = new Set<string>();
+  // egy lépés: e0 (fal) → e1 (rövid összekötő) → e2 (fülke / kiugrás); a fordított bejárással a tükörhelyzet is
+  const lepes = (q: Poligon): Poligon | null => {
+    const n = q.length; if (n < 6) return null;
+    const hossz = (i: number) => { const a = q[i % n]!, b = q[(i + 1) % n]!; return Math.hypot(b[0] - a[0], b[1] - a[1]); };
+    const jeloltek: { i: number; L1: number; mit: 0 | 2 }[] = [];
+    for (let i = 0; i < n; i++) {
+      const L1 = hossz(i), L2 = hossz(i + 1), L0 = hossz(i - 1 + n);
+      if (L1 > D || L1 < Dmin || Math.min(L0, L2) <= 0) continue;
+      if (!tengely(q[(i - 1 + n) % n]!, q[i]!) || !tengely(q[i]!, q[(i + 1) % n]!) || !tengely(q[(i + 1) % n]!, q[(i + 2) % n]!)) continue;
+      const a = q[i]!, b = q[(i + 1) % n]!; if (tiltott.has(`${a[0]},${a[1]}|${b[0]},${b[1]}`)) continue;
+      // e2 az e0 egyenesére (ha e2 rövid), ill. e0 az e2 egyenesére (ha e0 rövid)
+      // (a cél-fal – amelynek a síkjára kerül – legalább `Lcel` hosszú: a ferde fal rácslépcsőit nem húzza egyenesre)
+      // (az elmozduló szakasz túlsó szomszédja is tengelyirányú – ferde élt nem tol el)
+      // (sekély – ≤ 0,4 m – fülkénél a cél-fal lehet rövidebb is: az ablakbéllet a két falcsonk között)
+      const arany = L1 <= Dsek ? 0 : 0.5;
+      if (L2 <= W && L0 >= L2 * arany && L0 >= Lcel && tengely(q[(i + 2) % n]!, q[(i + 3) % n]!)) jeloltek.push({ i, L1, mit: 2 });
+      if (L0 <= W && L2 >= L0 * arany && L2 >= Lcel && tengely(q[(i - 2 + 2 * n) % n]!, q[(i - 1 + n) % n]!)) jeloltek.push({ i, L1, mit: 0 });
+    }
+    jeloltek.sort((x, y) => x.L1 - y.L1);
+    const At = Math.abs(terulet(q));
+    for (const { i, mit } of jeloltek) {
+      const a = q[i]!, b = q[(i + 1) % n]!; const dx = a[0] - b[0], dy = a[1] - b[1];
+      const mozog = mit === 2 ? [(i + 1) % n, (i + 2) % n] : [(i - 1 + n) % n, i];
+      const sx = mit === 2 ? dx : -dx, sy = mit === 2 ? dy : -dy;
+      const t = tomor(q.map((v, k) => (mozog.includes(k) ? [v[0] + sx, v[1] + sy] as [number, number] : v)));
+      const At2 = Math.abs(terulet(t));
+      // belső méret: csak befelé (a terület csökken – a falba kifolyt rész vissza a fal belső síkjára); külső méret: kifelé
+      if (t.length >= 4 && (befele ? At2 <= At : At2 >= At) && Math.abs(At2 - A0) <= 0.03 * A0) return t;
+    }
+    for (const { i } of jeloltek) { const a = q[i]!, b = q[(i + 1) % n]!; tiltott.add(`${a[0]},${a[1]}|${b[0]},${b[1]}`); tiltott.add(`${b[0]},${b[1]}|${a[0]},${a[1]}`); }
+    return null;
+  };
+  for (let kor = 0; kor < 300; kor++) {
+    const t = lepes(q) ?? (() => { const v = lepes([...q].reverse()); return v ? v.reverse() : null; })();
+    if (!t) break; q = t;
+  }
+  return q;
+}
+
 /**
  * Derékszögűsítés: a tengelyhez közeli (≤ 12°) élek pontosan tengelyirányúak (az él két végpontjának átlagos
  * koordinátáján), a két tengelyirányú él közötti rövid (< `letores`) ferde „letörés” (a rácsból adódó sarokcsapás)
@@ -322,7 +412,7 @@ export function burokAuto(r: Raszter, futott: ReadonlySet<number>, zsebTilto?: {
 }
 
 /** A maszk (rácscellák) külső körvonalai lapkoordinátában, egyszerűsítve (Douglas–Peucker, ferde fal, derékszög). */
-function maszkKorvonal(r: Raszter, m: Uint8Array): Poligon[] {
+function maszkKorvonal(r: Raszter, m: Uint8Array, befele = true): Poligon[] {
   const { w, h } = r;
   // határélek: a maszkos cella bal oldalán haladva (y lefelé nő) – irányított élek csúcsról csúcsra
   const be = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h && m[y * w + x] === 1;
@@ -351,7 +441,7 @@ function maszkKorvonal(r: Raszter, m: Uint8Array): Poligon[] {
   }
   const min = 4 / (r.px * r.px);
   const kulsok = hurkok.filter((p) => terulet(p) > min); // a cella bal oldali bejárásánál a külső határ pozitív előjelű
-  return kulsok.map((p) => { const g = globalThis as any; let q = egyszerusit(p, 0.12 / r.px); if (!g.NOFO) q = ferdeOsszevon(q, 0.6 / r.px, 0.7 / r.px, 2.5 / r.px, 3.0 / r.px); if (!g.NODR) q = derekszog(q, 1.5 / r.px, 0.2 / r.px); return q.map(([gx, gy]) => [Math.round(lapX(r, gx) * 10) / 10, Math.round(lapY(r, gy) * 10) / 10] as [number, number]); })
+  return kulsok.map((p) => { const g = globalThis as any; let q = g.NOFS ? p : fulkeSimit(p, 0.7 / r.px, 6 / r.px, befele, 0.15 / r.px, 1.5 / r.px); q = egyszerusit(q, 0.12 / r.px); if (!g.NOFO) q = ferdeOsszevon(q, 0.6 / r.px, 0.7 / r.px, 2.5 / r.px, 3.0 / r.px); if (!g.NODR) q = derekszog(q, 1.5 / r.px, 0.2 / r.px); if (!g.NOFS && !g.NODR) q = fulkeSimit(q, 0.7 / r.px, 6 / r.px, befele, 0, 0, 0.4 / r.px); return q.map(([gx, gy]) => [Math.round(lapX(r, gx) * 10) / 10, Math.round(lapY(r, gy) * 10) / 10] as [number, number]); })
     .filter((p) => p.length >= 3);
 }
 
@@ -729,7 +819,7 @@ export function burokTomeg(r: Raszter, futott: ReadonlySet<number>, zsebTilto?: 
     if (q.length * r.px * r.px <= 1.5 && !q.some((k) => r.cimke[k]! >= 2 && !H[k])) for (const k of q) M[k] = 1;
   }
   if (vart) pecsetesFoltok(r, M, vart.filter((v) => futott.has(v.ri)));
-  return maszkKorvonal(r, M);
+  return maszkKorvonal(r, M, false);
 }
 
 export type ElKornyezet = 'kulso' | 'futetlen' | 'szomszed' | 'belso';
