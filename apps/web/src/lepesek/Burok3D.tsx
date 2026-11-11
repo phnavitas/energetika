@@ -24,6 +24,8 @@ export interface Burok3DSzint {
   kornyezet?: [number, number, 'kulso' | 'futetlen' | 'szomszed' | 'belso'][][][];
   /** Terepszint alatti szint (pince): a falai talajjal érintkeznek. */
   talaj?: boolean;
+  /** A homlokzati rajz szerinti falmagasság élenként ([poligon][él], m; null: a szint magassága) – térdfal, eltérő párkány. */
+  falMag?: (number | null)[][];
   /** (Ellenőrzéshez) a körvonalak lapkoordinátában és a forráslap. */
   forras?: { fajl: string; oldal: number; pt: [number, number][][] };
 }
@@ -167,7 +169,9 @@ export function modellSikok(szintek: Burok3DSzint[], eszakSzog: number) {
             const cs = (s.csatl?.[pi]?.[i] ?? []).slice().sort((u, w) => u[0] - w[0]);
             const levon = cs.reduce((t0, [u0, u1]) => t0 + (u1 - u0) * l, 0);
             const pont = (u: number): [number, number] => [A[0] + dx * u, A[1] + dy * u];
-            const darab = (u0: number, u1: number, tip: Tipus, info: string) => { const P = pont(u0), Q = pont(u1); sikok.push({ tipus: tip, pts: [[P[0], P[1], s.z0], [Q[0], Q[1], s.z0], [Q[0], Q[1], z1], [P[0], P[1], z1]], n: [nx, ny, 0], szint: s.nev, info, terulet: (u1 - u0) * l * s.h, grp }); };
+            // (a homlokzat szerinti falmagasság – térdfal, alacsonyabb párkány – ha az élre van ilyen)
+            const hE = s.falMag?.[pi]?.[i] ?? s.h, zE = s.z0 + hE;
+            const darab = (u0: number, u1: number, tip: Tipus, info: string) => { const P = pont(u0), Q = pont(u1); sikok.push({ tipus: tip, pts: [[P[0], P[1], s.z0], [Q[0], Q[1], s.z0], [Q[0], Q[1], zE], [P[0], P[1], zE]], n: [nx, ny, 0], szint: s.nev, info, terulet: (u1 - u0) * l * hE, grp }); };
             const info = `${tj} tájolású · ${sz(l)} × ${sz(s.h)} m${levon > 0 ? ` · nettó hossz ${sz(l - levon)} m (belső falak: −${sz(levon)} m)` : ''}`;
             // a fal fajtája a túloldal szerint (külső tér / fűtetlen tér / szomszéd épület / talaj), szakaszonként
             const kr = s.talaj ? [[0, 1, 'talaj'] as [number, number, string]] : (s.kornyezet?.[pi]?.[i] ?? [[0, 1, 'kulso']]);
