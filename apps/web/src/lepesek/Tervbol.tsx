@@ -668,7 +668,26 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                       const h0 = homMag3d(sor[0]!.i, a0, szk, eszakLap(sor[0]!.i, a0));
                       if (h0) { hm = h0; const k0 = r.mPerPt / alap.mPerPt; lapra = ([x, y]) => [(x - el.dx) * k0, (y - el.dy) * k0]; }
                     }
-                    if (hm?.felso) {
+                    // tetőablakos helyiség (a jel az alaprajzon): a tetősík közvetlenül a helyiség fölött – a lejtés felőli
+                    // külső fala térdfal (a homlokzat szerinti, ennek híján az alapértelmezett térdfal-magasság)
+                    const ar = a.r, tab = a.tetoablakok ?? [];
+                    const terdfalE = (A: [number, number], B: [number, number], nx: number, ny: number, irany: number) => {
+                      // metszettel a szint belmagassága ismert (a tetőablak lehet fénycsatornás, sík mennyezetű helyiségben is)
+                      if (!ar || !tab.length || me?.szintek.belmagassag.length) return false;
+                      // a fal mögötti helyiség: a fal közepétől befelé 0,5–2 m-re az első helyiségpixel (a külső méretű körvonal
+                      // a falvastagságon, a belső közelében rajzi vonal – pl. eresz – lehet)
+                      const ptPx = ar.mPerPt / ar.px; let h = -1;
+                      for (const dm of [0.5, 0.8, 1.2, 1.6, 2.0]) {
+                        const d = dm / ar.mPerPt, cx = (A[0] + B[0]) / 2 - nx * d, cy = (A[1] + B[1]) / 2 - ny * d;
+                        const gx = Math.round((cx - ar.x0) * ptPx), gy = Math.round((cy - ar.y0) * ptPx);
+                        if (gx < 0 || gy < 0 || gx >= ar.w || gy >= ar.h) continue;
+                        const c = ar.cimke[gy * ar.w + gx]!; if (c >= 2) { h = c - 2; break; }
+                      }
+                      if (h < 0) return false;
+                      return tab.some((t) => t.helyiseg === h && Math.abs(((t.irany - irany + 540) % 360) - 180) <= 30);
+                    };
+                    const terdAlap = me?.tetoter?.terdfal ?? 0.9;
+                    if (hm?.felso || tab.length) {
                       const hh = belso ? emelet - 0.35 : emelet;
                       falMag = polPt.map((q) => {
                         const A2 = q.reduce((t, [x, y], j) => { const [x2, y2] = q[(j + 1) % q.length]!; return t + x * y2 - x2 * y; }, 0);
@@ -680,6 +699,15 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                           // lapirány (0 = fel, 90 = jobbra), a tengelyhez ±2°-on belül igazítva
                           let irany = ((Math.atan2(nx, -ny) * 180) / Math.PI + 360) % 360;
                           const t90 = Math.round(irany / 90) * 90; if (Math.abs(irany - t90) <= 2) irany = t90 % 360;
+                          if (terdfalE(A, B, nx, ny, irany)) {
+                            const v = hm?.felso ? hm.mod.magassag(irany, [lapra(A), lapra([(A[0] + B[0]) / 2, (A[1] + B[1]) / 2]), lapra(B)], hm.zf, hm.zc) : null;
+                            // térdfal: 0,3–1,5 m a homlokzat szerint, ennek híján az alapértelmezett; ha a homlokzat ennél magasabb
+                            // falat mutat, az számít (nem térdfal)
+                            if (v === null || v < 0.3) return Math.min(terdAlap, hh);
+                            if (v <= 1.5) return v;
+                            return v < hh - 0.15 ? v : null;
+                          }
+                          if (!hm?.felso) return null;
                           // visszahúzott fal (loggia, bemélyedés): a homlokzat az előtte lévő elemet (mellvéd, korlát) mutatja
                           const ux = dx / l, uy = dy / l, sA = A[0] * ux + A[1] * uy, dA = A[0] * nx + A[1] * ny, tol = 0.05 / r.mPerPt;
                           const elotte = polPt.some((q2) => q2.some(([x, y]) => { const s = x * ux + y * uy; return s >= sA - tol && s <= sA + l + tol && (x * nx + y * ny - dA) * r.mPerPt > 0.6; }));

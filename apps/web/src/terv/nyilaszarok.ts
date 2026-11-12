@@ -814,8 +814,72 @@ export function tetoablakJelek(lap: Lap, r: Raszter): TetoablakJel[] {
     return emel >= 1 && bent.length - emel >= 1;
   };
   const jelek: { b: number[]; reteg?: string }[] = [];
+  // harmadik alak: üres, szaggatott keret a helyiség belsejében, benne / mellette a nyílás típusjelével („AB-16”)
+  const TJ = /^[A-ZÁÉ]{1,3}\s*[-–]\s*\d{1,3}[A-Z]?$/i;
+  const tjek = lap.szovegek.filter((t) => TJ.test(t.s.trim())).map((t) => geom(t));
+  const ptPx0 = m / r.px;
+  const kodos = (b: number[]) => {
+    const e = 0.3 / m;
+    if (!tjek.some((g) => g.cx >= b[0]! - e && g.cx <= b[2]! + e && g.cy >= b[1]! - e && g.cy <= b[3]! + e)) return false;
+    // a keret teljesen helyiségben, falpixel nélkül (nem falban lévő nyílás, nem a tetőfelülnézet)
+    const x0 = Math.floor((b[0]! - r.x0) * ptPx0), x1 = Math.ceil((b[2]! - r.x0) * ptPx0), y0 = Math.floor((b[1]! - r.y0) * ptPx0), y1 = Math.ceil((b[3]! - r.y0) * ptPx0);
+    if (x0 < 0 || y0 < 0 || x1 >= r.w || y1 >= r.h) return false;
+    // a keretben lévő helyiség (a többségi címke: a jel közepén a típusjel felirata takarhat)
+    const db = new Map<number, number>();
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const c = r.cimke[y * r.w + x]!; if (c >= 2) db.set(c, (db.get(c) ?? 0) + 1); }
+    if (db.size !== 1) return false;
+    const [h0, hdb] = [...db.entries()][0]!; if (hdb < 0.4 * (x1 - x0 + 1) * (y1 - y0 + 1)) return false;
+    // a tetőablak vetülete a térdfalra is átnyúlhat: a falpixel legfeljebb a keret harmada, más helyiség nem lehet benne
+    let falpx = 0, ossz = 0;
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const c = r.cimke[y * r.w + x]!; ossz++; if (r.fal[y * r.w + x]) falpx++; else if (c >= 2 && c !== h0) return false; }
+    if (falpx > ossz / 3) return false;
+    return true;
+  };
+  const kodosak = new Set<number[]>(), szaggatott = new Set<number[]>();
+  // szaggatott keret (darabokra bontott vonalakból): rövid, tengelyirányú darabokból összefűzött szaggatott vonalak,
+  // a típusjelet körülvevő legkisebb, négy ilyen vonalból álló négyszög
+  {
+    type D = { k: number; a: number; b: number; db: number };
+    const vizsz: D[] = [], fugg: D[] = [];
+    const nyers: { f: boolean; k: number; a: number; b: number }[] = [];
+    for (const u of lap.utvonalak) for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) {
+      const x1 = p[i]!, y1 = p[i + 1]!, x2 = p[i + 2]!, y2 = p[i + 3]!, L = Math.hypot(x2 - x1, y2 - y1) * m;
+      if (L < 0.01 || L > 0.2) continue;
+      if (Math.abs(y2 - y1) < 0.02 * Math.abs(x2 - x1)) nyers.push({ f: false, k: (y1 + y2) / 2, a: Math.min(x1, x2), b: Math.max(x1, x2) });
+      else if (Math.abs(x2 - x1) < 0.02 * Math.abs(y2 - y1)) nyers.push({ f: true, k: (x1 + x2) / 2, a: Math.min(y1, y2), b: Math.max(y1, y2) });
+    }
+    const hez = 0.12 / m, kt = 0.3;
+    for (const f of [false, true]) {
+      const sor = nyers.filter((q) => q.f === f).sort((p1, p2) => p1.k - p2.k || p1.a - p2.a);
+      const cel = f ? fugg : vizsz; const nyitott: D[] = [];
+      for (const q of sor) {
+        const d = nyitott.find((x) => Math.abs(x.k - q.k) < kt && q.a - x.b < hez && q.a >= x.a - hez);
+        if (d) { d.b = Math.max(d.b, q.b); d.db++; } else { const n = { k: q.k, a: q.a, b: q.b, db: 1 }; nyitott.push(n); cel.push(n); }
+      }
+    }
+    const vonal = (l: D[]) => l.filter((x) => x.db >= 4);
+    const V = vonal(vizsz), F = vonal(fugg);
+    // két egyforma, párhuzamos szaggatott vonal a jel két oldalán (a keret másik két oldalát más vonal takarhatja)
+    const egyezik = (p1: D, p2: D) => Math.abs(p1.a - p2.a) * m < 0.05 && Math.abs(p1.b - p2.b) * m < 0.05;
+    for (const g of tjek) {
+      let b: number[] | null = null;
+      for (const f of [true, false]) {
+        const L = f ? F : V, kc = f ? g.cx : g.cy, ac = f ? g.cy : g.cx;
+        const elo = L.filter((x) => x.k < kc && x.a <= ac && x.b >= ac).sort((p1, p2) => p2.k - p1.k)[0];
+        const uta = L.filter((x) => x.k > kc && x.a <= ac && x.b >= ac).sort((p1, p2) => p1.k - p2.k)[0];
+        if (!elo || !uta || !egyezik(elo, uta)) continue;
+        b = f ? [elo.k, Math.min(elo.a, uta.a), uta.k, Math.max(elo.b, uta.b)] : [Math.min(elo.a, uta.a), elo.k, Math.max(elo.b, uta.b), uta.k];
+        break;
+      }
+      if (!b) continue;
+      const a = (b[2]! - b[0]!) * m, c = (b[3]! - b[1]!) * m;
+      if (Math.min(a, c) < 0.4 || Math.min(a, c) > 1.4 || Math.max(a, c) < 0.5 || Math.max(a, c) > 2.0) continue;
+      if (teglak.some((x) => Math.abs(x.b[0]! - b![0]!) * m < 0.1 && Math.abs(x.b[1]! - b![1]!) * m < 0.1)) continue;
+      teglak.push({ b }); szaggatott.add(b);
+    }
+  }
   for (const t of teglak) {
-    if (!fedett(t.b)) continue;
+    if (!fedett(t.b)) { if (!szaggatott.has(t.b) || !kodos(t.b)) continue; kodosak.add(t.b); }
     // egymásba rajzolt keretek (tok, szárny): a legkülső marad
     const cx = (t.b[0]! + t.b[2]!) / 2, cy = (t.b[1]! + t.b[3]!) / 2;
     const i = jelek.findIndex((j) => Math.hypot((j.b[0]! + j.b[2]!) / 2 - cx, (j.b[1]! + j.b[3]!) / 2 - cy) * m < 0.15);
@@ -847,7 +911,7 @@ export function tetoablakJelek(lap: Lap, r: Raszter): TetoablakJel[] {
       if (!b) continue;
       leg = d; felirat = { szel: a.v, mag: b.v, x: ga.cx, y: ga.cy };
     }
-    if (reteges ? !(j.reteg && TETO_RETEG.test(j.reteg)) && !felirat : !felirat) continue;
+    if (!kodosak.has(j.b) && (reteges ? !(j.reteg && TETO_RETEG.test(j.reteg)) && !felirat : !felirat)) continue;
     // helyiség: a jel középpontja alatt, ennek híján a legközelebbi helyiségpixel (≤ 1 m)
     const gx = Math.round((cx - r.x0) * ptPx), gy = Math.round((cy - r.y0) * ptPx);
     let h = -1;
