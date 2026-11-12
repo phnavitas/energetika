@@ -46,6 +46,30 @@ export function homlokzatIrany(cim: string): Tajolas | null {
   return null;
 }
 
+/** A címben felsorolt égtájak (pl. „Ny-i, D-i homlokzatok” → Ny, D) sorrendben. */
+export function homlokzatIranyok(cim: string): Tajolas[] {
+  const ki: Tajolas[] = []; const re = /(?:^|[^A-ZÁÉÍÓÖŐÚÜŰ])(ÉNY|ÉK|DNY|DK|É|K|D|NY)\s*[-–]\s*I\b/g; let m: RegExpExecArray | null;
+  const u = cim.toUpperCase(); while ((m = re.exec(u))) { const t = IRANY[m[1]!]; if (t && !ki.includes(t)) ki.push(t); re.lastIndex = m.index + m[0].length - 1; }
+  return ki;
+}
+/**
+ * A lap homlokzatcímei nézetenként. A több égtájat felsoroló felirat (a lap címe: „Ny-i, D-i homlokzatok”) nem egy nézet
+ * címe, ha nézetcímek is vannak. Ha a nézetcímek egyike sem szerepel a lap címében (másolt, el nem írt nézetcím), a lap
+ * címében felsorolt égtájak érvényesek, a nézetcímek sorrendjében (fentről lefelé, balról jobbra).
+ */
+export function homlokzatCimek(lap: Lap): { x: number; y: number; t: Tajolas }[] {
+  const osszes = lap.szovegek.filter((t) => /homlokzat/i.test(t.s));
+  const lapCim = osszes.map((t) => ({ t, ir: homlokzatIranyok(t.s) })).filter((x) => x.ir.length >= 2);
+  const nezet = osszes.filter((t) => !lapCim.some((x) => x.t === t)).flatMap((t) => { const ir = homlokzatIrany(t.s); return ir ? [{ x: t.x, y: t.y, t: ir }] : []; });
+  if (!nezet.length) return lapCim.flatMap(({ t }) => { const ir = homlokzatIrany(t.s); return ir ? [{ x: t.x, y: t.y, t: ir }] : []; });
+  const lc = lapCim.length === 1 ? lapCim[0]!.ir : null;
+  if (lc && lc.length === nezet.length && !nezet.some((n) => lc.includes(n.t))) {
+    const sor = [...nezet].sort((a, b) => (Math.abs(a.y - b.y) > 20 ? a.y - b.y : a.x - b.x));
+    return sor.map((n, i) => ({ ...n, t: lc[i]! }));
+  }
+  return nezet;
+}
+
 const rgb = (s: string) => { const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(s); return m ? [1, 2, 3].map((i) => parseInt(m[i]!, 16)) as [number, number, number] : null; };
 
 export function homlokzatElemez(lap: Lap): HomlokzatEredmeny {

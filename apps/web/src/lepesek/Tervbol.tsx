@@ -19,7 +19,7 @@ import { Burok3D, modellOsszesites, type Burok3DSzint } from './Burok3D';
 import { homlokzatRajzok, mertMagassagok, eszakHomlokzatbol, tetoAblakokHomlokzatrol, oromSzelessegek, type HomlokzatRajz, type MertMagassag } from '../terv/homlokzatIllesztes';
 import { nezetOszlopok } from '../terv/homlokzatProfil';
 import { falMagassagModell, type HomlokzatNezetAdat } from '../terv/homlokzatModell';
-import { vonalIndex, keretek, homlokzatIrany } from '../terv/homlokzat';
+import { vonalIndex, keretek, homlokzatIrany, homlokzatCimek } from '../terv/homlokzat';
 const AZ_TAJ: Record<string, number> = { 'É': 0, 'ÉK': 45, 'K': 90, 'DK': 135, 'D': 180, 'DNy': 225, 'Ny': 270, 'ÉNy': 315 };
 import type { Lap } from '../terv/kinyeres';
 
@@ -234,7 +234,7 @@ function homlokzatNezetTar(lapok: Lap[], M?: number | null): HomlokzatNezetAdat[
           const kk = ker.filter((q) => (q.x0 + q.x1) / 2 >= ny.bb[0] && (q.x0 + q.x1) / 2 <= ny.bb[2] && (q.y0 + q.y1) / 2 >= ny.bb[1] - 2 && (q.y0 + q.y1) / 2 <= ny.bb[3] + 2);
           const r = rz.map((x) => ({ x, db: x.keretek.filter((q) => (q.x0 + q.x1) / 2 >= ny.bb[0] && (q.x0 + q.x1) / 2 <= ny.bb[2]).length })).sort((a, c) => c.db - a.db)[0];
           // ablak nélküli nézet égtája: a hozzá legközelebbi (alatta / fölötte, vízszintesen átfedő) homlokzat-cím
-          const cim = r && r.db ? null : l.szovegek.flatMap((t) => { if (!/homlokzat/i.test(t.s)) return []; const ir = homlokzatIrany(t.s); if (!ir) return []; const dx = t.x < ny.bb[0] ? ny.bb[0] - t.x : t.x > ny.bb[2] ? t.x - ny.bb[2] : 0; const dy = t.y > ny.bb[3] ? t.y - ny.bb[3] : t.y < ny.bb[1] ? ny.bb[1] - t.y : 0; return [{ az: AZ_TAJ[ir]!, d: dy + 2 * dx }]; }).sort((a, c) => a.d - c.d)[0];
+          const cim = r && r.db ? null : homlokzatCimek(l).flatMap((t) => { const ir = t.t; const dx = t.x < ny.bb[0] ? ny.bb[0] - t.x : t.x > ny.bb[2] ? t.x - ny.bb[2] : 0; const dy = t.y > ny.bb[3] ? t.y - ny.bb[3] : t.y < ny.bb[1] ? ny.bb[1] - t.y : 0; return [{ az: AZ_TAJ[ir]!, d: dy + 2 * dx }]; }).sort((a, c) => a.d - c.d)[0];
           const az = r && r.db ? r.x.az : cim && cim.d * ix.mPerPt < 8 ? cim.az : undefined;
           return { ny, keretek: kk, mPerPt: ix.mPerPt, lap: li, ...(az !== undefined ? { az } : {}) };
         }).filter((x) => x.keretek.length >= 2 || x.az !== undefined) : [];

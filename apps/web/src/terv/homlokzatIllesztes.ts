@@ -6,7 +6,7 @@
  */
 import type { Lap } from './kinyeres';
 import type { TervNyilas } from './nyilaszarok';
-import { homlokzatIrany, keretek, vonalIndex, type HomlokzatKeret } from './homlokzat';
+import { homlokzatCimek, keretek, vonalIndex, type HomlokzatKeret } from './homlokzat';
 import { nezetLyukak } from './homlokzatProfil';
 
 /** Szélességtűrés az illesztésnél: az alaprajzi falnyílás és a homlokzati tok mérete eltérhet (tokbeépítés, takarás). */
@@ -19,7 +19,7 @@ export interface HomlokzatRajz { az: number; mPerPt: number; keretek: HomlokzatK
 /** Egy homlokzati lap rajzai (címenként) a kereteikkel. */
 export function homlokzatRajzok(lap: Lap, tartalekM?: number): HomlokzatRajz[] {
   const ix = vonalIndex(lap, tartalekM); if (!ix) return [];
-  const cimek = lap.szovegek.flatMap((t) => { if (!/homlokzat/i.test(t.s)) return []; const ir = homlokzatIrany(t.s); return ir ? [{ x: t.x, y: t.y, az: AZ[ir]! }] : []; });
+  const cimek = homlokzatCimek(lap).map((c) => ({ x: c.x, y: c.y, az: AZ[c.t]! }));
   if (!cimek.length) return [];
   // a rajzcím a rajz alatt vagy fölött áll (lapon belül egységesen): mindkét elrendezéssel hozzárendeljük a kereteket
   // a legközelebbi címhez, és az a változat érvényes, amelyben a keretek összesen közelebb esnek a címükhöz
