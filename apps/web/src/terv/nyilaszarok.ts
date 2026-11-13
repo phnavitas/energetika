@@ -611,10 +611,22 @@ export function fuggonyfalak(r: Raszter, feliratos: TervNyilas[], pecsetek: { x:
       // a raszterben fel nem töltött belső tér (pl. lépcső rajzelemeivel tagolt lépcsőház): a legközelebbi pecsét ezen az oldalon (≤ 6 m)
       if (c.filter((v) => v === 0).length >= 2) {
         let leg = -1, d0 = 6 / r.mPerPt;
+        // a pecsét a falon át nem számít (pl. az épület melletti, felirattal jelölt külső tároló mögött a szomszéd helyiség)
+        const sx = g.fuggo ? cx + jel * fel : cx, sy = g.fuggo ? cy : cy + jel * fel;
+        const atlathato = (px: number, py: number) => {
+          const n = Math.ceil(Math.hypot(px - sx, py - sy) * r.mPerPt / r.px);
+          let falon = 0;
+          for (let t = 1; t < n; t++) {
+            const x = sx + ((px - sx) * t) / n, y = sy + ((py - sy) * t) / n;
+            const xi = Math.floor((x - r.x0) * r.mPerPt / r.px), yi = Math.floor((y - r.y0) * r.mPerPt / r.px);
+            if (xi >= 0 && yi >= 0 && xi < r.w && yi < r.h && r.fal[yi * r.w + xi]) { if (++falon * r.px > 0.1) return false; } else falon = 0;
+          }
+          return true;
+        };
         pecsetek.forEach((pp, i) => {
           const oldalon = g.fuggo ? (pp.x - cx) * jel > 0 : (pp.y - cy) * jel > 0;
           const d = Math.hypot(pp.x - cx, pp.y - cy);
-          if (oldalon && d < d0) { d0 = d; leg = i; }
+          if (oldalon && d < d0 && atlathato(pp.x, pp.y)) { d0 = d; leg = i; }
         });
         if (leg >= 0) return leg + 2;
       }
@@ -878,7 +890,15 @@ export function tetoablakJelek(lap: Lap, r: Raszter): TetoablakJel[] {
       teglak.push({ b }); szaggatott.add(b);
     }
   }
+  // egymáshoz oldalukkal illeszkedő keretek sora: bútor (konyhaszekrény, gardrób), nem tetőablak
+  const sorban = (b: number[]) => {
+    const e = 0.05 / m;
+    return teglak.some(({ b: c }) => c !== b && (
+      ((Math.abs(c[0]! - b[2]!) < e || Math.abs(c[2]! - b[0]!) < e) && Math.min(b[3]!, c[3]!) - Math.max(b[1]!, c[1]!) > 0.5 * (b[3]! - b[1]!)) ||
+      ((Math.abs(c[1]! - b[3]!) < e || Math.abs(c[3]! - b[1]!) < e) && Math.min(b[2]!, c[2]!) - Math.max(b[0]!, c[0]!) > 0.5 * (b[2]! - b[0]!))));
+  };
   for (const t of teglak) {
+    if (!szaggatott.has(t.b) && sorban(t.b)) continue;
     if (!fedett(t.b)) { if (!szaggatott.has(t.b) || !kodos(t.b)) continue; kodosak.add(t.b); }
     // egymásba rajzolt keretek (tok, szárny): a legkülső marad
     const cx = (t.b[0]! + t.b[2]!) / 2, cy = (t.b[1]! + t.b[3]!) / 2;

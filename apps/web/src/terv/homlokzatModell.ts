@@ -135,7 +135,8 @@ export function falMagassagModell(nyilasok: TervNyilas[], mPerPt: number, eszakS
           const za = (il.y0 - q.y1) * mE, zt = (il.y0 - q.y0) * mE;
           if (za < zf0 - 0.15 || za > zc - 0.3 || zt > zc + 0.4) continue;
           const sc = (q.x0 + q.x1) / 2 * mE - il.o;
-          if (sajat.some((n) => Math.abs(s(ir, n.x, n.y) - sc) <= Math.max(0.3, q.szel / 2))) continue;
+          // (a keret közepe egy alaprajzi nyílás szélességén belül: annak osztása – pl. függönyfal, ajtó oldalvilágítója)
+          if (sajat.some((n) => Math.abs(s(ir, n.x, n.y) - sc) <= Math.max(0.3, q.szel / 2, n.szel / 2 + 0.1))) continue;
           // azonos szélességű alaprajzi nyílás a közelben (más irányú falszakaszon – beugrás, ferde fal, eltérő falsík): már megvan
           if (nyilasok.some((n) => n.kulso && Math.abs(n.szel - q.szel) <= 0.1 && Math.abs(s(ir, n.x, n.y) - sc) <= Math.max(0.6, q.szel))) continue;
           const f = fi.find((x) => sc >= x.a - 0.1 && sc <= x.b + 0.1); if (!f) continue;
