@@ -123,7 +123,13 @@ interface Kijeloles { egysegek: Set<string>; kizartH: Set<number>; kat: Record<n
   /** Ismeretlen túloldalú falszakaszok, amelyeket a felhasználó külső falnak jelölt („raszterindex|szakaszindex”). */
   ismKulso?: Set<string>;
   /** A felhasználó által szerkesztett hőburok-körvonal (pt): ha megadott, a homlokzati falak és a külső nyílászárók ebből. */
-  burok?: Poligon[] }
+  burok?: Poligon[];
+  /** Belsőnek felismert, a felhasználó által külsőnek (homlokzati nyílásnak) jelölt nyílások (al.nyilasok indexe). */
+  kulsoNy?: Set<number>;
+  /** Falhoz nem köthető nyílásfeliratok, amelyeket a felhasználó külső nyílásként átvesz (al.arvaFeliratok indexe). */
+  arvaBe?: Set<number>;
+  /** Felirat nélküli (becsült méretű) tetősík ablakok kézzel megadott mérete (al.tetoablakok indexe → [szél, mag] m). */
+  taMeret?: Record<number, [number, number]> }
 
 /** A kijelölt fűtött (nem gyengén kapcsolt) helyiségek raszterindexei. */
 function futottRiK(al: AlaprajzFeldolgozas, k: Kijeloles): Set<number> {
@@ -182,13 +188,21 @@ function burokNyilasok(al: AlaprajzFeldolgozas, k: Kijeloles) {
   if (!k.burok) {
     // felismert burok: a raszter szerinti külső nyílások, és a falhoz nem rendelt, a burkon kívül 1,5 m-en belül írt feliratok
     const fut0 = futottRiK(al, k), ab = burokAutoTar(al.r, fut0), pp0 = pecsetPontok(al), r0 = al.r;
-    const alap = l.filter(({ n }) => n.kulso && n.helyiseg !== null && n.irany !== null);
+    // (a felhasználó által külsőnek jelölt, belsőként felismert nyílás is – ablak, ha mellvédes, különben erkélyajtó)
+    const alap = l.filter(({ n, kk }) => (n.kulso || k.kulsoNy?.has(kk)) && n.helyiseg !== null && n.irany !== null)
+      .map(({ n, kk }) => (n.kulso ? { n, kk } : { n: { ...n, kulso: true, fajta: (n.pm !== null && n.pm > 0.05 ? 'ablak' : n.mag >= 1.9 ? 'erkelyajto' : 'ablak') as TervNyilas['fajta'] }, kk }));
     if (!ab.length) return alap;
     const koz = (x: number, y: number) => [...pp0.entries()].filter(([ri, q]) => fut0.has(ri) && ab.some((p) => bennE(p, q.x, q.y))).sort((u, v) => Math.hypot(u[1].x - x, u[1].y - y) - Math.hypot(v[1].x - x, v[1].y - y))[0]?.[0] ?? null;
     return alap.concat((al.arvaFeliratok ?? []).flatMap((f, j) => {
       // a burkon belül írt (falhoz nem rendelt) felirat a burok éle mentén (≤ 1 m), ha a fal túloldalán (≤ 3 m) külső tér
       // pecsétje (terasz, előlépcső) áll: bejárat a külső fal belső oldalára írt nyílásmérettel
       const bent = ab.some((p) => bennE(p, f.x, f.y));
+      // a felhasználó külső nyílásként átveszi: a legközelebbi burokél (≤ 5 m) és a legközelebbi fűtött helyiség
+      if (k.arvaBe?.has(j)) {
+        const ir = nyilasEl(r0, ab, f.x, f.y, 5), h = koz(f.x, f.y); if (ir === null || h === null) return [];
+        const ajto = (f.pm === null || f.pm <= 0.05) && f.mag >= 2;
+        return [{ n: { szel: f.szel, mag: f.mag, pm: f.pm, x: f.x, y: f.y, helyiseg: h, irany: ir, kulso: true, fajta: (ajto ? 'erkelyajto' : 'ablak') as TervNyilas['fajta'], iranyTipp: true }, kk: 10000 + j }];
+      }
       if (bent && !al.e.helyisegek.some((h) => h.kulter && h.forras === 'pecset' && !ab.some((p) => bennE(p, h.x, h.y)) && Math.hypot(h.x - f.x, h.y - f.y) * (al.e.mPerPt ?? 0) <= 3)) return [];
       const ir = nyilasEl(r0, ab, f.x, f.y, bent ? 1.0 : 1.5); if (ir === null) return [];
       const h = koz(f.x, f.y); if (h === null) return [];
@@ -207,7 +221,7 @@ function burokNyilasok(al: AlaprajzFeldolgozas, k: Kijeloles) {
     if (n.fajta === 'belso_ajto' && !n.kulso) return [];
     // a burkon kívül írt felirat (homlokzati nyílás) 2,5 m-ig, belül csak a raszter szerint is külső nyílás, 1,5 m-ig
     const kint = !b.some((p) => bennE(p, n.x, n.y));
-    if (!kint && !n.kulso) return [];
+    if (!kint && !n.kulso && !k.kulsoNy?.has(kk)) return [];
     const ir = nyilasEl(r, b, n.x, n.y, kint ? 2.5 : 1.5); if (ir === null) return [];
     const h = n.helyiseg !== null && fut.has(n.helyiseg) ? n.helyiseg : kozeli(n.x, n.y); if (h === null) return [];
     return [{ n: { ...n, irany: ir, kulso: true, helyiseg: h }, kk }];
@@ -735,7 +749,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                       if (h < 0) return false;
                       return tab.some((t) => t.helyiseg === h && Math.abs(((t.irany - irany + 540) % 360) - 180) <= 30);
                     };
-                    const terdAlap = me?.tetoter?.terdfal ?? 0.9;
+                    const terdAlap = me?.tetoter?.terdfal ?? terdfalKezi ?? 0.9;
                     if (hm?.felso || tab.length) {
                       const hh = belso ? emelet - 0.35 : emelet;
                       falMag = polPt.map((q) => {
@@ -868,7 +882,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     const r = a.r; if (!r) return [];
     const { ri } = atvetelReszek(a, k);
     // az alaprajzon jellel (áthúzott keret) rajzolt tetősík ablakok: hely, méret, lejtésirány a jelből és a feliratából
-    const jelbol = (a.tetoablakok ?? []).flatMap((t) => { const j = ri.indexOf(t.helyiseg); return j >= 0 && hs[j] ? [{ helyiseg: j, szel: t.szel, mag: t.mag, irany: t.irany, ...(t.hajlas ? { hajlas: t.hajlas } : {}) }] : []; });
+    const jelbol = (a.tetoablakok ?? []).flatMap((t, ti) => { const j = ri.indexOf(t.helyiseg); const km = k.taMeret?.[ti]; return j >= 0 && hs[j] ? [{ helyiseg: j, szel: km?.[0] ?? t.szel, mag: km?.[1] ?? t.mag, irany: t.irany, ...(t.hajlas ? { hajlas: t.hajlas } : {}) }] : []; });
     if (jelbol.length) return jelbol;
     // a felirat a ferde tetősíkban lévő ablaké, ha nincs külső falhoz rendelve (falhoz nem köthető, vagy belső
     // „fülkeként” / belső nyílásként felismert) és ablakméretű
@@ -960,6 +974,16 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
       const szh = riL.reduce((t, x) => t + (x < 0 ? 0 : a.r!.helyisegek[x]!.szakaszok.filter((sg) => sg.tul === 'kulso' && sg.szomszed).reduce((q, sg) => q + sg.hossz, 0)), 0);
       if (szh >= 0.3) { szomszedH = szh; extraUz.push(`Szomszédos épülethez csatlakozó fal: ${String(Math.round(szh * 100) / 100).replace('.', ',')} m (a rajzon „szomszédos épület” / „zártsorú” felirat a fal mögött) – ${szomszedFutott ? 'fűtött szomszéd: nem hőátadó felület, nem került át' : 'fűtetlen szomszéd: fal fűtetlen tér felé (b-tényezővel)'}.`); }
     }
+    // falhoz nem rendelt nyílásfeliratok, amelyek nem kerültek át (a burok mentén nem helyezhetők el)
+    if (a.arvaFeliratok?.length) {
+      const atvett = new Set(burokNyilasok(a, k).map(({ kk }) => kk));
+      // (csak a homlokzati nyílásra utaló: a burkon kívül vagy a burok élén – a belül írt belső ajtófelirat nem)
+      const ab0 = a.r ? burokAutoTar(a.r, futottRiK(a, k)) : [];
+      const kimaradt = a.arvaFeliratok.filter((f, j) => !atvett.has(10000 + j) && a.r && ab0.length && (!ab0.some((p) => bennE(p, f.x, f.y)) ? nyilasEl(a.r, ab0, f.x, f.y, 2.5) !== null : nyilasEl(a.r, ab0, f.x, f.y, 1.0) !== null));
+      if (kimaradt.length) extraUz.push(`${kimaradt.length} nyílásfelirat (${[...new Set(kimaradt.map((f) => `${Math.round(f.szel * 100)}×${Math.round(f.mag * 100)}`))].join(', ')}) nem köthető falnyíláshoz, és a hőburok mentén sem helyezhető el: nem került át. Ha homlokzati nyílás, add hozzá a Határolás lépésben.`);
+    }
+    // tetőablakos helyiség metszet nélkül: a 3D modellben a lejtés felőli fal térdfal
+    if (a.tetoablakok?.length && !me?.szintek.belmagassag.length && !tetoterLap) extraUz.push(`Tetőablakos helyiség metszet nélkül: a lejtés felőli külső falat térdfalnak vettem (magassága a homlokzatról, ennek híján ${String(me?.tetoter?.terdfal ?? terdfalKezi ?? 0.9).replace('.', ',')} m) – ellenőrizd a falmagasságot az „Ellenőrizendő” részben.`);
     const mertDb = ny.length && mert ? [...mert.values()] : [];
     if (mertDb.length) {
       const h = mertDb.filter((x) => x.forras === 'homlokzat').length, sz = mertDb.filter((x) => x.forras === 'szelesseg').length, b = mertDb.filter((x) => x.forras === 'becsult').length;
@@ -1372,6 +1396,67 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
           <h2>1. Helyiségek és tájolás</h2>
           <p class="halk">A helyiségpecsétekből (kód, név, burkolat, terület) és a helyiségjegyzékből. A színes vonalak a felismert külső falszakaszok a helyiségek belső (nettó) síkján, homlokzati irány szerint; a jelölők a nyílászárók.</p>
           {al.e.figyelmeztetesek.filter((f) => !(al.e.eszak && eszakJavitas(al.e.eszak.alairas) !== 0 && /északjel irányát/.test(f)) && !(/Északjelet nem találtam/.test(f) && eszakHom(al) !== null)).map((f) => <div class="figyelmeztetes" style="margin-bottom:8px">{f}</div>)}
+          {(() => {
+            // bizonytalan helyzetek, amelyekről a felhasználó dönt
+            const cm = (v: number) => Math.round(v * 100);
+            const hNev = (h: number | null) => (h !== null ? al.magHelyisegek[h]?.nev ?? '' : '');
+            const gyanus = al.nyilasok.map((n, kk) => ({ n, kk })).filter(({ n, kk }) => n.helyiseg !== null && n.irany !== null && n.fajta !== 'falfulke' &&
+              (kj.kulsoNy?.has(kk) || (!n.kulso && (n.oldalBizonytalan || (n.pm !== null && n.pm >= 0.3)))));
+            const ab0 = al.r ? burokAutoTar(al.r, futottRiK(al, kj)) : [];
+            const atvett = new Set(burokNyilasok(al, kj).map(({ kk }) => kk));
+            const arvak = (al.arvaFeliratok ?? []).map((f, j) => ({ f, j })).filter(({ f, j }) => kj.arvaBe?.has(j) || (!atvett.has(10000 + j) && !!al.r && ab0.length > 0 &&
+              (!ab0.some((p) => bennE(p, f.x, f.y)) ? nyilasEl(al.r, ab0, f.x, f.y, 2.5) !== null : nyilasEl(al.r, ab0, f.x, f.y, 1.0) !== null)));
+            const terdE = !!al.tetoablakok?.length && !me?.szintek.belmagassag.length && !lapSzintek(aIdx).includes('T');
+            const taBecs = (al.tetoablakok ?? []).map((t, ti) => ({ t, ti })).filter(({ t }) => t.becsult);
+            if (!gyanus.length && !arvak.length && !terdE && !taBecs.length) return null;
+            const valt = (mezo: 'kulsoNy' | 'arvaBe', i: number, be: boolean) => kjMod((k) => { const x = new Set(k[mezo] ?? []); if (be) x.add(i); else x.delete(i); return { ...k, [mezo]: x }; });
+            return (
+              <div class="kartya" style="margin-bottom:12px;border-color:#F59E0B">
+                <h3 style="margin-top:0">Ellenőrizendő – döntsd el</h3>
+                <p class="halk" style="margin-top:0">A felismerés ezeknél nem egyértelmű; a választás azonnal érvényes (2D, 3D és átvétel).</p>
+                {gyanus.length > 0 && <>
+                  <strong>Belsőnek vett nyílások</strong> <span class="halkabb">– mellvédes (ablakszerű), vagy a túloldala nem azonosítható</span>
+                  <table class="tabla" style="max-width:640px;margin:4px 0 10px"><tbody>
+                    {gyanus.map(({ n, kk }) => { const kulso = !!kj.kulsoNy?.has(kk); return (
+                      <tr>
+                        <td>{cm(n.szel)}×{cm(n.mag)}{n.pm !== null ? <span class="halkabb"> · pm {String(n.pm).replace('.', ',')}</span> : null}</td>
+                        <td>{hNev(n.helyiseg)}</td>
+                        <td>{n.oldalBizonytalan ? <span class="halkabb">túloldal ismeretlen</span> : <span class="halkabb">belső ablak?</span>}</td>
+                        <td style="white-space:nowrap">
+                          <label class="jelolo" style="display:inline-flex;margin-right:14px"><input type="radio" name={`ny${kk}`} checked={!kulso} onChange={() => valt('kulsoNy', kk, false)} /> belső</label>
+                          <label class="jelolo" style="display:inline-flex"><input type="radio" name={`ny${kk}`} checked={kulso} onChange={() => valt('kulsoNy', kk, true)} /> külső (homlokzati)</label>
+                        </td>
+                      </tr>); })}
+                  </tbody></table>
+                </>}
+                {arvak.length > 0 && <>
+                  <strong>Falhoz nem köthető nyílásfeliratok</strong> <span class="halkabb">– a hőburok mentén</span>
+                  <table class="tabla" style="max-width:640px;margin:4px 0 10px"><tbody>
+                    {arvak.map(({ f, j }) => (
+                      <tr>
+                        <td>{cm(f.szel)}×{cm(f.mag)}{f.pm !== null ? <span class="halkabb"> · pm {String(f.pm).replace('.', ',')}</span> : null}</td>
+                        <td><label class="jelolo"><input type="checkbox" checked={!!kj.arvaBe?.has(j)} onChange={(e) => valt('arvaBe', j, (e.target as HTMLInputElement).checked)} /> külső nyílásként átveszem (a legközelebbi homlokzati falra)</label></td>
+                      </tr>))}
+                  </tbody></table>
+                </>}
+                {terdE && <div style="margin:4px 0 10px">
+                  <strong>Térdfal</strong> <span class="halkabb">– tetőablakos helyiség metszet nélkül: a lejtés felőli külső fal térdfal</span><br />
+                  <label>Térdfal magassága: <input type="number" step="0.01" min="0" max="3" aria-label="Térdfal magassága (m)" style="width:90px" placeholder="0,9" value={terdfalKezi ?? ''} onInput={(e) => { const t = (e.target as HTMLInputElement).value.trim(); const v = Number(t.replace(',', '.')); setTerdfalKezi(t && v >= 0 ? v : undefined); }} /> m</label>
+                  <span class="halkabb"> (üresen: a homlokzatról, ennek híján 0,9 m)</span>
+                </div>}
+                {taBecs.length > 0 && <>
+                  <strong>Tetősík ablakok méretfelirat nélkül</strong> <span class="halkabb">– a rajzolt keretből becsült méret; add meg a konszignáció szerint</span>
+                  <table class="tabla" style="max-width:640px;margin:4px 0 4px"><tbody>
+                    {taBecs.map(({ t, ti }) => { const km = kj.taMeret?.[ti]; const be = (i: 0 | 1, e: Event) => { const v = Number((e.target as HTMLInputElement).value.replace(',', '.')); kjMod((k) => { const m = { ...(k.taMeret ?? {}) }; const reg = m[ti] ?? [t.szel, t.mag]; const uj: [number, number] = [reg[0], reg[1]]; if (v > 0) uj[i] = v / 100; m[ti] = uj; return { ...k, taMeret: m }; }); }; return (
+                      <tr>
+                        <td>{hNev(t.helyiseg)}</td>
+                        <td style="white-space:nowrap"><input type="number" min="20" max="300" step="1" aria-label="Szélesség (cm)" style="width:70px" value={cm(km?.[0] ?? t.szel)} onChange={(e) => be(0, e)} /> × <input type="number" min="20" max="300" step="1" aria-label="Magasság (cm)" style="width:70px" value={cm(km?.[1] ?? t.mag)} onChange={(e) => be(1, e)} /> cm</td>
+                      </tr>); })}
+                  </tbody></table>
+                </>}
+              </div>
+            );
+          })()}
           <div class="racs" style="margin-bottom:12px">
             <label class="mezo"><span>Méretarány 1 :</span><Szam ertek={al.e.meretarany ?? undefined} valt={(v) => setMeretarany(v)} /></label>
             <div class="mezo"><span>Észak iránya (a lap felfelé irányától, óramutató szerint)</span>
@@ -1382,7 +1467,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                 <button class="gomb" onClick={() => setEszak(norm(eszakSz + 45))}>+45°</button>
               </div>
               <label class="halkabb" style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" checked={kulonE} onChange={(e) => { const be = (e.target as HTMLInputElement).checked; setEszakKulon((x) => { const y = { ...x }; if (be) y[aIdx] = eszakSz; else delete y[aIdx]; return y; }); }} /> Ennél a lapnál külön érték{!kulonE && eszakKozos !== null ? ' (most: közös, minden lapra érvényes)' : ''}</label>
-              {(!ej || ej.bizonytalan) && eszakKozos === null && !kulonE && eszakHom(al) !== null && <small class="halkabb">{ej ? 'Az északjel alakja nem egyértelmű' : 'Északjel nincs a lapon'}: az irányt a homlokzati rajzokból becsültem (a címükben szereplő égtáj és a nyílások helyzete szerint) – ellenőrizd.</small>}
+              {(!ej || ej.bizonytalan) && eszakKozos === null && !kulonE && eszakHom(al) !== null && <small class="halkabb">{ej ? 'Az északjel alakja nem egyértelmű' : 'Északjel nincs a lapon'}: az irányt a homlokzati rajzokból becsültem (a címükben szereplő égtáj és a nyílások helyzete szerint){eszakHomSajat(al) === null ? ', egy másik alaprajzi lap illesztése alapján (ezen a lapon a homlokzatok nem illeszthetők)' : ''} – ellenőrizd.</small>}
               {ej && eszakKozos === null && !kulonE && <small class="halkabb">{ej.forras === 'betu' ? 'Az „É” / „N” betűs északjelből.' : eszakJavitas(ej.alairas) !== 0 ? 'Ismert északjel: a korábban rögzített iránnyal. Ellenőrizd az előnézeten (piros nyíl).' : 'Az északjel alakjából – ellenőrizd az előnézeten (piros nyíl), a javítást a program ehhez a jelhez megjegyzi.'}</small>}
             </div>
             {al.e.egysegek.length > 1 && (

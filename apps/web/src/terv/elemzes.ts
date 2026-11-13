@@ -528,6 +528,12 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
   // tetősík ablakok a jelükről (a rétegszűrés előtti lapon: a tetőréteg a szűrésben kiesik)
   let tetoablakok: TetoablakJel[] = [];
   if (r) { try { tetoablakok = tetoablakJelek(lap0, r); } catch { tetoablakok = []; } }
+  // bizonytalan helyzetek: ellenőrizendő
+  const meretL = (l: { szel: number; mag: number }[]) => [...new Set(l.map((n) => `${Math.round(n.szel * 100)}×${Math.round(n.mag * 100)}`))].join(', ');
+  const bizOldal = nyilasok.filter((n) => n.oldalBizonytalan);
+  if (bizOldal.length) e.figyelmeztetesek.push(`${bizOldal.length} nyílás (${meretL(bizOldal)}) túloldala nem azonosítható (sem helyiség, sem külső tér – pl. rajzi vonalakkal zárt sáv a fal előtt, pecsét nélküli tér): belső nyílásnak vettem. Ha homlokzati nyílás, jelöld külsőnek a Határolás lépésben.`);
+  const becsTA = tetoablakok.filter((t) => t.becsult);
+  if (becsTA.length) e.figyelmeztetesek.push(`${becsTA.length} tetősík ablak méretfelirat nélkül (a jelből / típusjeles keretből): a mérete a rajzolt keretből becsült – ellenőrizd a konszignáció szerint.`);
   return { e, magHelyisegek, r, ...(r3d ? { r3d } : {}), nyilasok, auto, arvaFeliratok: arva, ...(leiras ? { leiras } : {}), ...(tetoablakok.length ? { tetoablakok } : {}) };
 }
 

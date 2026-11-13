@@ -30,6 +30,8 @@ export interface TervNyilas {
   masik?: number;
   /** Méretláncba írt feliratból (lásd NyilasFelirat.lanc). */
   lanc?: boolean;
+  /** Belsőnek vett nyílás, amelynek túloldala sem helyiség, sem külső tér (lehet homlokzati nyílás is) – ellenőrizendő. */
+  oldalBizonytalan?: boolean;
 }
 
 /** Nyílásméret cm-ben; a „+30” toldás (redőnytok, tokszélesítés) a magasság mellett – a nyílásméret az első szám. */
@@ -485,23 +487,26 @@ export function nyilasokHozzarendel(feliratok: NyilasFelirat[], r: Raszter, neve
         }
         return 0;
       };
-      let p: { h: number; irany: number; kulso: boolean; masik?: number } | null = null;
+      let p: { h: number; irany: number; kulso: boolean; masik?: number; nyitott?: boolean } | null = null;
       // a nyílásfolt irányára merőleges átnézés előbb (vízszintes folt: fel / le)
       const iranyok = ([[0, -1, 0], [1, 0, 90], [0, 1, 180], [-1, 0, 270]] as const).slice().sort((a, b) => (v === undefined ? 0 : Number((a[0] === 0) !== v) - Number((b[0] === 0) !== v)));
       // a folt egyértelműen hosszúkás (a hossza ≥ 2 × vastagsága): a rá merőleges átnézés a nyílás valódi átjárása – ha
       // ott két különböző helyiség van, belső nyílás (a homlokzati fal mellé eső belső ajtó nem lesz külső)
       const hosszukas = v !== undefined && Math.max(hf[best]!, vf[best]!) >= 2 * Math.min(hf[best]!, vf[best]!);
+      let nyitott = false;
       for (const [n, [dx, dy, ir]] of iranyok.entries()) {
         const elol = talal(dx, dy), hatul = talal(-dx, -dy);
+        // a nyíláson át nem helyiség és nem külső tér (pl. falon kívüli, rajzi vonalakkal zárt sáv, pecsét nélküli tér)
+        if (n < 2 && ((hatul >= 2 && elol === 0) || (elol >= 2 && hatul === 0))) nyitott = true;
         if (n === 0 && hosszukas && hatul >= 2 && elol >= 2 && elol !== hatul) { p = { h: hatul - 2, irany: ir, kulso: false, masik: elol - 2 }; break; }
         // a helyiségből (hátul) a nyíláson át kifelé (elöl) nézünk
         if (hatul >= 2 && elol === 1) { p = { h: hatul - 2, irany: ir, kulso: true }; break; }
         if (hatul >= 2 && elol >= 2 && elol !== hatul && !p) p = { h: hatul - 2, irany: ir, kulso: false, masik: elol - 2 };
       }
-      return p;
+      return p && nyitott && !p.kulso ? { ...p, nyitott: true } : p;
     };
     // az első olyan folt, amely helyiséghez tartozik (a járdaszegély, kerítés „nyílásai” kiesnek)
-    let p: { h: number; irany: number; kulso: boolean; masik?: number } | null = null;
+    let p: { h: number; irany: number; kulso: boolean; masik?: number; nyitott?: boolean } | null = null;
     let elteroIrany = false; let folt = 0; let tipp = false;
     for (const [, { i, v }] of jeloltek.slice(0, 6)) { p = vizsgal(i, v); if (p) { elteroIrany = v !== (f.fal === 'v'); folt = komp[i]!; break; } }
     // ajtófelirat, de csak a feliratra merőleges falban találtunk nyílást (az ajtónyílás nincs áthidalva, pl. fedett
@@ -540,7 +545,7 @@ export function nyilasokHozzarendel(feliratok: NyilasFelirat[], r: Raszter, neve
     const kapu = kulso && f.pm === null && f.mag >= 1.8 && (garazsban ? f.kapuJelolt || f.szel >= 1.8 : !lako && f.kapuJelolt && f.szel >= 2.2);
     const fajta: TervNyilas['fajta'] = kapu ? 'garazskapu' : !kulso ? 'belso_ajto' : f.pm !== null && f.pm > 0.05 ? 'ablak' : f.pm !== null ? 'erkelyajto' : f.mag >= 1.9 ? (tipusLap || lako ? 'erkelyajto' : 'bejarati_ajto') : 'ablak';
     if (f.lanc) lancHozzarendelt.add(f);
-    ki.push({ ...f, helyiseg: p?.h ?? null, irany: p?.irany ?? null, kulso, fajta, ...(folt && !elteroIrany ? { hely: kompHely(folt) } : {}), ...(!kulso && p?.masik !== undefined ? { masik: p.masik } : {}), ...(kulso && tipp ? { iranyTipp: true } : {}) });
+    ki.push({ ...f, helyiseg: p?.h ?? null, irany: p?.irany ?? null, kulso, fajta, ...(folt && !elteroIrany ? { hely: kompHely(folt) } : {}), ...(!kulso && p?.masik !== undefined ? { masik: p.masik } : {}), ...(kulso && tipp ? { iranyTipp: true } : {}), ...(!kulso && p?.nyitott ? { oldalBizonytalan: true } : {}) });
     kiFolt.push(folt && !elteroIrany ? folt : 0);
   }
   // tömör homlokzati betét (pl. alumíniumburkolatú panel a portálban): a felirata egy másik felirat nyílásfoltjához
