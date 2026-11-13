@@ -175,6 +175,7 @@ function alapKijeloles(al: AlaprajzFeldolgozas): Kijeloles {
 }
 
 /** A külső nyílászárók: szerkesztett hőburoknál a körvonal közelében (≤ 1,3 m) lévők, az él irányával. */
+const BEJARATI_H = /el[őo]szoba|el[őo]t[ée]r|sz[ée]lfog[óo]|bej[áa]rat|^\s*esz\b/i;
 function burokNyilasok(al: AlaprajzFeldolgozas, k: Kijeloles) {
   const l = al.nyilasok.map((n, kk) => ({ n, kk }));
   if (!al.r) return l.filter(({ n }) => n.kulso && n.helyiseg !== null && n.irany !== null);
@@ -185,9 +186,15 @@ function burokNyilasok(al: AlaprajzFeldolgozas, k: Kijeloles) {
     if (!ab.length) return alap;
     const koz = (x: number, y: number) => [...pp0.entries()].filter(([ri, q]) => fut0.has(ri) && ab.some((p) => bennE(p, q.x, q.y))).sort((u, v) => Math.hypot(u[1].x - x, u[1].y - y) - Math.hypot(v[1].x - x, v[1].y - y))[0]?.[0] ?? null;
     return alap.concat((al.arvaFeliratok ?? []).flatMap((f, j) => {
-      if (ab.some((p) => bennE(p, f.x, f.y))) return [];
-      const ir = nyilasEl(r0, ab, f.x, f.y, 1.5); if (ir === null) return [];
+      // a burkon belül írt (falhoz nem rendelt) felirat a burok éle mentén (≤ 1 m), ha a fal túloldalán (≤ 3 m) külső tér
+      // pecsétje (terasz, előlépcső) áll: bejárat a külső fal belső oldalára írt nyílásmérettel
+      const bent = ab.some((p) => bennE(p, f.x, f.y));
+      if (bent && !al.e.helyisegek.some((h) => h.kulter && h.forras === 'pecset' && !ab.some((p) => bennE(p, h.x, h.y)) && Math.hypot(h.x - f.x, h.y - f.y) * (al.e.mPerPt ?? 0) <= 3)) return [];
+      const ir = nyilasEl(r0, ab, f.x, f.y, bent ? 1.0 : 1.5); if (ir === null) return [];
       const h = koz(f.x, f.y); if (h === null) return [];
+      // (belül írt felirat: csak a külső nyílás nélküli bejárati helyiségben – előszoba, szélfogó, előtér –, a többiben belső
+      // ajtó / nyílás felirata)
+      if (bent && (alap.some(({ n }) => n.helyiseg === h) || !BEJARATI_H.test(al.magHelyisegek[h]?.nev ?? ''))) return [];
       const ajto = (f.pm === null || f.pm <= 0.05) && f.mag >= 2;
       return [{ n: { szel: f.szel, mag: f.mag, pm: f.pm, x: f.x, y: f.y, helyiseg: h, irany: ir, kulso: true, fajta: (ajto ? 'erkelyajto' : 'ablak') as TervNyilas['fajta'], iranyTipp: true }, kk: 10000 + j }];
     }));
