@@ -828,7 +828,7 @@ export function tetoablakJelek(lap: Lap, r: Raszter): TetoablakJel[] {
     const db = new Map<number, number>();
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const c = r.cimke[y * r.w + x]!; if (c >= 2) db.set(c, (db.get(c) ?? 0) + 1); }
     if (db.size !== 1) return false;
-    const [h0, hdb] = [...db.entries()][0]!; if (hdb < 0.4 * (x1 - x0 + 1) * (y1 - y0 + 1)) return false;
+    const [h0, hdb] = [...db.entries()][0]!; if (hdb < 0.25 * (x1 - x0 + 1) * (y1 - y0 + 1)) return false; // a keret vonalai, a felirat és a közeli rajzi vonalak tintája nem helyiségpixel
     // a tetőablak vetülete a térdfalra is átnyúlhat: a falpixel legfeljebb a keret harmada, más helyiség nem lehet benne
     let falpx = 0, ossz = 0;
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const c = r.cimke[y * r.w + x]!; ossz++; if (r.fal[y * r.w + x]) falpx++; else if (c >= 2 && c !== h0) return false; }

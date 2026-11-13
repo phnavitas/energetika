@@ -701,11 +701,9 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                           const t90 = Math.round(irany / 90) * 90; if (Math.abs(irany - t90) <= 2) irany = t90 % 360;
                           if (terdfalE(A, B, nx, ny, irany)) {
                             const v = hm?.felso ? hm.mod.magassag(irany, [lapra(A), lapra([(A[0] + B[0]) / 2, (A[1] + B[1]) / 2]), lapra(B)], hm.zf, hm.zc) : null;
-                            // térdfal: 0,3–1,5 m a homlokzat szerint, ennek híján az alapértelmezett; ha a homlokzat ennél magasabb
-                            // falat mutat, az számít (nem térdfal)
-                            if (v === null || v < 0.3) return Math.min(terdAlap, hh);
-                            if (v <= 1.5) return v;
-                            return v < hh - 0.15 ? v : null;
+                            // térdfal: 0,3–1,5 m a homlokzat szerint, ennek híján az alapértelmezett. Magasabb érték itt a homlokzat
+                            // falként (falréteg kitöltéssel) rajzolt tetősíkja – a tetőablakok helye mutatja, hogy a fal fölött tető van
+                            return v !== null && v >= 0.3 && v <= 1.5 ? v : Math.min(terdAlap, hh);
                           }
                           if (!hm?.felso) return null;
                           // visszahúzott fal (loggia, bemélyedés): a homlokzat az előtte lévő elemet (mellvéd, korlát) mutatja
