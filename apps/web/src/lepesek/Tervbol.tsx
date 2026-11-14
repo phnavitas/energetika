@@ -18,6 +18,8 @@ import { MintaLakasok } from './MintaLakasok';
 import { Burok3D, modellOsszesites, type Burok3DSzint } from './Burok3D';
 import { homlokzatRajzok, mertMagassagok, eszakHomlokzatbol, tetoAblakokHomlokzatrol, oromSzelessegek, type HomlokzatRajz, type MertMagassag } from '@terv/homlokzatIllesztes';
 import { nezetOszlopok } from '@terv/homlokzatProfil';
+import { Epulet3D } from './Epulet3D';
+import { epuletModell, type EpuletModell, type LapBemenet, type Szint as EpSzint, type TerKategoria } from '@terv/epulet';
 import { falMagassagModell, type HomlokzatNezetAdat } from '@terv/homlokzatModell';
 import { vonalIndex, keretek, homlokzatIrany, homlokzatCimek } from '@terv/homlokzat';
 const AZ_TAJ: Record<string, number> = { 'É': 0, 'ÉK': 45, 'K': 90, 'DK': 135, 'D': 180, 'DNy': 225, 'Ny': 270, 'ÉNy': 315 };
@@ -563,6 +565,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const me0 = useMemo(() => (mLap ? metszetFeldolgoz(mLap.lap) : null), [mLap]);
   /** A térdfal magassága kézzel (az átvételi kérdésben), ha a metszeten nincs térdfal-felirat. */
   const [terdfalKezi, setTerdfalKezi] = useState<number | undefined>(undefined);
+  const [modell3d, setModell3d] = useState<'teljes' | 'burok'>('teljes');
   /** A felhasználó szerint a legfelső szint nem tetőtér (a kérdés nem jelenik meg újra). */
   const [nemTetoter, setNemTetoter] = useState(false);
   // a metszet tetőtér-adatai a kézi térdfallal: felirat > kézi (a kérdésre adott válasz); megadás nélkül a térdfal nem
@@ -844,6 +847,35 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     }
     return db ? `Külső méret: ${db} határoló felület a hőburok külső síkja szerint (a 3D modell külső/belső arányával; falak tájolásonként) – a belső méretre a 2D/3D nézet „Belső méret” gombjával válthatsz.` : null;
   };
+  // teljes épületmodell (IFC-szerű): szintek, terek, falak, nyílászárók, födémek – a hőburok jelölve
+  const epuletModellApp = (): EpuletModell | null => {
+    const sor = alaprajzLapok.filter(({ i }) => !kimarad(i) && typeof elemzesek[i] === 'object' && (elemzesek[i] as AlaprajzFeldolgozas).r);
+    if (!sor.length) return null;
+    const alap = (elemzesek[sor[0]!.i] as AlaprajzFeldolgozas).r!;
+    const emelet = (bm ?? 2.7) + 0.35;
+    const jelen = [...new Set(sor.flatMap(({ i }) => (lapSzintek(i).length ? lapSzintek(i) : ['F'])))].sort((x, y) => SZINT_SOR.indexOf(x) - SZINT_SOR.indexOf(y));
+    const nulla = jelen.indexOf('F') >= 0 ? jelen.indexOf('F') : jelen.findIndex((x) => x !== 'P');
+    const be: LapBemenet[] = sor.map(({ i }) => {
+      const a = elemzesek[i] as AlaprajzFeldolgozas, r = a.r!, k = kijeloles(i, a);
+      const el = i === sor[0]!.i ? { dx: 0, dy: 0 } : eltolas(alap, r) ?? { dx: 0, dy: 0 };
+      const hs = a.e.helyisegek;
+      const egysegben = (j: number) => !a.e.egysegek.length || !hs[j]!.egyseg || k.egysegek.has(hs[j]!.egyseg!);
+      const kategoria = new Map<number, TerKategoria>(), adat = new Map<number, { kod?: string; nev: string; A?: number; burkolat?: string }>();
+      hs.forEach((h, j) => {
+        const ri = a.magHelyisegek.indexOf(h); if (ri < 0 || !egysegben(j) || k.kizartH.has(j)) return;
+        const kt = h.kulter || k.kulterH?.has(j) ? 'kulter' : (k.kat[j] ?? (k.mindFutott ? 'kondicionalt' : kategoriaJavaslat(h.nev) ?? 'kondicionalt')) === 'gyengen_kapcsolt' ? 'futetlen' : 'futott';
+        kategoria.set(ri, kt); adat.set(ri, { kod: h.kod, nev: h.nev, A: h.hasznosA ?? h.A, burkolat: h.burkolat });
+      });
+      const szk = lapSzintek(i).length ? lapSzintek(i) : ['F'];
+      const szintek: EpSzint[] = szk.map((sz0) => ({ id: sz0, nev: szintNev(sz0), kod: sz0, z0: Math.round((jelen.indexOf(sz0) - Math.max(0, nulla)) * emelet * 100) / 100, h: emelet, belmag: bm ?? 2.7 }));
+      return { lap: i, a, szintek, m: (x: number, y: number): [number, number] => [(x - el.dx) * r.mPerPt, (y - el.dy) * r.mPerPt], kategoria, adat, ...(k.ismKulso ? { ismKulso: k.ismKulso } : {}),
+        // a fűtött terek hőburka: ugyanaz, mint a 3D-ben és az átvételben (belső sík)
+        ...(k.burok ? {} : { burokPol: burok3dCache(i, a.r3d ?? r, futottRiK(a, k), lapok[i]?.lap, a, true), burokR: a.r3d ?? r }) };
+    });
+    return epuletModell(be);
+  };
+  try { (globalThis as any).__epulet = epuletModellApp; } catch { /* */ }
+  const epMd = useMemo(() => { if (!nezet3d || modell3d !== 'teljes') return null; try { return epuletModellApp(); } catch { return null; } }, [nezet3d, modell3d, elemzesek, kijelolesek, bm, lapok]); // eslint-disable-line react-hooks/exhaustive-deps
   try { (globalThis as any).__burok3d = () => ({ belso: modellSzintek('belso'), kulso: modellSzintek('kulso') }); } catch { /* */ }
   try { (globalThis as any).__modell3d = () => ({ belso: (() => { const x = modellSzintek('belso'); return x ? modellOsszesites(x, eszakSz) : null; })(), kulso: (() => { const x = modellSzintek('kulso'); return x ? modellOsszesites(x, eszakSz) : null; })() }); } catch { /* */ }
   // az átvételkor ténylegesen használt tetőablakok (homlokzatról azonosítva, ennek híján az alaprajzi feliratokból)
@@ -1560,10 +1592,20 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             </div>
             {nezet3d ? (
               (() => {
+                const valto = (
+                  <div role="group" aria-label="3D modell" style="position:absolute;left:110px;top:10px;z-index:3;display:flex;border:1px solid #D1D5DB;border-radius:8px;overflow:hidden">
+                    {([['teljes', 'Épületmodell'], ['burok', 'Hőburok (számítás)']] as const).map(([k0, nev]) => <button aria-pressed={modell3d === k0} onClick={() => setModell3d(k0)} style={`font:600 13px system-ui;padding:9px 12px;border:0;cursor:pointer;${modell3d === k0 ? 'background:#1F2937;color:#fff' : 'background:rgba(255,255,255,.95);color:#374151'}`}>{nev}</button>)}
+                  </div>
+                );
+                if (modell3d === 'teljes') {
+                  const md = epMd;
+                  if (!md || !md.falak.length) return <div class="kartya halkabb" style="padding:60px 16px 16px">{valto}A 3D modellhez a lap léptéke és a felismert falak kellenek (add meg a méretarányt).</div>;
+                  return <div class="kartya" style="padding:56px 0 0;overflow:hidden;position:relative">{valto}<Epulet3D modell={md} magassag={Math.round(Math.min(760, Math.max(420, (typeof window !== 'undefined' ? window.innerHeight : 800) * 0.7)))} /></div>;
+                }
                 const szint3 = modellSzintek(meretMod);
                 if (!szint3) return <div class="kartya halkabb" style="padding:60px 16px 16px">A 3D nézethez a lap léptéke és a felismert falak kellenek (add meg a méretarányt).</div>;
                 const vanPol = szint3.some((x) => x.poligonok.length);
-                return <div class="kartya" style="padding:0;overflow:hidden">{vanPol ? <Burok3D szintek={szint3} eszakSzog={eszakSz} meretMod={meretMod} onMeretMod={setMeretMod} magassag={Math.round(Math.min(760, Math.max(420, (typeof window !== 'undefined' ? window.innerHeight : 800) * 0.72)))} /> : <div class="halkabb" style="padding:60px 16px 16px">Még nincs hőburok-körvonal – a 2D nézetben a „Hőburok rajzolása” gombbal megrajzolhatod.</div>}</div>;
+                return <div class="kartya" style="padding:0;overflow:hidden;position:relative">{valto}{vanPol ? <Burok3D szintek={szint3} eszakSzog={eszakSz} meretMod={meretMod} onMeretMod={setMeretMod} magassag={Math.round(Math.min(760, Math.max(420, (typeof window !== 'undefined' ? window.innerHeight : 800) * 0.72)))} /> : <div class="halkabb" style="padding:60px 16px 16px">Még nincs hőburok-körvonal – a 2D nézetben a „Hőburok rajzolása” gombbal megrajzolhatod.</div>}</div>;
             })()
             ) : (
             <div class="kartya" style="padding:0;overflow:auto;max-height:80vh;position:relative">

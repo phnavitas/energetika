@@ -411,6 +411,13 @@ export function burokAuto(r: Raszter, futott: ReadonlySet<number>, zsebTilto?: {
   return maszkKorvonal(r, m);
 }
 
+/** Egy helyiség körvonala(i) a raszterből, lapkoordinátában (pt) – a fal belső síkján, egyszerűsítve. */
+export function helyisegKorvonal(r: Raszter, ri: number): Poligon[] {
+  const m = new Uint8Array(r.w * r.h); const c0 = ri + 2;
+  for (let k = 0; k < r.w * r.h; k++) if (r.cimke[k] === c0) m[k] = 1;
+  return maszkKorvonal(r, m);
+}
+
 /** A maszk (rácscellák) külső körvonalai lapkoordinátában, egyszerűsítve (Douglas–Peucker, ferde fal, derékszög). */
 function maszkKorvonal(r: Raszter, m: Uint8Array, befele = true): Poligon[] {
   const { w, h } = r;
