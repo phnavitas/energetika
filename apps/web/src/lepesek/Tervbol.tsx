@@ -295,6 +295,25 @@ function burok3dCache(i: number, r: NonNullable<AlaprajzFeldolgozas['r']>, fut: 
   let v = burok3dTar.get(kulcs); if (!v) { v = belso ? burokAuto(r, fut, lap ? nevFeliratok(lap) : undefined, a ? vartTer(a) : undefined) : burokTomeg(r, fut, lap ? nevFeliratok(lap) : undefined, a ? vartTer(a) : undefined); burok3dTar.set(kulcs, v); }
   return v;
 }
+/** Az elemzés forráslapja (a burok-zsebek megnevező feliratához). */
+const elemzesLap = new WeakMap<AlaprajzFeldolgozas, Lap>();
+/** Felismert (nem szerkesztett) buroknál a homlokzati falak a 3D modell burkából: a körvonal (külső sík) mentén, a fal
+ * belső síkján mért hosszal, a csatlakozó belső falak nélkül, csak a külső tér felé néző szakaszok (a fűtetlen / szomszéd
+ * felé eső falak külön). Gyorstárazva. */
+type BurokFalAuto = { falak: Map<number, { irany: number; hossz: number; pontok?: [number, number][] }[]>; futetlen: Map<number, number> };
+const burokFalGy = new WeakMap<AlaprajzFeldolgozas, Map<string, BurokFalAuto>>();
+function burokFalakAuto(a: AlaprajzFeldolgozas, k: Kijeloles): BurokFalAuto | null {
+  // (ugyanaz a raszter, mint a 3D-ben: a vektoros falú, ha van)
+  const r = a.r3d ?? a.r; if (!r) return null;
+  const fut = futottRiK(a, k), kulcs = [...fut].sort((x, y) => x - y).join(',');
+  let m = burokFalGy.get(a); if (!m) { m = new Map(); burokFalGy.set(a, m); }
+  if (m.has(kulcs)) return m.get(kulcs)!;
+  const lap = elemzesLap.get(a);
+  const pol = burokAuto(r, fut, lap ? nevFeliratok(lap) : undefined, vartTer(a));
+  const futetlen = new Map<number, number>();
+  const v = { falak: pol.length ? burokFalak(r, pol, fut, pecsetPontok(a), elKornyezet(r, pol, fut), futetlen, true) : new Map(), futetlen };
+  m.set(kulcs, v); return v;
+}
 /** A 3D hőburok nyílászárói (a megadott körvonal csak akkor számít, ha a burok szerkesztett – egyébként az átvétel készlete). */
 function burokNyilasokPt(al: AlaprajzFeldolgozas, k: Kijeloles, b: Poligon[]) {
   if (!b.length) return [];
@@ -310,22 +329,37 @@ function burokNyilasokPt(al: AlaprajzFeldolgozas, k: Kijeloles, b: Poligon[]) {
 }
 
 /** Egy alaprajz átvehető helyiségei (külső falakkal) és nyílászárói a kijelölés szerint. */
-function atvetelReszek(al: AlaprajzFeldolgozas, k: Kijeloles, mert?: Map<TervNyilas, MertMagassag>, falMag?: (s: FalSzakasz) => number | null): { helyisegek: AtvettHelyiseg[]; nyilasok: AtvettNyilas[]; ri: number[] } {
+function atvetelReszek(al: AlaprajzFeldolgozas, k: Kijeloles, mert?: Map<TervNyilas, MertMagassag>, falMag?: (s: FalSzakasz, ri: number) => number | null, burokFal = true): { helyisegek: AtvettHelyiseg[]; nyilasok: AtvettNyilas[]; ri: number[] } {
   const hs = al.e.helyisegek;
   const egysegben = (i: number) => !al.e.egysegek.length || !hs[i]!.egyseg || k.egysegek.has(hs[i]!.egyseg!);
   const valasztott = hs.map((h, i) => egysegben(i) && !h.kulter && !k.kizartH.has(i) && !k.kulterH?.has(i));
   const kategoria = (i: number): HelyisegKategoria => k.kat[i] ?? (k.mindFutott ? 'kondicionalt' : kategoriaJavaslat(hs[i]!.nev) ?? 'kondicionalt');
   const ri = (i: number) => al.magHelyisegek.indexOf(hs[i]!);
   const kulterRi = kulterRaszter(al, k);
-  const bf = k.burok && al.r ? burokFalak(al.r, k.burok, futottRiK(al, k), pecsetPontok(al)) : null;
-  const falak = (i: number) => { const x = ri(i); if (bf) return x < 0 ? [] : (bf.get(x) ?? []).filter((f) => f.hossz >= 0.3); return !al.r || x < 0 ? [] : al.r.helyisegek[x]!.szakaszok.filter((s, j) => ((s.tul === 'kulso' && !s.szomszed) || (s.tul === 'ismeretlen' && !!k.ismKulso?.has(`${x}|${j}`)) || (typeof s.tul === 'number' && kulterRi.has(s.tul))) && s.hossz >= 0.3); };
+  // (tetőtéri lapon nem: ott a térdfal / oromfal a metszet szerint, a helyiségek falszakaszaiból)
+  const bfA = !k.burok && burokFal ? burokFalakAuto(al, k) : null;
+  const bf = k.burok && al.r ? burokFalak(al.r, k.burok, futottRiK(al, k), pecsetPontok(al)) : bfA?.falak ?? null;
+  // (felismert burok: a talajjal érintkező rész aránya irányonként a helyiség raszteres falszakaszaiból)
+  const talajOszt = (x: number, l: { irany: number; hossz: number }[]) => {
+    if (k.burok || !al.r) return l;
+    const sz = al.r.helyisegek[x]!.szakaszok.filter((sg) => sg.tul === 'kulso');
+    return l.flatMap((f) => { const e = sz.filter((sg) => sg.irany === f.irany), o = e.reduce((t, sg) => t + sg.hossz, 0), tj = e.filter((sg) => sg.talaj).reduce((t, sg) => t + sg.hossz, 0);
+      if (!(tj > 0) || !(o > 0)) return [f]; const q = Math.min(1, tj / o);
+      return [...(q < 1 ? [{ ...f, hossz: Math.round(f.hossz * (1 - q) * 100) / 100 }] : []), { ...f, hossz: Math.round(f.hossz * q * 100) / 100, talaj: true }]; });
+  };
+  const falak = (i: number) => { const x = ri(i); if (bf) return x < 0 ? [] : talajOszt(x, bf.get(x) ?? []).filter((f) => f.hossz >= 0.3); return !al.r || x < 0 ? [] : al.r.helyisegek[x]!.szakaszok.filter((s, j) => ((s.tul === 'kulso' && !s.szomszed) || (s.tul === 'ismeretlen' && !!k.ismKulso?.has(`${x}|${j}`)) || (typeof s.tul === 'number' && kulterRi.has(s.tul))) && s.hossz >= 0.3); };
   const kiv = hs.map((h, i) => ({ h, i })).filter(({ i }) => valasztott[i]);
   const index = new Map(kiv.map(({ i }, j) => [i, j]));
   const helyisegek = kiv.map(({ h, i }) => ({
-    kod: h.kod, nev: h.nev, burkolat: h.burkolat, A: h.hasznosA ?? h.A, ...(h.hasznosA ? { teljesA: h.A } : {}), kategoria: kategoria(i), egyseg: h.egyseg ? (al.e.egysegInfo[h.egyseg]?.nev ?? h.egyseg) : undefined, falak: falak(i).map((f) => { const m = falMag && 'pontok' in f ? falMag(f as FalSzakasz) : null; return { irany: f.irany, hossz: f.hossz, ...("talaj" in f && f.talaj ? { talaj: true } : {}), ...(m !== null ? { magassag: m } : {}) }; }),
+    kod: h.kod, nev: h.nev, burkolat: h.burkolat, A: h.hasznosA ?? h.A, ...(h.hasznosA ? { teljesA: h.A } : {}), kategoria: kategoria(i), egyseg: h.egyseg ? (al.e.egysegInfo[h.egyseg]?.nev ?? h.egyseg) : undefined, falak: falak(i).map((f) => { const m0 = falMag && 'pontok' in f ? falMag(f as FalSzakasz, ri(i)) : null, m = m0 !== null && (m0 >= 1 || (f as { terd?: boolean }).terd) ? m0 : null; /* 1 m alatt nem fal, hanem mellvéd / terasz (mint a 3D-ben) */ return { irany: f.irany, hossz: f.hossz, ...("talaj" in f && f.talaj ? { talaj: true } : {}), ...(m !== null ? { magassag: m } : {}), ...((f as { terd?: boolean }).terd && m !== null ? { terd: true } : {}) }; }),
     // fal fűtetlen (gyengén kapcsolt) helyiség felé, pl. garázs
-    futetlenFalak: (() => { const x = ri(i); if (!al.r || x < 0) return []; return al.r.helyisegek[x]!.szakaszok.filter((s) => typeof s.tul === 'number' && s.hossz >= 0.3).flatMap((s) => {
-      const mi = hs.indexOf(al.magHelyisegek[s.tul as number]!); return mi >= 0 && (valasztott[mi] || !!k.reszKizart?.has(mi)) && !hs[mi]!.kulter && kategoria(mi) === 'gyengen_kapcsolt' && kategoria(i) !== 'gyengen_kapcsolt' ? [{ hossz: s.hossz, fele: hs[mi]!.nev }] : []; }); })(),
+    futetlenFalak: (() => { const x = ri(i); if (!al.r || x < 0) return [];
+      const l = al.r.helyisegek[x]!.szakaszok.filter((s) => typeof s.tul === 'number' && s.hossz >= 0.3).flatMap((s) => {
+        const mi = hs.indexOf(al.magHelyisegek[s.tul as number]!); return mi >= 0 && (valasztott[mi] || !!k.reszKizart?.has(mi)) && !hs[mi]!.kulter && kategoria(mi) === 'gyengen_kapcsolt' && kategoria(i) !== 'gyengen_kapcsolt' ? [{ hossz: s.hossz, fele: hs[mi]!.nev }] : []; });
+      // (felismert burok: a burok mentén fűtetlen tér felé eső, a helyiségszakaszokból hiányzó rész – pl. pecsét nélküli
+      // csarnok, raktár)
+      const ff = bfA?.futetlen.get(x) ?? 0, mar = ff - l.reduce((t, f) => t + f.hossz, 0);
+      return kategoria(i) !== 'gyengen_kapcsolt' && mar >= 0.3 ? [...l, { hossz: Math.round(mar * 100) / 100, fele: 'fűtetlen tér' }] : l; })(),
   }));
   const nyilasok = burokNyilasok(al, k)
     .map(({ n, kk }) => ({ n, kk, hi: hs.indexOf(al.magHelyisegek[n.helyiseg!]!) }))
@@ -493,6 +527,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     const t = window.setTimeout(() => {
       let ered: AlaprajzFeldolgozas | string;
       try { ered = alaprajzFeldolgoz(lapok[kov]!.lap, undefined, lapok[kov]!.szurke, lapok[kov]!.tinta, leirasJegyzek); } catch (e) { ered = (e as Error).message; }
+      if (typeof ered === 'object') elemzesLap.set(ered, lapok[kov]!.lap);
       setElemzesek((x) => ({ ...x, [kov]: ered }));
     }, 40);
     return () => window.clearTimeout(t);
@@ -957,8 +992,16 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     // alaprajz + homlokzat: a homlokzati nézetek illesztése a lap homlokzati falaihoz – a legfelső fűtött szinten a falmagasság
     // (oromfal, térdfal, eltérő párkány), minden szinten az alaprajzon nem jelölt, a homlokzaton látszó nyílások
     const hModell = homMagModell(a, o.szintek, o.eszak, tetoterLap);
-    const falMag = hModell?.felso ? (sg: FalSzakasz) => hModell.mod.magassag(sg.irany, sg.pontok, hModell.zf, hModell.zc) : undefined;
-    const { helyisegek: hs, nyilasok: ny0, ri: riL } = atvetelReszek(a, k, mert, falMag);
+    // tetőablakos helyiség metszet nélkül: a lejtés felőli külső fal térdfal (mint a 3D-ben) – homlokzat szerint 0,3–1,5 m,
+    // ennek híján az alapértelmezett / megadott térdfal-magasság
+    const tab = !tetoterLap && !me?.szintek.belmagassag.length ? a.tetoablakok ?? [] : [];
+    const terdE = (sg: FalSzakasz, x: number) => tab.some((t) => t.helyiseg === x && Math.abs(((t.irany - sg.irany + 540) % 360) - 180) <= 30);
+    const hmag = (sg: FalSzakasz) => (hModell?.felso ? hModell.mod.magassag(sg.irany, sg.pontok, hModell.zf, hModell.zc) : null);
+    const falMag = hModell?.felso || tab.length ? (sg: FalSzakasz, x: number) => {
+      if (terdE(sg, x)) { const v = hmag(sg); (sg as { terd?: boolean }).terd = true; return v !== null && v >= 0.3 && v <= 1.5 ? v : terdfalKezi ?? 0.9; }
+      return hmag(sg);
+    } : undefined;
+    const { helyisegek: hs, nyilasok: ny0, ri: riL } = atvetelReszek(a, k, mert, falMag, !tetoterLap);
     // a homlokzaton látszó, az alaprajzon nem jelölt nyílások (a helyiség a homlokzati falszakasza szerint)
     const plusz = hModell ? hModell.mod.pluszNyilasok(hModell.fl, hModell.zf, hModell.zc).flatMap((q): AtvettNyilas[] => {
       const hi = riL.indexOf(q.h); if (hi < 0) return [];

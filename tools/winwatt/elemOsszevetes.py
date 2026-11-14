@@ -37,6 +37,10 @@ for m,z in MAP.items():
   print(f"  falhossz  WW {WL:7.1f}  mi {ML:7.1f}  {pct(WL,ML)}   magasság WW {sorted({x['H'] for x in fal})} mi {sorted({s['meret']['magassag'] for s in mf if 'meret' in s})}")
   print(f"  nettó fal WW {WA:7.1f}  mi {MA-MNYK:7.1f}  {pct(WA,MA-MNYK)}")
   print(f"  nyílás    WW {WNY:7.1f}  mi {MNY:7.1f}  {pct(WNY,MNY)}   db WW {sum(x['db'] for x in ny)} mi {sum(s.get('darab',1) for s in mny)}")
+  # bruttó (nyílással) homlokzati + fűtetlen tér felé eső fal – a WinWatt egy részüket külső falként veszi fel
+  MFF=sum(s['A'] for s in p['feluletek'] if s['nev'].startswith('Fal – ') and s.get('hatar')=='futetlen_helyiseg')
+  WB=WA+WNY  # (mint a 3D-összevetésben: WW nettó fal + nyílászárók)
+  print(f"  bruttó fal+fűtetlen WW {WB:7.1f}  mi {MA+MFF:7.1f}  {pct(WB,MA+MFF)}")
   o={}
   for x in ny: o.setdefault(EG.get(x['az'],x['az']),[0,0])[0]+=x['A']
   for s in mny: o.setdefault(s.get('tajolas') or '?',[0,0])[1]+=s['A']

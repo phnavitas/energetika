@@ -18,7 +18,8 @@ export interface AtvettHelyiseg {
   egyseg?: string;
   /** Külső falak a homlokzat lapiránya szerint (nettó belső hossz, m). */
   /** Külső falszakaszok; `talaj`: a fal mögött az épület körvonalán kívüli tér (terepszint alatt: talaj). */
-  falak: { irany: number; hossz: number; talaj?: boolean; /** A homlokzatról mért falmagasság (m) a szint sávjában. */ magassag?: number }[];
+  falak: { irany: number; hossz: number; talaj?: boolean; /** A homlokzatról mért falmagasság (m) a szint sávjában. */ magassag?: number;
+    /** Térdfal (tetőablakos helyiség lejtés felőli fala): a magassága mindig érvényes. */ terd?: boolean }[];
   /** Fal fűtetlen, gyengén kapcsolt helyiség (pl. garázs) felé. */
   futetlenFalak?: { hossz: number; fele: string }[];
 }
@@ -239,8 +240,10 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
     // látszik a homlokzaton, a felület a mért magasságokkal (oromfal, térdfal, eltérő párkány a rajz szerint)
     { const fl = a.helyisegek.filter(burok).flatMap((h) => h.falak.filter((f) => f.irany === ir));
       const mert = fl.filter((f) => f.magassag !== undefined).reduce((q, f) => q + f.hossz, 0);
-      if (mert >= 0.8 * hossz) {
-        const A = fl.reduce((q, f) => q + f.hossz * (f.magassag ?? a.belmagassag), 0);
+      const terd = fl.some((f) => f.terd && f.magassag !== undefined);
+      if (mert >= 0.8 * hossz || terd) {
+        // (térdfal: a mért magassággal akkor is, ha az irány többi fala nem látszik a homlokzaton – azok a szint magasságával)
+        const A = fl.reduce((q, f) => q + f.hossz * (mert >= 0.8 * hossz || f.terd ? f.magassag ?? a.belmagassag : a.belmagassag), 0);
         const f: Felulet = { id: ujId(), nev: `Homlokzati fal – ${t}`, fajta: 'opak', retegrendId: falRid, hatar: 'kulso', tajolas: t, hajlasszog: 90, meret: { hossz: kerek(hossz * n), magassag: kerek(A / hossz) }, A: kerek(A * n), chi: 0.2 };
         p.feluletek.push(f); falFel[ir] = f.id; homDb++;
         continue;

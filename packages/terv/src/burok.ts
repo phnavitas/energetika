@@ -594,8 +594,9 @@ export function burokMeres(r: Raszter, pol: Poligon[]): BurokEl[][] {
  * Homlokzati falak a körvonal éleiből, a mögöttük lévő fűtött helyiséghez rendelve (raszterindex → [{irany, hossz}]).
  * Az él mentén 0,25 m-enként befelé (legfeljebb 1,5 m-ig) keressük a helyiséget.
  */
-export function burokFalak(r: Raszter, pol: Poligon[], futott: ReadonlySet<number>, pecsetek?: ReadonlyMap<number, { x: number; y: number }>): Map<number, { irany: number; hossz: number }[]> {
-  const ki = new Map<number, { irany: number; hossz: number }[]>();
+export function burokFalak(r: Raszter, pol: Poligon[], futott: ReadonlySet<number>, pecsetek?: ReadonlyMap<number, { x: number; y: number }>,
+  kornyezet?: [number, number, ElKornyezet][][][], futetlenKi?: Map<number, number>, elenkent = false): Map<number, { irany: number; hossz: number; pontok?: [number, number][] }[]> {
+  const ki = new Map<number, { irany: number; hossz: number; pontok?: [number, number][] }[]>();
   const cella = (x: number, y: number) => { const cx = Math.floor(((x - r.x0) * r.mPerPt) / r.px), cy = Math.floor(((y - r.y0) * r.mPerPt) / r.px); return cx < 0 || cy < 0 || cx >= r.w || cy >= r.h ? -1 : r.cimke[cy * r.w + cx]! - 2; };
   const meres = burokMeres(r, pol);
   meres.forEach((elek, pi) => { const p = pol[pi]!; for (const el of elek) {
@@ -609,12 +610,17 @@ export function burokFalak(r: Raszter, pol: Poligon[], futott: ReadonlySet<numbe
     const hozza = new Map<number, number>(); let maradek = 0;
     for (let s = 0; s < lepes; s++) {
       const t = (s + 0.5) / lepes, x = a[0] + (b[0] - a[0]) * t, y = a[1] + (b[1] - a[1]) * t;
+      // (megadott környezetnél csak a külső tér felé néző rész homlokzati fal – a fűtetlen / szomszéd / fűtött felé eső nem)
+      const kz = kornyezet?.[pi]?.[el.i], kf = kz?.find(([t0, t1, f]) => f !== 'kulso' && t >= t0 && t <= t1)?.[2];
+      if (kf && kf !== 'futetlen') continue;
       // a belső síkba befutó belső fal (csatlakozás): a fal vastagságnyi rész nem homlokzati falfelület
       let fal = true;
       for (let d = 0.05; d <= 0.3 && fal; d += 0.05) { const kx = Math.floor(((x + (bx * d) / r.mPerPt - r.x0) * r.mPerPt) / r.px), ky = Math.floor(((y + (by * d) / r.mPerPt - r.y0) * r.mPerPt) / r.px); if (kx < 0 || ky < 0 || kx >= r.w || ky >= r.h || !r.fal[ky * r.w + kx]) fal = false; }
       if (fal) continue;
       let talalt = -1;
       for (let d = 0.05; d <= 1.5; d += 0.1) { const c = cella(x + (bx * d) / r.mPerPt, y + (by * d) / r.mPerPt); if (c >= 0 && futott.has(c)) { talalt = c; break; } }
+      // (fűtetlen tér felé: külön gyűjtve, ha kérik – a homlokzati falba nem számít)
+      if (kf === 'futetlen') { if (futetlenKi && talalt >= 0) futetlenKi.set(talalt, (futetlenKi.get(talalt) ?? 0) + dl); continue; }
       if (talalt >= 0) hozza.set(talalt, (hozza.get(talalt) ?? 0) + dl); else maradek += dl;
     }
     // a raszterben nem lezárt helyiség (pl. üvegfalas nappali): az él felezőpontjához legközelebbi, a burkon belüli fűtött pecsét
@@ -629,7 +635,8 @@ export function burokFalak(r: Raszter, pol: Poligon[], futott: ReadonlySet<numbe
     // a hozzá nem rendelt rész (pl. falvég, nyílás előtti sáv) a legnagyobb részesedésű helyiséghez
     const fo = [...hozza.entries()].sort((x, y) => y[1] - x[1])[0]![0];
     hozza.set(fo, hozza.get(fo)! + maradek);
-    for (const [ri, hossz] of hozza) { const l = ki.get(ri) ?? []; const e = l.find((f) => f.irany === ir); if (e) e.hossz += hossz; else l.push({ irany: ir, hossz }); ki.set(ri, l); }
+    // (élenként: külön tétel az él belső síkjának végpontjaival – pl. a homlokzat szerinti falmagassághoz)
+    for (const [ri, hossz] of hozza) { const l = ki.get(ri) ?? []; const e = elenkent ? undefined : l.find((f) => f.irany === ir); if (e) e.hossz += hossz; else l.push({ irany: ir, hossz, ...(elenkent ? { pontok: [a, b] as [number, number][] } : {}) }); ki.set(ri, l); }
   } });
   for (const l of ki.values()) for (const f of l) f.hossz = Math.round(f.hossz * 100) / 100;
   return ki;
