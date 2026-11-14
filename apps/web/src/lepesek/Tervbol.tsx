@@ -911,7 +911,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
         const v = elMag(A, B, Math.sin((w.irany * Math.PI) / 180), -Math.cos((w.irany * Math.PI) / 180));
         return v === null ? null : { belsoMag: v, jelleg: v < 1.6 ? 'terdfal' : 'parkany' };
       };
-      return { lap: i, a, szintek, m, kategoria, adat, ...(k.ismKulso ? { ismKulso: k.ismKulso } : {}), falMagassag,
+      return { lap: i, a, szintek, m, kategoria, adat, ...(k.ismKulso ? { ismKulso: k.ismKulso } : {}), falMagassag, ...(tt && szk.includes('T') ? { tetoter: { ...tt, orom: oromok(eszakSz, a.e.meretarany ?? undefined) } } : {}),
         ...(burokPol ? { burokPol, burokR: a.r3d ?? r } : {}) };
     });
     return epuletModell(be);

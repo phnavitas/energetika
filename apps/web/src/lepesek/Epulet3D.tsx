@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { falFelulet, type EpuletModell, type Fal, type BurokSzerep } from '@terv/epulet';
+import { tetoGeo } from '@terv/teto';
 
 const SZIN = {
   fal: 0xd8d2c4, falKulso: 0xc9bfa8, burok: 0xe8833a, futetlen: 0x5b9bd5, szomszed: 0x9ca3af, talaj: 0x8b6b4a,
@@ -106,10 +107,32 @@ export function Epulet3D({ modell, magassag = 600 }: { modell: EpuletModell; mag
         m.position.y = sz0.z0 + 0.02; m.userData = { id: t.id }; grp.add(m); kattinthato.push(m);
       }
     }
+    // tetőtér: a tetőfelület (térdfal → ferde tetősík → padlásfödém) magasságmezőként, 0,25 m-es rácson
+    const tetoSzint = new Set((modell.tetok ?? []).map((t) => t.szint));
+    for (const t of modell.tetok ?? []) {
+      if (!lathato(t.szint)) continue;
+      for (const p of t.poligonok) {
+        if (p.length < 3) continue;
+        const g = tetoGeo(p, t, t.orom), c = 0.25;
+        const bx = [Math.min(...p.map((q) => q[0])), Math.max(...p.map((q) => q[0]))], by = [Math.min(...p.map((q) => q[1])), Math.max(...p.map((q) => q[1]))];
+        const benn = (x: number, y: number) => { let b = false; for (let i = 0, j = p.length - 1; i < p.length; j = i++) { const a = p[i]!, d = p[j]!; if ((a[1] > y) !== (d[1] > y) && x < ((d[0] - a[0]) * (y - a[1])) / (d[1] - a[1]) + a[0]) b = !b; } return b; };
+        const pos: number[] = [];
+        for (let x = bx[0]!; x < bx[1]!; x += c) for (let y = by[0]!; y < by[1]!; y += c) {
+          if (!benn(x + c / 2, y + c / 2)) continue;
+          const z = (u: number, v: number) => t.z0 + g.H([u, v]) + 0.02;
+          const P = [[x, y], [x + c, y], [x + c, y + c], [x, y + c]] as const;
+          const Z = P.map(([u, v]) => z(u, v));
+          for (const [i0, i1, i2] of [[0, 1, 2], [0, 2, 3]] as const) for (const i of [i0, i1, i2]) pos.push(P[i]![0], Z[i]!, P[i]![1]);
+        }
+        const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.computeVertexNormals();
+        const m = new THREE.Mesh(geo, mat(SZIN.teto, 0.45)); grp.add(m);
+      }
+    }
     // födémek (tető / legalsó padló) körvonallal, áttetszően
     for (const fd of modell.fodemek) {
       const sz = fd.folott ?? fd.alatt; if (sz && !lathato(sz)) continue;
       if (fd.burok !== 'teto' && fd.burok !== 'padlo') continue;
+      if (fd.burok === 'teto' && fd.alatt && tetoSzint.has(fd.alatt)) continue;
       for (const p of fd.poligonok) {
         if (p.length < 3) continue;
         const sh = new THREE.Shape(p.map(([x, y]) => new THREE.Vector2(x, y)));

@@ -8,6 +8,7 @@
 import type { AlaprajzFeldolgozas } from './elemzes';
 import type { FalSzakasz, Raszter } from './raszter';
 import { burokMeres, burokTomeg, elKornyezet, helyisegKorvonal, type Poligon } from './burok';
+import { tetoGeo } from './teto';
 
 export type P2 = [number, number];
 
@@ -97,7 +98,22 @@ export interface Fodem {
   burok: BurokSzerep | 'teto' | 'padlo';
 }
 
-export interface EpuletModell { szintek: Szint[]; terek: Ter[]; falak: Fal[]; nyilasok: Nyilas[]; fodemek: Fodem[] }
+/**
+ * Vízszintes / ferde hőburokelem egy fűtött tér fölött vagy alatt (a szomszédos szintek egymásra vetítéséből):
+ * - felül: teto (a legfelső szint feletti födém / tető), ferde (tetőtéri tetősík – irany: a kifelé mutató lapirány),
+ *   padlasfodem (tetőtér vízszintes része), lapostető (a felső szinten túlnyúló rész), futetlenAlatt (fűtetlen tér alatt);
+ * - alul: padlo (legalsó szint), konzol (külső levegő felett), futetlenFelett (fűtetlen tér felett).
+ */
+export interface VizszintesBurok {
+  id: string; ter: string; szint: string; hely: 'felul' | 'alul';
+  fajta: 'teto' | 'ferde' | 'padlasfodem' | 'lapostető' | 'futetlenAlatt' | 'padlo' | 'konzol' | 'futetlenFelett';
+  /** A tér alapterületének érintett része (vetület, m²) és a felület (ferdénél a valódi, m²). */
+  Avet: number; A: number;
+  hajlas?: number; irany?: number;
+}
+/** Tetőtéri tető (a T szint hőburok-körvonala és a metszet szerinti tetőgeometria – a megjelenítéshez). */
+export interface TetoGeom { szint: string; z0: number; poligonok: P2[][]; hajlas: number; terdfal: number; belmag: number; orom?: Record<number, number> }
+export interface EpuletModell { szintek: Szint[]; terek: Ter[]; falak: Fal[]; nyilasok: Nyilas[]; fodemek: Fodem[]; vizszintes: VizszintesBurok[]; tetok: TetoGeom[] }
 
 /** Egy alaprajzi lap bemenete. */
 export interface LapBemenet {
@@ -120,6 +136,8 @@ export interface LapBemenet {
   burokR?: Raszter;
   /** Hőburokfal magassága szintenként (homlokzat, tetőablakos térdfal, tetőtér-metszet); null: a szint belmagassága. */
   falMagassag?: (sz: Szint, w: { pt: [P2, P2]; irany: number; ri: number; A: P2; B: P2 }) => FalMagassag;
+  /** Tetőtér (metszetből): hajlás, térdfal, padlásfödém-magasság, oromzatok (lapirány → szélesség) – a T jelű szinten. */
+  tetoter?: { hajlas: number; terdfal: number; belmag: number; orom?: Record<number, number> };
 }
 
 type FalNyers = { a: P2; b: P2; vastag: number; bal: Oldal | number; jobb: Oldal | number; /** a falsík (belső oldal) hossza, m */ sik: number;
@@ -203,7 +221,7 @@ export function epuletModell(lapok: LapBemenet[]): EpuletModell {
       for (const ri of sajat) {
         const ad = L.adat?.get(ri), pol = korv.get(ri) ?? [];
         const Ap = pol.reduce((t, p) => t + Math.abs(teruletP(p)), 0);
-        terek.push({ id: tid(ri), szint: sz0.id, kod: ad?.kod, nev: ad?.nev ?? `Helyiség ${ri + 1}`, burkolat: ad?.burkolat, A: sz(ad?.A ?? Ap, 2), poligonok: pol, belmag: sz0.belmag, kategoria: L.kategoria.get(ri)!, forras: { lap: L.lap, ri } });
+        terek.push({ id: tid(ri), szint: sz0.id, kod: ad?.kod, nev: ad?.nev ?? `Helyiség ${ri + 1}`, burkolat: ad?.burkolat, A: sz(ad?.A || Ap, 2), poligonok: pol, belmag: sz0.belmag, kategoria: L.kategoria.get(ri)!, forras: { lap: L.lap, ri } });
       }
       // (talaj csak terepszint alatti szinten – fölötte a terepsraffozás mögötti fal külső fal)
       const fold = sz0.z0 < -0.5;
@@ -281,7 +299,8 @@ export function epuletModell(lapok: LapBemenet[]): EpuletModell {
       if (felso) fodemek.push({ id: `FT${sz0.id}`, alatt: sz0.id, folott: null, poligonok: pol, z: sz0.z0 + sz0.h, vastag: 0.3, burok: vanFut ? 'teto' : null });
     }
   }
-  return { szintek, terek, falak, nyilasok, fodemek };
+  const tetok: TetoGeom[] = lapok.flatMap((L) => (L.tetoter && L.burokPol?.length ? L.szintek.filter((s) => s.kod === 'T').map((s) => ({ szint: s.id, z0: s.z0, poligonok: L.burokPol!.map((q) => q.map(([x, y]) => L.m(x, y))), ...L.tetoter! })) : []));
+  return { szintek, terek, falak, nyilasok, fodemek, vizszintes: vizszintesBurok(szintek, terek, lapok, fodemek), tetok };
 }
 
 
@@ -334,6 +353,121 @@ function burokFalakModell(r: Raszter, pol: Poligon[], futott: ReadonlySet<number
       }
     }
   }));
+  return ki;
+}
+
+/** Pont a sokszögben (páros-páratlan szabály). */
+function bennP(q: P2, p: P2[]) { let b = false; for (let i = 0, j = p.length - 1; i < p.length; j = i++) { const a = p[i]!, c = p[j]!; if ((a[1] > q[1]) !== (c[1] > q[1]) && q[0] < ((c[0] - a[0]) * (q[1] - a[1])) / (c[1] - a[1]) + a[0]) b = !b; } return b; }
+
+/**
+ * A fűtött terek vízszintes / ferde hőburokelemei: szintenként 0,1 m-es rácson a terek, a szomszédos szint tereire
+ * vetítve (a köztük lévő falak miatt 0,4 m-es tűréssel); tetőtéren a tetősík (térdfal → ferde → padlásfödém) szerint.
+ * A terület a tér (pecsét szerinti) alapterületének a rácsból adódó hányada.
+ */
+function vizszintesBurok(szintek: Szint[], terek: Ter[], lapok: LapBemenet[], fodemek: Fodem[]): VizszintesBurok[] {
+  const ki: VizszintesBurok[] = [];
+  const pts = terek.flatMap((t) => t.poligonok.flat()); if (!pts.length) return ki;
+  const c = 0.1, x0 = Math.min(...pts.map((p) => p[0])) - 1, y0 = Math.min(...pts.map((p) => p[1])) - 1;
+  const W = Math.ceil((Math.max(...pts.map((p) => p[0])) + 1 - x0) / c), Hh = Math.ceil((Math.max(...pts.map((p) => p[1])) + 1 - y0) / c);
+  // szintenként: cella → tér-index (terek tömbben), -1 üres
+  const sorrend = szintek.slice().sort((p, q) => p.z0 - q.z0).map((s) => s.id);
+  const racs = new Map<string, Int32Array>();
+  const cellak = new Map<number, number[]>();
+  terek.forEach((t, ti) => {
+    let g = racs.get(t.szint); if (!g) { g = new Int32Array(W * Hh).fill(-1); racs.set(t.szint, g); }
+    const lista: number[] = [];
+    for (const p of t.poligonok) {
+      if (p.length < 3) continue;
+      const bx0 = Math.max(0, Math.floor((Math.min(...p.map((q) => q[0])) - x0) / c)), bx1 = Math.min(W - 1, Math.ceil((Math.max(...p.map((q) => q[0])) - x0) / c));
+      const by0 = Math.max(0, Math.floor((Math.min(...p.map((q) => q[1])) - y0) / c)), by1 = Math.min(Hh - 1, Math.ceil((Math.max(...p.map((q) => q[1])) - y0) / c));
+      for (let y = by0; y <= by1; y++) for (let x = bx0; x <= bx1; x++) if (bennP([x0 + (x + 0.5) * c, y0 + (y + 0.5) * c], p)) { const k = y * W + x; if (g[k] === -1) { g[k] = ti; lista.push(k); } }
+    }
+    cellak.set(ti, lista);
+  });
+  // a szint fűtött / fűtetlen tereinek kiterjesztése (0,4 m – a szint falai)
+  const R = 4;
+  const kiterj = (g: Int32Array, kat: (ti: number) => boolean) => {
+    const a = new Uint8Array(W * Hh); for (let k = 0; k < a.length; k++) if (g[k]! >= 0 && kat(g[k]!)) a[k] = 1;
+    const b = new Uint8Array(W * Hh);
+    for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) { let v = 0; for (let d = -R; d <= R && !v; d++) { const xx = x + d; if (xx >= 0 && xx < W && a[y * W + xx]) v = 1; } b[y * W + x] = v; }
+    const o = new Uint8Array(W * Hh);
+    for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) { let v = 0; for (let d = -R; d <= R && !v; d++) { const yy = y + d; if (yy >= 0 && yy < Hh && b[yy * W + x]) v = 1; } o[y * W + x] = v; }
+    return o;
+  };
+  // a szint épülettömege (a födém körvonala: minden nem kültéri helyiség, falakkal) – ami ezen belül nem fűtött, fűtetlen tér
+  const tomeg = (sz0: string) => {
+    const o = new Uint8Array(W * Hh);
+    for (const fd of fodemek) if (fd.folott === sz0 && fd.id.startsWith('FP')) for (const p of fd.poligonok) {
+      if (p.length < 3) continue;
+      const bx0 = Math.max(0, Math.floor((Math.min(...p.map((q) => q[0])) - x0) / c)), bx1 = Math.min(W - 1, Math.ceil((Math.max(...p.map((q) => q[0])) - x0) / c));
+      const by0 = Math.max(0, Math.floor((Math.min(...p.map((q) => q[1])) - y0) / c)), by1 = Math.min(Hh - 1, Math.ceil((Math.max(...p.map((q) => q[1])) - y0) / c));
+      for (let y = by0; y <= by1; y++) for (let x = bx0; x <= bx1; x++) if (bennP([x0 + (x + 0.5) * c, y0 + (y + 0.5) * c], p)) o[y * W + x] = 1;
+    }
+    return o;
+  };
+  const fut = new Map<string, Uint8Array>(), nfut = new Map<string, Uint8Array>();
+  for (const [sz0, g] of racs) { fut.set(sz0, kiterj(g, (ti) => terek[ti]!.kategoria === 'futott')); const nf = kiterj(g, (ti) => terek[ti]!.kategoria === 'futetlen'), tm = tomeg(sz0); for (let k = 0; k < nf.length; k++) if (tm[k]) nf[k] = 1; nfut.set(sz0, nf); }
+  // tetőtér: a lap hőburok-körvonalainak tetőgeometriája
+  const tetok = new Map<string, { pol: P2[]; g: ReturnType<typeof tetoGeo>; hajlas: number }[]>();
+  for (const L of lapok) {
+    if (!L.tetoter || !L.burokPol?.length) continue;
+    for (const s of L.szintek) if (s.kod === 'T') tetok.set(s.id, L.burokPol.map((q) => { const pol = q.map(([x, y]) => L.m(x, y)); return { pol, g: tetoGeo(pol, L.tetoter!, L.tetoter!.orom), hajlas: L.tetoter!.hajlas }; }));
+  }
+  let n = 0;
+  const add = (t: Ter, hely: VizszintesBurok['hely'], fajta: VizszintesBurok['fajta'], arany: number, extra: Partial<VizszintesBurok> = {}, Aval?: number) => {
+    const Avet = t.A * arany; if (Avet < 0.3) return;
+    ki.push({ id: `V${++n}`, ter: t.id, szint: t.szint, hely, fajta, Avet: Math.round(Avet * 100) / 100, A: Math.round((Aval ?? Avet) * 100) / 100, ...extra });
+  };
+  // körvonal nélküli (a rajzon nem lehatárolt) fűtött tér: a szint körvonalas fűtött tereinek átlagos arányaival
+  const atlag: { t: Ter; arany: Map<string, number> }[] = [];
+  const szintArany = new Map<string, Map<string, { A: number; Av: number; x: Partial<VizszintesBurok> }>>();
+  terek.forEach((t, ti) => {
+    if (t.kategoria !== 'futott') return;
+    const cs = cellak.get(ti) ?? []; if (!cs.length) { atlag.push({ t, arany: new Map() }); return; }
+    const i = sorrend.indexOf(t.szint);
+    const fel = sorrend[i + 1], le = i > 0 ? sorrend[i - 1] : undefined;
+    // felül
+    let nyitott = 0, futetlen = 0;
+    if (fel && racs.has(fel)) { for (const k of cs) { if (fut.get(fel)![k]) continue; if (nfut.get(fel)![k]) futetlen++; else nyitott++; } }
+    else nyitott = cs.length;
+    const tt = tetok.get(t.szint);
+    if (tt && nyitott === cs.length) {
+      // tetőtér: cellánként a tetősík (irányonként) vagy a padlásfödém
+      const ferde = new Map<number, number>(); let sik = 0, haj = 0;
+      for (const k of cs) {
+        const q: P2 = [x0 + ((k % W) + 0.5) * c, y0 + (Math.floor(k / W) + 0.5) * c];
+        const tg = tt.find((x) => bennP(q, x.pol)) ?? tt[0]!; haj = tg.hajlas;
+        const { ir } = tg.g.HI(q); if (ir === null) sik++; else ferde.set(ir, (ferde.get(ir) ?? 0) + 1);
+      }
+      const cos = Math.cos((haj * Math.PI) / 180);
+      for (const [ir, db] of ferde) add(t, 'felul', 'ferde', db / cs.length, { hajlas: haj, irany: ir }, (t.A * db) / cs.length / cos);
+      add(t, 'felul', 'padlasfodem', sik / cs.length);
+    } else {
+      add(t, 'felul', fel && racs.has(fel) ? 'lapostető' : 'teto', nyitott / cs.length);
+      add(t, 'felul', 'futetlenAlatt', futetlen / cs.length);
+    }
+    // alul
+    if (!le || !racs.has(le)) { add(t, 'alul', 'padlo', 1); return; }
+    let ny2 = 0, fu2 = 0;
+    for (const k of cs) { if (fut.get(le)![k]) continue; if (nfut.get(le)![k]) fu2++; else ny2++; }
+    // terepszint alatti alsó szint fölött nincs konzol: a lehatárolatlan rész fűtetlen pince / garázs (ha a szinten van
+    // fűtetlen tér), különben talajon fekvő padló
+    const leSz = szintek.find((x) => x.id === le);
+    if (leSz && leSz.z0 < -0.5) { const vanFutetlen = terek.some((u) => u.szint === le && u.kategoria === 'futetlen'); if (vanFutetlen) { fu2 += ny2; ny2 = 0; } else { add(t, 'alul', 'padlo', ny2 / cs.length); ny2 = 0; } }
+    add(t, 'alul', 'konzol', ny2 / cs.length); add(t, 'alul', 'futetlenFelett', fu2 / cs.length);
+  });
+  // (a körvonalas terek elemeiből szintenként: fajta|irány → vetület- és felületarány a szint körvonalas fűtött területéhez)
+  for (const v of ki) {
+    const m = szintArany.get(v.szint) ?? new Map(); szintArany.set(v.szint, m);
+    const k = `${v.hely}|${v.fajta}|${v.irany ?? ''}`; const e = m.get(k) ?? { A: 0, Av: 0, x: { ...(v.hajlas !== undefined ? { hajlas: v.hajlas } : {}), ...(v.irany !== undefined ? { irany: v.irany } : {}) } };
+    e.A += v.A; e.Av += v.Avet; m.set(k, e);
+  }
+  const szintA = new Map<string, number>(); terek.forEach((t, ti) => { if (t.kategoria === 'futott' && (cellak.get(ti) ?? []).length) szintA.set(t.szint, (szintA.get(t.szint) ?? 0) + t.A); });
+  for (const { t } of atlag) {
+    const m = szintArany.get(t.szint), A0 = szintA.get(t.szint);
+    if (!m || !A0) { add(t, 'felul', 'teto', 1); add(t, 'alul', 'padlo', 1); continue; }
+    for (const [k, e] of m) { const [hely, fajta] = k.split('|') as [VizszintesBurok['hely'], VizszintesBurok['fajta']]; add(t, hely, fajta, e.Av / A0, e.x, (t.A * e.A) / A0); }
+  }
   return ki;
 }
 
