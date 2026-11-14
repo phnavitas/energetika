@@ -1325,6 +1325,17 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
       // helyiségenként, a szomszédos szint alaprajzára vetítve: ami felett / alatt nincs fűtött tér
       const lapja = (s0: string) => lapAdat.find((x) => x.sz.includes(s0));
       const futottRi = (x: (typeof lapAdat)[number]) => new Set(x.reszek.ri.filter((v, j) => v >= 0 && x.reszek.helyisegek[j]!.kategoria !== 'gyengen_kapcsolt'));
+      // az épületmodell konzol-arányai helyiségenként (lap|szint|raszterindex → a tér alapterületének hányada)
+      let kmTar: Map<string, number> | null | undefined;
+      const konzolModell = () => {
+        if (kmTar !== undefined) return kmTar;
+        try {
+          const md = epuletModellApp(); if (!md) return (kmTar = null);
+          const T = new Map(md.terek.map((t) => [t.id, t])); kmTar = new Map();
+          for (const v of md.vizszintes) { if (v.fajta !== 'konzol') continue; const t = T.get(v.ter); if (!t || t.forras.ri < 0 || !(t.A > 0)) continue; const k2 = `${t.forras.lap}|${t.szint}|${t.forras.ri}`; kmTar.set(k2, (kmTar.get(k2) ?? 0) + v.Avet / t.A); }
+          return kmTar;
+        } catch { return (kmTar = null); }
+      };
       const vetit = (s0: string, mas: string, fel: boolean): { db: number; A: number } | null => {
         const x = lapja(s0), y = lapja(mas);
         if (!x || !y || x === y || !x.a.r || !y.a.r) return null;
@@ -1335,7 +1346,10 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
         x.reszek.helyisegek.forEach((h, j) => {
           const ri = x.reszek.ri[j]!;
           if (ri < 0 || h.kategoria === 'gyengen_kapcsolt') return;
-          const nyitott = 1 - fedettArany(x.a.r!, ri, y.a.r!, fut, el);
+          // (a külső levegő feletti rész – konzol, árkád – az épületmodellből: a szomszédos szintek helyiségei, a modellen
+          // kívüli épülettömeg és a fűtetlen terek szerint; modell híján a raszterek egymásra vetítéséből)
+          const km = !fel ? konzolModell() : null, li = km ? Object.keys(elemzesek).map(Number).find((k2) => elemzesek[k2] === x.a) : undefined;
+          const nyitott = km && li !== undefined ? km.get(`${li}|${s0}|${ri}`) ?? 0 : 1 - fedettArany(x.a.r!, ri, y.a.r!, fut, el);
           const Ar = Math.round(h.A * nyitott * 100) / 100;
           if (nyitott < 0.05 || Ar < 0.5) return;
           const hz = q.helyisegek[x.kezd + si * nk + j]?.hsz;
