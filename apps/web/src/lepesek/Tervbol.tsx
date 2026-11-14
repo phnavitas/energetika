@@ -1065,6 +1065,24 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     return ki;
   }
   /** Tetőtéri alaprajz: a falhoz nem rendelt, fűtött helyiségen belül írt ablakméret-feliratok (tetősík ablak). */
+  /** A homlokzatokon látszó tetősík ablakok (a térdfal teteje feletti keretek) – metszet szerinti tetőtérnél. */
+  function tetoHom(a: AlaprajzFeldolgozas) {
+    if (!me?.tetoter || me.tetoter.terdfal === null || me.tetoter.padlo === null) return [];
+    const kuszob = me.tetoter.padlo + me.tetoter.terdfal + 0.1;
+    return homlokzatLapok.flatMap(({ l }) => { try { return tetoAblakokHomlokzatrol(l.lap, kuszob, me.tetoter!.hajlas, a.e.meretarany ?? undefined); } catch { return []; } });
+  }
+  /**
+   * Tetőtéri alaprajz: a külső falhoz kötött ablakfelirat, amely a homlokzaton látszó tetősík ablakokkal azonos
+   * szélességű, és a térdfal fölé nyúlik – a tetősík ablak felirata (a méretét adja), nem falnyílás. A lap nyílásainak
+   * indexei (legfeljebb a homlokzati tetősík ablakok számáig).
+   */
+  function tetoterFeliratAblakok(a: AlaprajzFeldolgozas): number[] {
+    const tt = me?.tetoter; if (!tt || tt.terdfal === null) return [];
+    const hom = tetoHom(a); if (!hom.length) return [];
+    const szelek = [...new Set(hom.map((t) => t.szel))];
+    const ki = a.nyilasok.flatMap((n, j) => (n.kulso && n.fajta === 'ablak' && !n.mert && n.mag >= 0.6 && n.mag <= 1.8 && szelek.some((w) => Math.abs(w - n.szel) <= 0.015) && (n.pm ?? 0.9) + n.mag > tt.terdfal! + 0.1 ? [j] : []));
+    return ki.length <= hom.length ? ki : [];
+  }
   function tetoAblakok(a: AlaprajzFeldolgozas, hs: ReturnType<typeof atvetelReszek>['helyisegek'], k: Kijeloles, eszak: number) {
     const r = a.r; if (!r) return [];
     const { ri } = atvetelReszek(a, k);
@@ -1073,7 +1091,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     if (jelbol.length) return jelbol;
     // a felirat a ferde tetősíkban lévő ablaké, ha nincs külső falhoz rendelve (falhoz nem köthető, vagy belső
     // „fülkeként” / belső nyílásként felismert) és ablakméretű
-    const jelolt = [...(a.arvaFeliratok ?? []), ...a.nyilasok.filter((n) => !n.kulso && (n.fajta === 'falfulke' || n.fajta === 'ablak'))];
+    const tfa = new Set(tetoterFeliratAblakok(a));
+    const jelolt = [...(a.arvaFeliratok ?? []), ...a.nyilasok.filter((n, j) => (!n.kulso && (n.fajta === 'falfulke' || n.fajta === 'ablak')) || tfa.has(j))];
     const alaprajzrol = jelolt.flatMap((f) => {
       if (f.szel < 0.4 || f.szel > 1.6 || f.mag < 0.6 || f.mag > 1.8) return [];
       // a felirat a tetőtéri homlokzat mentén (a tetőpárkány vetületében, kívül vagy belül): a legközelebbi, külső falú
@@ -1092,13 +1111,12 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     // a homlokzatokról azonosítva (a térdfal teteje feletti keretek): darabszám és tájolás a homlokzat szerint, a méret
     // az alaprajzi felirat szerint, ha van azonos szélességű; a homlokzat irányában a legtöbb külső fallal bíró
     // tetőtéri helyiséghez. Homlokzati találat híján az alaprajzi feliratok.
-    const kuszob = me.tetoter.padlo + me.tetoter.terdfal + 0.1;
-    const hom = homlokzatLapok.flatMap(({ l }) => { try { return tetoAblakokHomlokzatrol(l.lap, kuszob, me.tetoter!.hajlas, a.e.meretarany ?? undefined); } catch { return []; } });
+    const hom = tetoHom(a);
     const homRes = hom.flatMap((t) => {
       const ir = (Math.round(norm(t.az + eszak) / 90) * 90) % 360;
       let hi = -1, leg = 0;
       ri.forEach((x, j) => { if (x < 0 || !hs[j]) return; const L = r.helyisegek[x]!.szakaszok.filter((sg) => sg.tul === 'kulso' && sg.irany === ir).reduce((q, sg) => q + sg.hossz, 0); if (L > leg) { leg = L; hi = j; } });
-      const fel = alaprajzrol.find((x) => Math.abs(x.szel - t.szel) <= 0.1);
+      const fel = alaprajzrol.filter((x) => Math.abs(x.szel - t.szel) <= 0.1).sort((x, y) => Math.abs(x.szel - t.szel) - Math.abs(y.szel - t.szel))[0];
       return hi < 0 ? [] : [{ helyiseg: hi, szel: fel?.szel ?? t.szel, mag: fel?.mag ?? t.hossz, irany: ir }];
     });
     return homRes.length ? homRes : alaprajzrol;
@@ -1135,6 +1153,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     // tetőtéri alaprajz (a legfelső szint tetőtér): a metszet tetőhajlása és térdfala szerint ferde tető + térdfal
     const tetoterLap = o.szintek.includes('T') && o.tetoAt && me?.szintek.belmagassag.length ? true : false;
     const extraUz: string[] = [];
+    // (tetőtéren a falon el nem férő ablakfelirat a tetősík ablaké: nem falnyílás)
+    if (tetoterLap) { const tfa = tetoterFeliratAblakok(a); if (tfa.length) { k = { ...k, kizartNy: new Set([...k.kizartNy, ...tfa]) }; extraUz.push(`Tetőtér: ${tfa.length} ablakfelirat a homlokzaton látszó tetősík ablakokkal azonos szélességű és a térdfal fölé nyúlik – a tetősík ablak méreteként vettem, nem falnyílásként.`); } }
     // a kézzel megadott szerep felülírja a becslést (és a „nem hőburok” kihagyást)
     const blokkok = (me?.blokkok ?? []).filter((b) => rrKi[b.rr.kod] || (terepAlatt && b.becsles.feltetel === 'terepAlatt'))
       .map((b) => { const sz0 = rrSzerep[b.rr.kod]; return sz0 ? { ...b, becsles: { szerep: sz0, ...SZEREP_ALAP[sz0] } } : b; });
