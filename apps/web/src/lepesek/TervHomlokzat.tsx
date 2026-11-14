@@ -5,8 +5,8 @@
  */
 import { useMemo, useState } from 'preact/hooks';
 import { klima } from '@mag/index';
-import type { TervLap } from '../terv/elemzes';
-import { homlokzatElemez, homlokzatIrany, type HomlokzatEredmeny } from '../terv/homlokzat';
+import type { TervLap } from '@terv/elemzes';
+import { homlokzatElemez, homlokzatIrany, type HomlokzatEredmeny } from '@terv/homlokzat';
 import { sz } from '../ui';
 import type { Projekt } from '../modell';
 

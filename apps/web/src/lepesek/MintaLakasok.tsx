@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Projekt } from '../modell';
 import { tervAtvesz } from '../terv/atvetel';
-import { egtaj } from '../terv/alaprajz';
+import { egtaj } from '@terv/alaprajz';
 import { Szam, sz } from '../ui';
 import panelAdat from '../mintak/tipusalaprajz_panel.json';
 import blokkosAdat from '../mintak/tipusalaprajz_blokkos.json';

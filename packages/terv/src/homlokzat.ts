@@ -10,9 +10,8 @@
 import type { Lap } from './kinyeres';
 import { meretaranyKeres } from './alaprajz';
 import { meretaranyKotabol } from './autohelyiseg';
-import type { klima } from '@mag/index';
 
-type Tajolas = (typeof klima.TAJOLASOK)[number];
+type Tajolas = 'É' | 'ÉK' | 'K' | 'DK' | 'D' | 'DNy' | 'Ny' | 'ÉNy';
 type BB = [number, number, number, number];
 
 export interface HomlokzatAblak {

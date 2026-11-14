@@ -4,7 +4,7 @@
  */
 import type { Szoveg } from './kinyeres';
 import { szovegJavit, szamErtek } from './alaprajz';
-import type { Szerep, RetegUI } from '../modell';
+import type { Szerep, RetegUI } from './tipusok';
 
 export interface TervReteg {
   /** Vastagság cm-ben; null: „--” (pl. termett talaj) vagy nincs megadva. */

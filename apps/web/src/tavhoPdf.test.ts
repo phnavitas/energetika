@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { tavhoPdfElemez, type TavhoPdfTetel } from './tavhoPdf';
 
-const minta = JSON.parse(readFileSync(new URL('./terv/minta/tavho_pdf_tetelek.json', import.meta.url), 'utf8')) as Record<string, [string, number, number, number, number][][]>;
+const minta = JSON.parse(readFileSync(new URL('./minta/tavho_pdf_tetelek.json', import.meta.url), 'utf8')) as Record<string, [string, number, number, number, number][][]>;
 const lap = (id: string) => minta[id]!.map((l) => l.map(([szoveg, x, y, w, h]): TavhoPdfTetel => ({ szoveg, x, y, w, h })));
 
 describe('távhő PDF', () => {

@@ -1,0 +1,7 @@
+{
+  "name": "@ekm/terv",
+  "private": true,
+  "type": "module",
+  "description": "PDF-tervlapok gépi felismerése (alaprajz, metszet, homlokzat) – alkalmazásfüggetlen mag",
+  "peerDependencies": { "pdfjs-dist": "5.7.284", "pdf-lib": "1.17.1" }
+}

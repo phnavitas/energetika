@@ -7,8 +7,8 @@ import type { Projekt, Retegrend, Felulet, NyilaszaroTipus, HelyisegKategoria, H
 import { ujId, fuggonyfalTipus, sablonbolNyilaszaro, retegrendAutoNev, feluletekOsszevon, SZEREP_ALAP } from '../modell';
 import { nyilaszaroSablon as NS, szerkezetSablon as SS } from '@mag/index';
 import type { Tajolas } from '@mag/tablak/klima';
-import type { TervRetegUI, SzerepBecsles, TervRetegrend } from './metszet';
-import { egtaj, szintNev } from './alaprajz';
+import type { TervRetegUI, SzerepBecsles, TervRetegrend } from '@terv/metszet';
+import { egtaj, szintNev } from '@terv/alaprajz';
 
 export interface AtvettHelyiseg {
   kod?: string; nev: string; burkolat?: string; A: number; kategoria: HelyisegKategoria;

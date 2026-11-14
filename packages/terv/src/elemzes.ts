@@ -14,7 +14,7 @@ import { terdfalGeometria } from './metszetGeom';
 import { fuggonyfalak, jeloletlenNyilasok, lancNyilasok, tetoablakJelek, type TetoablakJel, nyilasFeliratok, nyilasokHozzarendel, falfulkeE, type TervNyilas, type NyilasFelirat } from './nyilaszarok';
 import { talajOldal } from './talaj';
 import { retegrendBlokkok, szerepBecsles, retegekEpit, szintekKeres, tetoterKeres, type TetoterAdat, type TervRetegrend, type SzerepBecsles, type TervRetegUI, type SzintEredmeny } from './metszet';
-import { ujId } from '../modell';
+import { ujId } from './tipusok';
 
 export interface TervLap {
   fajl: string; oldal: number;

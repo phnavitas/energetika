@@ -4,24 +4,24 @@ const sz2 = (x: number) => x.toLocaleString('hu-HU', { maximumFractionDigits: 1 
 import { Szam, Valaszto, sz, MindJelolo } from '../ui';
 import { kategoriaJavaslat } from './Helyisegek';
 import { anyag } from '../katalogus';
-import { pecsetKinyer, type PecsetAdat } from '../terv/pecset';
+import { pecsetKinyer, type PecsetAdat } from '@terv/pecset';
 import { HomlokzatEllenorzes } from './TervHomlokzat';
-import type { SzurkeKep } from '../terv/autohelyiseg';
-import { eltolas, fedettArany } from '../terv/fedes';
-import { burokAuto, burokFalak, burokMeres, burokTomeg, csatlakozasok, elKornyezet, kulsoSikra, kulsoSraff, nyilasEl, bennE, type Poligon } from '../terv/burok';
-import type { TervNyilas } from '../terv/nyilaszarok';
-import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, eszakJavitas, eszakJavitasMent, type TervLap, type AlaprajzFeldolgozas } from '../terv/elemzes';
-import { egtaj, jegyzekenKivul, jegyzekSorok, szintekCimbol, szintNev } from '../terv/alaprajz';
+import type { SzurkeKep } from '@terv/autohelyiseg';
+import { eltolas, fedettArany } from '@terv/fedes';
+import { burokAuto, burokFalak, burokMeres, burokTomeg, csatlakozasok, elKornyezet, kulsoSikra, kulsoSraff, nyilasEl, bennE, type Poligon } from '@terv/burok';
+import type { TervNyilas } from '@terv/nyilaszarok';
+import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, eszakJavitas, eszakJavitasMent, type TervLap, type AlaprajzFeldolgozas } from '@terv/elemzes';
+import { egtaj, jegyzekenKivul, jegyzekSorok, szintekCimbol, szintNev } from '@terv/alaprajz';
 import { tervAtvesz, type AtvettNyilas, type AtvettHelyiseg } from '../terv/atvetel';
-import type { Raszter, FalSzakasz } from '../terv/raszter';
+import type { Raszter, FalSzakasz } from '@terv/raszter';
 import { MintaLakasok } from './MintaLakasok';
 import { Burok3D, modellOsszesites, type Burok3DSzint } from './Burok3D';
-import { homlokzatRajzok, mertMagassagok, eszakHomlokzatbol, tetoAblakokHomlokzatrol, oromSzelessegek, type HomlokzatRajz, type MertMagassag } from '../terv/homlokzatIllesztes';
-import { nezetOszlopok } from '../terv/homlokzatProfil';
-import { falMagassagModell, type HomlokzatNezetAdat } from '../terv/homlokzatModell';
-import { vonalIndex, keretek, homlokzatIrany, homlokzatCimek } from '../terv/homlokzat';
+import { homlokzatRajzok, mertMagassagok, eszakHomlokzatbol, tetoAblakokHomlokzatrol, oromSzelessegek, type HomlokzatRajz, type MertMagassag } from '@terv/homlokzatIllesztes';
+import { nezetOszlopok } from '@terv/homlokzatProfil';
+import { falMagassagModell, type HomlokzatNezetAdat } from '@terv/homlokzatModell';
+import { vonalIndex, keretek, homlokzatIrany, homlokzatCimek } from '@terv/homlokzat';
 const AZ_TAJ: Record<string, number> = { 'É': 0, 'ÉK': 45, 'K': 90, 'DK': 135, 'D': 180, 'DNy': 225, 'Ny': 270, 'ÉNy': 315 };
-import type { Lap } from '../terv/kinyeres';
+import type { Lap } from '@terv/kinyeres';
 
 type Modosit = (f: (q: Projekt) => void) => void;
 

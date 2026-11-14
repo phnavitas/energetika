@@ -46,21 +46,8 @@ export interface HoszuksegletBeallitas {
 }
 export const HSZ_ALAP: HoszuksegletBeallitas = { thetaE: -15, n50: 3, vedettseg: 'mersekelt', Gw: 1, fRH: 0 };
 
-export type Szerep = 'fal' | 'padlas' | 'teto' | 'pincefodem' | 'padlo' | 'belso';
-export interface RetegUI { id: string; anyagId?: string; nev?: string; dCm: number; lambda?: number; R?: number; legreteg?: 'zart' | 'intenziv'; /** Páradiffúziós ellenállási szám kézi értéke (üres: katalógus / jellemző érték). */ mu?: number;
-  /** A rétegben futó bordák (szarufa, fogópár, fagerenda, fedélszék, váz): inhomogén réteg (4.1.4). */
-  borda?: RetegBorda; }
-export interface RetegBorda {
-  /** A borda anyaga (alapból puhafa). */
-  anyagId?: string; lambda?: number; nev?: string;
-  /** Borda szélessége és tengelytávolsága (cm) – a területarány szel / tav. */
-  szelCm: number; tavCm: number;
-  /** A borda magassága a rétegben (cm); üres: a teljes rétegvastagság. Kisebb magasságnál a borda-szelet a borda és a
-   * fölötte / alatta folytonos hőszigetelés soros ellenállása. */
-  magCm?: number;
-  /** A tervből becsült (a metszet szövegéből, alapértelmezett méretekkel) – ellenőrizendő. */
-  becsult?: boolean;
-}
+export type { Szerep, RetegUI, RetegBorda } from '@terv/tipusok';
+import type { Szerep, RetegUI, RetegBorda } from '@terv/tipusok';
 export interface Retegrend {
   id: string; nev: string; szerep: Szerep; kovetelmenyKod: string;
   hoaramIrany: HoaramIrany; kulsoOldal: 'kulso' | 'futetlen' | 'belso';

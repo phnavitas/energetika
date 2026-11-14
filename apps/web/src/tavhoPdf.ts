@@ -80,7 +80,7 @@ export function tavhoPdfElemez(lapok: TavhoPdfTetel[][]): TavhoPdfEredmeny {
 
 /** A PDF szövegelemei laponként (pdf.js). */
 export async function tavhoPdfOlvas(adat: ArrayBuffer): Promise<TavhoPdfEredmeny> {
-  const { pdfjsBetolt } = await import('./terv/elemzes');
+  const { pdfjsBetolt } = await import('@terv/elemzes');
   const pdfjs = await pdfjsBetolt();
   const doc = await pdfjs.getDocument({ data: new Uint8Array(adat), verbosity: 0, isEvalSupported: false }).promise;
   const lapok: TavhoPdfTetel[][] = [];

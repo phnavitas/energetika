@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import type { Lap, Szoveg, Utvonal } from './kinyeres';
-import { alaprajzElemez, egtaj, eszakjelKeres, pecsetek, jegyzekSorok, szovegJavit, egysegKod, egysegNev, szintekCimbol, kodE } from './alaprajz';
-import { raszterEpit } from './raszter';
-import { nyilasFeliratok, nyilasokHozzarendel } from './nyilaszarok';
-import { retegrendBlokkok, szerepBecsles, retegekEpit, szintekKeres } from './metszet';
+import type { Lap, Szoveg, Utvonal } from '../src/kinyeres';
+import { alaprajzElemez, egtaj, eszakjelKeres, pecsetek, jegyzekSorok, szovegJavit, egysegKod, egysegNev, szintekCimbol, kodE } from '../src/alaprajz';
+import { raszterEpit } from '../src/raszter';
+import { nyilasFeliratok, nyilasokHozzarendel } from '../src/nyilaszarok';
+import { retegrendBlokkok, szerepBecsles, retegekEpit, szintekKeres } from '../src/metszet';
 
 const M = 100; // 1:100
 const mPerPt = (25.4 / 72) / 1000 * M;
