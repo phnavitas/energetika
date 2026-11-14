@@ -1,0 +1,14 @@
+{
+  "leiras": "WinWatt vízszintes / ferde hőburokelemek (m², nettó; a tetőhöz a tetősík-ablakok hozzáadva = bruttó tető). felul: tető, padlásfödém, ferde tető, lapostető; alul: talajon fekvő padló, födém fűtetlen tér felett; konzol: külső levegő feletti födém. Forrás: a WinWatt számítás szerkezettáblája, ill. projektfájl / tanúsítvány-összesítő (csak számadatok).",
+  "m01": {"felul": 105.9, "alul": 109.8, "konzol": 0},
+  "m03": {"felul": 539.6, "alul": 539.6, "konzol": 0},
+  "m04": {"felul": 195.6, "alul": 195.6, "konzol": 0},
+  "m06": {"felul": 92.7, "alul": 106.7, "konzol": 0},
+  "m07": {"felul": 692.6, "alul": 728.4, "konzol": 34.8},
+  "m08": {"felul": 205.5, "alul": 165.9, "konzol": 6.6},
+  "m12": {"felul": 236.3, "alul": 273.3, "konzol": 0, "ferde": 72.3, "padlasfodem": 113.9, "lapostető": 50.1},
+  "m13": {"felul": 76.8, "alul": 76.8, "konzol": 0},
+  "m14": {"alul": 1188.0, "konzol": 0},
+  "m16": {"felul": 208.1, "alul": 213.4, "konzol": 0, "ferde": 107.6, "padlasfodem": 100.5},
+  "m18": {"felul": 121.3, "alul": 121.3, "konzol": 0}
+}

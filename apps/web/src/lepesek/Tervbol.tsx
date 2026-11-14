@@ -328,17 +328,39 @@ function burokFalakAuto(a: AlaprajzFeldolgozas, k: Kijeloles): BurokFalAuto | nu
   }
   gy.set(kulcs, v); return v;
 }
+/**
+ * Tetőtér: a ferde tetősík vízszintes vetülete az épületmodellből (a tetőtér helyiségeinek pontonkénti magassága a
+ * metszet szerinti hajlással, térdfallal és padlásfödém-magassággal), a tetőtér fűtött alapterületének arányában,
+ * fő irányonként. Hiba vagy hiányzó burok esetén üres (a régi, eresz menti számítás marad).
+ */
+function ferdeModell(a: AlaprajzFeldolgozas, k: Kijeloles, tt: { hajlas: number; terdfal: number | null; belmagassag?: number | null }, orom: Record<number, number>, bmAlap: number): { ferdeArany?: Record<number, number> } {
+  try {
+    const r = a.r3d ?? a.r; if (!r || !a.r || tt.terdfal === null || k.burok) return {};
+    const fut = futottRiK(a, k), lap = elemzesLap.get(a);
+    const pol = burokAuto(r, fut, lap ? nevFeliratok(lap) : undefined, vartTer(a)); if (!pol.length) return {};
+    const { kategoria, adat, pecsetTerek } = lapKategoriak(a, k), mpp = a.r.mPerPt, belmag = tt.belmagassag ?? bmAlap;
+    const md = epuletModell([{ lap: 0, a, szintek: [{ id: 'T', nev: 'T', kod: 'T', z0: 0, h: belmag + 0.35, belmag }], m: (x, y) => [x * mpp, y * mpp], kategoria, adat, pecsetTerek, burokPol: pol, burokR: r, tetoter: { hajlas: tt.hajlas, terdfal: tt.terdfal, belmag, orom } }]);
+    const A = md.terek.filter((t) => t.kategoria === 'futott').reduce((q, t) => q + t.A, 0); if (!(A > 0)) return {};
+    const fa: Record<number, number> = {};
+    for (const v of md.vizszintes) if (v.fajta === 'ferde' && v.irany !== undefined) { const ax = (Math.round(v.irany / 90) * 90) % 360; fa[ax] = (fa[ax] ?? 0) + v.Avet / A; }
+    return Object.keys(fa).length ? { ferdeArany: fa } : {};
+  } catch { return {}; }
+}
 /** Egy alaprajz helyiségeinek modellbeli kategóriája (fűtött / fűtetlen / kültéri) és adatai a kijelölés szerint. */
 function lapKategoriak(a: AlaprajzFeldolgozas, k: Kijeloles) {
   const hs = a.e.helyisegek;
   const egysegben = (j: number) => !a.e.egysegek.length || !hs[j]!.egyseg || k.egysegek.has(hs[j]!.egyseg!);
   const kategoria = new Map<number, TerKategoria>(), adat = new Map<number, { kod?: string; nev: string; A?: number; burkolat?: string }>();
+  const pecsetTerek: { kod?: string; nev: string; A: number; burkolat?: string; kategoria: TerKategoria }[] = [];
   hs.forEach((h, j) => {
-    const ri = a.magHelyisegek.indexOf(h); if (ri < 0 || !egysegben(j) || k.kizartH.has(j)) return;
-    const kt = h.kulter || k.kulterH?.has(j) ? 'kulter' : (k.kat[j] ?? (k.mindFutott ? 'kondicionalt' : kategoriaJavaslat(h.nev) ?? 'kondicionalt')) === 'gyengen_kapcsolt' ? 'futetlen' : 'futott';
+    if (!egysegben(j) || k.kizartH.has(j)) return;
+    const kt: TerKategoria = h.kulter || k.kulterH?.has(j) ? 'kulter' : (k.kat[j] ?? (k.mindFutott ? 'kondicionalt' : kategoriaJavaslat(h.nev) ?? 'kondicionalt')) === 'gyengen_kapcsolt' ? 'futetlen' : 'futott';
+    const ri = a.magHelyisegek.indexOf(h);
+    // (a rajzon helyiséghez nem köthető, jegyzékbeli tér: körvonal nélkül – a vízszintes elemekhez a szint átlaga szerint)
+    if (ri < 0) { if (kt !== 'kulter' && (h.hasznosA ?? h.A)) pecsetTerek.push({ kod: h.kod, nev: h.nev, A: h.hasznosA ?? h.A, burkolat: h.burkolat, kategoria: kt }); return; }
     kategoria.set(ri, kt); adat.set(ri, { kod: h.kod, nev: h.nev, A: h.hasznosA ?? h.A, burkolat: h.burkolat });
   });
-  return { kategoria, adat };
+  return { kategoria, adat, pecsetTerek };
 }
 /** A 3D hőburok nyílászárói (a megadott körvonal csak akkor számít, ha a burok szerkesztett – egyébként az átvétel készlete). */
 function burokNyilasokPt(al: AlaprajzFeldolgozas, k: Kijeloles, b: Poligon[]) {
@@ -895,7 +917,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     const be: LapBemenet[] = sor.map(({ i }) => {
       const a = elemzesek[i] as AlaprajzFeldolgozas, r = a.r!, k = kijeloles(i, a);
       const el = i === sor[0]!.i ? { dx: 0, dy: 0 } : eltolas(alap, r) ?? { dx: 0, dy: 0 };
-      const { kategoria, adat } = lapKategoriak(a, k);
+      const { kategoria, adat, pecsetTerek } = lapKategoriak(a, k);
       const szk = lapSzintek(i).length ? lapSzintek(i) : ['F'];
       // tetőtér (metszetből): hajlás, térdfal, padlásfödém
       const tt = me?.tetoter ? { hajlas: me.tetoter.hajlas, terdfal: me.tetoter.terdfal ?? 0.9, belmag: me.tetoter.belmagassag ?? (bm ?? 2.6) } : undefined;
@@ -928,7 +950,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
         const v = elMag(A, B, Math.sin((w.irany * Math.PI) / 180), -Math.cos((w.irany * Math.PI) / 180));
         return v === null ? null : { belsoMag: v, jelleg: v < 1.6 ? 'terdfal' : 'parkany' };
       };
-      return { lap: i, a, szintek, m, kategoria, adat, ...(k.ismKulso ? { ismKulso: k.ismKulso } : {}), falMagassag, ...(tt && szk.includes('T') ? { tetoter: { ...tt, orom: oromok(eszakSz, a.e.meretarany ?? undefined) } } : {}),
+      return { lap: i, a, szintek, m, kategoria, adat, pecsetTerek, ...(k.ismKulso ? { ismKulso: k.ismKulso } : {}), falMagassag, ...(tt && szk.includes('T') ? { tetoter: { ...tt, orom: oromok(eszakSz, a.e.meretarany ?? undefined) } } : {}),
         ...(burokPol ? { burokPol, burokR: a.r3d ?? r } : {}) };
     });
     return epuletModell(be);
@@ -1127,7 +1149,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
       helyisegek: hs, retegrendek: blokkok, nyilasok: ny,
       eszakSzog: o.eszak, belmagassag: (tetoterLap ? me?.tetoter?.belmagassag ?? me?.szintek.belmagassag.at(-1) : undefined) ?? bm ?? 2.7, szintszam: szintszam ?? 1, csere: o.csere, padloAt: o.padloAt, tetoAt: o.tetoAt,
       ...(!szomszedFutott && szomszedH >= 0.3 ? { szomszedFutetlen: szomszedH } : {}),
-      ...(tetoterLap && me?.tetoter ? { tetoter: { ...me.tetoter, orom: oromok(o.eszak, a.e.meretarany ?? undefined) }, tetoablakok: tetoAblakok(a, hs, k, o.eszak) } : a.tetoablakok?.length ? { tetoablakok: tetoAblakok(a, hs, k, o.eszak) } : {}),
+      ...(tetoterLap && me?.tetoter ? { tetoter: { ...me.tetoter, orom: oromok(o.eszak, a.e.meretarany ?? undefined), ...ferdeModell(a, k, me.tetoter, oromok(o.eszak, a.e.meretarany ?? undefined), bm ?? 2.6) }, tetoablakok: tetoAblakok(a, hs, k, o.eszak) } : a.tetoablakok?.length ? { tetoablakok: tetoAblakok(a, hs, k, o.eszak) } : {}),
       ...(mintaFajta === 'blokkos' ? { alapFalSablon: 'fal_blokk_kohosalak' } : {}),
       forras: [o.fajl, mLap?.fajl].filter(Boolean).join(', '), szintek: o.szintek,
       ...(terepAlatt ? { terepAlatt: true, ...(pinceMelyseg ? { terepMelyseg: pinceMelyseg } : {}) } : {}),
