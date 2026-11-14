@@ -58,6 +58,9 @@ export interface Fal {
   hossz: number;
   /** A falsík hossza a tér felől (m) – külső falnál a belső sík, belső falnál az egyik oldal. */
   sikHossz: number;
+  /** Forrás a lapon: hőburokfalnál a belső oldali helyiség (raszterindex), a belső sík végpontjai (pt) és a kifelé
+   * mutató lapirány; fűtött–fűtetlen belső falnál a fűtött oldali helyiség. */
+  forras?: { lap: number; ri: number; pt?: [P2, P2]; irany?: number };
   /** Hőburokfal: a belső síkba csatlakozó belső falak összvastagsága (m) – a belső felület ennyivel rövidebb. */
   csatlakozas?: number;
   /** A fal belső (tér felőli) magassága (m), ha eltér a szint belmagasságától (alacsonyabb párkány, térdfal). */
@@ -141,7 +144,7 @@ export interface LapBemenet {
 }
 
 type FalNyers = { a: P2; b: P2; vastag: number; bal: Oldal | number; jobb: Oldal | number; /** a falsík (belső oldal) hossza, m */ sik: number;
-  /** hőburokfal: a belső sík végpontjai (lap, pt), kifelé mutató lapirány, a belső oldali helyiség */ burokEl?: { pt: [P2, P2]; irany: number; ri: number; A: P2; B: P2 } };
+  /** hőburokfal: a belső sík végpontjai (lap, pt), kifelé mutató lapirány, a belső oldali helyiség */ burokEl?: { pt: [P2, P2]; irany: number; ri: number; A: P2; B: P2; csatl?: number } };
 
 const sz = (v: number, d = 3) => Math.round(v * 10 ** d) / 10 ** d;
 
@@ -247,24 +250,12 @@ export function epuletModell(lapok: LapBemenet[]): EpuletModell {
         const hSz = extra.profil ? Math.max(...extra.profil.map((q) => q.z)) + (sz0.h - sz0.belmag) : extra.belsoMag !== undefined ? Math.min(sz0.h, extra.belsoMag + (sz0.h - sz0.belmag)) : sz0.h;
         falak.push({ id, szint: sz0.id, a: [sz(f.a[0]), sz(f.a[1])], b: [sz(f.b[0]), sz(f.b[1])], vastag: sz(f.vastag, 2), z0: sz0.z0, h: sz(hSz, 3), ...extra,
           bal: oldal(f.bal), jobb: oldal(f.jobb), kulso: typeof f.bal !== 'number' || typeof f.jobb !== 'number' || kb === 'kulter' || kj === 'kulter',
-          burok, ...(futB !== futJ ? { futottOldal: futB ? 'bal' as const : 'jobb' as const } : {}), hossz: sz(hossz, 2), sikHossz: sz(f.sik, 2) });
+          burok, ...(futB !== futJ ? { futottOldal: futB ? 'bal' as const : 'jobb' as const } : {}), hossz: sz(hossz, 2), sikHossz: sz(f.sik, 2),
+          ...(f.burokEl ? { forras: { lap: L.lap, ri: f.burokEl.ri, pt: f.burokEl.pt, irany: f.burokEl.irany } } : futB !== futJ && typeof (futB ? f.bal : f.jobb) === 'number' ? { forras: { lap: L.lap, ri: (futB ? f.bal : f.jobb) as number } } : {}) });
         falIdk.push({ id, f });
       }
-      // hőburokfalak belső síkjába csatlakozó belső falak (a belső felület ezekkel rövidebb)
-      for (const { id, f } of falIdk) {
-        const E = f.burokEl; if (!E) continue;
-        const dx = E.B[0] - E.A[0], dy = E.B[1] - E.A[1], L = Math.hypot(dx, dy); if (L < 0.2) continue;
-        const ux = dx / L, uy = dy / L; let cs = 0;
-        for (const { f: g } of falIdk) {
-          if (g.burokEl || typeof g.bal !== 'number' || typeof g.jobb !== 'number') continue;
-          const gx = g.b[0] - g.a[0], gy = g.b[1] - g.a[1], gl = Math.hypot(gx, gy); if (gl < 0.1 || Math.abs((gx * ux + gy * uy) / gl) > 0.3) continue;
-          for (const P of [g.a, g.b]) {
-            const t = (P[0] - E.A[0]) * ux + (P[1] - E.A[1]) * uy, d = Math.abs((P[0] - E.A[0]) * uy - (P[1] - E.A[1]) * ux);
-            if (t > g.vastag / 2 && t < L - g.vastag / 2 && d < g.vastag / 2 + 0.15) { cs += g.vastag; break; }
-          }
-        }
-        if (cs > 0) { const fal = falak.find((q) => q.id === id)!; fal.csatlakozas = sz(Math.min(cs, fal.sikHossz), 2); }
-      }
+      // hőburokfalak belső síkjába csatlakozó belső falak (a belső felület ezekkel rövidebb – a raszter szerint)
+      for (const { id, f } of falIdk) { const cs = f.burokEl?.csatl; if (cs && cs > 0) { const fal = falak.find((q) => q.id === id)!; fal.csatlakozas = sz(Math.min(cs, fal.sikHossz), 2); } }
       // nyílászárók: a helyiség (és a túloldal) falai közül a legközelebbi, amelynek tengelyére a nyílás közepe esik
       for (const n of L.a.nyilasok) {
         if (n.helyiseg === null || n.helyiseg === undefined || !L.kategoria.has(n.helyiseg) || !(n.szel > 0)) continue;
@@ -329,9 +320,13 @@ function burokFalakModell(r: Raszter, pol: Poligon[], futott: ReadonlySet<number
       }
       // a belső oldali fűtött helyiség 0,25 m-enként (befelé keresve); az azonos helyiségű szakaszok egy fal
       const lepes = Math.max(1, Math.round(((t1 - t0) * l) / 0.25));
-      const hely: number[] = [];
+      const hely: number[] = [], csatl: boolean[] = [];
+      const falC = (x: number, y: number) => { const cx = Math.floor(((x - r.x0) * r.mPerPt) / r.px), cy = Math.floor(((y - r.y0) * r.mPerPt) / r.px); return cx >= 0 && cy >= 0 && cx < r.w && cy < r.h && !!r.fal[cy * r.w + cx]; };
       for (let q = 0; q < lepes; q++) {
         const [mx, my] = pt(t0 + ((q + 0.5) / lepes) * (t1 - t0)); let h = -1;
+        // a belső síkba befutó belső fal (csatlakozás): befelé 5–30 cm-en végig falcella – a belső felületből levonódik
+        let fal = true; for (let d = 0.05; d <= 0.3 + 1e-9 && fal; d += 0.05) if (!falC(mx - (n[0] * d) / r.mPerPt, my - (n[1] * d) / r.mPerPt)) fal = false;
+        csatl.push(fal);
         for (let d = 0.15; d <= 1.6 && h < 0; d += 0.1) { const c = cella(mx - (n[0] * d) / r.mPerPt, my - (n[1] * d) / r.mPerPt); if (c >= 0 && futott.has(c)) h = c; }
         hely.push(h);
       }
@@ -342,6 +337,7 @@ function burokFalakModell(r: Raszter, pol: Poligon[], futott: ReadonlySet<number
         if (q < lepes && hely[q] === hely[q0]) continue;
         const h = hely[q0]!; const ta = t0 + (q0 / lepes) * (t1 - t0), tb = t0 + (q / lepes) * (t1 - t0); q0 = q;
         if (h < 0 || (tb - ta) * l < 0.1) continue;
+        const cs = csatl.slice(Math.round(((ta - t0) / (t1 - t0)) * lepes), q).filter(Boolean).length * (((t1 - t0) * l) / lepes);
         const A = m(...pt(ta)), B = m(...pt(tb));
         const d: P2 = [B[0] - A[0], B[1] - A[1]]; const ll = Math.hypot(d[0], d[1]); const u: P2 = [d[0] / ll, d[1] / ll], k = v / 2;
         // tengely: a belső sík + fél falvastagság kifelé; a körvonal csúcsainál a vég a falvastagság felével hosszabb
@@ -349,7 +345,7 @@ function burokFalakModell(r: Raszter, pol: Poligon[], futott: ReadonlySet<number
         const a: P2 = [A[0] + n[0] * k - u[0] * e0, A[1] + n[1] * k - u[1] * e0], b: P2 = [B[0] + n[0] * k + u[0] * e1, B[1] + n[1] * k + u[1] * e1];
         const balN: P2 = [u[1], -u[0]]; const helyBal = balN[0] * -n[0] + balN[1] * -n[1] > 0;
         const tul: Oldal = f === 'szomszed' ? { fajta: 'szomszed' } : f === 'futetlen' ? { fajta: 'futetlen' } : { fajta: 'kulso' };
-        ki.push({ a, b, vastag: v, bal: helyBal ? h : tul, jobb: helyBal ? tul : h, sik: ll, burokEl: { pt: [pt(ta), pt(tb)], irany: el.irany, ri: h, A, B } });
+        ki.push({ a, b, vastag: v, bal: helyBal ? h : tul, jobb: helyBal ? tul : h, sik: ll, burokEl: { pt: [pt(ta), pt(tb)], irany: el.irany, ri: h, A, B, csatl: cs } });
       }
     }
   }));

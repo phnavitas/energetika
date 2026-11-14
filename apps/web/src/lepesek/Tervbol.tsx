@@ -306,15 +306,39 @@ type BurokFalAuto = { falak: Map<number, { irany: number; hossz: number; pontok?
 const burokFalGy = new WeakMap<AlaprajzFeldolgozas, Map<string, BurokFalAuto>>();
 function burokFalakAuto(a: AlaprajzFeldolgozas, k: Kijeloles): BurokFalAuto | null {
   // (ugyanaz a raszter, mint a 3D-ben: a vektoros falú, ha van)
-  const r = a.r3d ?? a.r; if (!r) return null;
+  const r = a.r3d ?? a.r; if (!r || !a.r) return null;
   const fut = futottRiK(a, k), kulcs = [...fut].sort((x, y) => x - y).join(',');
-  let m = burokFalGy.get(a); if (!m) { m = new Map(); burokFalGy.set(a, m); }
-  if (m.has(kulcs)) return m.get(kulcs)!;
+  let gy = burokFalGy.get(a); if (!gy) { gy = new Map(); burokFalGy.set(a, gy); }
+  if (gy.has(kulcs)) return gy.get(kulcs)!;
   const lap = elemzesLap.get(a);
   const pol = burokAuto(r, fut, lap ? nevFeliratok(lap) : undefined, vartTer(a));
-  const futetlen = new Map<number, number>();
-  const v = { falak: pol.length ? burokFalak(r, pol, fut, pecsetPontok(a), elKornyezet(r, pol, fut), futetlen, true) : new Map(), futetlen };
-  m.set(kulcs, v); return v;
+  const v: BurokFalAuto = { falak: new Map(), futetlen: new Map() };
+  if (pol.length) {
+    // az épületmodell (egy szint) hőburokfalai: a fal belső síkja a csatlakozó belső falak nélkül; a külső tér felé
+    // nézők homlokzati falként (a lap szerinti iránnyal, a magassághoz a belső sík végpontjaival), a fűtetlen tér felé
+    // nézők (a modellben nem szereplő fűtetlen tér, ill. fűtetlen helyiség felé) külön
+    const { kategoria, adat } = lapKategoriak(a, k), mpp = a.r.mPerPt;
+    const md = epuletModell([{ lap: 0, a, szintek: [{ id: 'F', nev: 'F', kod: 'F', z0: 0, h: 3, belmag: 2.7 }], m: (x, y) => [x * mpp, y * mpp], kategoria, adat, burokPol: pol, burokR: r }]);
+    for (const f of md.falak) {
+      const fr = f.forras; if (!fr) continue;
+      const L = Math.round(Math.max(0, f.sikHossz - (f.csatlakozas ?? 0)) * 100) / 100; if (!(L > 0)) continue;
+      if ((f.burok === 'kulso' || f.burok === 'talaj') && fr.pt && fr.irany !== undefined) { const l = v.falak.get(fr.ri) ?? []; l.push({ irany: fr.irany, hossz: L, pontok: fr.pt }); v.falak.set(fr.ri, l); }
+      else if (f.burok === 'futetlen') v.futetlen.set(fr.ri, (v.futetlen.get(fr.ri) ?? 0) + L);
+    }
+  }
+  gy.set(kulcs, v); return v;
+}
+/** Egy alaprajz helyiségeinek modellbeli kategóriája (fűtött / fűtetlen / kültéri) és adatai a kijelölés szerint. */
+function lapKategoriak(a: AlaprajzFeldolgozas, k: Kijeloles) {
+  const hs = a.e.helyisegek;
+  const egysegben = (j: number) => !a.e.egysegek.length || !hs[j]!.egyseg || k.egysegek.has(hs[j]!.egyseg!);
+  const kategoria = new Map<number, TerKategoria>(), adat = new Map<number, { kod?: string; nev: string; A?: number; burkolat?: string }>();
+  hs.forEach((h, j) => {
+    const ri = a.magHelyisegek.indexOf(h); if (ri < 0 || !egysegben(j) || k.kizartH.has(j)) return;
+    const kt = h.kulter || k.kulterH?.has(j) ? 'kulter' : (k.kat[j] ?? (k.mindFutott ? 'kondicionalt' : kategoriaJavaslat(h.nev) ?? 'kondicionalt')) === 'gyengen_kapcsolt' ? 'futetlen' : 'futott';
+    kategoria.set(ri, kt); adat.set(ri, { kod: h.kod, nev: h.nev, A: h.hasznosA ?? h.A, burkolat: h.burkolat });
+  });
+  return { kategoria, adat };
 }
 /** A 3D hőburok nyílászárói (a megadott körvonal csak akkor számít, ha a burok szerkesztett – egyébként az átvétel készlete). */
 function burokNyilasokPt(al: AlaprajzFeldolgozas, k: Kijeloles, b: Poligon[]) {
@@ -871,14 +895,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     const be: LapBemenet[] = sor.map(({ i }) => {
       const a = elemzesek[i] as AlaprajzFeldolgozas, r = a.r!, k = kijeloles(i, a);
       const el = i === sor[0]!.i ? { dx: 0, dy: 0 } : eltolas(alap, r) ?? { dx: 0, dy: 0 };
-      const hs = a.e.helyisegek;
-      const egysegben = (j: number) => !a.e.egysegek.length || !hs[j]!.egyseg || k.egysegek.has(hs[j]!.egyseg!);
-      const kategoria = new Map<number, TerKategoria>(), adat = new Map<number, { kod?: string; nev: string; A?: number; burkolat?: string }>();
-      hs.forEach((h, j) => {
-        const ri = a.magHelyisegek.indexOf(h); if (ri < 0 || !egysegben(j) || k.kizartH.has(j)) return;
-        const kt = h.kulter || k.kulterH?.has(j) ? 'kulter' : (k.kat[j] ?? (k.mindFutott ? 'kondicionalt' : kategoriaJavaslat(h.nev) ?? 'kondicionalt')) === 'gyengen_kapcsolt' ? 'futetlen' : 'futott';
-        kategoria.set(ri, kt); adat.set(ri, { kod: h.kod, nev: h.nev, A: h.hasznosA ?? h.A, burkolat: h.burkolat });
-      });
+      const { kategoria, adat } = lapKategoriak(a, k);
       const szk = lapSzintek(i).length ? lapSzintek(i) : ['F'];
       // tetőtér (metszetből): hajlás, térdfal, padlásfödém
       const tt = me?.tetoter ? { hajlas: me.tetoter.hajlas, terdfal: me.tetoter.terdfal ?? 0.9, belmag: me.tetoter.belmagassag ?? (bm ?? 2.6) } : undefined;
