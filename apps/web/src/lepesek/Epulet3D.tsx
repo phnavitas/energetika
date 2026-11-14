@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import type { EpuletModell, Fal, BurokSzerep } from '@terv/epulet';
+import { falFelulet, type EpuletModell, type Fal, type BurokSzerep } from '@terv/epulet';
 
 const SZIN = {
   fal: 0xd8d2c4, falKulso: 0xc9bfa8, burok: 0xe8833a, futetlen: 0x5b9bd5, szomszed: 0x9ca3af, talaj: 0x8b6b4a,
@@ -42,7 +42,7 @@ export function Epulet3D({ modell, magassag = 600 }: { modell: EpuletModell; mag
     const bm = new Map(modell.szintek.map((s) => [s.id, s.belmag]));
     const ny = new Map<string, number>(); for (const n of modell.nyilasok) ny.set(n.fal, (ny.get(n.fal) ?? 0) + n.szel * n.mag);
     const o: Record<string, { A: number; ny: number }> = {};
-    for (const f of modell.falak) { const k = f.burok ?? (f.kulso ? 'kulsoNem' : 'belso'); const x = (o[k] ??= { A: 0, ny: 0 }); x.A += f.sikHossz * (bm.get(f.szint) ?? f.h); x.ny += ny.get(f.id) ?? 0; }
+    for (const f of modell.falak) { const k = f.burok ?? (f.kulso ? 'kulsoNem' : 'belso'); const x = (o[k] ??= { A: 0, ny: 0 }); x.A += falFelulet(f, bm.get(f.szint) ?? f.h); x.ny += ny.get(f.id) ?? 0; }
     return o;
   }, [modell]);
 
@@ -68,6 +68,16 @@ export function Epulet3D({ modell, magassag = 600 }: { modell: EpuletModell; mag
       const dx = f.b[0] - f.a[0], dy = f.b[1] - f.a[1], L = Math.hypot(dx, dy); if (L < 0.05) continue;
       const szin = bsz ?? (f.kulso ? SZIN.falKulso : SZIN.fal);
       const ny = (nyFal.get(f.id) ?? []);
+      if (f.profil && f.profil.length >= 2) {
+        // ferde / tört felső élű fal (tetőtér): síkidom a fal hosszán, a nyílások lyukként, falvastagságnyi kihúzással
+        const off = f.h - Math.max(...f.profil.map((q) => q.z));
+        const sh = new THREE.Shape([new THREE.Vector2(0, 0), new THREE.Vector2(L, 0), ...f.profil.slice().reverse().map((q) => new THREE.Vector2(q.t * L, q.z + off))]);
+        for (const n of ny) { const t0 = Math.max(0.01, n.t - n.szel / 2), t1 = Math.min(L - 0.01, n.t + n.szel / 2), z0 = Math.max(0.01, n.pm), z1 = n.pm + n.mag; if (t1 > t0 + 0.05 && z1 > z0 + 0.05) sh.holes.push(new THREE.Path([new THREE.Vector2(t0, z0), new THREE.Vector2(t1, z0), new THREE.Vector2(t1, z1), new THREE.Vector2(t0, z1)])); }
+        const g = new THREE.ExtrudeGeometry(sh, { depth: f.vastag, bevelEnabled: false }); g.translate(0, 0, -f.vastag / 2);
+        const m = new THREE.Mesh(g, mat(szin, kijelolt && kijelolt !== f.id ? 0.55 : 1));
+        m.position.set(f.a[0], f.z0, f.a[1]); m.rotation.y = -Math.atan2(dy, dx);
+        m.userData = { id: f.id }; grp.add(m); kattinthato.push(m);
+      } else
       for (const d of falDarabok(f, ny)) {
         const g = new THREE.BoxGeometry(d.t1 - d.t0, d.z1 - d.z0, f.vastag);
         const m = new THREE.Mesh(g, mat(szin, kijelolt && kijelolt !== f.id ? 0.55 : 1));
@@ -132,7 +142,7 @@ export function Epulet3D({ modell, magassag = 600 }: { modell: EpuletModell; mag
     if (!kijelolt) return null;
     const f = modell.falak.find((x) => x.id === kijelolt);
     const tNev = (o: Fal['bal']) => (o.fajta === 'ter' ? modell.terek.find((t) => t.id === o.ter)?.nev ?? o.ter : ({ kulso: 'külső tér', talaj: 'talaj', szomszed: 'szomszéd épület', futetlen: 'fűtetlen tér', ismeretlen: 'ismeretlen' } as const)[o.fajta]);
-    if (f) return `Fal · ${f.hossz.toFixed(2)} m × ${f.h.toFixed(2)} m, ${Math.round(f.vastag * 100)} cm · ${tNev(f.bal)} | ${tNev(f.jobb)}${f.burok ? ` · hőburok: ${({ kulso: 'külső fal', futetlen: 'fűtetlen tér felé', szomszed: 'szomszéd felé', talaj: 'talajjal érintkező' } as const)[f.burok]}` : ''}`;
+    if (f) return `Fal · ${f.hossz.toFixed(2)} m × ${f.profil ? `${Math.min(...f.profil.map((q) => q.z)).toFixed(2)}–${Math.max(...f.profil.map((q) => q.z)).toFixed(2)}` : (f.belsoMag ?? f.h).toFixed(2)} m${f.jelleg ? ` (${({ terdfal: 'térdfal', oromfal: 'oromfal', parkany: 'alacsonyabb párkány', ferde: 'ferde felső élű' } as const)[f.jelleg]})` : ''}, ${Math.round(f.vastag * 100)} cm · ${tNev(f.bal)} | ${tNev(f.jobb)}${f.burok ? ` · hőburok: ${({ kulso: 'külső fal', futetlen: 'fűtetlen tér felé', szomszed: 'szomszéd felé', talaj: 'talajjal érintkező' } as const)[f.burok]}` : ''}`;
     const t = modell.terek.find((x) => x.id === kijelolt);
     if (t) return `${t.kod ? t.kod + ' ' : ''}${t.nev} · ${t.A.toFixed(2)} m² · belmagasság ${t.belmag.toFixed(2)} m · ${({ futott: 'fűtött', futetlen: 'fűtetlen', kulter: 'kültér' } as const)[t.kategoria]}`;
     return null;

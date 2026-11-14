@@ -57,6 +57,25 @@ export interface Fal {
   hossz: number;
   /** A falsík hossza a tér felől (m) – külső falnál a belső sík, belső falnál az egyik oldal. */
   sikHossz: number;
+  /** Hőburokfal: a belső síkba csatlakozó belső falak összvastagsága (m) – a belső felület ennyivel rövidebb. */
+  csatlakozas?: number;
+  /** A fal belső (tér felőli) magassága (m), ha eltér a szint belmagasságától (alacsonyabb párkány, térdfal). */
+  belsoMag?: number;
+  /** Ferde / tört felső élű fal (tetőtér: oromfal, térdfal + tetősík): a belső felület felső éle a falsík mentén
+   * (t: 0…1 a belső sík hosszán, z: magasság a szint padlójától, m). */
+  profil?: { t: number; z: number }[];
+  /** Térdfal / oromfal / alacsonyabb párkány jelölés. */
+  jelleg?: 'terdfal' | 'oromfal' | 'parkany' | 'ferde';
+}
+
+/** Falmagasság-megadás a hőburokfalakhoz (a hívó a homlokzat / metszet / tetőablakok alapján). */
+export type FalMagassag = number | { profil: { t: number; z: number }[]; jelleg?: Fal['jelleg'] } | { belsoMag: number; jelleg?: Fal['jelleg'] } | null;
+
+/** A fal belső (tér felőli) bruttó felülete (m²): a falsík hossza × belső magasság, ill. a profil alatti terület. */
+export function falFelulet(f: Fal, belmag: number): number {
+  const L = Math.max(0, f.sikHossz - (f.csatlakozas ?? 0));
+  if (f.profil && f.profil.length >= 2) { let A = 0; for (let i = 1; i < f.profil.length; i++) { const p = f.profil[i - 1]!, q = f.profil[i]!; A += (q.t - p.t) * (p.z + q.z) / 2; } return A * L; }
+  return L * (f.belsoMag ?? belmag);
 }
 
 export interface Nyilas {
@@ -99,9 +118,12 @@ export interface LapBemenet {
   burokPol?: Poligon[];
   /** A burok raszterje (ha eltér a lap raszterétől, pl. vektoros falú). */
   burokR?: Raszter;
+  /** Hőburokfal magassága szintenként (homlokzat, tetőablakos térdfal, tetőtér-metszet); null: a szint belmagassága. */
+  falMagassag?: (sz: Szint, w: { pt: [P2, P2]; irany: number; ri: number; A: P2; B: P2 }) => FalMagassag;
 }
 
-type FalNyers = { a: P2; b: P2; vastag: number; bal: Oldal | number; jobb: Oldal | number; /** a falsík (belső oldal) hossza, m */ sik: number };
+type FalNyers = { a: P2; b: P2; vastag: number; bal: Oldal | number; jobb: Oldal | number; /** a falsík (belső oldal) hossza, m */ sik: number;
+  /** hőburokfal: a belső sík végpontjai (lap, pt), kifelé mutató lapirány, a belső oldali helyiség */ burokEl?: { pt: [P2, P2]; irany: number; ri: number; A: P2; B: P2 } };
 
 const sz = (v: number, d = 3) => Math.round(v * 10 ** d) / 10 ** d;
 
@@ -199,10 +221,31 @@ export function epuletModell(lapok: LapBemenet[]): EpuletModell {
           else { const o = oldal(masik); burok = o.fajta === 'ter' ? 'futetlen' : o.fajta === 'ismeretlen' ? null : o.fajta; }
         }
         const hossz = Math.hypot(f.b[0] - f.a[0], f.b[1] - f.a[1]);
-        falak.push({ id, szint: sz0.id, a: [sz(f.a[0]), sz(f.a[1])], b: [sz(f.b[0]), sz(f.b[1])], vastag: sz(f.vastag, 2), z0: sz0.z0, h: sz0.h,
+        // hőburokfal magassága (a hívó szerint): alacsonyabb párkány / térdfal / tetőtéri profil
+        let mag: FalMagassag = null;
+        if (f.burokEl && L.falMagassag) { try { mag = L.falMagassag(sz0, f.burokEl); } catch { mag = null; } }
+        const extra: Partial<Fal> = typeof mag === 'number' ? { belsoMag: sz(mag, 2) } : mag && 'profil' in mag ? { profil: mag.profil.map((q) => ({ t: sz(q.t, 4), z: sz(q.z, 3) })), ...(mag.jelleg ? { jelleg: mag.jelleg } : {}) } : mag ? { belsoMag: sz(mag.belsoMag, 2), ...(mag.jelleg ? { jelleg: mag.jelleg } : {}) } : {};
+        // (a szerkezeti magasság: alacsonyabb belső magasságnál a födém vastagságával fölötte, különben a szintmagasság)
+        const hSz = extra.profil ? Math.max(...extra.profil.map((q) => q.z)) + (sz0.h - sz0.belmag) : extra.belsoMag !== undefined ? Math.min(sz0.h, extra.belsoMag + (sz0.h - sz0.belmag)) : sz0.h;
+        falak.push({ id, szint: sz0.id, a: [sz(f.a[0]), sz(f.a[1])], b: [sz(f.b[0]), sz(f.b[1])], vastag: sz(f.vastag, 2), z0: sz0.z0, h: sz(hSz, 3), ...extra,
           bal: oldal(f.bal), jobb: oldal(f.jobb), kulso: typeof f.bal !== 'number' || typeof f.jobb !== 'number' || kb === 'kulter' || kj === 'kulter',
           burok, ...(futB !== futJ ? { futottOldal: futB ? 'bal' as const : 'jobb' as const } : {}), hossz: sz(hossz, 2), sikHossz: sz(f.sik, 2) });
         falIdk.push({ id, f });
+      }
+      // hőburokfalak belső síkjába csatlakozó belső falak (a belső felület ezekkel rövidebb)
+      for (const { id, f } of falIdk) {
+        const E = f.burokEl; if (!E) continue;
+        const dx = E.B[0] - E.A[0], dy = E.B[1] - E.A[1], L = Math.hypot(dx, dy); if (L < 0.2) continue;
+        const ux = dx / L, uy = dy / L; let cs = 0;
+        for (const { f: g } of falIdk) {
+          if (g.burokEl || typeof g.bal !== 'number' || typeof g.jobb !== 'number') continue;
+          const gx = g.b[0] - g.a[0], gy = g.b[1] - g.a[1], gl = Math.hypot(gx, gy); if (gl < 0.1 || Math.abs((gx * ux + gy * uy) / gl) > 0.3) continue;
+          for (const P of [g.a, g.b]) {
+            const t = (P[0] - E.A[0]) * ux + (P[1] - E.A[1]) * uy, d = Math.abs((P[0] - E.A[0]) * uy - (P[1] - E.A[1]) * ux);
+            if (t > g.vastag / 2 && t < L - g.vastag / 2 && d < g.vastag / 2 + 0.15) { cs += g.vastag; break; }
+          }
+        }
+        if (cs > 0) { const fal = falak.find((q) => q.id === id)!; fal.csatlakozas = sz(Math.min(cs, fal.sikHossz), 2); }
       }
       // nyílászárók: a helyiség (és a túloldal) falai közül a legközelebbi, amelynek tengelyére a nyílás közepe esik
       for (const n of L.a.nyilasok) {
@@ -287,7 +330,7 @@ function burokFalakModell(r: Raszter, pol: Poligon[], futott: ReadonlySet<number
         const a: P2 = [A[0] + n[0] * k - u[0] * e0, A[1] + n[1] * k - u[1] * e0], b: P2 = [B[0] + n[0] * k + u[0] * e1, B[1] + n[1] * k + u[1] * e1];
         const balN: P2 = [u[1], -u[0]]; const helyBal = balN[0] * -n[0] + balN[1] * -n[1] > 0;
         const tul: Oldal = f === 'szomszed' ? { fajta: 'szomszed' } : f === 'futetlen' ? { fajta: 'futetlen' } : { fajta: 'kulso' };
-        ki.push({ a, b, vastag: v, bal: helyBal ? h : tul, jobb: helyBal ? tul : h, sik: ll });
+        ki.push({ a, b, vastag: v, bal: helyBal ? h : tul, jobb: helyBal ? tul : h, sik: ll, burokEl: { pt: [pt(ta), pt(tb)], irany: el.irany, ri: h, A, B } });
       }
     }
   }));
