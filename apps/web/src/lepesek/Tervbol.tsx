@@ -118,6 +118,8 @@ const norm = (d: number) => ((Math.round(d * 10) / 10) % 360 + 360) % 360;
 
 /** Egy alaprajz kijelölései: átvett egységek, kizárt helyiségek, besorolás-felülírás, kizárt nyílások. */
 interface Kijeloles { egysegek: Set<string>; kizartH: Set<number>; kat: Record<number, HelyisegKategoria>; kizartNy: Set<number>; mindFutott?: boolean;
+  /** Más szint jegyzéktételéhez kötött rajzi helyiség: a helyiség (falai, nyílásai) marad, a jegyzék szerinti adata nem (terület 0). */
+  masJegyzek?: Set<number>;
   /** A felhasználó által kültérnek jelölt helyiségek (pl. nyitott terasz, átjáró): nem kerülnek át, a feléjük eső fal külső fal. */
   kulterH?: Set<number>;
   /** A számított épületrészen kívüli (részkód szerint kizárt) helyiségek: a fűtetlen közülük (raktár, garázs) felé eső fal fal fűtetlen tér felé. */
@@ -358,7 +360,7 @@ function lapKategoriak(a: AlaprajzFeldolgozas, k: Kijeloles) {
     const ri = a.magHelyisegek.indexOf(h);
     // (a rajzon helyiséghez nem köthető, jegyzékbeli tér: körvonal nélkül – a vízszintes elemekhez a szint átlaga szerint)
     if (ri < 0) { if (kt !== 'kulter' && (h.hasznosA ?? h.A)) pecsetTerek.push({ kod: h.kod, nev: h.nev, A: h.hasznosA ?? h.A, burkolat: h.burkolat, kategoria: kt }); return; }
-    kategoria.set(ri, kt); adat.set(ri, { kod: h.kod, nev: h.nev, A: h.hasznosA ?? h.A, burkolat: h.burkolat });
+    kategoria.set(ri, kt); adat.set(ri, k.masJegyzek?.has(j) ? { nev: `Helyiség ${ri + 1}`, A: 0 } : { kod: h.kod, nev: h.nev, A: h.hasznosA ?? h.A, burkolat: h.burkolat });
   });
   return { kategoria, adat, pecsetTerek };
 }
@@ -399,7 +401,7 @@ function atvetelReszek(al: AlaprajzFeldolgozas, k: Kijeloles, mert?: Map<TervNyi
   const kiv = hs.map((h, i) => ({ h, i })).filter(({ i }) => valasztott[i]);
   const index = new Map(kiv.map(({ i }, j) => [i, j]));
   const helyisegek = kiv.map(({ h, i }) => ({
-    kod: h.kod, nev: h.nev, burkolat: h.burkolat, A: h.hasznosA ?? h.A, ...(h.hasznosA ? { teljesA: h.A } : {}), kategoria: kategoria(i), egyseg: h.egyseg ? (al.e.egysegInfo[h.egyseg]?.nev ?? h.egyseg) : undefined, falak: falak(i).map((f) => { const m0 = falMag && 'pontok' in f ? falMag(f as FalSzakasz, ri(i)) : null, m = m0 !== null && (m0 >= 1 || (f as { terd?: boolean }).terd) ? m0 : null; /* 1 m alatt nem fal, hanem mellvéd / terasz (mint a 3D-ben) */ return { irany: f.irany, hossz: f.hossz, ...("talaj" in f && f.talaj ? { talaj: true } : {}), ...(m !== null ? { magassag: m } : {}), ...((f as { terd?: boolean }).terd && m !== null ? { terd: true } : {}) }; }),
+    ...(k.masJegyzek?.has(i) ? { nev: `Helyiség ${ri(i) + 1} (a(z) ${h.kod ?? ''} ${h.nev} más szint jegyzéktétele)`, A: 0 } : { kod: h.kod, nev: h.nev, burkolat: h.burkolat, A: h.hasznosA ?? h.A, ...(h.hasznosA ? { teljesA: h.A } : {}) }), kategoria: kategoria(i), egyseg: h.egyseg ? (al.e.egysegInfo[h.egyseg]?.nev ?? h.egyseg) : undefined, falak: falak(i).map((f) => { const m0 = falMag && 'pontok' in f ? falMag(f as FalSzakasz, ri(i)) : null, m = m0 !== null && (m0 >= 1 || (f as { terd?: boolean }).terd) ? m0 : null; /* 1 m alatt nem fal, hanem mellvéd / terasz (mint a 3D-ben) */ return { irany: f.irany, hossz: f.hossz, ...("talaj" in f && f.talaj ? { talaj: true } : {}), ...(m !== null ? { magassag: m } : {}), ...((f as { terd?: boolean }).terd && m !== null ? { terd: true } : {}) }; }),
     // fal fűtetlen (gyengén kapcsolt) helyiség felé, pl. garázs
     futetlenFalak: (() => { const x = ri(i); if (!al.r || x < 0) return [];
       const l = al.r.helyisegek[x]!.szakaszok.filter((s) => typeof s.tul === 'number' && s.hossz >= 0.3).flatMap((s) => {
@@ -468,11 +470,48 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   /** Átvétel előtt: ha van eldöntendő kérdés, modális ablakban (a képernyő közepén) kérdezünk, különben azonnal. */
   const kerdezveAtvesz = (mi: 'osszes' | 'egy') => { if (eldontendoKerdesek()) setKerdesAblak(mi); else if (mi === 'osszes') osszesAtvesz(); else atvesz(); };
   const kerdesKulcs = (nev: string) => nev.toLowerCase().replace(/\s*\([^)]*\)\s*/g, ' ').replace(/[^\p{L}\s-]/gu, '').replace(/\s+/g, ' ').trim();
+  /**
+   * Más szint helyiségei a lap helyiségjegyzékében (a jegyzék gyakran minden lapon az összes szint helyiségeit sorolja):
+   * az azonos kódú és nevű (kód híján azonos nevű), ±5 % területű tétel két szint lapján – annak a szintnek a helyisége,
+   * ahol a rajzon a területéhez illő helyiség tartozik hozzá; ha egyiken sem (vagy mindkettőn), ahol a kódja a lapon
+   * megtalált helyiségek kódjaihoz közelebb esik. A másik lapon kimarad.
+   */
+  function masSzintKizar(i: number, a: AlaprajzFeldolgozas): number[] {
+    const sz0 = lapSzintek(i).join(',');
+    const masok = lapok.flatMap((l, i2) => (i2 !== i && l.szerep === 'alaprajz' && typeof elemzesek[i2] === 'object' && lapSzintek(i2).join(',') !== sz0 ? [elemzesek[i2] as AlaprajzFeldolgozas] : []));
+    if (!masok.length) return [];
+    const nv = (x: { nev: string }) => x.nev.trim().toLowerCase();
+    // a rajzi helyiség illeszkedése (a raszter-terület eltérése a jegyzékétől; nincs rajzi helyiség: 1)
+    const illik = (b: AlaprajzFeldolgozas, h: AlaprajzFeldolgozas['e']['helyisegek'][number]) => { const ri = b.magHelyisegek.indexOf(h); const rA = ri >= 0 ? b.r?.helyisegek[ri]?.A : undefined; return rA && h.A > 0 ? Math.abs(rA - h.A) / h.A : 1; };
+    const kodSzam = (k?: string) => { const m = k?.match(/\d+/g); return m ? Number(m.join('')) : NaN; };
+    const elotag = (k?: string) => (k ?? '').replace(/[^A-Za-zÁÉÍÓÖŐÚÜŰáéíóöőúüű]/g, '').toUpperCase();
+    // a lapon megtalált (a rajzhoz illő) helyiségek közül az azonos kód-előtagúak száma, ill. a kódszám távolsága
+    const elotagDb = (b: AlaprajzFeldolgozas, kod?: string) => { const e = elotag(kod); return e ? b.e.helyisegek.filter((x) => illik(b, x) <= 0.3 && elotag(x.kod) === e).length : 0; };
+    const tav = (b: AlaprajzFeldolgozas, kod?: string) => { const n = kodSzam(kod); let d = Infinity; if (Number.isNaN(n)) return d; for (const x of b.e.helyisegek) if (illik(b, x) <= 0.3 && elotag(x.kod) === elotag(kod)) { const v = Math.abs(kodSzam(x.kod) - n); if (v < d) d = v; } return d; };
+    const ki: number[] = [];
+    a.e.helyisegek.forEach((h, j) => {
+      if (!h.kod) return;
+      const egyezik = (x: typeof h) => x.kod === h.kod && nv(x) === nv(h) && Math.abs(x.A - h.A) <= 0.05 * Math.max(x.A, h.A, 0.1);
+      for (const b of masok) {
+        const x = b.e.helyisegek.find(egyezik); if (!x) continue;
+        // melyik szint helyisége: 1. ahol a kód előtagja (pl. FS / EM) a megtalált helyiségeké, 2. ahol a rajzon a
+        // területéhez illő helyiség tartozik hozzá, 3. ahol a kódszáma a megtalált helyiségekéhez közelebb esik
+        const ea = elotagDb(a, h.kod), eb = elotagDb(b, h.kod);
+        const fa = illik(a, h) <= 0.3, fb = illik(b, x) <= 0.3;
+        const masik = ea !== eb ? eb > ea : fa !== fb ? fb : tav(b, h.kod) < tav(a, h.kod);
+        if (masik) { ki.push(j); break; }
+      }
+    });
+    return ki;
+  }
   const kjVeg = (i: number, a: AlaprajzFeldolgozas): Kijeloles => {
-    const k = kijelolesek[i] ?? alapKijeloles(a); const rk = reszKizar(a);
+    const k = kijelolesek[i] ?? alapKijeloles(a); const rk = reszKizar(a), msz = masSzintKizar(i, a);
     const kat = { ...k.kat };
     a.e.helyisegek.forEach((h, j) => { if (kat[j] === undefined && futottValasz[kerdesKulcs(h.nev)] && kategoriaJavaslat(h.nev) === 'gyengen_kapcsolt') kat[j] = 'kondicionalt'; });
-    return { ...k, kat, kizartH: rk.length ? new Set([...k.kizartH, ...rk]) : k.kizartH, mindFutott, ...(rk.length ? { reszKizart: new Set(rk) } : {}) };
+    // (más szint jegyzéktétele: rajzi helyiség nélkül kimarad, rajzi helyiséggel a helyiség marad, az adata nem)
+    const mszKi = msz.filter((j) => a.magHelyisegek.indexOf(a.e.helyisegek[j]!) < 0), mszR = msz.filter((j) => !mszKi.includes(j));
+    const kiz = [...rk, ...mszKi];
+    return { ...k, kat, kizartH: kiz.length ? new Set([...k.kizartH, ...kiz]) : k.kizartH, mindFutott, ...(rk.length ? { reszKizart: new Set(rk) } : {}), ...(mszR.length ? { masJegyzek: new Set(mszR) } : {}) };
   };
   const [rrKi, setRrKi] = useState<Record<string, boolean>>({});
   /** A felhasználó által megadott szerep (a nem hőburokként azonosított rétegrend is beolvasható). */
