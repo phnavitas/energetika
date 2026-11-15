@@ -5,7 +5,7 @@ falak vastagság (és, ha az IFC jelöli, külső / belső) szerint – hossz, b
 ablakok, ajtók (db, felület), helyiségek (összesen és szintenként). Ez a tervfelismerés mércéje a mennyiségi
 kiíráshoz (ELBA), ahogy az energetikánál a WinWatt.
 
-- Az IFC-olvasó az ELBA-é: `vendor/elba-bim-olvaso.js` (forrás: phnavitas/elba `app/elba-bim-olvaso.js`).
+- Az IFC-olvasó az ELBA-é: `vendor/elba-bim-olvaso.cjs` (forrás: phnavitas/elba `app/elba-bim-olvaso.js`).
   Egy olvasó van – ha javítani kell, az ELBA-ban javítjuk, és ide átmásoljuk.
 - Parancssor: `npx tsx tools/ifc/osszevet.mts modell_epulet.json projekt.ifc`
 - Az IFC- és PDF-mintafájlok nem kerülnek a repóba.

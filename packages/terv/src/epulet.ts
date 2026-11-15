@@ -565,7 +565,7 @@ function falLefedes(L: LapBemenet, fs: Fal[], szint: string): FalLefedes {
  * teljes szélességre (≥ 80 %) kiterjedő. Egyrétegű (egy stílusú) falnál nincs (az anyag adja).
  */
 function falRetegek(L: LapBemenet, f: FalNyers): Fal['retegek'] | undefined {
-  const r = L.a.r; if (!r?.stilus || !r.stilusInfo) return undefined;
+  const r = L.a.r; const ST = r?.anyagStilus ?? r?.stilus; if (!r || !ST || !r.stilusInfo) return undefined;
   const dx = f.b[0] - f.a[0], dy = f.b[1] - f.a[1], l = Math.hypot(dx, dy); if (l < 0.5) return undefined;
   const ux = dx / l, uy = dy / l, nx = -uy, ny = ux;
   let legjobb: { st: number; n: number }[] | null = null;
@@ -576,12 +576,12 @@ function falRetegek(L: LapBemenet, f: FalNyers): Fal['retegek'] | undefined {
     for (let d = -fel; d <= fel + 1e-9; d += lepes) {
       const [x, y] = modellbolPt(L, [cx + nx * d, cy + ny * d]);
       const gx = Math.floor(((x - r.x0) * r.mPerPt) / r.px), gy = Math.floor(((y - r.y0) * r.mPerPt) / r.px);
-      const st = gx >= 0 && gy >= 0 && gx < r.w && gy < r.h ? r.stilus[gy * r.w + gx]! : 0;
+      const st = gx >= 0 && gy >= 0 && gx < r.w && gy < r.h ? ST[gy * r.w + gx]! : 0;
       const u = futas[futas.length - 1]; if (u && u.st === st) u.n++; else futas.push({ st, n: 1 });
     }
     const belso = futas.filter((x) => x.st > 0 && x.n * lepes >= 0.015);
     const fedes = belso.reduce((s0, x) => s0 + x.n * lepes, 0);
-    if (fedes < 0.8 * f.vastag) continue;
+    if (fedes < 0.6 * f.vastag) continue;
     if (!legjobb || belso.length > legjobb.length) legjobb = belso;
   }
   if (!legjobb || new Set(legjobb.map((x) => x.st)).size < 2) return undefined;
@@ -601,14 +601,14 @@ function modellbolPt(L: LapBemenet, p: P2): P2 {
 }
 /** A fal anyaga: a tengely menti raszterpixelek leggyakoribb stílusa (a végeken 15 %-ot kihagyva – csatlakozások). */
 function falAnyag(L: LapBemenet, f: FalNyers): Fal['anyag'] | undefined {
-  const r = L.a.r; if (!r?.stilus) return undefined;
+  const r = L.a.r; const ST = r?.anyagStilus ?? r?.stilus; if (!r || !ST) return undefined;
   const db = new Map<number, number>();
   for (let i = 0; i <= 12; i++) {
     const t = 0.15 + (0.7 * i) / 12;
     const [x, y] = modellbolPt(L, [f.a[0] + (f.b[0] - f.a[0]) * t, f.a[1] + (f.b[1] - f.a[1]) * t]);
     const gx = Math.floor(((x - r.x0) * r.mPerPt) / r.px), gy = Math.floor(((y - r.y0) * r.mPerPt) / r.px);
     if (gx < 0 || gy < 0 || gx >= r.w || gy >= r.h) continue;
-    const st = r.stilus[gy * r.w + gx]!; if (st) db.set(st, (db.get(st) ?? 0) + 1);
+    const st = ST[gy * r.w + gx]!; if (st) db.set(st, (db.get(st) ?? 0) + 1);
   }
   const best = [...db.entries()].sort((p, q) => q[1] - p[1])[0]; if (!best) return undefined;
   const info = r.stilusInfo?.[best[0] - 1]; if (!info) return undefined;

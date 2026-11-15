@@ -74,6 +74,9 @@ export interface Raszter {
   stilus: Uint16Array;
   /** A stílusok (id − 1 szerint): kitöltésszín, sraffozott-e, és a PDF-rétegek (ArchiCAD), amelyeken előfordul (darabszámmal). */
   stilusInfo?: { szin: string; sraff: boolean; retegek: Record<string, number> }[];
+  /** Anyag-stílus pixelenként a modell rétegrendjéhez: a stilus, kiegészítve a hőszigetelés-réteggel és a csak
+   * sraffozással rajzolt falakkal (id a stilusInfo szerint). */
+  anyagStilus?: Uint16Array;
   /** 0 = nincs, 1 = külső tér, 2+i = i. helyiség */
   cimke: Int32Array;
   /** Helyiségenként: terület (m²) és határoló falszakaszok. */
@@ -304,12 +307,16 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   // falanyag-stílus térkép (kitöltésszín + sraffozottság): a fal azonosításához a sarkokban
   const stilus = new Uint16Array(w * h); const stilusId = new Map<string, number>();
   const stilusInfo: NonNullable<Raszter['stilusInfo']> = [];
-  const stilusRajzol = (u: Utvonal, sraff: boolean) => {
-    const k = `${u.toltoSzin}|${sraff}`; let id = stilusId.get(k);
-    if (!id) { id = stilusId.size + 1; stilusId.set(k, id); stilusInfo[id - 1] = { szin: u.toltoSzin, sraff, retegek: {} }; }
-    if (u.reteg) { const ri = stilusInfo[id - 1]!.retegek; ri[u.reteg] = (ri[u.reteg] ?? 0) + 1; }
-    poliRajzol(stilus, w, h, u.pontok, tr, id);
+  // (anyagStilus: ugyanez, kiegészítve a hőszigetelés-réteg és a csak sraffozással rajzolt falak stílusával – a modell
+  // rétegrendjéhez; a stilus-térkép a felismeréshez változatlan marad)
+  const anyagStilus = new Uint16Array(w * h);
+  const stilusAzon = (szin: string, sraff: boolean, reteg?: string) => {
+    const k = `${szin}|${sraff}`; let id = stilusId.get(k);
+    if (!id) { id = stilusId.size + 1; stilusId.set(k, id); stilusInfo[id - 1] = { szin, sraff, retegek: {} }; }
+    if (reteg) { const ri = stilusInfo[id - 1]!.retegek; ri[reteg] = (ri[reteg] ?? 0) + 1; }
+    return id;
   };
+  const stilusRajzol = (u: Utvonal, sraff: boolean) => { const id = stilusAzon(u.toltoSzin, sraff, u.reteg); poliRajzol(stilus, w, h, u.pontok, tr, id); poliRajzol(anyagStilus, w, h, u.pontok, tr, id); };
   for (const u of lap.utvonalak) {
     if (u.bbox[2] < x0 || u.bbox[0] > x1 || u.bbox[3] < y0 || u.bbox[1] > y1) continue;
     if (!falKitoltes(u, mPerPt, maxFal) || terepburkolat(u)) continue;
@@ -354,6 +361,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       const [bw, bh] = [(u.bbox[2] - u.bbox[0]) * mPerPt, (u.bbox[3] - u.bbox[1]) * mPerPt].sort((a, b) => a - b);
       if (feher(u.toltoSzin) && !u.minta) { if (bw! <= 0.35 && bh! >= 0.3 && bh! <= 4) retegNyilas.push(u.pontok); continue; }
       poliRajzol(fal, w, h, u.pontok, tr);
+      poliRajzol(anyagStilus, w, h, u.pontok, tr, stilusAzon(`${u.toltoSzin}${u.minta ? '+minta' : ''}`, false, u.reteg));
     }
   }
   let sraffMod = false; let sraffMaszk: Uint8Array | null = null;
@@ -420,7 +428,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   // vonal – a bútor kitöltése nem sraffozott. Ezek a színes rétegekkel egyenrangú falrétegek.
   const reteg = new Uint8Array(w * h);
   // a sraffozott falréteg rétegzett fal: a nyílások közti rövid falpillér sem „bútor”
-  if (sraffMaszk) for (let i = 0; i < w * h; i++) if (sraffMaszk[i]) reteg[i] = 1;
+  if (sraffMaszk) { const sid = stilusAzon('sraff', true); for (let i = 0; i < w * h; i++) if (sraffMaszk[i]) { reteg[i] = 1; if (!anyagStilus[i]) anyagStilus[i] = sid; } }
   {
     const SR = 8; const sraffIdx = new Map<number, [number, number, number, number][]>();
     for (const u of lap.utvonalak) {
@@ -1079,7 +1087,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   // valós hosszával; a túloldal az élről kifelé, a falon át haladva az első nem saját helyiség vagy a külső tér
   const zonaSz = b.zonaPoli?.some(Boolean) ? b.zonaPoli.map((pl, k) => (pl ? zonaSzakaszok(pl, k + 2, helyCimke, gat, fal, nyilas, w, h, px, mPerPt, tr, maxLep * px) : undefined)) : undefined;
   return {
-    w, h, px, x0, y0, mPerPt, fal, cimke: helyCimke, stilus, stilusInfo, ...(retegesFal ? { reteges: true } : {}),
+    w, h, px, x0, y0, mPerPt, fal, cimke: helyCimke, stilus, stilusInfo, anyagStilus, ...(retegesFal ? { reteges: true } : {}),
     nyilas, uvegfalak,
     helyisegek: helyisegek.map((H, k) => ({
       A: H.A, szivarog: szivarog[k]!,

@@ -1,82 +1,120 @@
 /**
  * A 2D tervből épített épületmodell és ugyanazon projekt IFC-jének összevetése (a tervfelismerés pontossága a
- * mennyiségi kiíráshoz). Az IFC-t az ELBA olvasója (vendor/elba-bim-olvaso.js, `ElbaBimOlvaso.olvas`) bontja ki;
- * itt annak kivonatát vetjük össze a modellel: falak vastagság (és külső / belső) szerint, nyílászárók, helyiségek.
- * A modell szerkezete (packages/terv epulet.ts EpuletModell) itt csak a felhasznált mezőkkel szerepel.
+ * mennyiségi kiíráshoz). Az IFC-t az ELBA olvasója (vendor/elba-bim-olvaso.cjs, `ElbaBimOlvaso.olvas`) bontja ki.
+ *
+ * Falak – az ELBA pdf-ifc-osszevetes.js szabályai szerint:
+ * - IFC-fal: IFCWALL, ill. ArchiCAD-osztályozás / elemtípus szerint „Fal” (a proxy-exportnál is);
+ * - a mérete az összetevő-mennyiségekből (réteges fal magja külön elem – ilyenkor csak ezek számítanak), különben
+ *   a fal hossza (belső / külső oldal átlaga) és vastagsága;
+ * - a rétegek (hőszigetelés, lábazat, vakolat, burkolat, üveg, fém) nem falak, külön összesítve;
+ * - csak az alaprajzi metszősíkot (a szint padlója + 1,2 m) átmetsző fal számít – amit az alaprajz nem mutat
+ *   (koszorú, attika), azt nem kérjük számon.
+ * A modellben a fal vastagsága a mag: a rajz szerinti rétegrendből a nem-réteg (szerkezeti) rétegek összege.
+ * Csoportosítás szintenként, a magvastagság 5 cm-re kerekítve: hossz (m).
  */
 
 type Oldal = { fajta: string };
-export interface ModellFal { szint: string; vastag: number; h: number; hossz: number; sikHossz: number; bal: Oldal; jobb: Oldal; profil?: { t: number; z: number }[] }
+export interface ModellFal { szint: string; vastag: number; h: number; hossz: number; bal: Oldal; jobb: Oldal;
+  retegek?: { reteg?: string; sraff: boolean; vastag: number }[] }
 export interface ModellNyilas { szint: string; szel: number; mag: number; fajta: string }
 export interface ModellTer { szint: string; A: number; kategoria: string }
 export interface ModellSzint { id: string; nev: string; z0: number }
 export interface ModellEpulet { szintek: ModellSzint[]; terek: ModellTer[]; falak: ModellFal[]; nyilasok: ModellNyilas[] }
 
+type Elem = { ifc: string; gid?: string; folia?: string; nev?: string; tipusNev?: string; anyag?: string; szint?: string; oszt?: string; hely?: { z?: number | null };
+  retegek?: { anyag: string; vast: number }[]; menny?: { L?: number | null; A?: number | null; V?: number | null };
+  q?: Record<string, number>; pset?: Record<string, Record<string, unknown>> };
 /** Az ELBA IFC-kivonatának felhasznált része. */
-export interface IfcKivonat {
-  szintek: { id: number; nev: string; magassag: number }[];
-  elemek: { ifc: string; nev?: string; tipusNev?: string; szint?: string; retegek?: { anyag: string; vast: number }[];
-    menny?: { L?: number | null; A?: number | null; V?: number | null }; q?: Record<string, number>; pset?: Record<string, Record<string, unknown>> }[];
-  helyisegek: { szint: string; terulet: number; belso?: boolean }[];
-}
+export interface IfcKivonat { szintek: { id: number; nev: string; magassag: number }[]; elemek: Elem[]; helyisegek: { szint: string; terulet: number; belso?: boolean }[] }
 
 export interface OsszevetSor { csoport: string; mertek: string; modell: number; ifc: number; elteres: number | null }
 
 const kerek = (v: number, d = 2) => Math.round(v * 10 ** d) / 10 ** d;
-const vastagOszt = (v: number) => `${Math.round(v * 20) * 5} cm`;
-const FAL = /^IFCWALL/i, ABLAK = /^IFCWINDOW/i, AJTO = /^IFCDOOR/i;
+const RETEG_JEL = /h[őo]szigetel|szigetel[ée]s|l[áa]bazat|[üu]veg|f[ée]m|bur?kolat|vakolat|^r[ée]teg/i;
 
-/** IFC-fal: vastagság (rétegrend összege / q.Vastagság / Width), tengelyhossz, magasság, bruttó oldalfelület. */
-function ifcFal(e: IfcKivonat['elemek'][number]) {
-  const q = e.q ?? {};
-  const v = (e.retegek?.reduce((s, r) => s + (r.vast || 0), 0) || q['Vastagság'] || q['Width'] || 0) as number;
-  const L = (q['Length'] ?? e.menny?.L ?? q['Hossz'] ?? 0) as number;
-  const h = (q['Height'] ?? q['Magasság'] ?? 0) as number;
-  const A = (q['GrossSideArea'] ?? (L && h ? L * h : 0)) as number;
-  const V = (q['GrossVolume'] ?? e.menny?.V ?? A * v) as number;
-  const ext = e.pset?.['Pset_WallCommon']?.['IsExternal'];
-  return { v, L, h, A, V, kulso: ext === undefined ? null : ext === true || ext === 'T' || ext === '.T.' };
+/** Elem befoglaló doboza (m, a ±0-hoz mért z) – a mennyiség nélküli exportnál (pl. iTWO-proxy) a fal mérete ebből. */
+export type Doboz = { x0: number; x1: number; y0: number; y1: number; z0: number; z1: number };
+let DOBOZ: Record<string, Doboz> = {};
+function falE(e: Elem) {
+  if (/^IFCWALL/.test(e.ifc)) return true;
+  // proxy-export: a típusnév / anyag / fólia mondja (FAL - POROTHERM…, SZERKEZET - … FAL)
+  if (/PROXY/.test(e.ifc) && (/^fal\b/i.test(e.tipusNev ?? e.anyag ?? '') || /\bfal\b/i.test(e.folia ?? ''))) return true;
+  if (e.oszt === 'Fal') return true;
+  return (e.pset?.['ArchiCADProperties'] as Record<string, unknown> | undefined)?.['Elemtípus'] === 'Fal';
 }
+function falMeret(e: Elem): { v: number; hossz: number; magassag: number | null; mod: 'osszetevo' | 'falhossz' | 'doboz'; z?: number } | null {
+  const q = e.q ?? {};
+  const v1 = q['Téglalap összetevő szélessége'], h1 = q['Téglalap összetevő magassága'], A1 = q['Összetevő vetített területe (bruttó)'];
+  if (v1 && h1 && A1) return { v: v1, hossz: A1 / h1, magassag: h1, mod: 'osszetevo' };
+  const v2 = q['Vastagság'] ?? q['Szélesség'], b = q['Fal hossza a belső oldalon'], k = q['Fal hossza a külső oldalon'];
+  if (v2 && (b != null || k != null)) { const L = b != null && k != null ? (b + k) / 2 : (b ?? k)!; if (L > 0) return { v: v2, hossz: L, magassag: q['Magasság'] ?? null, mod: 'falhossz' }; }
+  // befoglaló doboz (tengelyirányú fal): hossz a hosszabb, vastagság a rövidebb vízszintes oldal
+  const d = e.gid ? DOBOZ[e.gid] : undefined;
+  if (d) { const dx = d.x1 - d.x0, dy = d.y1 - d.y0; if (Math.max(dx, dy) > 0.1) return { v: Math.min(dx, dy), hossz: Math.max(dx, dy), magassag: d.z1 - d.z0, mod: 'doboz', z: d.z0 }; }
+  return null;
+}
+/** A modellfal magvastagsága: a rétegrendből a szerkezeti rétegek (név szerint nem réteg; név híján a sraffozott). */
+function magVastag(f: ModellFal): number {
+  if (!f.retegek?.length) return f.vastag;
+  // a réteg neve dönt, ha megkülönbözteti a rétegeket; különben a sraffozott a szerkezeti (a hőszigetelés sima)
+  const nevek = new Set(f.retegek.map((r) => RETEG_JEL.test(r.reteg ?? '')));
+  const mag = f.retegek.filter((r) => (nevek.size > 1 ? !RETEG_JEL.test(r.reteg ?? '') : r.sraff));
+  const s = mag.reduce((t, r) => t + r.vastag, 0);
+  return s > 0.04 ? s : f.vastag;
+}
+const oszt5 = (v: number) => Math.round(v * 20) * 5;
 
-export function osszevet(md: ModellEpulet, ifc: IfcKivonat): OsszevetSor[] {
+export function osszevet(md: ModellEpulet, ifc: IfcKivonat, vagasFolott = 1.2, dobozok: Record<string, Doboz> = {}): OsszevetSor[] {
+  DOBOZ = dobozok;
   const sorok: OsszevetSor[] = [];
   const add = (csoport: string, mertek: string, a: number, b: number) => sorok.push({ csoport, mertek, modell: kerek(a), ifc: kerek(b), elteres: b > 0 ? kerek(((a - b) / b) * 100, 1) : a > 0 ? null : 0 });
 
-  add('szintek', 'db', md.szintek.length, ifc.szintek.length);
+  // szintpárok: a modell szintje ↔ az IFC azonos (±0,6 m) magasságú szintje
+  const parok = md.szintek.flatMap((sz) => { const i = ifc.szintek.find((s) => Math.abs(s.magassag - sz.z0) < 0.6); return i ? [{ m: sz, i }] : []; });
+  add('szintek (párosítva)', 'db', parok.length, md.szintek.length);
 
-  // falak: vastagság (ha az IFC jelöli, külső / belső) szerint – tengelyhossz, bruttó oldalfelület, térfogat
-  const iFalak = ifc.elemek.filter((e) => FAL.test(e.ifc)).map(ifcFal);
-  const kulsoJel = iFalak.some((f) => f.kulso !== null);
-  const mKulso = (f: ModellFal) => f.bal.fajta !== 'ter' || f.jobb.fajta !== 'ter';
-  const mA = (f: ModellFal) => { if (f.profil && f.profil.length > 1) { let A = 0; for (let i = 1; i < f.profil.length; i++) A += ((f.profil[i]!.t - f.profil[i - 1]!.t) * (f.profil[i]!.z + f.profil[i - 1]!.z)) / 2; return A * f.hossz; } return f.hossz * f.h; };
-  const mCs = (f: ModellFal) => `${kulsoJel ? (mKulso(f) ? 'külső ' : 'belső ') : ''}fal ${vastagOszt(f.vastag)}`;
-  const iCs = (f: ReturnType<typeof ifcFal>) => `${kulsoJel ? (f.kulso ? 'külső ' : 'belső ') : ''}fal ${vastagOszt(f.v)}`;
-  const csop = [...new Set([...md.falak.map(mCs), ...iFalak.map(iCs)])].sort();
-  const ossz = { m: [0, 0, 0], i: [0, 0, 0] };
-  for (const cs of csop) {
-    const mf = md.falak.filter((f) => mCs(f) === cs), xf = iFalak.filter((f) => iCs(f) === cs);
-    const m = [mf.reduce((s, f) => s + f.hossz, 0), mf.reduce((s, f) => s + mA(f), 0), mf.reduce((s, f) => s + mA(f) * f.vastag, 0)];
-    const i = [xf.reduce((s, f) => s + f.L, 0), xf.reduce((s, f) => s + f.A, 0), xf.reduce((s, f) => s + f.V, 0)];
-    add(cs, 'hossz m', m[0]!, i[0]!); add(cs, 'felület m²', m[1]!, i[1]!); add(cs, 'térfogat m³', m[2]!, i[2]!);
-    for (let k = 0; k < 3; k++) { ossz.m[k]! += m[k]!; ossz.i[k]! += i[k]!; }
+  let osszM = 0, osszI = 0;
+  for (const { m: msz, i: isz } of parok) {
+    // IFC: a szint falai; a szint padlója a falkezdetek alsó negyedének átlaga, a metszősík fölötte vagasFolott-tal
+    const ef = ifc.elemek.filter((e) => falE(e) && e.szint === isz.nev);
+    const zk = ef.map((e) => e.hely?.z ?? (e.gid ? DOBOZ[e.gid]?.z0 : undefined)).filter((z): z is number => typeof z === 'number').sort((a, b) => a - b);
+    const n = Math.max(1, Math.floor(zk.length / 4)), padlo = zk.length ? zk.slice(0, n).reduce((a, b) => a + b, 0) / n : 0, vagas = padlo + vagasFolott;
+    let falak: { v: number; hossz: number; mod: string }[] = [];
+    const retegek = new Map<string, number>();
+    for (const e of ef) {
+      const m = falMeret(e); if (!m) continue;
+      const z = m.z ?? e.hely?.z;
+      if (typeof z === 'number' && m.magassag && !(z < vagas && z + m.magassag > vagas)) continue;
+      if (RETEG_JEL.test(e.anyag ?? '')) { retegek.set(e.anyag ?? '?', (retegek.get(e.anyag ?? '?') ?? 0) + m.hossz); continue; }
+      falak.push(m);
+    }
+    if (falak.some((w) => w.mod === 'osszetevo')) falak = falak.filter((w) => w.mod === 'osszetevo');
+    const mf = md.falak.filter((f) => f.szint === msz.id);
+    const csop = [...new Set([...falak.map((w) => oszt5(w.v)), ...mf.map((f) => oszt5(magVastag(f)))])].sort((a, b) => a - b);
+    const cim = `${msz.nev} ↔ ${isz.nev}`;
+    for (const c of csop) {
+      const a = mf.filter((f) => oszt5(magVastag(f)) === c).reduce((s, f) => s + f.hossz, 0), b = falak.filter((w) => oszt5(w.v) === c).reduce((s, w) => s + w.hossz, 0);
+      add(`${cim}: fal ${c} cm`, 'hossz m', a, b);
+    }
+    const a = mf.reduce((s, f) => s + f.hossz, 0), b = falak.reduce((s, w) => s + w.hossz, 0);
+    add(`${cim}: falak`, 'hossz m', a, b); osszM += a; osszI += b;
+    // egyezés: vastagság-csoportonként a kisebbik hossz összege / az IFC hossza (a vastagság is számít)
+    let egy = 0; for (const c of csop) egy += Math.min(mf.filter((f) => oszt5(magVastag(f)) === c).reduce((s, f) => s + f.hossz, 0), falak.filter((w) => oszt5(w.v) === c).reduce((s, w) => s + w.hossz, 0));
+    add(`${cim}: falak vastagsággal egyező része`, 'hossz m', egy, b);
+    for (const [nev, L] of retegek) add(`${cim}: réteg ${nev}`, 'hossz m (IFC)', 0, L);
   }
-  add('falak összesen', 'hossz m', ossz.m[0]!, ossz.i[0]!); add('falak összesen', 'felület m²', ossz.m[1]!, ossz.i[1]!); add('falak összesen', 'térfogat m³', ossz.m[2]!, ossz.i[2]!);
+  add('falak összesen (párosított szintek)', 'hossz m', osszM, osszI);
 
-  // nyílászárók
+  // nyílászárók (IFC: ablak / ajtó entitás vagy név szerint)
+  const ablakE = (e: Elem) => /^IFCWINDOW/.test(e.ifc) || (/PROXY/.test(e.ifc) && /^ablak/i.test(e.tipusNev ?? e.nev ?? ''));
+  const ajtoE = (e: Elem) => /^IFCDOOR/.test(e.ifc) || (/PROXY/.test(e.ifc) && /ajt[óo]|kapu/i.test(e.tipusNev ?? e.nev ?? ''));
   const mAjto = (n: ModellNyilas) => /ajto|kapu/.test(n.fajta);
-  const nyA = (e: IfcKivonat['elemek'][number]) => (e.q?.['GrossArea'] ?? e.q?.['Area'] ?? e.menny?.A ?? 0) as number;
-  for (const [nev, mN, iN] of [['ablak', md.nyilasok.filter((n) => !mAjto(n)), ifc.elemek.filter((e) => ABLAK.test(e.ifc))], ['ajtó', md.nyilasok.filter(mAjto), ifc.elemek.filter((e) => AJTO.test(e.ifc))]] as const) {
-    add(nev, 'db', mN.length, iN.length);
-    add(nev, 'felület m²', mN.reduce((s, n) => s + n.szel * n.mag, 0), iN.reduce((s, e) => s + nyA(e), 0));
-  }
+  for (const [nev, mN, iN] of [['ablak', md.nyilasok.filter((n) => !mAjto(n)), ifc.elemek.filter(ablakE)], ['ajtó', md.nyilasok.filter(mAjto), ifc.elemek.filter(ajtoE)]] as const) add(nev, 'db', mN.length, iN.length);
 
-  // helyiségek (a belsők), összesen és szintenként
+  // helyiségek
   const iH = ifc.helyisegek.filter((h) => h.belso !== false);
   add('helyiségek', 'db', md.terek.length, iH.length);
   add('helyiségek', 'alapterület m²', md.terek.reduce((s, t) => s + t.A, 0), iH.reduce((s, h) => s + h.terulet, 0));
-  for (const sz of md.szintek) {
-    const iSz = ifc.szintek.find((s) => Math.abs(s.magassag - sz.z0) < 0.6); if (!iSz) continue;
-    add(`${sz.nev} ↔ ${iSz.nev}`, 'helyiségek m²', md.terek.filter((t) => t.szint === sz.id).reduce((s, t) => s + t.A, 0), iH.filter((h) => h.szint === iSz.nev).reduce((s, h) => s + h.terulet, 0));
-  }
+  for (const { m: sz, i: iSz } of parok) add(`${sz.nev} ↔ ${iSz.nev}`, 'helyiségek m²', md.terek.filter((t) => t.szint === sz.id).reduce((s, t) => s + t.A, 0), iH.filter((h) => h.szint === iSz.nev).reduce((s, h) => s + h.terulet, 0));
   return sorok;
 }
