@@ -362,7 +362,10 @@ function lapKategoriak(a: AlaprajzFeldolgozas, k: Kijeloles) {
     if (ri < 0) { if (kt !== 'kulter' && (h.hasznosA ?? h.A)) pecsetTerek.push({ kod: h.kod, nev: h.nev, A: h.hasznosA ?? h.A, burkolat: h.burkolat, kategoria: kt }); return; }
     kategoria.set(ri, kt); adat.set(ri, k.masJegyzek?.has(j) ? { nev: `Helyiség ${ri + 1}`, A: 0 } : { kod: h.kod, nev: h.nev, A: h.hasznosA ?? h.A, burkolat: h.burkolat });
   });
-  return { kategoria, adat, pecsetTerek };
+  // (a felirattal azonosított, de a modellből kizárt – szomszéd, más szint, egységen kívüli – terek; a többi felirat
+  // nélküli terület a rajzon: lépcső-, légtér)
+  const kizart = new Set(hs.map((h) => a.magHelyisegek.indexOf(h)).filter((ri) => ri >= 0 && !kategoria.has(ri)));
+  return { kategoria, adat, pecsetTerek, kizart };
 }
 /** A 3D hőburok nyílászárói (a megadott körvonal csak akkor számít, ha a burok szerkesztett – egyébként az átvétel készlete). */
 function burokNyilasokPt(al: AlaprajzFeldolgozas, k: Kijeloles, b: Poligon[]) {
@@ -956,7 +959,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     const be: LapBemenet[] = sor.map(({ i }) => {
       const a = elemzesek[i] as AlaprajzFeldolgozas, r = a.r!, k = kijeloles(i, a);
       const el = i === sor[0]!.i ? { dx: 0, dy: 0 } : eltolas(alap, r) ?? { dx: 0, dy: 0 };
-      const { kategoria, adat, pecsetTerek } = lapKategoriak(a, k);
+      const { kategoria, adat, pecsetTerek, kizart } = lapKategoriak(a, k);
       const szk = lapSzintek(i).length ? lapSzintek(i) : ['F'];
       // tetőtér (metszetből): hajlás, térdfal, padlásfödém
       const tt = me?.tetoter ? { hajlas: me.tetoter.hajlas, terdfal: me.tetoter.terdfal ?? 0.9, belmag: me.tetoter.belmagassag ?? (bm ?? 2.6) } : undefined;
@@ -989,7 +992,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
         const v = elMag(A, B, Math.sin((w.irany * Math.PI) / 180), -Math.cos((w.irany * Math.PI) / 180));
         return v === null ? null : { belsoMag: v, jelleg: v < 1.6 ? 'terdfal' : 'parkany' };
       };
-      return { lap: i, a, szintek, m, kategoria, adat, pecsetTerek, ...(k.ismKulso ? { ismKulso: k.ismKulso } : {}), falMagassag, ...(tt && szk.includes('T') ? { tetoter: { ...tt, orom: oromok(eszakSz, a.e.meretarany ?? undefined) } } : {}),
+      return { lap: i, a, szintek, m, kategoria, adat, pecsetTerek, kizart, ...(k.ismKulso ? { ismKulso: k.ismKulso } : {}), falMagassag, ...(tt && szk.includes('T') ? { tetoter: { ...tt, orom: oromok(eszakSz, a.e.meretarany ?? undefined) } } : {}),
         ...(burokPol ? { burokPol, burokR: a.r3d ?? r } : {}) };
     });
     return epuletModell(be);

@@ -64,6 +64,7 @@ export function Epulet3D({ modell, magassag = 600 }: { modell: EpuletModell; mag
     const kattinthato: THREE.Object3D[] = [];
     for (const f of modell.falak) {
       if (!lathato(f.szint)) continue;
+      if (f.szerkezet === 'hatar') continue; // helyiséghatár, nem fal
       const bsz = burokSzin(f.burok);
       if (csakBurok && bsz === null) continue;
       const dx = f.b[0] - f.a[0], dy = f.b[1] - f.a[1], L = Math.hypot(dx, dy); if (L < 0.05) continue;
@@ -164,7 +165,7 @@ export function Epulet3D({ modell, magassag = 600 }: { modell: EpuletModell; mag
   const info = (() => {
     if (!kijelolt) return null;
     const f = modell.falak.find((x) => x.id === kijelolt);
-    const tNev = (o: Fal['bal']) => (o.fajta === 'ter' ? modell.terek.find((t) => t.id === o.ter)?.nev ?? o.ter : ({ kulso: 'külső tér', talaj: 'talaj', szomszed: 'szomszéd épület', futetlen: 'fűtetlen tér', ismeretlen: 'ismeretlen' } as const)[o.fajta]);
+    const tNev = (o: Fal['bal']) => (o.fajta === 'ter' ? modell.terek.find((t) => t.id === o.ter)?.nev ?? o.ter : ({ kulso: 'külső tér', talaj: 'talaj', szomszed: 'szomszéd épület', futetlen: 'fűtetlen tér', belso: 'felirat nélküli belső tér', ismeretlen: 'ismeretlen' } as const)[o.fajta]);
     if (f) return `Fal · ${f.hossz.toFixed(2)} m × ${f.profil ? `${Math.min(...f.profil.map((q) => q.z)).toFixed(2)}–${Math.max(...f.profil.map((q) => q.z)).toFixed(2)}` : (f.belsoMag ?? f.h).toFixed(2)} m${f.jelleg ? ` (${({ terdfal: 'térdfal', oromfal: 'oromfal', parkany: 'alacsonyabb párkány', ferde: 'ferde felső élű' } as const)[f.jelleg]})` : ''}, ${Math.round(f.vastag * 100)} cm · ${tNev(f.bal)} | ${tNev(f.jobb)}${f.burok ? ` · hőburok: ${({ kulso: 'külső fal', futetlen: 'fűtetlen tér felé', szomszed: 'szomszéd felé', talaj: 'talajjal érintkező' } as const)[f.burok]}` : ''}`;
     const t = modell.terek.find((x) => x.id === kijelolt);
     if (t) return `${t.kod ? t.kod + ' ' : ''}${t.nev} · ${t.A.toFixed(2)} m² · belmagasság ${t.belmag.toFixed(2)} m · ${({ futott: 'fűtött', futetlen: 'fűtetlen', kulter: 'kültér' } as const)[t.kategoria]}`;

@@ -77,6 +77,8 @@ export interface Raszter {
   /** Anyag-stílus pixelenként a modell rétegrendjéhez: a stilus, kiegészítve a hőszigetelés-réteggel és a csak
    * sraffozással rajzolt falakkal (id a stilusInfo szerint). */
   anyagStilus?: Uint16Array;
+  /** Az anyagStilus stílusai (id − 1 szerint; kitöltésszín + sraffozottság + PDF-réteg). */
+  anyagInfo?: { szin: string; sraff: boolean; retegek: Record<string, number> }[];
   /** 0 = nincs, 1 = külső tér, 2+i = i. helyiség */
   cimke: Int32Array;
   /** Helyiségenként: terület (m²) és határoló falszakaszok. */
@@ -89,6 +91,8 @@ export interface Raszter {
 }
 
 const feher = (s: string) => /^#(f[0-9a-f]){3}$/i.test(s);
+/** A falat nem hordozó PDF-rétegek (ArchiCAD-fólianevek – az ELBA falfelismerésének listája szerint). */
+const NEM_FAL_RETEG = /b[úu]tor|szaniter|k[üu]lt[ée]ri burkolat|burkolat|ker[íi]t[ée]s|berendez|konyha|terep|kert|j[áa]rda|t[ée]rk[öo]|geod[ée]zia|felirat|m[ée]retez|jelek/i;
 
 function poliKerulet(p: number[]) { let k = 0; for (let i = 0; i + 3 < p.length; i += 2) k += Math.hypot(p[i + 2]! - p[i]!, p[i + 3]! - p[i + 1]!); return k; }
 function poliTerulet(p: number[]) { let a = 0; for (let i = 0; i + 3 < p.length; i += 2) a += p[i]! * p[i + 3]! - p[i + 2]! * p[i + 1]!; return Math.abs(a / 2); }
@@ -316,7 +320,15 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
     if (reteg) { const ri = stilusInfo[id - 1]!.retegek; ri[reteg] = (ri[reteg] ?? 0) + 1; }
     return id;
   };
-  const stilusRajzol = (u: Utvonal, sraff: boolean) => { const id = stilusAzon(u.toltoSzin, sraff, u.reteg); poliRajzol(stilus, w, h, u.pontok, tr, id); poliRajzol(anyagStilus, w, h, u.pontok, tr, id); };
+  // (az anyagstílus a PDF-réteggel együtt azonosít: az azonos kitöltésű, de más fólián lévő elem más anyag)
+  const anyagId = new Map<string, number>(); const anyagInfo: NonNullable<Raszter['stilusInfo']> = [];
+  const anyagAzon = (szin: string, sraff: boolean, reteg?: string) => {
+    const k = `${szin}|${sraff}|${reteg ?? ''}`; let id = anyagId.get(k);
+    if (!id) { id = anyagId.size + 1; anyagId.set(k, id); anyagInfo[id - 1] = { szin, sraff, retegek: reteg ? { [reteg]: 0 } : {} }; }
+    if (reteg) anyagInfo[id - 1]!.retegek[reteg]!++;
+    return id;
+  };
+  const stilusRajzol = (u: Utvonal, sraff: boolean) => { const id = stilusAzon(u.toltoSzin, sraff, u.reteg); poliRajzol(stilus, w, h, u.pontok, tr, id); poliRajzol(anyagStilus, w, h, u.pontok, tr, anyagAzon(u.toltoSzin, sraff, u.reteg)); };
   for (const u of lap.utvonalak) {
     if (u.bbox[2] < x0 || u.bbox[0] > x1 || u.bbox[3] < y0 || u.bbox[1] > y1) continue;
     if (!falKitoltes(u, mPerPt, maxFal) || terepburkolat(u)) continue;
@@ -361,18 +373,42 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       const [bw, bh] = [(u.bbox[2] - u.bbox[0]) * mPerPt, (u.bbox[3] - u.bbox[1]) * mPerPt].sort((a, b) => a - b);
       if (feher(u.toltoSzin) && !u.minta) { if (bw! <= 0.35 && bh! >= 0.3 && bh! <= 4) retegNyilas.push(u.pontok); continue; }
       poliRajzol(fal, w, h, u.pontok, tr);
-      poliRajzol(anyagStilus, w, h, u.pontok, tr, stilusAzon(`${u.toltoSzin}${u.minta ? '+minta' : ''}`, false, u.reteg));
+      poliRajzol(anyagStilus, w, h, u.pontok, tr, anyagAzon(`${u.toltoSzin}${u.minta ? '+minta' : ''}`, false, u.reteg));
     }
   }
-  let sraffMod = false; let sraffMaszk: Uint8Array | null = null;
+  let sraffMod = false; let sraffMaszk: Uint8Array | null = null; let sraffLab: { lab: Uint16Array; retegek: string[] } | null = null;
   // kitöltés nélkül, csak sraffozással rajzolt falak (pl. ArchiCAD PDF-export: a falréteg mintázata vékony ferde vonalak,
   // a falsík vonala külön szakasz): a sűrű, rövid, ferde vékony vonalak mezője a fal. Csak akkor, ha a kitöltésekből
   // alig van fal – a kitöltött falas rajzon a sraffozás amúgy is a falon belül van.
   {
-    const sr = new Uint8Array(w * h); let db = 0; const srSzeg: [number, number, number, number, number, number, number][] = [];
+    const sr = new Uint8Array(w * h); let db = 0; const srSzeg: [number, number, number, number, number, number, number, number][] = [];
+    // (a sraffvonal PDF-rétege pixelenként: a falmag és a mintázattal rajzolt hőszigetelés külön anyag a modellnek)
+    const srRetegek: string[] = [], srLab = new Uint16Array(w * h);
+    // rétegzett (ArchiCAD-fóliás) lapon, ha a falsraffozás a fal-, válaszfal- vagy hőszigetelés-fólián van (legalább
+    // 200 ferde rövid vonal), a biztosan nem falat hordozó (név szerint bútor, terep, födém, méretezés, felirat…) fólián
+    // lévő sraffozás nem fal. (A fólia nélküli sraffozás marad: van terv, ahol a falak egy része fólia nélküli.)
+    const falFolia = (u: Utvonal) => !!u.reteg && ['fal', 'valaszfal', 'hoszig'].includes(retegTipus(u.reteg));
+    let csakFolia = false;
+    if (retegesFal) {
+      let n = 0;
+      for (const u of lap.utvonalak) { if (u.muvelet !== 'stroke' || u.vastagsag > 0.35 || !falFolia(u)) continue;
+        for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) { const dx = p[i + 2]! - p[i]!, dy = p[i + 3]! - p[i + 1]!; const l = Math.hypot(dx, dy) * mPerPt;
+          const sz = ((Math.atan2(dy, dx) * 180 / Math.PI) % 180 + 180) % 180; if (l >= 0.02 && l <= 0.8 && ((sz > 20 && sz < 70) || (sz > 110 && sz < 160))) n++; } }
+      csakFolia = n >= 200;
+    }
     for (const u of lap.utvonalak) {
       if (u.muvelet !== 'stroke' || u.vastagsag > 0.35 || feher(u.vonalSzin)) continue;
       if (u.bbox[2] < x0 || u.bbox[0] > x1 || u.bbox[3] < y0 || u.bbox[1] > y1) continue;
+      // (a nem falat hordozó PDF-rétegek – burkolat, terep, kert, bútor, szaniter, kerítés – sraffozása nem fal)
+      if (u.reteg && NEM_FAL_RETEG.test(u.reteg)) continue;
+      if (csakFolia && u.reteg && ['zaj', 'pecset', 'zona', 'meret', 'felirat', 'nyilas'].includes(retegTipus(u.reteg))) continue;
+      let lab = 0; if (u.reteg) { lab = srRetegek.indexOf(u.reteg) + 1; if (!lab) lab = srRetegek.push(u.reteg); }
+      // (a réteg címkéje minden rövid vonaldarabra – a mintázattal, apró elemekkel rajzolt hőszigetelésre is)
+      if (lab) for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) {
+        if (Math.hypot(p[i + 2]! - p[i]!, p[i + 3]! - p[i + 1]!) * mPerPt > 0.8) continue;
+        const [ax, ay] = tr(p[i]!, p[i + 1]!), [bx, by] = tr(p[i + 2]!, p[i + 3]!); const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) * 2));
+        for (let k = 0; k <= n; k++) { const x = Math.round(ax + (bx - ax) * k / n), y = Math.round(ay + (by - ay) * k / n); if (x >= 0 && y >= 0 && x < w && y < h) srLab[y * w + x] = lab; }
+      }
       for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) {
         const dx = p[i + 2]! - p[i]!, dy = p[i + 3]! - p[i + 1]!; const l = Math.hypot(dx, dy) * mPerPt;
         if (l < 0.02 || l > 0.8) continue;
@@ -380,9 +416,9 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
         if (!((sz > 20 && sz < 70) || (sz > 110 && sz < 160))) continue;
         const [ax, ay] = tr(p[i]!, p[i + 1]!), [bx, by] = tr(p[i + 2]!, p[i + 3]!);
         const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) * 2));
-        for (let k = 0; k <= n; k++) { const x = Math.round(ax + (bx - ax) * k / n), y = Math.round(ay + (by - ay) * k / n); if (x >= 0 && y >= 0 && x < w && y < h) sr[y * w + x] = 1; }
+        for (let k = 0; k <= n; k++) { const x = Math.round(ax + (bx - ax) * k / n), y = Math.round(ay + (by - ay) * k / n); if (x >= 0 && y >= 0 && x < w && y < h) { sr[y * w + x] = 1; if (lab) srLab[y * w + x] = lab; } }
         db++;
-        if (l >= 0.1) srSzeg.push([(p[i]! + p[i + 2]!) / 2 * mPerPt, (p[i + 1]! + p[i + 3]!) / 2 * mPerPt, sz, p[i]!, p[i + 1]!, p[i + 2]!, p[i + 3]!]);
+        if (l >= 0.1) srSzeg.push([(p[i]! + p[i + 2]!) / 2 * mPerPt, (p[i + 1]! + p[i + 3]!) / 2 * mPerPt, sz, p[i]!, p[i + 1]!, p[i + 2]!, p[i + 3]!, lab]);
       }
     }
     if (db > 200) {
@@ -392,7 +428,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       const RR = 0.5, idx = new Map<string, number[]>();
       srSzeg.forEach((q, i) => { const k = `${Math.floor(q[0] / RR)},${Math.floor(q[1] / RR)}`; const l = idx.get(k); if (l) l.push(i); else idx.set(k, [i]); });
       const zart = szukit(tagit(sr, w, h, Math.max(1, Math.round(0.05 / px))), w, h, Math.max(1, Math.round(0.05 / px)));
-      srSzeg.forEach(([qx, qy, qs, ax, ay, bx, by], i) => {
+      srSzeg.forEach(([qx, qy, qs, ax, ay, bx, by, lab], i) => {
         const nx = -Math.sin(qs * Math.PI / 180), ny = Math.cos(qs * Math.PI / 180);
         let leg = Infinity, bal = 0, jobb = 0;
         const L = Math.hypot(bx - ax, by - ay) * mPerPt;
@@ -411,7 +447,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
           const ox = nx * o / mPerPt, oy = ny * o / mPerPt;
           const [cx0, cy0] = tr(ax + ox, ay + oy), [cx1, cy1] = tr(bx + ox, by + oy);
           const n = Math.max(1, Math.ceil(Math.hypot(cx1 - cx0, cy1 - cy0) * 2));
-          for (let k = 0; k <= n; k++) { const x = Math.round(cx0 + (cx1 - cx0) * k / n), y = Math.round(cy0 + (cy1 - cy0) * k / n); if (x >= 0 && y >= 0 && x < w && y < h) zart[y * w + x] = 1; }
+          for (let k = 0; k <= n; k++) { const x = Math.round(cx0 + (cx1 - cx0) * k / n), y = Math.round(cy0 + (cy1 - cy0) * k / n); if (x >= 0 && y >= 0 && x < w && y < h) { zart[y * w + x] = 1; if (lab) srLab[y * w + x] = lab; } }
         }
       });
       const tiszta = tagit(szukit(zart, w, h, 1), w, h, 1);
@@ -421,6 +457,14 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
         for (let i = 0; i < w * h; i++) if (tiszta[i]) fal[i] = 1;
         darabok.push([x0, y0, x1, y1]);
         sraffMod = true; sraffMaszk = tiszta;
+        // a címkék kiterjesztése a sraffmező címke nélküli pixeleire (a szomszédos címke, legfeljebb 3 lépésben)
+        if (srRetegek.length) for (let it = 0; it < 3; it++) {
+          let valt = 0; const uj = srLab.slice();
+          for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) { const i = y * w + x; if (!tiszta[i] || srLab[i]) continue;
+            const c = srLab[i - 1] || srLab[i + 1] || srLab[i - w] || srLab[i + w]; if (c) { uj[i] = c; valt++; } }
+          srLab.set(uj); if (!valt) break;
+        }
+        sraffLab = { lab: srLab, retegek: srRetegek };
       }
     }
   }
@@ -428,7 +472,12 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   // vonal – a bútor kitöltése nem sraffozott. Ezek a színes rétegekkel egyenrangú falrétegek.
   const reteg = new Uint8Array(w * h);
   // a sraffozott falréteg rétegzett fal: a nyílások közti rövid falpillér sem „bútor”
-  if (sraffMaszk) { const sid = stilusAzon('sraff', true); for (let i = 0; i < w * h; i++) if (sraffMaszk[i]) { reteg[i] = 1; if (!anyagStilus[i]) anyagStilus[i] = sid; } }
+  // (anyagStilus: a sraffmező PDF-rétegenként külön anyag – „POROTHERM FAL 30” mag, mintázattal rajzolt hőszigetelés)
+  if (sraffMaszk) { const sid = anyagAzon('sraff', true); const lid = new Map<number, number>();
+    for (let i = 0; i < w * h; i++) if (sraffMaszk[i]) { reteg[i] = 1; if (anyagStilus[i]) continue;
+      const lb = sraffLab?.lab[i] ?? 0; let id = sid;
+      if (lb) { id = lid.get(lb) ?? 0; if (!id) { const n = sraffLab!.retegek[lb - 1]!; id = anyagAzon(`sraff:${n}`, true, n); lid.set(lb, id); } }
+      anyagStilus[i] = id; } }
   {
     const SR = 8; const sraffIdx = new Map<number, [number, number, number, number][]>();
     for (const u of lap.utvonalak) {
@@ -1087,7 +1136,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   // valós hosszával; a túloldal az élről kifelé, a falon át haladva az első nem saját helyiség vagy a külső tér
   const zonaSz = b.zonaPoli?.some(Boolean) ? b.zonaPoli.map((pl, k) => (pl ? zonaSzakaszok(pl, k + 2, helyCimke, gat, fal, nyilas, w, h, px, mPerPt, tr, maxLep * px) : undefined)) : undefined;
   return {
-    w, h, px, x0, y0, mPerPt, fal, cimke: helyCimke, stilus, stilusInfo, anyagStilus, ...(retegesFal ? { reteges: true } : {}),
+    w, h, px, x0, y0, mPerPt, fal, cimke: helyCimke, stilus, stilusInfo, anyagStilus, anyagInfo, ...(retegesFal ? { reteges: true } : {}),
     nyilas, uvegfalak,
     helyisegek: helyisegek.map((H, k) => ({
       A: H.A, szivarog: szivarog[k]!,

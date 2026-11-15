@@ -14,7 +14,7 @@
  */
 
 type Oldal = { fajta: string };
-export interface ModellFal { szint: string; vastag: number; h: number; hossz: number; bal: Oldal; jobb: Oldal;
+export interface ModellFal { szint: string; vastag: number; mag?: number; szerkezet?: string; h: number; hossz: number; bal: Oldal; jobb: Oldal;
   retegek?: { reteg?: string; sraff: boolean; vastag: number }[] }
 export interface ModellNyilas { szint: string; szel: number; mag: number; fajta: string }
 export interface ModellTer { szint: string; A: number; kategoria: string }
@@ -38,6 +38,8 @@ let DOBOZ: Record<string, Doboz> = {};
 function falE(e: Elem) {
   if (/^IFCWALL/.test(e.ifc)) return true;
   // proxy-export: a típusnév / anyag / fólia mondja (FAL - POROTHERM…, SZERKEZET - … FAL)
+  // (a nyílászáró-proxy – „ajtó 21”, „ablak …” – a fal fóliáján is ülhet: az nem fal)
+  if (/PROXY/.test(e.ifc) && /^(ajt[óo]|ablak|kapu|nyíl[áa]s|tet[őo]ablak)/i.test(e.tipusNev ?? e.nev ?? '')) return false;
   if (/PROXY/.test(e.ifc) && (/^fal\b/i.test(e.tipusNev ?? e.anyag ?? '') || /\bfal\b/i.test(e.folia ?? ''))) return true;
   if (e.oszt === 'Fal') return true;
   return (e.pset?.['ArchiCADProperties'] as Record<string, unknown> | undefined)?.['Elemtípus'] === 'Fal';
@@ -55,6 +57,7 @@ function falMeret(e: Elem): { v: number; hossz: number; magassag: number | null;
 }
 /** A modellfal magvastagsága: a rétegrendből a szerkezeti rétegek (név szerint nem réteg; név híján a sraffozott). */
 function magVastag(f: ModellFal): number {
+  if (f.mag) return f.mag;
   if (!f.retegek?.length) return f.vastag;
   // a réteg neve dönt, ha megkülönbözteti a rétegeket; különben a sraffozott a szerkezeti (a hőszigetelés sima)
   const nevek = new Set(f.retegek.map((r) => RETEG_JEL.test(r.reteg ?? '')));
@@ -89,7 +92,8 @@ export function osszevet(md: ModellEpulet, ifc: IfcKivonat, vagasFolott = 1.2, d
       falak.push(m);
     }
     if (falak.some((w) => w.mod === 'osszetevo')) falak = falak.filter((w) => w.mod === 'osszetevo');
-    const mf = md.falak.filter((f) => f.szint === msz.id);
+    // (a „hatar” – helyiséghatár, nem fal – nem számít)
+    const mf = md.falak.filter((f) => f.szint === msz.id && f.szerkezet !== 'hatar');
     const csop = [...new Set([...falak.map((w) => oszt5(w.v)), ...mf.map((f) => oszt5(magVastag(f)))])].sort((a, b) => a - b);
     const cim = `${msz.nev} ↔ ${isz.nev}`;
     for (const c of csop) {
