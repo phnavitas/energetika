@@ -1,8 +1,18 @@
 {
   "compilerOptions": {
-    "target": "ES2022", "module": "ESNext", "moduleResolution": "Bundler", "strict": true, "noEmit": true,
-    "noUncheckedIndexedAccess": true, "skipLibCheck": true, "lib": ["ES2022", "DOM"],
-    "baseUrl": ".", "paths": { "web-ifc": ["../../apps/web/node_modules/web-ifc/web-ifc-api.d.ts"] }
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "lib": [
+      "ES2022",
+      "DOM"
+    ]
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts"
+  ]
 }

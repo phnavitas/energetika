@@ -1,9 +1,8 @@
 {
   "name": "@ekm/ifc",
   "private": true,
-  "version": "0.1.0",
-  "description": "IFC-olvasó: IFC → épületelemek (szintek, falak, födémek, nyílások, terek) mennyiségekkel – a mennyiségi kiíráshoz és a 2D tervből épített modell ellenőrzéséhez.",
+  "version": "0.2.0",
+  "description": "A tervből épített modell és az IFC összevetése (a tervfelismerés pontossága a mennyiségi kiíráshoz). Az IFC-olvasó az ELBA-é (vendor/).",
   "type": "module",
-  "main": "src/index.ts",
-  "peerDependencies": { "web-ifc": ">=0.0.79" }
+  "main": "src/index.ts"
 }
