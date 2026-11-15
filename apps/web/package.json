@@ -16,7 +16,8 @@
     "pdfmake": "^0.2.23",
     "preact": "^10.24.0",
     "tesseract.js": "^5.1.1",
-    "three": "^0.170.0"
+    "three": "^0.170.0",
+    "web-ifc": "^0.0.79"
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.9.0",
