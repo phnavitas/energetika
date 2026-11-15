@@ -326,7 +326,8 @@ export function epuletModell(lapok: LapBemenet[]): EpuletModell {
       // hőburokfalak belső síkjába csatlakozó belső falak (a belső felület ezekkel rövidebb – a raszter szerint)
       for (const { id, f } of falIdk) { const cs = f.burokEl?.csatl; if (cs && cs > 0) { const fal = falak.find((q) => q.id === id)!; fal.csatlakozas = sz(Math.min(cs, fal.sikHossz), 2); } }
       // nyílászárók: a helyiség (és a túloldal) falai közül a legközelebbi, amelynek tengelyére a nyílás közepe esik
-      for (const n of L.a.nyilasok) {
+      // (a teljes épületmodellben – kizart megadva – a csak a modellnek szóló belső ajtók is)
+      for (const n of [...L.a.nyilasok, ...(L.kizart ? L.a.modellAjtok ?? [] : [])]) {
         if (n.helyiseg === null || n.helyiseg === undefined || !L.kategoria.has(n.helyiseg) || !(n.szel > 0)) continue;
         const [x, y] = L.m(n.x, n.y);
         let leg: { id: string; t: number; d: number; f: FalNyers } | null = null;

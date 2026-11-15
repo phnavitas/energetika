@@ -191,6 +191,9 @@ export interface AlaprajzFeldolgozas {
   /** A raszter magjai: a pecséttel rendelkező, nem külső terű helyiségek (a raszter-indexek ehhez igazodnak). */
   magHelyisegek: TervHelyiseg[];
   r: Raszter | null;
+  /** Belső ajtók (vegyes írású „90 / 2,10” vagy belső falnyíláshoz kötött méteres ajtófeliratból); csak az
+   * épületmodellnek (a hőburok-átvétel a `nyilasok`-at használja). */
+  modellAjtok?: TervNyilas[];
   /** A 3D modellhez és a burokhoz: a vektoros falfelismerés raszterje (azonos helyiség-indexekkel), ha jobban illik. */
   r3d?: Raszter;
   nyilasok: TervNyilas[];
@@ -436,9 +439,13 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
     }
   }
   // falfülke (padlótól induló, sraffozott falszakasz előtti felirat): nem nyílászáró – kimarad az átvételből
-  const feliratok = nyilasFeliratok(lap.szovegek, lap.utvonalak);
+  const mindFelirat = nyilasFeliratok(lap.szovegek, lap.utvonalak);
+  // (a vegyes írású ajtófeliratok – „90 / 2,10” – csak a belső ajtók külön menetének; a többi lépés nem látja őket)
+  const feliratok = mindFelirat.filter((f) => !f.vegyesAjto);
   const nyilasok = nyilasokHozzarendel(feliratok, r, magHelyisegek.map((h) => h.nev), auto)
     .map((n) => (n.fajta !== 'belso_ajto' && falfulkeE(n, r, lap) ? { ...n, fajta: 'falfulke' as const, kulso: false } : n));
+  // (a csak az épületmodellnek szóló belső ajtók külön menetben)
+  const modellAjtok = nyilasokHozzarendel(mindFelirat, r, magHelyisegek.map((h) => h.nev), auto, true);
   // ugyanannak a kapunak két felirata (pl. falnyílás- és tokmagasság külön: „3,75 / 2,25” és „3,75 / 2,40”): azonos
   // helyiség, irány és szélesség, a kapu szélességén belül egymás mellett → egy kapu (az alacsonyabb marad)
   // (általánosan: két azonos szélességű külső nyílásfelirat egymástól a szélesség 90 %-ánál közelebb – a két nyílás
@@ -534,7 +541,7 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
   if (bizOldal.length) e.figyelmeztetesek.push(`${bizOldal.length} nyílás (${meretL(bizOldal)}) túloldala nem azonosítható (sem helyiség, sem külső tér – pl. rajzi vonalakkal zárt sáv a fal előtt, pecsét nélküli tér): belső nyílásnak vettem. Ha homlokzati nyílás, jelöld külsőnek a Határolás lépésben.`);
   const becsTA = tetoablakok.filter((t) => t.becsult);
   if (becsTA.length) e.figyelmeztetesek.push(`${becsTA.length} tetősík ablak méretfelirat nélkül (a jelből / típusjeles keretből): a mérete a rajzolt keretből becsült – ellenőrizd a konszignáció szerint.`);
-  return { e, magHelyisegek, r, ...(r3d ? { r3d } : {}), nyilasok, auto, arvaFeliratok: arva, ...(leiras ? { leiras } : {}), ...(tetoablakok.length ? { tetoablakok } : {}) };
+  return { e, magHelyisegek, r, ...(r3d ? { r3d } : {}), nyilasok, ...(modellAjtok.length ? { modellAjtok } : {}), auto, arvaFeliratok: arva, ...(leiras ? { leiras } : {}), ...(tetoablakok.length ? { tetoablakok } : {}) };
 }
 
 export interface MetszetFeldolgozas {

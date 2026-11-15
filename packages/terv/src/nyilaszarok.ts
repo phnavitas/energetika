@@ -32,6 +32,9 @@ export interface TervNyilas {
   lanc?: boolean;
   /** Belsőnek vett nyílás, amelynek túloldala sem helyiség, sem külső tér (lehet homlokzati nyílás is) – ellenőrizendő. */
   oldalBizonytalan?: boolean;
+  /** Csak az épületmodellnek (a hőburok-átvétel nem használja): vegyes írású ajtófeliratból (NyilasFelirat.vegyesAjto),
+   * ill. belső falnyíláshoz kötött méteres ajtóméret-párból. */
+  csakModell?: boolean;
 }
 
 /** Nyílásméret cm-ben; a „+30” toldás (redőnytok, tokszélesítés) a magasság mellett – a nyílásméret az első szám. */
@@ -57,6 +60,9 @@ function geom(t: Szoveg) {
 
 export interface NyilasFelirat { szel: number; mag: number; pm: number | null; x: number; y: number; /** A fal iránya a lapon: vízszintes / függőleges. */ fal: 'v' | 'f'; /** Méterben írt, kapuméretű feliratpár: csak garázs jellegű helyiségben, falnyíláshoz kötve fogadjuk el. */ kapuJelolt?: boolean;
   /** Mellvéd nélküli, méterben (vegyesen) írt ajtóméret-pár: csak külső falnyíláshoz kötve fogadjuk el. */ ajtoJelolt?: boolean;
+  /** Mellvéd nélküli, vegyesen (cm / m) írt ajtóméret-pár („90 / 2,10”): jellemzően belső ajtó – csak az épületmodellnek
+   * (a hőburok-átvétel nem használja), falnyíláshoz kötve. */
+  vegyesAjto?: boolean;
   /** Méretláncba írt nyílásméret (ArchiCAD: a lánc szakasza fölött a szélesség, alatta a magasság, „(p85)” mellvéd): a
    *  homlokzattól távolabb is állhat – a falnyíláshoz a fal menti vetülete köti (lancNyilasok). */ lanc?: boolean }
 
@@ -218,6 +224,7 @@ export function nyilasFeliratok(sz0: Szoveg[], utvonalak?: { muvelet: string; po
     const mSz = (t: Szoveg) => (SZAM_M.test(t.s.trim()) ? mSzam(t.s) : szamCm(t.s) / 100);
     const mind = sz.filter((t) => (SZAM_M.test(t.s.trim()) && mSzam(t.s) >= 0.3 && mSzam(t.s) <= 6) || vegyes(t));
     const ajtok: { a: Szoveg; b: Szoveg; w: number; h: number; x: number; y: number; fal: 'v' | 'f' }[] = [];
+    const vegyesAjtok: { w: number; h: number; x: number; y: number; fal: 'v' | 'f' }[] = [];
     // előbb a párok, utána a mellvédfeliratok a legközelebbi pártól kezdve (a szomszédos ajtópár ne vigye el az ablak mellvédjét)
     const parok: { a: Szoveg; b: Szoveg; w: number; h: number; x: number; y: number; fal: 'v' | 'f'; cmPar: boolean; mPar: boolean }[] = [];
     const parban = new Set<Szoveg>();
@@ -248,7 +255,9 @@ export function nyilasFeliratok(sz0: Szoveg[], utvonalak?: { muvelet: string; po
     parok.forEach((P, pi) => {
       const pm = parPm.get(pi);
       // vegyes / méteres pár mellvéd nélkül csak ajtóméretű lehet
-      if (!pm) { if (P.mPar && P.w >= 0.7 && P.w <= 1.3 && P.h >= 2.0 && P.h <= 2.6) ajtok.push({ a: P.a, b: P.b, w: P.w, h: P.h, x: P.x, y: P.y, fal: P.fal }); return; }
+      if (!pm) { if (P.mPar && P.w >= 0.7 && P.w <= 1.3 && P.h >= 2.0 && P.h <= 2.6) ajtok.push({ a: P.a, b: P.b, w: P.w, h: P.h, x: P.x, y: P.y, fal: P.fal });
+        else if (!P.mPar && P.w >= 0.6 && P.w <= 1.3 && P.h >= 1.9 && P.h <= 2.6) vegyesAjtok.push({ w: P.w, h: P.h, x: P.x, y: P.y, fal: P.fal });
+        return; }
       mHasznalt.add(P.a); mHasznalt.add(P.b);
       ki.push({ szel: P.w, mag: P.h, pm: pmErtek(pm.m![1]!, pm.m![2]), x: P.x, y: P.y, fal: P.fal });
     });
@@ -257,6 +266,8 @@ export function nyilasFeliratok(sz0: Szoveg[], utvonalak?: { muvelet: string; po
       mHasznalt.add(d.a); mHasznalt.add(d.b);
       ki.push({ szel: d.w, mag: d.h, pm: null, x: d.x, y: d.y, fal: d.fal, ajtoJelolt: true });
     }
+    // (a szövegeiket nem foglaljuk le – a későbbi feliratfajták ugyanúgy látják, mint eddig)
+    for (const d of vegyesAjtok) ki.push({ szel: d.w, mag: d.h, pm: null, x: d.x, y: d.y, fal: d.fal, vegyesAjto: true });
   }
   const mPar: NyilasFelirat[] = []; const parSzoveg = new Map<NyilasFelirat, [Szoveg, Szoveg]>();
   // méterben írt kapuméretek (szélesség ≥ 1,8 m, magasság 1,8–6 m) – a méretláncok számaitól a hozzárendelés választja el
@@ -433,7 +444,10 @@ export function falfulkeE(f: { x: number; y: number; szel: number; fal?: 'v' | '
 /** A hozzárendelésben (a felirat közelében) falnyíláshoz kötött méretlánc-feliratok – a lancNyilasok ezeket kihagyja. */
 const lancHozzarendelt = new WeakSet<NyilasFelirat>();
 
-export function nyilasokHozzarendel(feliratok: NyilasFelirat[], r: Raszter, nevek: string[] = [], tipusLap = false): TervNyilas[] {
+export function nyilasokHozzarendel(feliratok0: NyilasFelirat[], r: Raszter, nevek: string[] = [], tipusLap = false, modellAjtok = false): TervNyilas[] {
+  // (modellAjtok: külön menetben csak a belső ajtók – vegyes írású, ill. méteres ajtópár belső falnyíláshoz kötve –, hogy a
+  // hőburok-nyílászárók hozzárendelését ne befolyásolják)
+  const feliratok = feliratok0.filter((f) => (modellAjtok ? !!f.vegyesAjto || !!f.ajtoJelolt : !f.vegyesAjto));
   const LAKO = /nappali|szoba|háló|halo\b|konyha|étkez|etkez|dolgozó|gyerek|living|apartman|stúdió|studio/i;
   const GARAZS = /gar[aá]zs|gépkocsi|gepkocsi|beálló|autó/i;
   const ptPx = r.mPerPt / r.px;
@@ -532,12 +546,18 @@ export function nyilasokHozzarendel(feliratok: NyilasFelirat[], r: Raszter, neve
       }));
       if (leg) { p = { h: (leg as { h: number }).h, irany: (leg as { irany: number }).irany, kulso: true }; tipp = true; }
     }
+    // vegyes írású ajtófelirat nyílásfolt nélkül (az ajtólap, tok a falsávot zárja): a feliratból a falra merőlegesen
+    // átnézve két különböző helyiség – belső ajtó
+    if (!p && f.vegyesAjto && fx >= 0 && fy >= 0 && fx < r.w && fy < r.h) { const q = vizsgal(fy * r.w + fx, f.fal === 'f'); if (q && !q.kulso && q.masik !== undefined) p = q; }
     if (!jeloltek.length && !p) continue;
     const kulso = !!p?.kulso;
     const garazsban = p ? GARAZS.test(nevek[p.h] ?? '') : false;
     // méterben írt kapupár: csak falnyíláshoz kötve, garázsban (vagy nagyon széles nyílásnál) – különben méretlánc-részlet
     if (f.kapuJelolt && !(p && kulso && (garazsban || f.szel >= 2.2))) continue;
-    if (f.ajtoJelolt && !(p && kulso && jeloltek.length)) continue;
+    // (a belső falnyíláshoz kötött méteres ajtópár is belső ajtó – csak az épületmodellnek)
+    const csakModell = modellAjtok;
+    if (modellAjtok && (!p || kulso || (f.ajtoJelolt && !jeloltek.length))) continue;
+    if (f.ajtoJelolt && !modellAjtok && !(p && kulso && jeloltek.length)) continue;
     // feliratozott mellvédű tervben a mellvéd nélküli, ajtómagasságnál alacsonyabb „nyílás” valójában méretlánc-részlet
     if (vanPm && f.pm === null && f.mag < 1.9) continue;
     // lakóhelyiség (nappali, szoba, konyha) külső ajtaja erkély- / teraszajtó (a széles is: tolóajtó), nem bejárati ajtó és nem kapu
@@ -545,7 +565,7 @@ export function nyilasokHozzarendel(feliratok: NyilasFelirat[], r: Raszter, neve
     const kapu = kulso && f.pm === null && f.mag >= 1.8 && (garazsban ? f.kapuJelolt || f.szel >= 1.8 : !lako && f.kapuJelolt && f.szel >= 2.2);
     const fajta: TervNyilas['fajta'] = kapu ? 'garazskapu' : !kulso ? 'belso_ajto' : f.pm !== null && f.pm > 0.05 ? 'ablak' : f.pm !== null ? 'erkelyajto' : f.mag >= 1.9 ? (tipusLap || lako ? 'erkelyajto' : 'bejarati_ajto') : 'ablak';
     if (f.lanc) lancHozzarendelt.add(f);
-    ki.push({ ...f, helyiseg: p?.h ?? null, irany: p?.irany ?? null, kulso, fajta, ...(folt && !elteroIrany ? { hely: kompHely(folt) } : {}), ...(!kulso && p?.masik !== undefined ? { masik: p.masik } : {}), ...(kulso && tipp ? { iranyTipp: true } : {}), ...(!kulso && p?.nyitott ? { oldalBizonytalan: true } : {}) });
+    ki.push({ ...f, helyiseg: p?.h ?? null, irany: p?.irany ?? null, kulso, fajta, ...(folt && !elteroIrany ? { hely: kompHely(folt) } : {}), ...(!kulso && p?.masik !== undefined ? { masik: p.masik } : {}), ...(kulso && tipp ? { iranyTipp: true } : {}), ...(!kulso && p?.nyitott ? { oldalBizonytalan: true } : {}), ...(csakModell ? { csakModell: true } : {}) });
     kiFolt.push(folt && !elteroIrany ? folt : 0);
   }
   // tömör homlokzati betét (pl. alumíniumburkolatú panel a portálban): a felirata egy másik felirat nyílásfoltjához

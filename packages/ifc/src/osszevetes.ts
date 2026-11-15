@@ -114,6 +114,17 @@ export function osszevet(md: ModellEpulet, ifc: IfcKivonat, vagasFolott = 1.2, d
   const ajtoE = (e: Elem) => /^IFCDOOR/.test(e.ifc) || (/PROXY/.test(e.ifc) && /ajt[óo]|kapu/i.test(e.tipusNev ?? e.nev ?? ''));
   const mAjto = (n: ModellNyilas) => /ajto|kapu/.test(n.fajta);
   for (const [nev, mN, iN] of [['ablak', md.nyilasok.filter((n) => !mAjto(n)), ifc.elemek.filter(ablakE)], ['ajtó', md.nyilasok.filter(mAjto), ifc.elemek.filter(ajtoE)]] as const) add(nev, 'db', mN.length, iN.length);
+  // szintenként: az összes nyílászáró, és ebből a szélesség szerint (± 6 cm) párosítható (az ablak / ajtó besorolás a két
+  // oldalon eltérhet – pl. a padlóig érő ablak a modellben erkélyajtó)
+  const iSzel = (e: Elem): number | null => { const q = e.q ?? {}; const v = q['Szélesség'] ?? q['OverallWidth'] ?? q['Width'] ?? q['Hossz'];
+    if (v) return v; const d = e.gid ? DOBOZ[e.gid] : undefined; return d ? Math.max(d.x1 - d.x0, d.y1 - d.y0) : null; };
+  for (const { m: sz, i: iSz } of parok) {
+    const mN = md.nyilasok.filter((n) => n.szint === sz.id), iN = ifc.elemek.filter((e) => (ablakE(e) || ajtoE(e)) && e.szint === iSz.nev);
+    add(`${sz.nev} ↔ ${iSz.nev}`, 'nyílászáró db', mN.length, iN.length);
+    const sz2 = iN.map(iSzel).filter((v): v is number => v !== null).sort((x, y) => x - y), maradt = mN.map((n) => n.szel).sort((x, y) => x - y);
+    let par = 0; for (const w of sz2) { const k = maradt.findIndex((v) => Math.abs(v - w) <= 0.06); if (k >= 0) { par++; maradt.splice(k, 1); } }
+    if (sz2.length) add(`${sz.nev} ↔ ${iSz.nev}`, 'nyílászáró db szélesség szerint párosítva', par, sz2.length);
+  }
 
   // helyiségek
   const iH = ifc.helyisegek.filter((h) => h.belso !== false);
