@@ -292,6 +292,13 @@ export function epuletModell(lapok: LapBemenet[]): EpuletModell {
           ...(f.burokEl ? { forras: { lap: L.lap, ri: f.burokEl.ri, pt: f.burokEl.pt, irany: f.burokEl.irany } } : futB !== futJ && typeof (futB ? f.bal : f.jobb) === 'number' ? { forras: { lap: L.lap, ri: (futB ? f.bal : f.jobb) as number } } : {}) });
         falIdk.push({ id, f });
       }
+      // rétegrend nélküli fal (a nyílások miatt nincs ép metszéke): az azonos vastagságú (± 2 cm), azonos helyzetű
+      // (külső / belső) falak leggyakoribb rétegrendje – ugyanaz a faltípus
+      { const sajatFal = falak.filter((q) => falIdk.some((x) => x.id === q.id));
+        const tipusok = new Map<string, Map<string, { n: number; r: NonNullable<Fal['retegek']> }>>();
+        const tk = (q: Fal) => `${q.kulso ? 'k' : 'b'}|${Math.round(q.vastag * 50)}`;
+        for (const q of sajatFal) if (q.retegek) { const m = tipusok.get(tk(q)) ?? new Map(); tipusok.set(tk(q), m); const k = q.retegek.map((x) => `${x.stilus}:${x.vastag}`).join(','); const e = m.get(k) ?? { n: 0, r: q.retegek }; e.n += q.hossz; m.set(k, e); }
+        for (const q of sajatFal) if (!q.retegek) { const m = tipusok.get(tk(q)); if (!m) continue; const best = [...m.values()].sort((a, b) => b.n - a.n)[0]; if (best) q.retegek = best.r.map((x) => ({ ...x })); } }
       // hőburokfalak belső síkjába csatlakozó belső falak (a belső felület ezekkel rövidebb – a raszter szerint)
       for (const { id, f } of falIdk) { const cs = f.burokEl?.csatl; if (cs && cs > 0) { const fal = falak.find((q) => q.id === id)!; fal.csatlakozas = sz(Math.min(cs, fal.sikHossz), 2); } }
       // nyílászárók: a helyiség (és a túloldal) falai közül a legközelebbi, amelynek tengelyére a nyílás közepe esik
@@ -560,16 +567,17 @@ function falLefedes(L: LapBemenet, fs: Fal[], szint: string): FalLefedes {
 }
 
 /**
- * A fal rétegrendje a rajzról: a tengelyre merőleges metszékek (a hossz 30, 50, 70 %-ánál) mentén a raszter
- * stílusai; az egymást követő azonos stílusú pixelek egy réteg. A három metszék közül a legtöbb réteget adó, a
- * teljes szélességre (≥ 80 %) kiterjedő. Egyrétegű (egy stílusú) falnál nincs (az anyag adja).
+ * A fal rétegrendje a rajzról: a tengelyre merőleges metszékek (a hossz 10–90 %-ánál) mentén a raszter
+ * stílusai; az egymást követő azonos stílusú pixelek egy réteg. A szélesség ≥ 60 %-át fedő metszékek leggyakoribb
+ * rétegrendje. Egyrétegű (egy stílusú) falnál nincs (az anyag adja).
  */
 function falRetegek(L: LapBemenet, f: FalNyers): Fal['retegek'] | undefined {
   const r = L.a.r; const ST = r?.anyagStilus ?? r?.stilus; if (!r || !ST || !r.stilusInfo) return undefined;
   const dx = f.b[0] - f.a[0], dy = f.b[1] - f.a[1], l = Math.hypot(dx, dy); if (l < 0.5) return undefined;
   const ux = dx / l, uy = dy / l, nx = -uy, ny = ux;
-  let legjobb: { st: number; n: number }[] | null = null;
-  for (const t of [0.3, 0.5, 0.7]) {
+  // (a metszékek a hossz 10–90 %-ánál: a nyílások helyén nincs rajzolt fal – ott a metszék kimarad)
+  const jeloltek: { st: number; n: number }[][] = [];
+  for (const t of [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]) {
     const cx = f.a[0] + dx * t, cy = f.a[1] + dy * t;
     const futas: { st: number; n: number }[] = [];
     const lepes = r.px, fel = f.vastag / 2;
@@ -582,8 +590,12 @@ function falRetegek(L: LapBemenet, f: FalNyers): Fal['retegek'] | undefined {
     const belso = futas.filter((x) => x.st > 0 && x.n * lepes >= 0.015);
     const fedes = belso.reduce((s0, x) => s0 + x.n * lepes, 0);
     if (fedes < 0.6 * f.vastag) continue;
-    if (!legjobb || belso.length > legjobb.length) legjobb = belso;
+    jeloltek.push(belso);
   }
+  // a leggyakoribb (stílus-sorrend szerinti) rétegrend, egyenlőségnél a több rétegű
+  const kulcs = (x: { st: number }[]) => x.map((y) => y.st).filter((v, i, a) => i === 0 || a[i - 1] !== v).join(',');
+  const gyak = new Map<string, number>(); for (const j of jeloltek) gyak.set(kulcs(j), (gyak.get(kulcs(j)) ?? 0) + 1);
+  const legjobb = jeloltek.slice().sort((p, q) => (gyak.get(kulcs(q))! - gyak.get(kulcs(p))!) || (kulcs(q).split(',').length - kulcs(p).split(',').length))[0];
   if (!legjobb || new Set(legjobb.map((x) => x.st)).size < 2) return undefined;
   // a szomszédos azonos stílusú darabok egyesítése
   const ossz: { st: number; n: number }[] = [];
