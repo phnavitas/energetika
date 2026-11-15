@@ -7,7 +7,9 @@ export interface Utvonal { pontok: number[][]; zart: boolean[]; muvelet: 'stroke
   /** Mintázattal (tiling pattern) kitöltött felület. */
   minta?: boolean;
   /** A PDF réteg (optional content group, pl. ArchiCAD-réteg) neve, amelyen az elem van. */
-  reteg?: string }
+  reteg?: string;
+  /** Az útvonalban görbe (Bézier) szakasz is van – a görbét a húrja közelíti (kör, ív, kavicsjel). */
+  gorbe?: boolean }
 export interface Lap { szel: number; mag: number; szovegek: Szoveg[]; utvonalak: Utvonal[];
   /** A lapon előforduló PDF-rétegek neve (ha a PDF rétegzett). */
   retegek?: string[];
@@ -84,7 +86,7 @@ export async function lapKinyer(pdfjs: any, page: any, oc?: { getGroup(id: strin
         const [rajz, [buf]] = a as [number, [ArrayLike<number> | null]];
         if (!buf) break;
         const pontok: number[][] = []; const zart: boolean[] = [];
-        let akt: number[] = [];
+        let akt: number[] = []; let gorbe = false;
         let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
         const add = (x: number, y: number) => { const [px, py] = alkalmaz(ctm, x, y); akt.push(px, py); minx = Math.min(minx, px); maxx = Math.max(maxx, px); miny = Math.min(miny, py); maxy = Math.max(maxy, py); };
         const lezar = (z: boolean) => { if (akt.length >= 4) { pontok.push(akt); zart.push(z); } akt = []; };
@@ -92,8 +94,8 @@ export async function lapKinyer(pdfjs: any, page: any, oc?: { getGroup(id: strin
           const op = buf[j++];
           if (op === 0) { lezar(false); add(buf[j]!, buf[j + 1]!); j += 2; }
           else if (op === 1) { add(buf[j]!, buf[j + 1]!); j += 2; }
-          else if (op === 2) { add(buf[j + 4]!, buf[j + 5]!); j += 6; }
-          else if (op === 3) { add(buf[j + 2]!, buf[j + 3]!); j += 4; }
+          else if (op === 2) { add(buf[j + 4]!, buf[j + 5]!); j += 6; gorbe = true; }
+          else if (op === 3) { add(buf[j + 2]!, buf[j + 3]!); j += 4; gorbe = true; }
           else if (op === 4) { lezar(true); }
           else break;
         }
@@ -101,7 +103,7 @@ export async function lapKinyer(pdfjs: any, page: any, oc?: { getGroup(id: strin
         const muvelet = rajz === O.stroke || rajz === O.closeStroke ? 'stroke' : rajz === O.fill || rajz === O.eoFill ? 'fill' : rajz === O.fillStroke || rajz === O.eoFillStroke || rajz === O.closeFillStroke || rajz === O.closeEOFillStroke ? 'fillStroke' : 'none';
         if (muvelet === 'none' || !pontok.length) break;
         const sk = Math.sqrt(Math.abs(ctm[0] * ctm[3] - ctm[1] * ctm[2]));
-        utvonalak.push({ pontok, zart, muvelet, vastagsag: lw * sk, vonalSzin: vs, toltoSzin: ts, bbox: [minx, miny, maxx, maxy], ...(minta && muvelet !== 'stroke' ? { minta: true } : {}), ...(reteg ? { reteg } : {}) });
+        utvonalak.push({ pontok, zart, muvelet, vastagsag: lw * sk, vonalSzin: vs, toltoSzin: ts, bbox: [minx, miny, maxx, maxy], ...(minta && muvelet !== 'stroke' ? { minta: true } : {}), ...(reteg ? { reteg } : {}), ...(gorbe ? { gorbe: true } : {}) });
         break;
       }
     }

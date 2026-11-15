@@ -238,6 +238,15 @@ export function epuletModell(lapok: LapBemenet[]): EpuletModell {
     for (const ri of sajat) for (const s of r.helyisegek[ri]!.szakaszok) { const a = (s.irany * 4 * Math.PI) / 180; sx += Math.cos(a) * s.hossz; sy += Math.sin(a) * s.hossz; }
     const fo = (Math.atan2(sy, sx) * 180) / Math.PI / 4;
     const foEltér = (ir: number) => { const d = (((ir - fo) % 90) + 90) % 90; return Math.min(d, 90 - d); };
+    // két modellbeli helyiség közös fala: a hosszabban látó oldal veszi fel (a pár és a falsík iránya szerint) – a
+    // lépcsőt, beépített bútort tartalmazó helyiség raszterében a fal egy része takarásban lehet
+    const parKulcs = (ri: number, j: number, ir: number) => `${Math.min(ri, j)}|${Math.max(ri, j)}|${ri < j ? ir : (ir + 180) % 360}`;
+    const parOssz = new Map<string, Map<number, number>>();
+    for (const ri of sajat) for (const s of r.helyisegek[ri]!.szakaszok) if (typeof s.tul === 'number' && L.kategoria.has(s.tul)) {
+      const k = parKulcs(ri, s.tul, Math.round(s.irany / 90) * 90 % 360); const m = parOssz.get(k) ?? new Map<number, number>(); parOssz.set(k, m); m.set(ri, (m.get(ri) ?? 0) + s.hossz); }
+    // (csak a teljes épületmodellnél – kizart megadva –; a hőburok-modell a korábbi, alacsonyabb indexű oldalt veszi)
+    const parNyer = (ri: number, j: number, ir: number) => { if (!L.kizart) return ri < j; const m = parOssz.get(parKulcs(ri, j, Math.round(ir / 90) * 90 % 360)); if (!m) return true;
+      const a = m.get(ri) ?? 0, b = m.get(j) ?? 0; return a > b + 0.05 || (Math.abs(a - b) <= 0.05 && ri < j); };
     for (const ri of sajat) {
       r.helyisegek[ri]!.szakaszok.forEach((s, sj) => {
         if (s.hossz < 0.15) return;
@@ -245,7 +254,7 @@ export function epuletModell(lapok: LapBemenet[]): EpuletModell {
         // (kivéve a felirat nélküli belső terület – lépcső-, légtér – felé: az nem burok, a fal belső fal)
         const belsoTul = !!L.kizart && typeof s.tul === 'number' && !L.kategoria.has(s.tul) && !L.kizart.has(s.tul);
         if (vanBurok && futott.has(ri) && !(typeof s.tul === 'number' && L.kategoria.has(s.tul)) && !belsoTul) return;
-        if (typeof s.tul === 'number' && s.tul < ri && L.kategoria.has(s.tul)) return; // a pár másik oldala már felvette
+        if (typeof s.tul === 'number' && L.kategoria.has(s.tul) && !parNyer(ri, s.tul, s.irany)) return; // a pár másik oldala veszi fel
         const sik = szakaszSik(s, L.m); if (!sik) return;
         // (a lapon y lefelé: a normális lapiránya atan2(nx, -ny))
         const sikIr = (Math.atan2(sik.n[0], -sik.n[1]) * 180) / Math.PI;
@@ -299,7 +308,7 @@ export function epuletModell(lapok: LapBemenet[]): EpuletModell {
         const hSz = extra.profil ? Math.max(...extra.profil.map((q) => q.z)) + (sz0.h - sz0.belmag) : extra.belsoMag !== undefined ? Math.min(sz0.h, extra.belsoMag + (sz0.h - sz0.belmag)) : sz0.h;
         const anyag = falAnyag(L, f), retegek = falRetegek(L, f);
         falak.push({ id, szint: sz0.id, a: [sz(f.a[0]), sz(f.a[1])], b: [sz(f.b[0]), sz(f.b[1])], vastag: sz(f.vastag, 2), z0: sz0.z0, h: sz(hSz, 3), ...extra,
-          ...(anyag ? { anyag } : {}), ...(retegek ? { retegek } : {}), szerkezet: !anyag && !retegek && f.vastag <= 0.06 && typeof f.bal === 'number' && typeof f.jobb === 'number' ? 'hatar' : falSzerkezet(f.vastag, anyag),
+          ...(anyag ? { anyag } : {}), ...(retegek ? { retegek } : {}), szerkezet: !anyag && !retegek && f.vastag <= 0.06 && typeof f.bal === 'number' && typeof f.jobb === 'number' && !falVonalMent(L, f) ? 'hatar' : falSzerkezet(f.vastag, anyag),
           bal: oldal(f.bal), jobb: oldal(f.jobb), kulso: (typeof f.bal !== 'number' && f.bal.fajta !== 'belso') || (typeof f.jobb !== 'number' && f.jobb.fajta !== 'belso') || kb === 'kulter' || kj === 'kulter',
           burok, ...(futB !== futJ ? { futottOldal: futB ? 'bal' as const : 'jobb' as const } : {}), hossz: sz(hossz, 2), sikHossz: sz(f.sik, 2),
           ...(f.burokEl ? { forras: { lap: L.lap, ri: f.burokEl.ri, pt: f.burokEl.pt, irany: f.burokEl.irany } } : futB !== futJ && typeof (futB ? f.bal : f.jobb) === 'number' ? { forras: { lap: L.lap, ri: (futB ? f.bal : f.jobb) as number } } : {}) });
@@ -637,6 +646,17 @@ function nevVastag(n?: string): number | undefined {
   const sz = [...n.replace(/\.\d{3,}$/, '').matchAll(/(?:^|\D)(\d{1,2})(?=\D|$)/g)].map((m) => Number(m[1])).filter((v) => v >= 5 && v <= 60);
   return sz.length ? sz[sz.length - 1]! / 100 : undefined;
 }
+/** Rétegzett lapon a fal tengelye mentén (± 8 cm-en belül) fal-fólia vonala fut-e a hossz legalább felén. */
+function falVonalMent(L: LapBemenet, f: FalNyers): boolean {
+  const r = L.a.r; if (!r?.falVonal) return false;
+  const dx = f.b[0] - f.a[0], dy = f.b[1] - f.a[1], l = Math.hypot(dx, dy); if (l < 0.2) return false;
+  const nx = -dy / l, ny = dx / l; let van = 0, n = 0;
+  for (let t = 0.05; t < 0.96; t += 0.05) { n++;
+    for (let d = -0.08; d <= 0.08 + 1e-9; d += r.px / 2) { const [x, y] = modellbolPt(L, [f.a[0] + dx * t + nx * d, f.a[1] + dy * t + ny * d]);
+      const gx = Math.floor(((x - r.x0) * r.mPerPt) / r.px), gy = Math.floor(((y - r.y0) * r.mPerPt) / r.px);
+      if (gx >= 0 && gy >= 0 && gx < r.w && gy < r.h && r.falVonal[gy * r.w + gx]) { van++; break; } } }
+  return van >= 0.5 * n;
+}
 /** A fal magvastagsága (lásd Fal.mag). */
 function falMag(f: Fal): number | undefined {
   const igazit = (mert: number, nev?: string) => { const v = nevVastag(nev); return v !== undefined && Math.abs(v - mert) <= 0.12 ? v : mert; };
@@ -646,7 +666,8 @@ function falMag(f: Fal): number | undefined {
     const s = mag.reduce((t, r) => t + r.vastag, 0);
     if (s > 0.04) return Math.round(igazit(s, mag.length === 1 ? mag[0]!.reteg : undefined) * 100) / 100;
   }
-  if (f.anyag?.reteg && !RETEG_JEL.test(f.anyag.reteg)) return Math.round(igazit(f.vastag, f.anyag.reteg) * 100) / 100;
+  // (rétegrend nélkül a mért vastagság a raszter falsávjáé – bizonytalanabb: a fólia neve ± 20 cm-ig dönt)
+  if (f.anyag?.reteg && !RETEG_JEL.test(f.anyag.reteg)) { const v = nevVastag(f.anyag.reteg); return Math.round((v !== undefined && Math.abs(v - f.vastag) <= 0.2 ? v : f.vastag) * 100) / 100; }
   return undefined;
 }
 

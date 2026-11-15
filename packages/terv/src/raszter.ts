@@ -79,6 +79,8 @@ export interface Raszter {
   anyagStilus?: Uint16Array;
   /** Az anyagStilus stílusai (id − 1 szerint; kitöltésszín + sraffozottság + PDF-réteg). */
   anyagInfo?: { szin: string; sraff: boolean; retegek: Record<string, number> }[];
+  /** Rétegzett lapon: a fal-, válaszfal- és hőszigetelés-fólia vonalai (pixelenként 1). */
+  falVonal?: Uint8Array;
   /** 0 = nincs, 1 = külső tér, 2+i = i. helyiség */
   cimke: Int32Array;
   /** Helyiségenként: terület (m²) és határoló falszakaszok. */
@@ -376,6 +378,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       poliRajzol(anyagStilus, w, h, u.pontok, tr, anyagAzon(`${u.toltoSzin}${u.minta ? '+minta' : ''}`, false, u.reteg));
     }
   }
+  let falVonal: Uint8Array | undefined;
   let sraffMod = false; let sraffMaszk: Uint8Array | null = null; let sraffLab: { lab: Uint16Array; retegek: string[] } | null = null;
   // kitöltés nélkül, csak sraffozással rajzolt falak (pl. ArchiCAD PDF-export: a falréteg mintázata vékony ferde vonalak,
   // a falsík vonala külön szakasz): a sűrű, rövid, ferde vékony vonalak mezője a fal. Csak akkor, ha a kitöltésekből
@@ -388,6 +391,13 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
     // 200 ferde rövid vonal), a biztosan nem falat hordozó (név szerint bútor, terep, födém, méretezés, felirat…) fólián
     // lévő sraffozás nem fal. (A fólia nélküli sraffozás marad: van terv, ahol a falak egy része fólia nélküli.)
     const falFolia = (u: Utvonal) => !!u.reteg && ['fal', 'valaszfal', 'hoszig'].includes(retegTipus(u.reteg));
+    // (a fal-fólia vonalai pixelenként – a modell ezzel különíti el a kitöltetlen, csak körvonallal rajzolt vékony
+    // falat a fólián kívüli vonaltól, pl. gerendavonaltól)
+    if (retegesFal) { falVonal = new Uint8Array(w * h);
+      for (const u of lap.utvonalak) { if (u.muvelet === 'none' || !falFolia(u)) continue;
+        for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) {
+          const [ax, ay] = tr(p[i]!, p[i + 1]!), [bx, by] = tr(p[i + 2]!, p[i + 3]!); const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) * 2));
+          for (let k = 0; k <= n; k++) { const x = Math.round(ax + (bx - ax) * k / n), y = Math.round(ay + (by - ay) * k / n); if (x >= 0 && y >= 0 && x < w && y < h) falVonal[y * w + x] = 1; } } } }
     let csakFolia = false;
     if (retegesFal) {
       let n = 0;
@@ -401,6 +411,8 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       if (u.bbox[2] < x0 || u.bbox[0] > x1 || u.bbox[3] < y0 || u.bbox[1] > y1) continue;
       // (a nem falat hordozó PDF-rétegek – burkolat, terep, kert, bútor, szaniter, kerítés – sraffozása nem fal)
       if (u.reteg && NEM_FAL_RETEG.test(u.reteg)) continue;
+      // (a görbe – kör, ív: kavicsjel, nyitásív – húrja nem sraffvonal)
+      if (u.gorbe) continue;
       if (csakFolia && u.reteg && ['zaj', 'pecset', 'zona', 'meret', 'felirat', 'nyilas'].includes(retegTipus(u.reteg))) continue;
       let lab = 0; if (u.reteg) { lab = srRetegek.indexOf(u.reteg) + 1; if (!lab) lab = srRetegek.push(u.reteg); }
       // (a réteg címkéje minden rövid vonaldarabra – a mintázattal, apró elemekkel rajzolt hőszigetelésre is)
@@ -1136,7 +1148,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   // valós hosszával; a túloldal az élről kifelé, a falon át haladva az első nem saját helyiség vagy a külső tér
   const zonaSz = b.zonaPoli?.some(Boolean) ? b.zonaPoli.map((pl, k) => (pl ? zonaSzakaszok(pl, k + 2, helyCimke, gat, fal, nyilas, w, h, px, mPerPt, tr, maxLep * px) : undefined)) : undefined;
   return {
-    w, h, px, x0, y0, mPerPt, fal, cimke: helyCimke, stilus, stilusInfo, anyagStilus, anyagInfo, ...(retegesFal ? { reteges: true } : {}),
+    w, h, px, x0, y0, mPerPt, fal, cimke: helyCimke, stilus, stilusInfo, anyagStilus, anyagInfo, ...(falVonal ? { falVonal } : {}), ...(retegesFal ? { reteges: true } : {}),
     nyilas, uvegfalak,
     helyisegek: helyisegek.map((H, k) => ({
       A: H.A, szivarog: szivarog[k]!,
