@@ -68,6 +68,10 @@ export interface Fal {
   /** Ferde / tört felső élű fal (tetőtér: oromfal, térdfal + tetősík): a belső felület felső éle a falsík mentén
    * (t: 0…1 a belső sík hosszán, z: magasság a szint padlójától, m). */
   profil?: { t: number; z: number }[];
+  /** A fal anyaga a rajz szerint: a kitöltés színe, sraffozott-e, a PDF-réteg (ArchiCAD) – azonos jellemzőjű falak egy típus. */
+  anyag?: { stilus: number; szin: string; sraff: boolean; reteg?: string };
+  /** Szerkezet: teherhordó fal (≥ 20 cm, vagy a réteg neve szerint), válaszfal (≤ 15 cm, vagy a réteg neve szerint), ill. kitöltő / egyéb. */
+  szerkezet?: 'teherhordo' | 'valaszfal' | 'egyeb';
   /** Térdfal / oromfal / alacsonyabb párkány jelölés. */
   jelleg?: 'terdfal' | 'oromfal' | 'parkany' | 'ferde';
 }
@@ -116,7 +120,17 @@ export interface VizszintesBurok {
 }
 /** Tetőtéri tető (a T szint hőburok-körvonala és a metszet szerinti tetőgeometria – a megjelenítéshez). */
 export interface TetoGeom { szint: string; z0: number; poligonok: P2[][]; hajlas: number; terdfal: number; belmag: number; orom?: Record<number, number> }
-export interface EpuletModell { szintek: Szint[]; terek: Ter[]; falak: Fal[]; nyilasok: Nyilas[]; fodemek: Fodem[]; vizszintes: VizszintesBurok[]; tetok: TetoGeom[] }
+/**
+ * A falak alaprajzi lefedése lapként (a lap első szintjén): a modell falainak téglalapjai a rajz falpixeleihez képest.
+ * (a rajzolt fal a nyílások áthidalt részével együtt, mint a modell fala)
+ * lefedes: a rajzolt falfelület hányada, amelyet modellfal fed (hiányzó fal: < 1), pontossag: a modellfal-felület hányada,
+ * amely rajzolt falon van (fölösleges / túlnyúló fal: < 1), atfedes: a modellfalak egymást fedő része (m², sarkok, csatlakozások).
+ */
+export interface FalLefedes { lap: number; szint: string; rajzA: number; modellA: number; lefedes: number; pontossag: number; atfedes: number;
+  /** a modell többlete (m²): rajzolt fal mellett (≤ 0,3 m: vastagság-, hosszeltérés) ill. attól távol (fölösleges fal);
+   * a hiány (m²): modellfal mellett (vékonyabb / rövidebb modellfal) ill. attól távol (hiányzó fal) */
+  tobbletKozel: number; tobbletTavol: number; hianyKozel: number; hianyTavol: number }
+export interface EpuletModell { szintek: Szint[]; terek: Ter[]; falak: Fal[]; nyilasok: Nyilas[]; fodemek: Fodem[]; vizszintes: VizszintesBurok[]; tetok: TetoGeom[]; lefedes?: FalLefedes[] }
 
 /** Egy alaprajzi lap bemenete. */
 export interface LapBemenet {
@@ -171,11 +185,17 @@ function szakaszSik(s: FalSzakasz, m: (x: number, y: number) => P2): { p0: P2; p
   // a normális a lapirány felé (a ferde falnál is az illesztett egyenesre merőleges)
   const ir = iranyVektor(s.irany);
   let n: P2 = [-u[1], u[0]]; if (n[0] * ir[0] + n[1] * ir[1] < 0) n = [-n[0], -n[1]];
-  // főirányhoz közeli (≤ 2°) egyenes: pontosan tengelyirányú
+  // a szakasz irányához közeli (≤ 12°) egyenes: pontosan a szakasz (lap) irányában – a csatlakozó falak, sarkok pixelei
+  // az illesztett egyenest elfordíthatják; a hely ilyenkor a pontok normális menti mediánja (a kilógó pixelek nélkül)
   const szog = Math.atan2(n[1], n[0]), tz = Math.atan2(ir[1], ir[0]);
-  if (Math.abs(((szog - tz + 3 * Math.PI) % (2 * Math.PI)) - Math.PI) < (2 * Math.PI) / 180) { n = ir; u = [-ir[1], ir[0]]; }
-  let t0 = Infinity, t1 = -Infinity; for (const [x, y] of pm) { const t = (x - e.c[0]) * u[0] + (y - e.c[1]) * u[1]; if (t < t0) t0 = t; if (t > t1) t1 = t; }
-  return { p0: [e.c[0] + u[0] * t0, e.c[1] + u[1] * t0], p1: [e.c[0] + u[0] * t1, e.c[1] + u[1] * t1], n };
+  let c = e.c;
+  if (Math.abs(((szog - tz + 3 * Math.PI) % (2 * Math.PI)) - Math.PI) < (12 * Math.PI) / 180) {
+    n = ir; u = [-ir[1], ir[0]];
+    const d = pm.map(([x, y]) => x * n[0] + y * n[1]).sort((a, b) => a - b), dm = d[Math.floor(d.length / 2)]!;
+    const cd = e.c[0] * n[0] + e.c[1] * n[1]; c = [e.c[0] + n[0] * (dm - cd), e.c[1] + n[1] * (dm - cd)];
+  }
+  let t0 = Infinity, t1 = -Infinity; for (const [x, y] of pm) { const t = (x - c[0]) * u[0] + (y - c[1]) * u[1]; if (t < t0) t0 = t; if (t > t1) t1 = t; }
+  return { p0: [c[0] + u[0] * t0, c[1] + u[1] * t0], p1: [c[0] + u[0] * t1, c[1] + u[1] * t1], n };
 }
 
 /** A raszter helyiségének egyedi azonosítója. */
@@ -198,6 +218,12 @@ export function epuletModell(lapok: LapBemenet[]): EpuletModell {
     const futott = new Set(sajat.filter((ri) => L.kategoria.get(ri) === 'futott'));
     const vanBurok = !!L.burokPol?.length && futott.size > 0;
     if (vanBurok) nyers.push(...burokFalakModell(L.burokR ?? r, L.burokPol!, futott, L.m, new Set(sajat)));
+    // a lap fő falirányai (a szakaszok hossz-súlyozott iránya 90°-onként): a főirányoktól eltérő rövid (< 1,6 m)
+    // szakasz nem fal (ajtólap, nyitásív, lépcső-, bútorvonal)
+    let sx = 0, sy = 0;
+    for (const ri of sajat) for (const s of r.helyisegek[ri]!.szakaszok) { const a = (s.irany * 4 * Math.PI) / 180; sx += Math.cos(a) * s.hossz; sy += Math.sin(a) * s.hossz; }
+    const fo = (Math.atan2(sy, sx) * 180) / Math.PI / 4;
+    const foEltér = (ir: number) => { const d = (((ir - fo) % 90) + 90) % 90; return Math.min(d, 90 - d); };
     for (const ri of sajat) {
       r.helyisegek[ri]!.szakaszok.forEach((s, sj) => {
         if (s.hossz < 0.15) return;
@@ -205,6 +231,9 @@ export function epuletModell(lapok: LapBemenet[]): EpuletModell {
         if (vanBurok && futott.has(ri) && !(typeof s.tul === 'number' && L.kategoria.has(s.tul))) return;
         if (typeof s.tul === 'number' && s.tul < ri && L.kategoria.has(s.tul)) return; // a pár másik oldala már felvette
         const sik = szakaszSik(s, L.m); if (!sik) return;
+        // (a lapon y lefelé: a normális lapiránya atan2(nx, -ny))
+        const sikIr = (Math.atan2(sik.n[0], -sik.n[1]) * 180) / Math.PI;
+        if (s.hossz < 1.6 && (foEltér(sikIr) > 10 || foEltér(s.irany) > 10) && typeof s.tul === 'number') return;
         const v = Math.max(0.05, Math.min(1.2, s.vastagsag || 0.3));
         // tengely: a falsík + fél falvastagság kifelé; a végek a falvastagság felével meghosszabbítva (sarokcsatlakozás)
         const d: P2 = [sik.p1[0] - sik.p0[0], sik.p1[1] - sik.p0[1]]; const l = Math.hypot(d[0], d[1]); if (l < 0.1) return;
@@ -252,7 +281,9 @@ export function epuletModell(lapok: LapBemenet[]): EpuletModell {
         const extra: Partial<Fal> = typeof mag === 'number' ? { belsoMag: sz(mag, 2) } : mag && 'profil' in mag ? { profil: mag.profil.map((q) => ({ t: sz(q.t, 4), z: sz(q.z, 3) })), ...(mag.jelleg ? { jelleg: mag.jelleg } : {}) } : mag ? { belsoMag: sz(mag.belsoMag, 2), ...(mag.jelleg ? { jelleg: mag.jelleg } : {}) } : {};
         // (a szerkezeti magasság: alacsonyabb belső magasságnál a födém vastagságával fölötte, különben a szintmagasság)
         const hSz = extra.profil ? Math.max(...extra.profil.map((q) => q.z)) + (sz0.h - sz0.belmag) : extra.belsoMag !== undefined ? Math.min(sz0.h, extra.belsoMag + (sz0.h - sz0.belmag)) : sz0.h;
+        const anyag = falAnyag(L, f);
         falak.push({ id, szint: sz0.id, a: [sz(f.a[0]), sz(f.a[1])], b: [sz(f.b[0]), sz(f.b[1])], vastag: sz(f.vastag, 2), z0: sz0.z0, h: sz(hSz, 3), ...extra,
+          ...(anyag ? { anyag } : {}), szerkezet: falSzerkezet(f.vastag, anyag),
           bal: oldal(f.bal), jobb: oldal(f.jobb), kulso: typeof f.bal !== 'number' || typeof f.jobb !== 'number' || kb === 'kulter' || kj === 'kulter',
           burok, ...(futB !== futJ ? { futottOldal: futB ? 'bal' as const : 'jobb' as const } : {}), hossz: sz(hossz, 2), sikHossz: sz(f.sik, 2),
           ...(f.burokEl ? { forras: { lap: L.lap, ri: f.burokEl.ri, pt: f.burokEl.pt, irany: f.burokEl.irany } } : futB !== futJ && typeof (futB ? f.bal : f.jobb) === 'number' ? { forras: { lap: L.lap, ri: (futB ? f.bal : f.jobb) as number } } : {}) });
@@ -295,7 +326,8 @@ export function epuletModell(lapok: LapBemenet[]): EpuletModell {
     }
   }
   const tetok: TetoGeom[] = lapok.flatMap((L) => (L.tetoter && L.burokPol?.length ? L.szintek.filter((s) => s.kod === 'T').map((s) => ({ szint: s.id, z0: s.z0, poligonok: L.burokPol!.map((q) => q.map(([x, y]) => L.m(x, y))), ...L.tetoter! })) : []));
-  return { szintek, terek, falak, nyilasok, fodemek, vizszintes: vizszintesBurok(szintek, terek, lapok, fodemek), tetok };
+  const lefedes = lapok.flatMap((L) => { try { const sz0 = L.szintek[0]; return sz0 ? [falLefedes(L, falak.filter((f) => f.szint === sz0.id), sz0.id)] : []; } catch { return []; } });
+  return { szintek, terek, falak, nyilasok, fodemek, vizszintes: vizszintesBurok(szintek, terek, lapok, fodemek), tetok, lefedes };
 }
 
 
@@ -481,6 +513,77 @@ function vizszintesBurok(szintek: Szint[], terek: Ter[], lapok: LapBemenet[], fo
     else if (leFold) atl('alul', (f) => f === 'futetlenFelett' || f === 'padlo');
   }
   return ki;
+}
+
+/** A falak lefedése a rajzon (lásd FalLefedes): a modellfalak téglalapjai a lap raszterén, a rajzolt falpixelek a
+ * modell befoglalójában (± 1 m). */
+function falLefedes(L: LapBemenet, fs: Fal[], szint: string): FalLefedes {
+  const r = L.a.r!; const W = r.w, H = r.h, px2 = r.px * r.px;
+  const db = new Uint8Array(W * H);
+  let x0 = W, y0 = H, x1 = 0, y1 = 0, osszA = 0;
+  const cel = (p: P2) => { const [x, y] = modellbolPt(L, p); return [((x - r.x0) * r.mPerPt) / r.px, ((y - r.y0) * r.mPerPt) / r.px] as P2; };
+  for (const f of fs) {
+    const a = cel(f.a), b = cel(f.b), dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy); if (l < 1e-6) continue;
+    const ux = dx / l, uy = dy / l, fv = f.vastag / 2 / r.px;
+    const xs = [a[0] + uy * fv, a[0] - uy * fv, b[0] + uy * fv, b[0] - uy * fv], ys = [a[1] - ux * fv, a[1] + ux * fv, b[1] - ux * fv, b[1] + ux * fv];
+    const bx0 = Math.max(0, Math.floor(Math.min(...xs))), bx1 = Math.min(W - 1, Math.ceil(Math.max(...xs))), by0 = Math.max(0, Math.floor(Math.min(...ys))), by1 = Math.min(H - 1, Math.ceil(Math.max(...ys)));
+    for (let gy = by0; gy <= by1; gy++) for (let gx = bx0; gx <= bx1; gx++) {
+      const qx = gx + 0.5 - a[0], qy = gy + 0.5 - a[1], t = qx * ux + qy * uy, d = Math.abs(qx * uy - qy * ux);
+      if (t < 0 || t > l || d > fv) continue;
+      const k = gy * W + gx; if (db[k]! < 255) db[k]!++; osszA += px2;
+      if (gx < x0) x0 = gx; if (gx > x1) x1 = gx; if (gy < y0) y0 = gy; if (gy > y1) y1 = gy;
+    }
+  }
+  const tart = Math.round(1 / r.px);
+  x0 = Math.max(0, x0 - tart); y0 = Math.max(0, y0 - tart); x1 = Math.min(W - 1, x1 + tart); y1 = Math.min(H - 1, y1 + tart);
+  let R = 0, M = 0, I = 0;
+  for (let gy = y0; gy <= y1; gy++) for (let gx = x0; gx <= x1; gx++) { const k = gy * W + gx; const rf = (!!r.fal[k] || !!r.nyilas[k]), mf = db[k]! > 0; if (rf) R++; if (mf) M++; if (rf && mf) I++; }
+  // közelség (0,3 m): a maszkok kiterjesztése soronként, majd oszloponként
+  const n = Math.max(1, Math.round(0.3 / r.px));
+  const tag = (f: (k: number) => boolean) => {
+    const a = new Uint8Array(W * H);
+    for (let gy = y0; gy <= y1; gy++) { let utolso = -1e9; for (let gx = x0; gx <= x1; gx++) { if (f(gy * W + gx)) utolso = gx; if (gx - utolso <= n) a[gy * W + gx] = 1; } utolso = 1e9; for (let gx = x1; gx >= x0; gx--) { if (f(gy * W + gx)) utolso = gx; if (utolso - gx <= n) a[gy * W + gx] = 1; } }
+    const b = new Uint8Array(W * H);
+    for (let gx = x0; gx <= x1; gx++) { let utolso = -1e9; for (let gy = y0; gy <= y1; gy++) { if (a[gy * W + gx]) utolso = gy; if (gy - utolso <= n) b[gy * W + gx] = 1; } utolso = 1e9; for (let gy = y1; gy >= y0; gy--) { if (a[gy * W + gx]) utolso = gy; if (utolso - gy <= n) b[gy * W + gx] = 1; } }
+    return b;
+  };
+  const rK = tag((k) => (!!r.fal[k] || !!r.nyilas[k])), mK = tag((k) => db[k]! > 0);
+  let tk = 0, tt = 0, hk = 0, ht = 0;
+  for (let gy = y0; gy <= y1; gy++) for (let gx = x0; gx <= x1; gx++) { const k = gy * W + gx; const rf = (!!r.fal[k] || !!r.nyilas[k]), mf = db[k]! > 0; if (mf && !rf) { if (rK[k]) tk++; else tt++; } if (rf && !mf) { if (mK[k]) hk++; else ht++; } }
+  try { if ((globalThis as any).__lefedesDbg) { let rle = ''; let prev = -1, cnt = 0; for (let gy = y0; gy <= y1; gy++) for (let gx = x0; gx <= x1; gx++) { const k = gy * W + gx; const v = (r.fal[k] || r.nyilas[k] ? 1 : 0) + (db[k]! > 0 ? 2 : 0); if (v === prev) cnt++; else { if (cnt) rle += prev + ':' + cnt + ','; prev = v; cnt = 1; } } rle += prev + ':' + cnt; ((globalThis as any).__lefedesKep ??= []).push({ w: x1 - x0 + 1, h: y1 - y0 + 1, rle }); } } catch { /* */ }
+  const kr = (v: number, d = 3) => Math.round(v * 10 ** d) / 10 ** d;
+  return { lap: L.lap, szint, rajzA: kr(R * px2, 2), modellA: kr(M * px2, 2), lefedes: kr(R ? I / R : 0), pontossag: kr(M ? I / M : 0), atfedes: kr(osszA - M * px2, 2),
+    tobbletKozel: kr(tk * px2, 2), tobbletTavol: kr(tt * px2, 2), hianyKozel: kr(hk * px2, 2), hianyTavol: kr(ht * px2, 2) };
+}
+
+/** Pont (modell, m) → lapkoordináta (pt): a lap affin leképezésének inverze. */
+function modellbolPt(L: LapBemenet, p: P2): P2 {
+  const o = L.m(0, 0), ex = L.m(1, 0), ey = L.m(0, 1);
+  const a = ex[0] - o[0], b = ey[0] - o[0], c = ex[1] - o[1], d = ey[1] - o[1], det = a * d - b * c;
+  const x = p[0] - o[0], y = p[1] - o[1];
+  return [(d * x - b * y) / det, (-c * x + a * y) / det];
+}
+/** A fal anyaga: a tengely menti raszterpixelek leggyakoribb stílusa (a végeken 15 %-ot kihagyva – csatlakozások). */
+function falAnyag(L: LapBemenet, f: FalNyers): Fal['anyag'] | undefined {
+  const r = L.a.r; if (!r?.stilus) return undefined;
+  const db = new Map<number, number>();
+  for (let i = 0; i <= 12; i++) {
+    const t = 0.15 + (0.7 * i) / 12;
+    const [x, y] = modellbolPt(L, [f.a[0] + (f.b[0] - f.a[0]) * t, f.a[1] + (f.b[1] - f.a[1]) * t]);
+    const gx = Math.floor(((x - r.x0) * r.mPerPt) / r.px), gy = Math.floor(((y - r.y0) * r.mPerPt) / r.px);
+    if (gx < 0 || gy < 0 || gx >= r.w || gy >= r.h) continue;
+    const st = r.stilus[gy * r.w + gx]!; if (st) db.set(st, (db.get(st) ?? 0) + 1);
+  }
+  const best = [...db.entries()].sort((p, q) => q[1] - p[1])[0]; if (!best) return undefined;
+  const info = r.stilusInfo?.[best[0] - 1]; if (!info) return undefined;
+  const reteg = Object.entries(info.retegek).sort((p, q) => q[1] - p[1])[0]?.[0];
+  return { stilus: best[0], szin: info.szin, sraff: info.sraff, ...(reteg ? { reteg } : {}) };
+}
+function falSzerkezet(v: number, anyag?: Fal['anyag']): Fal['szerkezet'] {
+  const r = anyag?.reteg?.toLowerCase() ?? '';
+  if (/teherhord|szerkezeti|structural|load/.test(r)) return 'teherhordo';
+  if (/válaszfal|valaszfal|partition|gipszkarton/.test(r)) return 'valaszfal';
+  return v >= 0.2 ? 'teherhordo' : v <= 0.15 ? 'valaszfal' : 'egyeb';
 }
 
 function teruletP(p: P2[]) { let s = 0; for (let i = 0; i < p.length; i++) { const a = p[i]!, b = p[(i + 1) % p.length]!; s += a[0] * b[1] - b[0] * a[1]; } return s / 2; }
