@@ -70,6 +70,9 @@ export interface Fal {
   profil?: { t: number; z: number }[];
   /** A fal anyaga a rajz szerint: a kitöltés színe, sraffozott-e, a PDF-réteg (ArchiCAD) – azonos jellemzőjű falak egy típus. */
   anyag?: { stilus: number; szin: string; sraff: boolean; reteg?: string };
+  /** Rétegrend a rajz szerint (a bal oldaltól a jobb felé): a fal keresztmetszetében egymást követő kitöltések
+   * (stílus: szín, sraffozás, PDF-réteg) és vastagságuk (m) – pl. falazat + homlokzati hőszigetelés. */
+  retegek?: { stilus: number; szin: string; sraff: boolean; reteg?: string; vastag: number }[];
   /** Szerkezet: teherhordó fal (≥ 20 cm, vagy a réteg neve szerint), válaszfal (≤ 15 cm, vagy a réteg neve szerint), ill. kitöltő / egyéb. */
   szerkezet?: 'teherhordo' | 'valaszfal' | 'egyeb';
   /** Térdfal / oromfal / alacsonyabb párkány jelölés. */
@@ -281,9 +284,9 @@ export function epuletModell(lapok: LapBemenet[]): EpuletModell {
         const extra: Partial<Fal> = typeof mag === 'number' ? { belsoMag: sz(mag, 2) } : mag && 'profil' in mag ? { profil: mag.profil.map((q) => ({ t: sz(q.t, 4), z: sz(q.z, 3) })), ...(mag.jelleg ? { jelleg: mag.jelleg } : {}) } : mag ? { belsoMag: sz(mag.belsoMag, 2), ...(mag.jelleg ? { jelleg: mag.jelleg } : {}) } : {};
         // (a szerkezeti magasság: alacsonyabb belső magasságnál a födém vastagságával fölötte, különben a szintmagasság)
         const hSz = extra.profil ? Math.max(...extra.profil.map((q) => q.z)) + (sz0.h - sz0.belmag) : extra.belsoMag !== undefined ? Math.min(sz0.h, extra.belsoMag + (sz0.h - sz0.belmag)) : sz0.h;
-        const anyag = falAnyag(L, f);
+        const anyag = falAnyag(L, f), retegek = falRetegek(L, f);
         falak.push({ id, szint: sz0.id, a: [sz(f.a[0]), sz(f.a[1])], b: [sz(f.b[0]), sz(f.b[1])], vastag: sz(f.vastag, 2), z0: sz0.z0, h: sz(hSz, 3), ...extra,
-          ...(anyag ? { anyag } : {}), szerkezet: falSzerkezet(f.vastag, anyag),
+          ...(anyag ? { anyag } : {}), ...(retegek ? { retegek } : {}), szerkezet: falSzerkezet(f.vastag, anyag),
           bal: oldal(f.bal), jobb: oldal(f.jobb), kulso: typeof f.bal !== 'number' || typeof f.jobb !== 'number' || kb === 'kulter' || kj === 'kulter',
           burok, ...(futB !== futJ ? { futottOldal: futB ? 'bal' as const : 'jobb' as const } : {}), hossz: sz(hossz, 2), sikHossz: sz(f.sik, 2),
           ...(f.burokEl ? { forras: { lap: L.lap, ri: f.burokEl.ri, pt: f.burokEl.pt, irany: f.burokEl.irany } } : futB !== futJ && typeof (futB ? f.bal : f.jobb) === 'number' ? { forras: { lap: L.lap, ri: (futB ? f.bal : f.jobb) as number } } : {}) });
@@ -554,6 +557,39 @@ function falLefedes(L: LapBemenet, fs: Fal[], szint: string): FalLefedes {
   const kr = (v: number, d = 3) => Math.round(v * 10 ** d) / 10 ** d;
   return { lap: L.lap, szint, rajzA: kr(R * px2, 2), modellA: kr(M * px2, 2), lefedes: kr(R ? I / R : 0), pontossag: kr(M ? I / M : 0), atfedes: kr(osszA - M * px2, 2),
     tobbletKozel: kr(tk * px2, 2), tobbletTavol: kr(tt * px2, 2), hianyKozel: kr(hk * px2, 2), hianyTavol: kr(ht * px2, 2) };
+}
+
+/**
+ * A fal rétegrendje a rajzról: a tengelyre merőleges metszékek (a hossz 30, 50, 70 %-ánál) mentén a raszter
+ * stílusai; az egymást követő azonos stílusú pixelek egy réteg. A három metszék közül a legtöbb réteget adó, a
+ * teljes szélességre (≥ 80 %) kiterjedő. Egyrétegű (egy stílusú) falnál nincs (az anyag adja).
+ */
+function falRetegek(L: LapBemenet, f: FalNyers): Fal['retegek'] | undefined {
+  const r = L.a.r; if (!r?.stilus || !r.stilusInfo) return undefined;
+  const dx = f.b[0] - f.a[0], dy = f.b[1] - f.a[1], l = Math.hypot(dx, dy); if (l < 0.5) return undefined;
+  const ux = dx / l, uy = dy / l, nx = -uy, ny = ux;
+  let legjobb: { st: number; n: number }[] | null = null;
+  for (const t of [0.3, 0.5, 0.7]) {
+    const cx = f.a[0] + dx * t, cy = f.a[1] + dy * t;
+    const futas: { st: number; n: number }[] = [];
+    const lepes = r.px, fel = f.vastag / 2;
+    for (let d = -fel; d <= fel + 1e-9; d += lepes) {
+      const [x, y] = modellbolPt(L, [cx + nx * d, cy + ny * d]);
+      const gx = Math.floor(((x - r.x0) * r.mPerPt) / r.px), gy = Math.floor(((y - r.y0) * r.mPerPt) / r.px);
+      const st = gx >= 0 && gy >= 0 && gx < r.w && gy < r.h ? r.stilus[gy * r.w + gx]! : 0;
+      const u = futas[futas.length - 1]; if (u && u.st === st) u.n++; else futas.push({ st, n: 1 });
+    }
+    const belso = futas.filter((x) => x.st > 0 && x.n * lepes >= 0.015);
+    const fedes = belso.reduce((s0, x) => s0 + x.n * lepes, 0);
+    if (fedes < 0.8 * f.vastag) continue;
+    if (!legjobb || belso.length > legjobb.length) legjobb = belso;
+  }
+  if (!legjobb || new Set(legjobb.map((x) => x.st)).size < 2) return undefined;
+  // a szomszédos azonos stílusú darabok egyesítése
+  const ossz: { st: number; n: number }[] = [];
+  for (const x of legjobb) { const u = ossz[ossz.length - 1]; if (u && u.st === x.st) u.n += x.n; else ossz.push({ ...x }); }
+  return ossz.map((x) => { const info = r.stilusInfo![x.st - 1]!; const reteg = Object.entries(info.retegek).sort((p, q) => q[1] - p[1])[0]?.[0];
+    return { stilus: x.st, szin: info.szin, sraff: info.sraff, ...(reteg ? { reteg } : {}), vastag: Math.round(x.n * r.px * 100) / 100 }; });
 }
 
 /** Pont (modell, m) → lapkoordináta (pt): a lap affin leképezésének inverze. */
