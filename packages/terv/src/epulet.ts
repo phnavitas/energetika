@@ -155,10 +155,16 @@ export interface Piller { id: string; szint: string; kozep: P2; /** keresztmetsz
   /** A befogadó fal (a tengelyéhez legközelebbi) és a pillérhez érő falak. */
   falId?: string; falak?: string[] }
 
-/** Koszorú szintenként: a teherhordó falak tetején (a metszet szerinti keresztmetszettel), a hossza a falaké. */
-export interface Koszoru { id: string; szint: string; szel: number; magas: number; zFelso: number; reteg: string; falak: string[]; hossz: number }
+/** Gerenda (kiváltó, alulbordás): az alaprajzon falanyag nélküli helyiséghatár a „ger. as: +2,60” feliratával – az
+ * alsó síkja a feliratból, a felső a fölötte lévő födém alsó síkja. */
+export interface Gerenda { id: string; szint: string; a: P2; b: P2; szel: number; alsoSik: number; felsoSik: number; magas: number; falId: string }
 
-export interface EpuletModell { szintek: Szint[]; terek: Ter[]; falak: Fal[]; nyilasok: Nyilas[]; fodemek: Fodem[]; vizszintes: VizszintesBurok[]; tetok: TetoGeom[]; lefedes?: FalLefedes[]; pillerek?: Piller[]; koszoruk?: Koszoru[] }
+/** Koszorú szintenként: a teherhordó falak tetején (a metszet szerinti keresztmetszettel), a hossza a falaké. */
+export interface Koszoru { id: string; szint: string; szel: number; magas: number; zFelso: number; reteg: string; falak: string[]; hossz: number;
+  /** 'attika': a koszorúra ülő vasbeton sáv a lapostetős részen (a fölötte lévő szint körvonalán kívüli teherhordó falakon). */
+  fajta?: 'koszoru' | 'attika' }
+
+export interface EpuletModell { szintek: Szint[]; terek: Ter[]; falak: Fal[]; nyilasok: Nyilas[]; fodemek: Fodem[]; vizszintes: VizszintesBurok[]; tetok: TetoGeom[]; lefedes?: FalLefedes[]; pillerek?: Piller[]; koszoruk?: Koszoru[]; gerendak?: Gerenda[] }
 
 /** Egy alaprajzi lap bemenete. */
 export interface LapBemenet {
@@ -397,7 +403,8 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
     for (const p of pillerek) { const s0 = szintek.find((q) => q.id === p.szint); if (s0) p.h = s0.h; }
   }
   const koszoruk = opt.metszetElemek?.length ? koszoruKeres(szintek, falak, fodemek, opt.metszetElemek) : [];
-  return { szintek, terek, falak, nyilasok, fodemek, vizszintes: vizszintesBurok(szintek, terek, lapok, fodemek), tetok, lefedes, ...(pillerek.length ? { pillerek } : {}), ...(koszoruk.length ? { koszoruk } : {}) };
+  const gerendak = gerendaKeres(lapok, falak, fodemek, koszoruk);
+  return { szintek, terek, falak, nyilasok, fodemek, vizszintes: vizszintesBurok(szintek, terek, lapok, fodemek), tetok, lefedes, ...(pillerek.length ? { pillerek } : {}), ...(koszoruk.length ? { koszoruk } : {}), ...(gerendak.length ? { gerendak } : {}) };
 }
 
 
@@ -682,6 +689,48 @@ function nevVastag(n?: string): number | undefined {
   const sz = [...n.replace(/\.\d{3,}$/, '').matchAll(/(?:^|\D)(\d{1,2})(?=\D|$)/g)].map((m) => Number(m[1])).filter((v) => v >= 5 && v <= 60);
   return sz.length ? sz[sz.length - 1]! / 100 : undefined;
 }
+/** Pont a sokszögben (vagy a határától legfeljebb tol távolságra). */
+function pontBenne(pl: P2[], x: number, y: number, tol = 0): boolean {
+  let be = false;
+  for (let i = 0, j = pl.length - 1; i < pl.length; j = i++) { const [xi, yi] = pl[i]!, [xj, yj] = pl[j]!; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) be = !be; }
+  if (be || tol <= 0) return be;
+  for (let i = 0, j = pl.length - 1; i < pl.length; j = i++) { const [ax, ay] = pl[j]!, [bx, by] = pl[i]!; const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy || 1;
+    const u = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2)); if (Math.hypot(x - ax - u * dx, y - ay - u * dy) <= tol) return true; }
+  return false;
+}
+
+/**
+ * Gerendák a teljes modellben: a „ger. as: +2,60” (gerenda alsó síkja) felirathoz legközelebbi (≤ 1,5 m), falanyag
+ * nélküli helyiséghatár (szerkezet 'hatar') a gerenda tengelye; az alsó sík a felirat (±0,00-hoz), a felső síkja a szint fölötti födém alsó síkja, a
+ * szélessége a szint koszorújáé (ennek híján 25 cm).
+ */
+function gerendaKeres(lapok: LapBemenet[], falak: Fal[], fodemek: Fodem[], koszoruk: Koszoru[]): Gerenda[] {
+  const ki: Gerenda[] = [];
+  for (const L of lapok) {
+    if (!L.rajz || !L.kizart) continue;
+    for (const t of L.rajz.szovegek) {
+      const m = /ger(?:enda)?\.?\s*a\.?\s*s\.?[^\d+\-−]*([+\-−]?\d+[,.]\d+)/i.exec(t.s); if (!m) continue;
+      const also = Number(m[1]!.replace(',', '.').replace('−', '-'));
+      const [px, py] = L.m(t.x, t.y);
+      for (const sz0 of L.szintek) {
+        let leg: Fal | null = null, d0 = 1.5;
+        for (const f of falak) {
+          if (f.szint !== sz0.id || f.szerkezet !== 'hatar' || ki.some((g) => g.falId === f.id)) continue;
+          const dx = f.b[0] - f.a[0], dy = f.b[1] - f.a[1], l2 = dx * dx + dy * dy; if (l2 < 0.25) continue;
+          const u = Math.max(0, Math.min(1, ((px - f.a[0]) * dx + (py - f.a[1]) * dy) / l2));
+          const d = Math.hypot(px - f.a[0] - u * dx, py - f.a[1] - u * dy); if (d < d0) { d0 = d; leg = f; }
+        }
+        if (!leg) continue;
+        const fd = fodemek.find((f) => f.alatt === sz0.id), felso = fd ? fd.z - fd.vastag : sz0.z0 + sz0.h - 0.3;
+        const alsoAbs = also; // (a szintjel ±0,00-hoz mért) if (felso - alsoAbs < 0.1 || felso - alsoAbs > 1.2) continue;
+        const szel = koszoruk.find((k) => k.szint === sz0.id)?.szel ?? 0.25;
+        ki.push({ id: `G${ki.length + 1}`, szint: sz0.id, a: leg.a, b: leg.b, szel, alsoSik: sz(alsoAbs, 2), felsoSik: sz(felso, 2), magas: sz(felso - alsoAbs, 2), falId: leg.id });
+      }
+    }
+  }
+  return ki;
+}
+
 /**
  * Koszorú szintenként a metszet kis keresztmetszetű elemeiből: szerkezeti (nem hőszigetelés, padló, tető, zsalukő,
  * alapozás) rétegen álló, 20–50 cm széles, 15–80 cm magas elem, amelynek felső síkja a szint fölötti födém alsó síkjához
@@ -689,7 +738,8 @@ function nevVastag(n?: string): number | undefined {
  * legközelebbi, azonos távolságnál a gyakoribb keresztmetszet. A koszorú a szint teherhordó falain fut.
  */
 function koszoruKeres(szintek: Szint[], falak: Fal[], fodemek: Fodem[], elemek: MetszetElem[]): Koszoru[] {
-  const NEM = /h[őo]szig|padl[óo]|tet[őo]|zsalu|alapoz|s[áa]valap|metszet kit|kieg[ée]sz|pill[ée]r|burkolat|f[öo]d[ée]m/i;
+  // (a falazóelem rétege – „POROTHERM FAL 30”, tégla, pórusbeton – a fal metszete, nem koszorú)
+  const NEM = /h[őo]szig|padl[óo]|tet[őo]|zsalu|alapoz|s[áa]valap|metszet kit|kieg[ée]sz|pill[ée]r|burkolat|f[öo]d[ée]m|porotherm|t[ée]gla|ker[áa]mia|falaz|ytong|p[óo]rusbeton|g[áa]zbeton/i;
   const ki: Koszoru[] = [];
   for (const sz0 of szintek) {
     const fd = fodemek.find((f) => f.alatt === sz0.id);
@@ -702,7 +752,17 @@ function koszoruKeres(szintek: Szint[], falak: Fal[], fodemek: Fodem[], elemek: 
     const leg = jel.sort((p, q) => Math.abs(p.zFelso - alja) - Math.abs(q.zFelso - alja) || db(q) - db(p))[0]!;
     const tf = falak.filter((f) => f.szint === sz0.id && f.szerkezet === 'teherhordo');
     if (!tf.length) continue;
-    ki.push({ id: `K${sz0.id}`, szint: sz0.id, szel: leg.szel, magas: leg.magas, zFelso: leg.zFelso, reteg: leg.reteg.trim(), falak: tf.map((f) => f.id), hossz: sz(tf.reduce((t, f) => t + f.hossz, 0), 2) });
+    ki.push({ id: `K${sz0.id}`, szint: sz0.id, szel: leg.szel, magas: leg.magas, zFelso: leg.zFelso, reteg: leg.reteg.trim(), falak: tf.map((f) => f.id), hossz: sz(tf.reduce((t, f) => t + f.hossz, 0), 2), fajta: 'koszoru' });
+    // attika: a koszorúra (± 5 cm) ülő, 30–100 cm magas, vasbeton / beton elem; a fölötte lévő szint körvonalán kívüli
+    // (lapostetős) teherhordó falakon
+    const att = elemek.filter((e) => /beton|\bvb\b/i.test(e.reteg) && !NEM.test(e.reteg) && e.szel >= 0.2 && e.szel <= 0.5 && e.magas >= 0.3 && e.magas <= 1 && Math.abs(e.zAlso - leg.zFelso) <= 0.05)
+      .sort((p, q) => db(q) - db(p))[0];
+    const felso = szintek.find((q) => q.z0 > sz0.z0 + 1);
+    const felsoPol = felso ? fodemek.find((f) => f.folott === felso.id)?.poligonok ?? [] : [];
+    if (att && felsoPol.length) {
+      const kint = tf.filter((f) => { const mx = (f.a[0] + f.b[0]) / 2, my = (f.a[1] + f.b[1]) / 2; return !felsoPol.some((pl) => pontBenne(pl, mx, my, 0.3)); });
+      if (kint.length) ki.push({ id: `A${sz0.id}`, szint: sz0.id, szel: att.szel, magas: att.magas, zFelso: att.zFelso, reteg: att.reteg.trim(), falak: kint.map((f) => f.id), hossz: sz(kint.reduce((t, f) => t + f.hossz, 0), 2), fajta: 'attika' });
+    }
   }
   return ki;
 }

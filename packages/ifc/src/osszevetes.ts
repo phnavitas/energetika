@@ -21,7 +21,8 @@ export interface ModellTer { szint: string; A: number; kategoria: string }
 export interface ModellSzint { id: string; nev: string; z0: number }
 export interface ModellPiller { szint: string; a: number; b: number }
 export interface ModellKoszoru { szint: string; szel: number; magas: number; hossz: number }
-export interface ModellEpulet { szintek: ModellSzint[]; terek: ModellTer[]; falak: ModellFal[]; nyilasok: ModellNyilas[]; pillerek?: ModellPiller[]; koszoruk?: ModellKoszoru[] }
+export interface ModellGerenda { szint: string; a: [number, number]; b: [number, number] }
+export interface ModellEpulet { szintek: ModellSzint[]; terek: ModellTer[]; falak: ModellFal[]; nyilasok: ModellNyilas[]; pillerek?: ModellPiller[]; koszoruk?: ModellKoszoru[]; gerendak?: ModellGerenda[] }
 
 type Elem = { ifc: string; gid?: string; folia?: string; nev?: string; tipusNev?: string; anyag?: string; szint?: string; oszt?: string; hely?: { z?: number | null };
   retegek?: { anyag: string; vast: number }[]; menny?: { L?: number | null; A?: number | null; V?: number | null };
@@ -171,18 +172,20 @@ export function osszevet(md: ModellEpulet, ifc: IfcKivonat, vagasFolott = 1.2, d
   // koszorú / gerenda szintenként: a modell koszorúja (teherhordó falak hossza) ↔ az IFC gerenda alakú elemei; az
   // egymás fölötti (alaprajzban ≥ 50 %-ban átfedő) darabok egy elem
   for (const { m: sz, i: iSz } of parok) {
-    const gt = tarto.filter((t) => fajta(t) === 'gerenda' && t.e.szint === iSz.nev);
+    // (szint a magasság szerint: az IFC a szintváltásnál álló koszorút / attikát a felső szinthez is rendelheti)
+    const iMag = parok.map((q) => q.i.magassag).sort((x, y) => x - y), sajat = iSz.magassag, kov = iMag.find((v) => v > sajat + 0.5) ?? Infinity;
+    const gt = tarto.filter((t) => fajta(t) === 'gerenda' && (t.d ? t.d.z0 >= sajat - 0.1 && t.d.z0 < kov - 0.1 : t.e.szint === iSz.nev));
     const db = gt.filter((t) => !qGerenda(t.e) && t.d).map((t) => t.d!);
     const egy: Doboz[] = [];
     for (const d of db) { const o = egy.find((q) => { const ax = Math.min(q.x1, d.x1) - Math.max(q.x0, d.x0), ay = Math.min(q.y1, d.y1) - Math.max(q.y0, d.y0);
         return ax > 0 && ay > 0 && ax * ay >= 0.5 * Math.min((q.x1 - q.x0) * (q.y1 - q.y0), (d.x1 - d.x0) * (d.y1 - d.y0)); });
       if (o) { o.z0 = Math.min(o.z0, d.z0); o.z1 = Math.max(o.z1, d.z1); } else egy.push({ ...d }); }
     const L = egy.reduce((t, d) => t + Math.max(d.x1 - d.x0, d.y1 - d.y0), 0) + gt.reduce((t, x) => t + (qGerenda(x.e) ?? 0), 0);
-    const mk = (md.koszoruk ?? []).filter((k) => k.szint === sz.id);
-    if (L || mk.length) add(`${sz.nev} ↔ ${iSz.nev}`, 'koszorú / gerenda hossz m', mk.reduce((t, k) => t + k.hossz, 0), L);
-    kM += mk.reduce((t, k) => t + k.hossz, 0); kI += L;
+    const mk = (md.koszoruk ?? []).filter((k) => k.szint === sz.id), mg = (md.gerendak ?? []).filter((g) => g.szint === sz.id);
+    const mL = mk.reduce((t, k) => t + k.hossz, 0) + mg.reduce((t, g) => t + Math.hypot(g.b[0] - g.a[0], g.b[1] - g.a[1]), 0);
+    if (L || mL) add(`${sz.nev} ↔ ${iSz.nev}`, 'koszorú / gerenda hossz m', mL, L);
+    kM += mL; kI += L;
   }
-  // (az IFC a szintváltásnál álló koszorút a felső szinthez is rendelheti: az összeg a mérvadó)
   if (kM || kI) add('koszorú / gerenda összesen', 'hossz m', kM, kI);
   for (const [k, v] of tSor) { add(`pillér / gerenda jelölt (IFC): ${k}`, 'db (IFC)', 0, v.db); if (k === 'gerenda') add(`pillér / gerenda jelölt (IFC): ${k}`, 'hossz m (IFC)', 0, v.L); }
 

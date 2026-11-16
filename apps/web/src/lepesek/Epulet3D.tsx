@@ -129,6 +129,16 @@ export function Epulet3D({ modell, magassag = 600 }: { modell: EpuletModell; mag
         const m = new THREE.Mesh(geo, mat(SZIN.teto, 0.45)); grp.add(m);
       }
     }
+    // koszorúk (a falak tengelyén) és gerendák
+    const rud = (a: [number, number], b: [number, number], szel: number, z0: number, z1: number, szin: number) => {
+      const l = Math.hypot(b[0] - a[0], b[1] - a[1]); if (l < 0.05 || z1 <= z0) return;
+      const m = new THREE.Mesh(new THREE.BoxGeometry(l, z1 - z0, szel), mat(szin, 0.9));
+      m.position.set((a[0] + b[0]) / 2, (z0 + z1) / 2, (a[1] + b[1]) / 2); m.rotation.y = -Math.atan2(b[1] - a[1], b[0] - a[0]); grp.add(m);
+    };
+    const falIx = new Map(modell.falak.map((f) => [f.id, f]));
+    for (const k of modell.koszoruk ?? []) { if (!lathato(k.szint)) continue;
+      for (const id of k.falak) { const f = falIx.get(id); if (f) rud(f.a, f.b, k.szel, k.zFelso - k.magas, k.zFelso, SZIN.piller); } }
+    for (const g of modell.gerendak ?? []) if (lathato(g.szint)) rud(g.a, g.b, g.szel, g.alsoSik, g.felsoSik, SZIN.piller);
     // pillérek
     for (const p of modell.pillerek ?? []) {
       if (!lathato(p.szint)) continue;
