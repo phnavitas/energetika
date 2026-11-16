@@ -7,7 +7,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "osszevetes": "tsx tools/osszevetes.ts",
     "seed": "tsx tools/seed-generalas.ts",
-    "db:teszt": "bash tools/db-teszt.sh"
+    "db:teszt": "bash tools/db-teszt.sh",
+    "elba:csomag": "node tools/elba/csomag.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
