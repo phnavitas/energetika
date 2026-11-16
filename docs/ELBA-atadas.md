@@ -24,7 +24,8 @@ const { modell, lapok, figyelmeztetes } = await pdfbolEpulet(fajlok, {  // File[
 - `modell`: `EpuletModell` (típus: `packages/terv/src/epulet.ts`), ld. lent. Egy 3 lapos családi ház ≈ 15–20 s.
 
 Felhasználói döntések nélkül fut, a Tervből lépés alapértelmezéseivel: a helyiségek besorolása a nevükből, a szintek a
-lapcímből, az északi irány a rajzról / a homlokzatokból, a belmagasság és a metszet az első metszetlapról. Felülírható
+lapcímből, az északi irány a rajzról / a homlokzatokból (északjel nélküli alaprajznál a helyszínrajz északjele, ha a
+homlokzatok égtáj-elnevezésétől legfeljebb 45°-kal tér el), a belmagasság és a metszet az első metszetlapról. Felülírható
 (`allapot`): `lapSzerep` (lapindex → `'alaprajz' | 'metszet' | 'homlokzat' | 'leiras' | 'egyeb'`; a lapindex a visszaadott
 `lapok` sorrendje – az alaprajznak jelölt lap képét a csomag újra előállítja), `szintKi` (lapindex → szintkódok, pl. `{0: ['F'], 1: ['T']}`), `bm` (belmagasság), `terdfalKezi`,
 `kijelolesek`, `eszakKozos` stb. (`FolyamatAllapot`, `apps/web/src/terv/folyamat.ts`).
@@ -45,7 +46,11 @@ alkalmazás teljes modelljével.
 | `koszoruk[]` | szintenként: `szel × magas`, `zFelso`, `hossz`, `falak`; `fajta: 'attika'` a lapostetős részen | koszorú, attika |
 | `gerendak[]` | kiváltó / alulbordás: `a→b`, `szel`, `alsoSik`, `felsoSik`, `magas` | `MON_GERENDA` |
 | `alapozas[]` | `savalap` / `labazat` (zsalukő) / `pontalap` (szabad pillér alatt, `becsult`) / `lemezalap` (`terulet`): `szel × magas`, `hossz` | alapozás (sávalap, lemezalap) |
-| `magasteto` | `haromszogek` (a tetőfelület), `eresz`, `hajlas`, `kiallas` (+ `kiallasBecsult`), `zEresz`, `mod` | **közvetlenül** `ElbaBimGeometria.tetoBontas(magasteto.haromszogek, {})` – ugyanaz, mint IFC-nél |
+| `magasteto` | `haromszogek` (a tetőfelület), `eresz`, `hajlas`, `kiallas` (+ `kiallasBecsult`), `zEresz`, `mod`, `fedett` (a tető alá vont fedett teraszok sávjai – szabad pillérsorig) | **közvetlenül** `ElbaBimGeometria.tetoBontas(magasteto.haromszogek, {})` – ugyanaz, mint IFC-nél |
+
+A tető körvonala a legfelső szint körvonala, kiegészítve a fedett teraszokkal (a körvonal egy élén kívül, vele párhuzamos
+sorban álló, legalább két szabad pillérig). Oromfal csak ott, ahol a homlokzaton a tető hajlásával futó háromszög alatt
+falfelület van – a kontylap (alatta héjazat-sraffozás / tetőréteg) nem oromfal. A helyszínrajz nem alaprajz (`egyeb`).
 
 A tető `mod`-ja: `derekszogu` (pontos), `konvex`, `vaz` (egyenes váz, ferde alaprajz), `kozelito` (csak elfajuló
 esetben – ezt jelezni kell). Oromfalat csak a derékszögű ág kezel.

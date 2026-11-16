@@ -358,7 +358,14 @@ export function eszakjelKeres(lap: Lap, kizar: [number, number, number, number][
       const gx = pts.reduce((s2, q) => s2 + q[0], 0) / pts.length, gy = pts.reduce((s2, q) => s2 + q[1], 0) / pts.length;
       if (Math.hypot(csucs[0] - gx, csucs[1] - gy) >= 1) {
         const bb: [number, number, number, number] = [Math.min(...pts.map((q) => q[0])), Math.min(...pts.map((q) => q[1])), Math.max(...pts.map((q) => q[0])), Math.max(...pts.map((q) => q[1]))];
-        bJeloltek.push({ e: { szog: lapSzog(csucs[0] - gx, csucs[1] - gy), x: gx, y: gy, meret: Math.max(bb[2] - bb[0], bb[3] - bb[1]), forras: 'betu', bizonytalan: false, bbox: bb }, pont: 2 });
+        // hosszúkás (pálca alakú) jel: a tengely a pontok főiránya (a csúcspont – a pálca sarka – felé mutató irány a pálca
+        // szélességének felével ferdítene), a betű felé
+        let dx = csucs[0] - gx, dy = csucs[1] - gy;
+        { let sxx = 0, syy = 0, sxy = 0; for (const q of pts) { sxx += (q[0] - gx) ** 2; syy += (q[1] - gy) ** 2; sxy += (q[0] - gx) * (q[1] - gy); }
+          const tr = sxx + syy, dt = Math.sqrt(Math.max(0, (sxx - syy) ** 2 / 4 + sxy * sxy)), l1 = tr / 2 + dt, l2 = tr / 2 - dt;
+          if (l1 > 16 * Math.max(l2, 1e-9)) { const fx = Math.abs(sxy) > 1e-9 ? l1 - syy : sxx >= syy ? 1 : 0, fy = Math.abs(sxy) > 1e-9 ? sxy : sxx >= syy ? 0 : 1;
+            const n = Math.hypot(fx, fy), jel = fx * dx + fy * dy >= 0 ? 1 : -1; dx = jel * fx / n; dy = jel * fy / n; } }
+        bJeloltek.push({ e: { szog: lapSzog(dx, dy), x: gx, y: gy, meret: Math.max(bb[2] - bb[0], bb[3] - bb[1]), forras: 'betu', bizonytalan: false, bbox: bb }, pont: 2 });
         continue;
       }
     }
@@ -465,7 +472,10 @@ export function egtaj(lapIrany: number, eszakSzog: number): 'É' | 'ÉK' | 'K' |
   // éppen egy égtájhatárra esik (pl. 113° → minden homlokzat 22,5°-os határ közelében)
   const t = Math.round(lapIrany / 90) * 90; if (Math.abs(lapIrany - t) <= 2) lapIrany = t;
   const az = szogNorm(lapIrany - eszakSzog);
-  return (['É', 'ÉK', 'K', 'DK', 'D', 'DNy', 'Ny', 'ÉNy'] as const)[Math.round(az / 45) % 8]!;
+  // két égtáj határán (± 3°): a fő égtáj (É, K, D, Ny) – a terv homlokzatelnevezése is ezt követi, a mért északjel-szög
+  // pontatlansága ne döntse el
+  const k = Math.round(az / 45), hatar = Math.abs(az - (Math.floor(az / 45) * 45 + 22.5)) < 3;
+  return (['É', 'ÉK', 'K', 'DK', 'D', 'DNy', 'Ny', 'ÉNy'] as const)[(hatar ? 2 * Math.round(az / 90) : k) % 8]!;
 }
 export const azimut = (lapIrany: number, eszakSzog: number) => szogNorm(lapIrany - eszakSzog);
 

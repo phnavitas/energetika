@@ -10,7 +10,7 @@ import { eltolas, fedettArany } from '@terv/fedes';
 import { burokAuto, burokFalak, burokMeres, burokTomeg, csatlakozasok, elKornyezet, kulsoSikra, kulsoSraff, nyilasEl, bennE, type Poligon } from '@terv/burok';
 import type { TervNyilas } from '@terv/nyilaszarok';
 import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, eszakJavitas, eszakJavitasMent, type TervLap, type AlaprajzFeldolgozas } from '@terv/elemzes';
-import { egtaj, jegyzekenKivul, jegyzekSorok, szintekCimbol, szintNev } from '@terv/alaprajz';
+import { egtaj, eszakjelKeres, jegyzekenKivul, jegyzekSorok, szintekCimbol, szintNev } from '@terv/alaprajz';
 import { tervAtvesz, type AtvettNyilas, type AtvettHelyiseg } from './atvetel';
 import type { Raszter, FalSzakasz } from '@terv/raszter';
 import { homlokzatRajzok, mertMagassagok, eszakHomlokzatbol, tetoAblakokHomlokzatrol, oromSzelessegek, type HomlokzatRajz, type MertMagassag } from '@terv/homlokzatIllesztes';
@@ -48,7 +48,26 @@ export interface Kijeloles { egysegek: Set<string>; kizartH: Set<number>; kat: R
   /** Falhoz nem köthető nyílásfeliratok, amelyeket a felhasználó külső nyílásként átvesz (al.arvaFeliratok indexe). */
   arvaBe?: Set<number>;
   /** Felirat nélküli (becsült méretű) tetősík ablakok kézzel megadott mérete (al.tetoablakok indexe → [szél, mag] m). */
-  taMeret?: Record<number, [number, number]> }
+  taMeret?: Record<number, [number, number]>;
+  /** Nyílászárók kézzel átírt mérete (al.nyilasok indexe, ≥ 20000: al.modellAjtok – a 3D modellben kijelölve, a listában
+   *  átírva): szélesség, magasság, mellvéd (m). */
+  nyMeret?: Record<number, { szel: number; mag: number; pm: number | null }> }
+
+const nyMeretGy = new WeakMap<AlaprajzFeldolgozas, { kulcs: string; a: AlaprajzFeldolgozas }>();
+/** Az elemzés a kézzel átírt nyílásméretekkel (változatlan elemzésnél ugyanaz az objektum – a gyorsítótárak miatt). */
+export function nyilasMeretAlkalmaz(a: AlaprajzFeldolgozas, m?: Kijeloles['nyMeret']): AlaprajzFeldolgozas {
+  if (!m || !Object.keys(m).length) return a;
+  const kulcs = JSON.stringify(m), c = nyMeretGy.get(a); if (c?.kulcs === kulcs) return c.a;
+  const ir = (n: TervNyilas, x: { szel: number; mag: number; pm: number | null }): TervNyilas => {
+    const { mert: _m, ...u } = n; void _m;
+    return { ...u, szel: x.szel, mag: x.mag, pm: x.pm, kezi: true } as TervNyilas;
+  };
+  const b: AlaprajzFeldolgozas = { ...a, nyilasok: a.nyilasok.map((n, i) => (m[i] ? ir(n, m[i]!) : n)),
+    ...(a.modellAjtok ? { modellAjtok: a.modellAjtok.map((n, j) => (m[20000 + j] ? ir(n, m[20000 + j]!) : n)) } : {}) };
+  const lap = elemzesLap.get(a); if (lap) elemzesLap.set(b, lap);
+  nyMeretGy.set(a, { kulcs, a: b });
+  return b;
+}
 
 /** A kijelölt fűtött (nem gyengén kapcsolt) helyiségek raszterindexei. */
 export function futottRiK(al: AlaprajzFeldolgozas, k: Kijeloles): Set<number> {
@@ -462,8 +481,25 @@ export function tervFolyamat(S: FolyamatAllapot) {
     for (const { i } of alaprajzLapok()) { const b = S.elemzesek[i]; if (typeof b !== 'object' || !b || b === a) continue; const eb = (b as AlaprajzFeldolgozas).e.eszak; if (a.e.eszak && eb && Math.abs(((a.e.eszak.szog - eb.szog + 540) % 360) - 180) > 5) continue; const w = eszakHomSajat(b as AlaprajzFeldolgozas); if (w !== null) return w; }
     return null;
   };
-  // a bizonytalan (betű nélküli alakból becsült) északjel helyett a homlokzatokból adódó irány, ha az egyértelmű
-  const eszakFelismert = (a: AlaprajzFeldolgozas | null | undefined) => (a?.e.eszak && !(a.e.eszak.bizonytalan && eszakHom(a) !== null) ? norm(a.e.eszak.szog + eszakJavitas(a.e.eszak.alairas)) : eszakHom(a) ?? (a?.e.eszak ? norm(a.e.eszak.szog + eszakJavitas(a.e.eszak.alairas)) : 0));
+  // a helyszínrajz (biztos) északjele – az alaprajzzal azonos állású rajzon (ld. lent)
+  let eszakHsGy: number | null | undefined;
+  const eszakHelyszin = (): number | null => {
+    if (eszakHsGy !== undefined) return eszakHsGy;
+    eszakHsGy = null;
+    for (const l of S.lapok) { if (l.szerep !== 'egyeb' || !/helysz[íi]nrajz/i.test(l.cim)) continue;
+      let e: ReturnType<typeof eszakjelKeres> = null; try { e = eszakjelKeres(l.lap); } catch { e = null; }
+      if (e && !e.bizonytalan) { eszakHsGy = norm(e.szog); break; } }
+    return eszakHsGy;
+  };
+  // a bizonytalan (betű nélküli alakból becsült) északjel helyett a homlokzatokból adódó irány, ha az egyértelmű;
+  // északjel nélküli alaprajznál a helyszínrajz északjele, ha a homlokzatok (címbeli égtáj) szerinti iránytól legfeljebb
+  // 45°-kal tér el (a homlokzatok elnevezése a fő égtájakra kerekít; a helyszínrajz nincs elforgatva az alaprajzhoz képest)
+  const eszakFelismert = (a: AlaprajzFeldolgozas | null | undefined) => {
+    if (a?.e.eszak && !(a.e.eszak.bizonytalan && eszakHom(a) !== null)) return norm(a.e.eszak.szog + eszakJavitas(a.e.eszak.alairas));
+    const h = eszakHom(a);
+    if (h !== null && !a?.e.eszak) { const hs = eszakHelyszin(); if (hs !== null && Math.abs(((hs - h + 540) % 360) - 180) <= 45) return hs; }
+    return h ?? (a?.e.eszak ? norm(a.e.eszak.szog + eszakJavitas(a.e.eszak.alairas)) : 0);
+  };
   const eszakLap = (i: number, a: AlaprajzFeldolgozas | null | undefined) => S.eszakKulon[i] ?? S.eszakKozos ?? eszakFelismert(a);
   // a homlokzati falmagasság-illesztés (lapindex + paraméterek szerint gyorsítótárazva – a 3D minden rajzolásakor kell)
   // a 3D nézethez: méretfelirat nélküli nyílások homlokzatról mért magassága (lapszintenként, gyorsítótárazva)
@@ -542,11 +578,11 @@ export function tervFolyamat(S: FolyamatAllapot) {
     };
   };
   /** A homlokzatokon látszó oromzatok szélessége alaprajzi irányonként (0/90/180/270). */
-  function oromok(eszak: number, M?: number): Record<number, number> {
+  function oromok(eszak: number, M?: number, kontyNelkul = false): Record<number, number> {
     const ki: Record<number, number> = {};
     if (!S.me?.tetoter) return ki;
     for (const { l } of S.homlokzatLapok) {
-      let lista: { az: number; orom: number }[] = []; try { lista = oromSzelessegek(l.lap, S.me.tetoter.hajlas, M); } catch { lista = []; }
+      let lista: { az: number; orom: number }[] = []; try { lista = oromSzelessegek(l.lap, S.me.tetoter.hajlas, M, { kontyNelkul }); } catch { lista = []; }
       for (const x of lista) { const ir = (Math.round(norm(x.az + eszak) / 90) * 90) % 360; ki[ir] = Math.max(ki[ir] ?? 0, x.orom); }
     }
     return ki;
@@ -634,7 +670,8 @@ export function tervFolyamat(S: FolyamatAllapot) {
     const ferde = me?.tetoter ? S.lapok.filter((l) => l.szerep === 'metszet').reduce((t, l) => t + ferdeTetoHossz(l.lap, me.tetoter!.hajlas), 0) : 0;
     // ereszkiállás a metszetekből (a ferde tetővonal alsó vége – a fal külső síkja); ennek híján becsült
     const kiallas = me?.tetoter ? ereszKiallas(mE.flatMap(({ li, e }) => ereszKiallasok(S.lapok[li]!.lap, me.tetoter!.hajlas, e.mPt))) : undefined;
-    const teto = me?.tetoter && ferde >= 4 ? { hajlas: me.tetoter.hajlas, orom: oromok(eszakSz, M0), ...(kiallas ? { kiallas } : {}) } : undefined;
+    // (a teljes modell magastetőjénél a kontylap nem oromfal – a Navitherm tetőterénél egyelőre a régi szabály)
+    const teto = me?.tetoter && ferde >= 4 ? { hajlas: me.tetoter.hajlas, orom: oromok(eszakSz, M0, true), ...(kiallas ? { kiallas } : {}) } : undefined;
     return epuletModell(be, { fodemSavok: fodemSav, metszetElemek: mE.flatMap(({ li, e }) => e.kisElemek.map((q) => ({ ...q, lap: li }))), ...(teto ? { teto } : {}) });
   };
   return { reszKizar, masSzintKizar, kjVeg, lapSzintek, kimarad, eszakHomSajat, eszakHom, eszakFelismert, eszakLap, mert3d, homMag3d, elMagFv, oromok, homMagModell, epuletModell: epuletModellApp };

@@ -35,6 +35,8 @@ export interface TervNyilas {
   /** Csak az épületmodellnek (a hőburok-átvétel nem használja): vegyes írású ajtófeliratból (NyilasFelirat.vegyesAjto),
    * ill. belső falnyíláshoz kötött méteres ajtóméret-párból. */
   csakModell?: boolean;
+  /** A méretet a felhasználó írta át (Kijeloles.nyMeret). */
+  kezi?: boolean;
 }
 
 /** Nyílásméret cm-ben; a „+30” toldás (redőnytok, tokszélesítés) a magasság mellett – a nyílásméret az első szám. */
@@ -249,7 +251,16 @@ export function nyilasFeliratok(sz0: Szoveg[], utvonalak?: { muvelet: string; po
       parban.add(a); parban.add(legjobb.b);
       parok.push({ a, b: legjobb.b, w: mSz(felso), h: mSz(also), x: (ga.cx + gb.cx) / 2, y: (ga.cy + gb.cy) / 2, fal: Math.abs(ga.fel[0]) >= Math.abs(ga.fel[1]) ? 'v' : 'f', cmPar, mPar });
     }
-    const jeloltPm = parok.flatMap((P, pi) => pmek.filter((q) => !pmHasznalt.has(q.t)).map((q) => ({ pi, q, d: Math.hypot(geom(q.t).cx - P.x, geom(q.t).cy - P.y) })).filter((e) => e.d <= P.a.meret * 5)).sort((u, v) => u.d - v.d);
+    // (a mellvédfelirat a pár közepétől legfeljebb 5 betűmagasságra – a nagyobbik betűméret szerint: a mellvéd sokszor
+    // nagyobb betűvel, a fal túloldalán, a nyílás tengelyében áll)
+    // (a pár tengelyében – a feliratok egymás mellé írásának irányára merőlegesen 0,8 betűmagasságon belül – álló, pozitív
+    // mellvéd 7 betűmagasságig: a fal túloldalára, a nyílás közepébe írt „pm 40”)
+    const jeloltPm = parok.flatMap((P, pi) => pmek.filter((q) => !pmHasznalt.has(q.t)).map((q) => {
+      const g = geom(q.t), fa = geom(P.a).fel, f = Math.max(P.a.meret, q.t.meret);
+      const d = Math.hypot(g.cx - P.x, g.cy - P.y), tengely = Math.abs((g.cx - P.x) * fa[0] + (g.cy - P.y) * fa[1]) <= 0.8 * f;
+      const pmPoz = (pmErtek(q.m![1]!, q.m![2]) ?? 0) > 0.05;
+      return { pi, q, d, ok: d <= f * 5 || (tengely && pmPoz && d <= f * 7) };
+    }).filter((e) => e.ok)).sort((u, v) => u.d - v.d);
     const parPm = new Map<number, (typeof pmek)[number]>();
     for (const e of jeloltPm) { if (parPm.has(e.pi) || pmHasznalt.has(e.q.t)) continue; const P = parok[e.pi]!; if (P.h < 0.3 || P.h > 3.5) continue; parPm.set(e.pi, e.q); pmHasznalt.add(e.q.t); }
     parok.forEach((P, pi) => {
@@ -640,7 +651,10 @@ export function nyilasokHozzarendel(feliratok0: NyilasFelirat[], r: Raszter, nev
  * külső tér határán (az egyik oldalon pecsételt helyiség, a másikon külső tér), és ha a sávban nincs méretfeliratos nyílás.
  * A magasság 0 – átvételkor a belmagasság.
  */
-export function fuggonyfalak(r: Raszter, feliratos: TervNyilas[], pecsetek: { x: number; y: number }[] = []): TervNyilas[] {
+/** Keskeny (≤ 60 cm), ajtómagasságnál alacsonyabb, mellvédes ablakfelirat: üvegfal / üvegezés mellett nyíló szárny lehet. */
+export const szarnyFeliratE = (n: TervNyilas) => n.fajta === 'ablak' && n.pm !== null && n.pm > 0.05 && n.mag < 1.9 && n.szel <= 0.6;
+
+export function fuggonyfalak(r: Raszter, feliratos: TervNyilas[], pecsetek: { x: number; y: number }[] = [], elnyelt?: Set<TervNyilas>): TervNyilas[] {
   const ki: TervNyilas[] = [];
   const cimke = (x: number, y: number) => {
     const xi = Math.floor((x - r.x0) * r.mPerPt / r.px), yi = Math.floor((y - r.y0) * r.mPerPt / r.px);
@@ -686,7 +700,16 @@ export function fuggonyfalak(r: Raszter, feliratos: TervNyilas[], pecsetek: { x:
     if (!((a >= 2 && b === 1) || (b >= 2 && a === 1))) continue;
     // méretfeliratos nyílás a sávban → az egy (széles) ablak / ajtó, nem függönyfal
     const L = g.fuggo ? [g.y0, g.y1] : [g.x0, g.x1];
-    if (feliratos.some((n) => n.kulso && n.helyiseg !== null && (g.fuggo ? Math.abs(n.x - cx) < 1.5 / r.mPerPt && n.y > L[0]! && n.y < L[1]! : Math.abs(n.y - cy) < 1.5 / r.mPerPt && n.x > L[0]! && n.x < L[1]!))) continue;
+    // (kivéve a sáv hosszához képest kicsi, mellvédes ablakfeliratokat a sávban vagy a végénél (≤ 1 m) – együtt a sáv 40 %-a
+    // alatt: a függönyfal nyíló szárnyai, pl. „50 / 1,45, pm 1,00” a 8 m-es üvegfal két mezője között; a függönyfal részei,
+    // külön nyílásként nem számítanak)
+    const sav = (n: TervNyilas, t: number) => g.fuggo ? Math.abs(n.x - cx) < 1.5 / r.mPerPt && n.y > L[0]! - t && n.y < L[1]! + t : Math.abs(n.y - cy) < 1.5 / r.mPerPt && n.x > L[0]! - t && n.x < L[1]! + t;
+    const szarnyE = szarnyFeliratE;
+    const kulsoF = feliratos.filter((n) => n.kulso && n.helyiseg !== null);
+    if (kulsoF.some((n) => sav(n, 0) && !(elnyelt && szarnyE(n)))) continue;
+    const szarnyak = elnyelt ? kulsoF.filter((n) => szarnyE(n) && sav(n, 1 / r.mPerPt)) : [];
+    if (szarnyak.length && szarnyak.reduce((q, n) => q + n.szel, 0) >= 0.4 * g.hossz) continue;
+    for (const n of szarnyak) elnyelt!.add(n);
     const helyiseg = (a >= 2 ? a : b) - 2;
     const irany = g.fuggo ? (a === 1 ? 270 : 90) : (a === 1 ? 0 : 180);
     ki.push({ szel: Math.round(g.hossz * 100) / 100, mag: 0, pm: 0, x: cx, y: cy, helyiseg, irany, kulso: true, fajta: 'fuggonyfal', hely: [Math.min(g.x0, g.x1), Math.min(g.y0, g.y1), Math.max(g.x0, g.x1), Math.max(g.y0, g.y1)] });

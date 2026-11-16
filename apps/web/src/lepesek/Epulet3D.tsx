@@ -31,8 +31,13 @@ function falDarabok(f: Fal, ny: { t: number; szel: number; mag: number; pm: numb
   return ki;
 }
 
-export function Epulet3D({ modell, magassag = 600 }: { modell: EpuletModell; magassag?: number }) {
+export type NyilasForras = { lap: number; ny: number };
+export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas }: { modell: EpuletModell; magassag?: number;
+  /** A kijelölt nyílászáró (forrása: lap és nyílásindex) – kiemelve; kattintásra onNyilas. */
+  kivNy?: NyilasForras | null; onNyilas?: (f: NyilasForras | null) => void }) {
   const hely = useRef<HTMLDivElement>(null);
+  // a nézőpont megmarad az újrarajzoláskor (kijelölés, méretmódosítás)
+  const nezo = useRef<{ p: THREE.Vector3; t: THREE.Vector3 } | null>(null);
   const [csakBurok, setCsakBurok] = useState(false);
   const [szintLathato, setSzintLathato] = useState<Record<string, boolean>>({});
   const [kijelolt, setKijelolt] = useState<string | null>(null);
@@ -88,12 +93,13 @@ export function Epulet3D({ modell, magassag = 600 }: { modell: EpuletModell; mag
         m.rotation.y = -Math.atan2(dy, dx);
         m.userData = { id: f.id }; grp.add(m); kattinthato.push(m);
       }
-      // nyílászárók (üveg)
+      // nyílászárók (üveg) – kattintással kijelölhetők
       for (const n of ny) {
-        const g = new THREE.BoxGeometry(n.szel, n.mag, Math.max(0.04, f.vastag * 0.3));
-        const m = new THREE.Mesh(g, mat(SZIN.nyilas, 0.55));
+        const kiv = !!kivNy && !!n.forras && n.forras.lap === kivNy.lap && n.forras.ny === kivNy.ny;
+        const g = new THREE.BoxGeometry(n.szel, n.mag, Math.max(0.04, f.vastag * (kiv ? 1.05 : 0.3)));
+        const m = new THREE.Mesh(g, mat(kiv ? 0xf97316 : SZIN.nyilas, kiv ? 0.95 : 0.55));
         m.position.set(f.a[0] + (dx / L) * n.t, f.z0 + n.pm + n.mag / 2, f.a[1] + (dy / L) * n.t);
-        m.rotation.y = -Math.atan2(dy, dx); grp.add(m);
+        m.rotation.y = -Math.atan2(dy, dx); m.userData = { id: n.id, ny: n.forras }; grp.add(m); kattinthato.push(m);
       }
     }
     // terek padlója
@@ -169,7 +175,10 @@ export function Epulet3D({ modell, magassag = 600 }: { modell: EpuletModell; mag
     const bb = new THREE.Box3().setFromObject(grp); const c = bb.getCenter(new THREE.Vector3()); const R = Math.max(5, bb.getSize(new THREE.Vector3()).length() / 2);
     const cam = new THREE.PerspectiveCamera(40, w / h, 0.1, R * 20);
     cam.position.set(c.x - R * 1.2, c.y + R * 1.0, c.z + R * 1.6); cam.lookAt(c);
-    const ctl = new OrbitControls(cam, renderer.domElement); ctl.target.copy(c); ctl.update();
+    const ctl = new OrbitControls(cam, renderer.domElement); ctl.target.copy(c);
+    if (nezo.current) { cam.position.copy(nezo.current.p); ctl.target.copy(nezo.current.t); }
+    ctl.update();
+    renderer.domElement.addEventListener('dblclick', () => { nezo.current = null; cam.position.set(c.x - R * 1.2, c.y + R * 1.0, c.z + R * 1.6); ctl.target.copy(c); ctl.update(); });
     let fut = true; const loop = () => { if (!fut) return; renderer.render(scene, cam); requestAnimationFrame(loop); }; loop();
     // kattintás: elem kijelölése
     const ray = new THREE.Raycaster(); let le: [number, number] | null = null;
@@ -179,17 +188,20 @@ export function Epulet3D({ modell, magassag = 600 }: { modell: EpuletModell; mag
       const rr = renderer.domElement.getBoundingClientRect();
       ray.setFromCamera(new THREE.Vector2(((e.clientX - rr.left) / rr.width) * 2 - 1, -((e.clientY - rr.top) / rr.height) * 2 + 1), cam);
       const hit = ray.intersectObjects(kattinthato)[0]; setKijelolt(hit ? (hit.object.userData.id as string) : null);
+      onNyilas?.((hit?.object.userData.ny as NyilasForras | undefined) ?? null);
     };
     renderer.domElement.addEventListener('pointerdown', down); renderer.domElement.addEventListener('pointerup', up);
     (globalThis as { __epulet3dKep?: () => string }).__epulet3dKep = () => renderer.domElement.toDataURL('image/png');
-    return () => { fut = false; ctl.dispose(); renderer.domElement.removeEventListener('pointerdown', down); renderer.domElement.removeEventListener('pointerup', up); renderer.dispose(); grp.traverse((o) => { if ((o as THREE.Mesh).geometry) (o as THREE.Mesh).geometry.dispose(); }); };
-  }, [modell, csakBurok, szintLathato, kijelolt, magassag]);
+    return () => { nezo.current = { p: cam.position.clone(), t: ctl.target.clone() }; fut = false; ctl.dispose(); renderer.domElement.removeEventListener('pointerdown', down); renderer.domElement.removeEventListener('pointerup', up); renderer.dispose(); grp.traverse((o) => { if ((o as THREE.Mesh).geometry) (o as THREE.Mesh).geometry.dispose(); }); };
+  }, [modell, csakBurok, szintLathato, kijelolt, magassag, kivNy?.lap, kivNy?.ny]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const info = (() => {
     if (!kijelolt) return null;
     const f = modell.falak.find((x) => x.id === kijelolt);
     const tNev = (o: Fal['bal']) => (o.fajta === 'ter' ? modell.terek.find((t) => t.id === o.ter)?.nev ?? o.ter : ({ kulso: 'külső tér', talaj: 'talaj', szomszed: 'szomszéd épület', futetlen: 'fűtetlen tér', belso: 'felirat nélküli belső tér', ismeretlen: 'ismeretlen' } as const)[o.fajta]);
     if (f) return `Fal · ${f.hossz.toFixed(2)} m × ${f.profil ? `${Math.min(...f.profil.map((q) => q.z)).toFixed(2)}–${Math.max(...f.profil.map((q) => q.z)).toFixed(2)}` : (f.belsoMag ?? f.h).toFixed(2)} m${f.jelleg ? ` (${({ terdfal: 'térdfal', oromfal: 'oromfal', parkany: 'alacsonyabb párkány', ferde: 'ferde felső élű' } as const)[f.jelleg]})` : ''}, ${Math.round(f.vastag * 100)} cm · ${tNev(f.bal)} | ${tNev(f.jobb)}${f.burok ? ` · hőburok: ${({ kulso: 'külső fal', futetlen: 'fűtetlen tér felé', szomszed: 'szomszéd felé', talaj: 'talajjal érintkező' } as const)[f.burok]}` : ''}`;
+    const n = modell.nyilasok.find((x) => x.id === kijelolt);
+    if (n) return `Nyílászáró · ${Math.round(n.szel * 100)} × ${Math.round(n.mag * 100)} cm, mellvéd ${Math.round(n.pm * 100)} cm · ${n.fajta.replace('_', ' ')}${onNyilas ? ' – a mérete a nyílászárók listájában átírható' : ''}`;
     const t = modell.terek.find((x) => x.id === kijelolt);
     if (t) return `${t.kod ? t.kod + ' ' : ''}${t.nev} · ${t.A.toFixed(2)} m² · belmagasság ${t.belmag.toFixed(2)} m · ${({ futott: 'fűtött', futetlen: 'fűtetlen', kulter: 'kültér' } as const)[t.kategoria]}`;
     return null;
@@ -209,7 +221,7 @@ export function Epulet3D({ modell, magassag = 600 }: { modell: EpuletModell; mag
       </div>
       <div ref={hely} style={`width:100%;height:${magassag}px`} />
       <div class="halkabb" style="font-size:12px;padding:6px 10px">
-        {info ?? 'Kattints egy falra vagy helyiségre a részletekért.'}<br />
+        {info ?? 'Kattints egy falra, nyílászáróra vagy helyiségre a részletekért (dupla kattintás: alapnézet).'}<br />
         {modell.szintek.length} szint · {modell.terek.length} tér · {modell.falak.length} fal · {modell.nyilasok.length} nyílászáró ·
         hőburok-fal (belső sík × belmagasság): külső {fm(osszeg.kulso?.A ?? 0)} m² (nyílás {fm(osszeg.kulso?.ny ?? 0)}), fűtetlen felé {fm(osszeg.futetlen?.A ?? 0)} m², szomszéd felé {fm(osszeg.szomszed?.A ?? 0)} m²
       </div>

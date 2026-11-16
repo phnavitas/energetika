@@ -109,7 +109,7 @@ const poligonTerulet = (q: [number, number][], mPerPt: number) => Math.abs(q.red
 
 const IRANY_SZIN: Record<number, string> = { 0: '#A16207', 90: '#2E6DB4', 180: '#15803D', 270: '#A21CAF' };
 const IRANY_NEV: Record<number, string> = { 0: 'lapon fent', 90: 'lapon jobbra', 180: 'lapon lent', 270: 'lapon balra' };
-import { AZ_TAJ, kulterRaszter, norm, futottRiK, pecsetPontok, kulsoKozelE, alapKijeloles, BEJARATI_H, burokNyilasok, eszakHomGy, homlokzatGy, nezetGy, homlokzatNezetTar, homlokzatRajzTar, burokAutoGy, burokAutoTar, nevFeliratok, vartTer, burok3dTar, burok3dCache, elemzesLap, burokFalGy, burokFalakAuto, ferdeModell, lapKategoriak, burokNyilasokPt, atvetelReszek, tervbolFuggo, homMagGy, type Kijeloles, type BurokFalAuto , tervFolyamat, SZINT_SOR, kerdesKulcs } from '../terv/folyamat';
+import { AZ_TAJ, kulterRaszter, norm, futottRiK, pecsetPontok, kulsoKozelE, alapKijeloles, BEJARATI_H, burokNyilasok, eszakHomGy, homlokzatGy, nezetGy, homlokzatNezetTar, homlokzatRajzTar, burokAutoGy, burokAutoTar, nevFeliratok, vartTer, burok3dTar, burok3dCache, elemzesLap, burokFalGy, burokFalakAuto, ferdeModell, lapKategoriak, burokNyilasokPt, atvetelReszek, tervbolFuggo, homMagGy, type Kijeloles, type BurokFalAuto , tervFolyamat, SZINT_SOR, kerdesKulcs, nyilasMeretAlkalmaz } from '../terv/folyamat';
 export { tervbolFuggo } from '../terv/folyamat';
 
 export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modosit; ugrik: (n: 'helyisegek' | 'hatarolas' | 'retegrendek') => void }) {
@@ -159,6 +159,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   /** Az alaprajz-ablak nézete: 2D (a rajz a felismert elemekkel) vagy 3D (a hőburok térben). */
   const [nezet3d, setNezet3d] = useState(false);
   /** A 3D modell méretezése: belső (alap – a fal belső síkjai, belmagasság) vagy külső (a hőszigetelés külső síkja, szintmagasság). */
+  // a 3D modellben / a listában / a 2D rajzon kijelölt nyílászáró (lap, al.nyilasok-index)
+  const [kivNy, setKivNy] = useState<{ lap: number; ny: number } | null>(null);
   const [meretMod, setMeretMod] = useState<'belso' | 'kulso'>(() => { try { return localStorage.getItem('ekm-meretmod') === 'kulso' ? 'kulso' : 'belso'; } catch { return 'belso'; } });
   useEffect(() => { try { localStorage.setItem('ekm-meretmod', meretMod); } catch { /* */ } }, [meretMod]);
   const retegValt = (k: RetegKulcs) => setRetegek((x) => { const y = new Set(x); if (y.has(k)) y.delete(k); else y.add(k); return y; });
@@ -170,7 +172,13 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const [szintKi, setSzintKi] = useState<Record<number, string[]>>({});
   const [atvett, setAtvett] = useState<Set<number>>(new Set());
   /** Lapindex → a háttérben elkészült alaprajz-feldolgozás (vagy hibaüzenet). */
-  const [elemzesek, setElemzesek] = useState<Record<number, AlaprajzFeldolgozas | string>>({});
+  const [elemzesekNyers, setElemzesek] = useState<Record<number, AlaprajzFeldolgozas | string>>({});
+  // az elemzések a kézzel átírt nyílásméretekkel (Kijeloles.nyMeret) – a lista, a 2D és a 3D nézet, az átvétel is ezt látja
+  const elemzesek = useMemo(() => {
+    const o: Record<number, AlaprajzFeldolgozas | string> = {};
+    for (const [k, v] of Object.entries(elemzesekNyers)) o[Number(k)] = typeof v === 'string' ? v : nyilasMeretAlkalmaz(v, kijelolesek[Number(k)]?.nyMeret);
+    return o;
+  }, [elemzesekNyers, kijelolesek]);
   /** Lapindex → kimarad-e az „Összes átvétele” műveletből (alapból a pince kimarad). */
   const [kihagyLap, setKihagyLap] = useState<Record<number, boolean>>({});
   const [osszesFut, setOsszesFut] = useState(false);
@@ -248,6 +256,17 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const kj: Kijeloles = al ? kijeloles(aIdx, al) : { egysegek: new Set(), kizartH: new Set(), kat: {}, kizartNy: new Set() };
   const { egysegek, kizartH, kat, kizartNy } = kj;
   const kjMod = (fn: (k: Kijeloles) => Kijeloles) => { if (!al) return; const a = al, i = aIdx; setKijelolesek((m) => ({ ...m, [i]: fn(m[i] ?? alapKijeloles(a)) })); };
+  const kjModLap = (i: number, fn: (k: Kijeloles) => Kijeloles) => { const a = elemzesekNyers[i]; if (!a || typeof a === 'string') return; setKijelolesek((m) => ({ ...m, [i]: fn(m[i] ?? alapKijeloles(a)) })); };
+  /** Nyílásméret kézi átírása (m); null: vissza a felismertre. */
+  const nyMeretAllit = (lap: number, ny: number, x: { szel: number; mag: number; pm: number | null } | null) => kjModLap(lap, (k) => {
+    const m = { ...(k.nyMeret ?? {}) }; if (x) m[ny] = x; else delete m[ny]; return { ...k, nyMeret: m };
+  });
+  /** A kijelölt nyílás (az átírt mérettel) és a felismert eredetije. */
+  const kivNyAdat = (() => {
+    if (!kivNy) return null; const a = elemzesek[kivNy.lap], a0 = elemzesekNyers[kivNy.lap]; if (!a || typeof a === 'string' || !a0 || typeof a0 === 'string') return null;
+    const n = kivNy.ny >= 20000 ? a.modellAjtok?.[kivNy.ny - 20000] : a.nyilasok[kivNy.ny], n0 = kivNy.ny >= 20000 ? a0.modellAjtok?.[kivNy.ny - 20000] : a0.nyilasok[kivNy.ny];
+    return n && n0 ? { n, n0, kezi: !!kijelolesek[kivNy.lap]?.nyMeret?.[kivNy.ny] } : null;
+  })();
   const setEgysegek = (v: Set<string>) => kjMod((k) => ({ ...k, egysegek: v }));
   const setKizartH = (v: Set<number> | ((e: Set<number>) => Set<number>)) => kjMod((k) => ({ ...k, kizartH: typeof v === 'function' ? v(k.kizartH) : v }));
   const setKat = (v: Record<number, HelyisegKategoria>) => kjMod((k) => ({ ...k, kat: v }));
@@ -531,6 +550,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const iranyok = [0, 90, 180, 270].map((ir) => ({
     ir, t: egtaj(ir, eszakSz),
     hossz: helyisegek.reduce((s, _h, i) => s + (valasztott[i] ? falak(i).filter((f) => f.irany === ir).reduce((q, f) => q + f.hossz, 0) : 0), 0),
+    // a hőburok éleinek mért hossza a belső síkon saroktól sarokig (a csatlakozó belső falak mögött is folytonosan)
+    sarok: burokMert.some((p) => p.length) ? burokMert.flat().filter((e) => e.irany === ir).reduce((q, e) => q + e.hossz, 0) : null,
     db: nyilasok.filter(({ n, k }) => n.irany === ir && !kizartNy.has(k)).length,
   }));
 
@@ -1200,7 +1221,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                 if (modell3d === 'teljes') {
                   const md = epMd;
                   if (!md || !md.falak.length) return <div class="kartya halkabb" style="padding:60px 16px 16px">{valto}A 3D modellhez a lap léptéke és a felismert falak kellenek (add meg a méretarányt).</div>;
-                  return <div class="kartya" style="padding:56px 0 0;overflow:hidden;position:relative">{valto}<Epulet3D modell={md} magassag={Math.round(Math.min(760, Math.max(420, (typeof window !== 'undefined' ? window.innerHeight : 800) * 0.7)))} /></div>;
+                  return <div class="kartya" style="padding:56px 0 0;overflow:hidden;position:relative">{valto}<Epulet3D modell={md} kivNy={kivNy} onNyilas={(f) => { setKivNy(f); if (f && f.lap !== aIdx && f.lap >= 0) setAIdx(f.lap); }} magassag={Math.round(Math.min(760, Math.max(420, (typeof window !== 'undefined' ? window.innerHeight : 800) * 0.7)))} />{kivNyAdat && <NyilasMeretSzerk adat={kivNyAdat} allit={(x) => nyMeretAllit(kivNy!.lap, kivNy!.ny, x)} bezar={() => setKivNy(null)} />}</div>;
                 }
                 const szint3 = modellSzintek(meretMod);
                 if (!szint3) return <div class="kartya halkabb" style="padding:60px 16px 16px">A 3D nézethez a lap léptéke és a felismert falak kellenek (add meg a méretarányt).</div>;
@@ -1433,7 +1454,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   </g>
                 )}
                 {!retegek.has('nyilas') && nyilasok.map(({ n, k }) => (
-                  <g opacity={kizartNy.has(k) ? 0.3 : 1}>
+                  <g opacity={kizartNy.has(k) ? 0.3 : 1} style="cursor:pointer" onClick={(e) => { e.stopPropagation(); setKivNy(kivNy?.lap === aIdx && kivNy.ny === k ? null : { lap: aIdx, ny: k }); }}>
+                    {kivNy?.lap === aIdx && kivNy.ny === k && <rect x={n.x - 13} y={n.y - 8} width={26} height={16} rx={3} fill="none" stroke="#F97316" stroke-width={3} vector-effect="non-scaling-stroke" />}
                     <rect x={n.x - 9} y={n.y - 4} width={18} height={8} rx={1.5} fill={n.fajta === 'ablak' ? '#0EA5E9' : n.fajta === 'erkelyajto' ? '#6366F1' : n.fajta === 'garazskapu' ? '#475569' : '#B45309'} opacity={0.85} />
                     <text x={n.x} y={n.y + 2.2} font-size={5.5} text-anchor="middle" fill="#fff" font-family="system-ui">{Math.round(n.szel * 100)}×{n.mag > 0 ? Math.round(n.mag * 100) : n.mert ? '?' : 'belm.'}</text>
                   </g>
@@ -1570,13 +1592,13 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
       {al && (
         <section class="szakasz">
           <h2>3–4. Külső falak és nyílászárók</h2>
-          <p class="halk">A homlokzati falfelület a helyiségek külső falának nettó (belső síkon mért) hossza × belmagasság, homlokzatonként. A nyílászárók a nyílásméret-feliratokból (szélesség / magasság, „pm” mellvédmagasság) a falnyíláshoz és a helyiséghez rendelve; a belső ajtók ({belsoAjtok} db) nem kerülnek át.</p>
+          <p class="halk">A homlokzati falfelület a helyiségek külső falának nettó (belső síkon mért, a befutó belső falak vastagsága nélküli) hossza × a figyelembe vett magasság (belmagasság), homlokzatonként; „saroktól sarokig”: a hőburok belső síkja megszakítás nélkül. A nyílászárók a nyílásméret-feliratokból (szélesség / magasság, „pm” mellvédmagasság) a falnyíláshoz és a helyiséghez rendelve; a belső ajtók ({belsoAjtok} db) nem kerülnek át.</p>
           <table class="tabla" style="margin-bottom:16px">
-            <thead><tr><th>Homlokzat</th><th>Égtáj</th><th class="szam">Falhossz</th><th class="szam">Falfelület (bruttó)</th><th class="szam">Nyílászáró</th></tr></thead>
+            <thead><tr><th>Homlokzat</th><th>Égtáj</th><th class="szam">Falhossz</th><th class="szam">Saroktól sarokig</th><th class="szam">Magasság</th><th class="szam">Falfelület (bruttó)</th><th class="szam">Nyílászáró</th></tr></thead>
             <tbody>{iranyok.filter((x) => x.hossz > 0 || x.db > 0).map((x) => (
-              <tr><td><span style={`color:${IRANY_SZIN[x.ir]}`}>■</span> {IRANY_NEV[x.ir]}</td><td>{x.t}</td><td class="szam">{sz(x.hossz)} m</td><td class="szam">{sz(x.hossz * (bm ?? 2.7))} m²</td><td class="szam">{x.db} db</td></tr>
+              <tr><td><span style={`color:${IRANY_SZIN[x.ir]}`}>■</span> {IRANY_NEV[x.ir]}</td><td>{x.t}</td><td class="szam">{sz(x.hossz)} m</td><td class="szam halkabb">{x.sarok !== null ? `${sz(x.sarok)} m` : '–'}</td><td class="szam">{sz(bm ?? 2.7)} m</td><td class="szam">{sz(x.hossz * (bm ?? 2.7))} m²</td><td class="szam">{x.db} db</td></tr>
             ))}</tbody>
-            <tfoot><tr><td colSpan={2}>Összesen (egy szint)</td><td class="szam">{sz(iranyok.reduce((s, x) => s + x.hossz, 0))} m</td><td class="szam">{sz(iranyok.reduce((s, x) => s + x.hossz, 0) * (bm ?? 2.7))} m²</td><td class="szam">{iranyok.reduce((s, x) => s + x.db, 0)} db</td></tr></tfoot>
+            <tfoot><tr><td colSpan={2}>Összesen (egy szint)</td><td class="szam">{sz(iranyok.reduce((s, x) => s + x.hossz, 0))} m</td><td class="szam halkabb">{iranyok.some((x) => x.sarok !== null) ? `${sz(iranyok.reduce((s, x) => s + (x.sarok ?? 0), 0))} m` : '–'}</td><td class="szam">{sz(bm ?? 2.7)} m</td><td class="szam">{sz(iranyok.reduce((s, x) => s + x.hossz, 0) * (bm ?? 2.7))} m²</td><td class="szam">{iranyok.reduce((s, x) => s + x.db, 0)} db</td></tr></tfoot>
           </table>
           <div class="tabla-gorgeto">
             <table class="tabla">
@@ -1587,17 +1609,18 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   const csop = new Map<string, { n: (typeof nyilasok)[number]['n']; hi: number; ks: number[] }>();
                   for (const { n, k, hi } of nyilasok) { const kk = `${n.fajta}|${n.szel}|${n.mag}|${n.pm}|${hi}|${n.irany}|${n.iranyTipp ? 't' : ''}`; const c = csop.get(kk); if (c) c.ks.push(k); else csop.set(kk, { n, hi, ks: [k] }); }
                   const szSz = aIdx >= 0 ? Math.max(1, lapSzintek(aIdx).length) : 1;
-                  return [...csop.values()].map(({ n, hi, ks }) => { const ki = ks.every((k) => kizartNy.has(k)); return (
-                  <tr style={ki ? 'opacity:.55' : ''}>
+                  return [...csop.values()].map(({ n, hi, ks }) => { const ki = ks.every((k) => kizartNy.has(k)); const kiv = kivNy?.lap === aIdx && ks.includes(kivNy.ny); return (<>
+                  <tr style={`${ki ? 'opacity:.55;' : ''}${kiv ? 'background:#FFEDD5;box-shadow:inset 3px 0 0 #F97316;' : ''}cursor:pointer`} title="Kattintás: kijelölés (a 3D modellben és a rajzon is), a méret átírható" onClick={(e) => { if ((e.target as HTMLElement).tagName === 'INPUT') return; setKivNy(kiv ? null : { lap: aIdx, ny: ks[0]! }); }}>
                     <td><input type="checkbox" aria-label="Átvétel" checked={!ki} onChange={(e) => { const s = new Set(kizartNy); for (const k of ks) { if ((e.target as HTMLInputElement).checked) s.delete(k); else s.add(k); } setKizartNy(s); }} /></td>
                     <td>{FAJTA_NEV[n.fajta]}</td>
                     <td class="szam">{Math.round(n.szel * 100)} × {n.mag > 0 ? `${Math.round(n.mag * 100)} cm` : 'belmagasság'}</td>
                     <td class="szam">{n.pm === null ? '–' : `${Math.round(n.pm * 100)} cm`}</td>
                     <td>{helyisegek[hi]?.kod} {helyisegek[hi]?.nev}{kategoria(hi) === 'gyengen_kapcsolt' && <small class="halkabb" style="display:block">fűtetlen tér – nem kerül a hőburokba</small>}</td>
                     <td>{egtaj(n.irany!, eszakSz)}{n.iranyTipp && <small class="jel" style="margin-left:6px;background:#FEF3C7;color:#92400E" title="A nyílás nem köthető egyértelműen falhoz: a tájolás a legközelebbi homlokzati fal alapján becsült – ellenőrizd.">becsült</small>}</td>
-                    <td class="szam">{ks.length}{szSz > 1 && <span class="halkabb"> × {szSz} szint</span>}</td>
+                    <td class="szam">{ks.length}{szSz > 1 && <span class="halkabb"> × {szSz} szint</span>}{n.kezi && <small class="jel" style="margin-left:6px;background:#FFEDD5;color:#9A3412">átírt</small>}</td>
                   </tr>
-                  ); });
+                  {kiv && kivNyAdat && kivNy!.ny < 10000 && <tr><td colSpan={7} style="background:#FFF7ED"><NyilasMeretSzerk adat={kivNyAdat} allit={(x) => nyMeretAllit(kivNy!.lap, kivNy!.ny, x)} bezar={() => setKivNy(null)} beagyazott /></td></tr>}
+                  </>); });
                 })()}
               </tbody>
               {nyilasok.length > 0 && (() => {
@@ -1659,4 +1682,30 @@ function pecsetAtvesz(q: Projekt, d: PecsetAdat) {
   if (d.hrsz) q.meta.hrsz = d.hrsz;
   if (d.cim) { q.meta.irsz = d.cim.irsz; q.meta.telepules = d.cim.telepules; q.meta.kozterulet = d.cim.kozterulet; q.meta.kozteruletJelleg = d.cim.jelleg || q.meta.kozteruletJelleg; q.meta.hazszam = d.cim.hazszam; }
   else if (d.helyszin && !q.meta.telepules) q.meta.telepules = d.helyszin;
+}
+
+/** A kijelölt nyílászáró méretének kézi átírása (cm-ben): szélesség, magasság, mellvéd – a 3D modell, a 2D rajz és az átvétel is ezt használja. */
+function NyilasMeretSzerk({ adat, allit, bezar, beagyazott }: { adat: { n: TervNyilas; n0: TervNyilas; kezi: boolean }; allit: (x: { szel: number; mag: number; pm: number | null } | null) => void; bezar: () => void; beagyazott?: boolean }) {
+  const { n, n0, kezi } = adat;
+  const cm = (v: number) => Math.round(v * 100);
+  const mag0 = n.mag > 0 ? n.mag : n.szel >= 1.6 ? 2.4 : 1.5, pm0 = n.pm ?? (mag0 >= 1.9 ? 0 : 0.9);
+  const ir = (mezo: 'szel' | 'mag' | 'pm', v: string) => {
+    const x = Number(v.replace(',', '.')); if (!Number.isFinite(x) || x < 0 || x > 1200) return;
+    const u = { szel: n.szel, mag: mag0, pm: pm0 as number | null, [mezo]: x / 100 };
+    if (u.szel < 0.1 || u.mag < 0.1) return;
+    allit(u);
+  };
+  const mezo = (cimke: string, ertek: number, k: 'szel' | 'mag' | 'pm') => (
+    <label style="display:inline-flex;gap:4px;align-items:center;font-size:13px">{cimke}
+      <input type="number" step="1" min="0" value={cm(ertek)} style="width:72px" onChange={(e) => ir(k, (e.target as HTMLInputElement).value)} /> cm</label>
+  );
+  return (
+    <div style={`display:flex;gap:14px;align-items:center;flex-wrap:wrap;${beagyazott ? 'padding:4px 0' : 'padding:8px 10px;border-top:1px solid #E5E7EB;background:#FFF7ED'}`}>
+      <strong style="font-size:13px">Kijelölt nyílászáró</strong>
+      {mezo('Szélesség', n.szel, 'szel')}{mezo('Magasság', mag0, 'mag')}{mezo('Mellvéd', pm0, 'pm')}
+      <span class="halkabb" style="font-size:12px">felismert: {cm(n0.szel)} × {n0.mag > 0 ? cm(n0.mag) : '?'} cm{n0.pm !== null ? `, mellvéd ${cm(n0.pm)} cm` : ''}{n0.mert ? ' (felirat nélkül mért)' : ''}</span>
+      {kezi && <button class="gomb halk-gomb semleges" onClick={() => allit(null)}>Vissza a felismertre</button>}
+      <button class="gomb halk-gomb semleges" onClick={bezar}>Kijelölés vége</button>
+    </div>
+  );
 }
