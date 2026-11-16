@@ -6,7 +6,7 @@
  *
  * Böngészőben fut (a lapok képe vásznon készül); a pdf.js a csomagban van, munkaszál nélkül.
  */
-import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, type TervLap, type AlaprajzFeldolgozas } from '@terv/elemzes';
+import { pdfLapok, lapTinta, alaprajzFeldolgoz, metszetFeldolgoz, type TervLap, type AlaprajzFeldolgozas } from '@terv/elemzes';
 import { jegyzekSorok } from '@terv/alaprajz';
 import type { EpuletModell } from '@terv/epulet';
 import { alapAllapot, elemzesLap, tervFolyamat, type FolyamatAllapot } from './folyamat';
@@ -23,16 +23,24 @@ export interface PdfbolEpuletEredmeny {
 
 /**
  * PDF-fájlokból (File vagy { name, arrayBuffer() }) az épületmodell.
- * opciok.allapot: felülírható döntések (pl. szintKi: lapindex → szintkódok, bm: belmagasság).
+ * opciok.allapot: felülírható döntések – lapSzerep (lapindex → 'alaprajz' | 'metszet' | 'homlokzat' | 'leiras' | 'egyeb'; a
+ * lapindex a visszaadott `lapok` sorrendje: fájlonként, oldalanként), szintKi (lapindex → szintkódok), bm (belmagasság) stb.
  */
 export async function pdfbolEpulet(fajlok: (File | { name: string; type?: string; arrayBuffer(): Promise<ArrayBuffer> })[],
-  opciok: { halad?: (arany: number, szoveg: string) => void; allapot?: Partial<FolyamatAllapot> } = {}): Promise<PdfbolEpuletEredmeny> {
+  opciok: { halad?: (arany: number, szoveg: string) => void; allapot?: Partial<FolyamatAllapot> & { lapSzerep?: Record<number, TervLap['szerep']> } } = {}): Promise<PdfbolEpuletEredmeny> {
   const lapok: TervLap[] = [], figyelmeztetes: string[] = [];
   for (const [fi, f] of fajlok.entries()) {
     try {
       const ll = await pdfLapok(f as File, 2000, (k, o) => opciok.halad?.((fi + (o ? k / o : 0)) / fajlok.length * 0.6, `${f.name}${o > 1 ? ` (${k}/${o}. oldal)` : ''}`));
       lapok.push(...ll);
     } catch (e) { figyelmeztetes.push(`${f.name}: a PDF nem olvasható (${(e as Error).message})`); }
+  }
+  // a lapok szerepének felülírása (lapindex: a visszaadott `lapok` sorrendje – fájlonként, oldalanként)
+  for (const [k, v] of Object.entries(opciok.allapot?.lapSzerep ?? {})) {
+    const l = lapok[Number(k)]; if (!l || !v) continue;
+    // (alaprajznak jelölt lap: a falfelismeréshez a nagyobb felbontású kép is kell)
+    if (v === 'alaprajz' && !l.tinta) { const f = fajlok.find((x) => x.name === l.fajl); if (f) l.tinta = await lapTinta(f as File, l.oldal); }
+    l.szerep = v;
   }
   // a műszaki leírás(ok) helyiséglistája – a helyiségpecsét nélküli alaprajzhoz
   const jegyzek = lapok.filter((l) => l.szerep === 'leiras').flatMap((l) => jegyzekSorok(l.lap.szovegek));
@@ -52,7 +60,8 @@ export async function pdfbolEpulet(fajlok: (File | { name: string; type?: string
   const me = me0?.tetoter ? { ...me0, tetoter: { ...me0.tetoter, terdfal: me0.tetoter.terdfal ?? terdfal ?? null } } : me0;
   opciok.halad?.(0.97, 'épületmodell');
   let modell: EpuletModell | null = null;
-  try { modell = tervFolyamat(alapAllapot(lapok, elemzesek, me, opciok.allapot)).epuletModell(); }
+  const { lapSzerep: _ls, ...allapot } = opciok.allapot ?? {}; void _ls;
+  try { modell = tervFolyamat(alapAllapot(lapok, elemzesek, me, allapot)).epuletModell(); }
   catch (e) { figyelmeztetes.push(`Az épületmodell nem állt össze: ${(e as Error).message}`); }
   opciok.halad?.(1, 'kész');
   return {

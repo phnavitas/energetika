@@ -25,7 +25,8 @@ const { modell, lapok, figyelmeztetes } = await pdfbolEpulet(fajlok, {  // File[
 
 Felhasználói döntések nélkül fut, a Tervből lépés alapértelmezéseivel: a helyiségek besorolása a nevükből, a szintek a
 lapcímből, az északi irány a rajzról / a homlokzatokból, a belmagasság és a metszet az első metszetlapról. Felülírható
-(`allapot`): `szintKi` (lapindex → szintkódok, pl. `{0: ['F'], 1: ['T']}`), `bm` (belmagasság), `terdfalKezi`,
+(`allapot`): `lapSzerep` (lapindex → `'alaprajz' | 'metszet' | 'homlokzat' | 'leiras' | 'egyeb'`; a lapindex a visszaadott
+`lapok` sorrendje – az alaprajznak jelölt lap képét a csomag újra előállítja), `szintKi` (lapindex → szintkódok, pl. `{0: ['F'], 1: ['T']}`), `bm` (belmagasság), `terdfalKezi`,
 `kijelolesek`, `eszakKozos` stb. (`FolyamatAllapot`, `apps/web/src/terv/folyamat.ts`).
 
 **Ellenőrizve:** a csomag kimenete a két IFC-párral rendelkező mintán (Naszály, Nyárfa) bitre azonos a Navitherm
@@ -52,7 +53,7 @@ esetben – ezt jelezni kell). Oromfalat csak a derékszögű ág kezel.
 ## Javasolt ELBA-oldali lépések
 
 1. **Betöltés:** a BIM varázslóban „PDF-tervlapokból” lehetőség az IFC mellett; a csomag lusta betöltése; a lapok
-   szerepének megmutatása (javítható szerep → `allapot`).
+   szerepének megmutatása (javítható szerep → `allapot.lapSzerep`, majd újrahívás).
 2. **Átalakítás az építő bemenetére:** a modellből olyan elemlista, amilyet az `elba-bim-olvaso.js` ad (`ifc`, `oszt`,
    `tipusNev`, `anyag`, `folia`, `szint`, `q{…}` mennyiségek), hogy az `elba-bim-epito.js` szabályai változatlanul
    fussanak. Javaslat: fal → `IFCWALL` / `oszt: 'Fal'`, `tipusNev` a rétegből és a mag vastagságából, `q`: hossz,

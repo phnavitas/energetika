@@ -453,6 +453,10 @@ export function nyilasokHozzarendel(feliratok0: NyilasFelirat[], r: Raszter, nev
   const ptPx = r.mPerPt / r.px;
   const ki: TervNyilas[] = []; const kiFolt: number[] = [];
   const vanPm = feliratok.some((f) => f.pm !== null);
+  // ablaktípusok mellvéddel: azonos szélesség × magasság párhoz egyértelmű mellvéd (a rajzoló a sorozat egyik tagjánál
+  // elhagyhatja a „pm”-et – az ilyen felirat a típus mellvédjével ablak)
+  const tipusPm = new Map<string, number | null>();
+  for (const f of feliratok) if (f.pm !== null) { const k = `${f.szel}|${f.mag}`; const v = tipusPm.get(k); tipusPm.set(k, v === undefined || v === f.pm ? f.pm : null); }
   // az áthidalt nyílások foltjai; a pixelenkénti irány a vízszintes és függőleges nyílásfutam hosszából
   const W = r.w, H = r.h;
   const hf = new Uint16Array(W * H), vf = new Uint16Array(W * H);
@@ -577,13 +581,16 @@ export function nyilasokHozzarendel(feliratok0: NyilasFelirat[], r: Raszter, nev
     if (modellAjtok && (!p || kulso || (f.ajtoJelolt && !jeloltek.length))) continue;
     if (f.ajtoJelolt && !modellAjtok && !(p && kulso && jeloltek.length)) continue;
     // feliratozott mellvédű tervben a mellvéd nélküli, ajtómagasságnál alacsonyabb „nyílás” valójában méretlánc-részlet
-    if (vanPm && f.pm === null && f.mag < 1.9) continue;
+    // (kivéve: külső falnyíláshoz kötött, mellvédes ablaktípussal azonos méretpár – annak mellvédjével)
+    const tPm = vanPm && f.pm === null && f.mag < 1.9 && p && kulso ? tipusPm.get(`${f.szel}|${f.mag}`) ?? null : null;
+    if (vanPm && f.pm === null && f.mag < 1.9 && tPm === null) continue;
+    const fp = tPm !== null ? tPm : f.pm;
     // lakóhelyiség (nappali, szoba, konyha) külső ajtaja erkély- / teraszajtó (a széles is: tolóajtó), nem bejárati ajtó és nem kapu
     const lako = p ? LAKO.test(nevek[p.h] ?? '') : false;
-    const kapu = kulso && f.pm === null && f.mag >= 1.8 && (garazsban ? f.kapuJelolt || f.szel >= 1.8 : !lako && f.kapuJelolt && f.szel >= 2.2);
-    const fajta: TervNyilas['fajta'] = kapu ? 'garazskapu' : !kulso ? 'belso_ajto' : f.pm !== null && f.pm > 0.05 ? 'ablak' : f.pm !== null ? 'erkelyajto' : f.mag >= 1.9 ? (tipusLap || lako ? 'erkelyajto' : 'bejarati_ajto') : 'ablak';
+    const kapu = kulso && fp === null && f.mag >= 1.8 && (garazsban ? f.kapuJelolt || f.szel >= 1.8 : !lako && f.kapuJelolt && f.szel >= 2.2);
+    const fajta: TervNyilas['fajta'] = kapu ? 'garazskapu' : !kulso ? 'belso_ajto' : fp !== null && fp > 0.05 ? 'ablak' : fp !== null ? 'erkelyajto' : f.mag >= 1.9 ? (tipusLap || lako ? 'erkelyajto' : 'bejarati_ajto') : 'ablak';
     if (f.lanc) lancHozzarendelt.add(f);
-    ki.push({ ...f, helyiseg: p?.h ?? null, irany: p?.irany ?? null, kulso, fajta, ...(folt && !elteroIrany ? { hely: kompHely(folt) } : {}), ...(!kulso && p?.masik !== undefined ? { masik: p.masik } : {}), ...(kulso && tipp ? { iranyTipp: true } : {}), ...(!kulso && p?.nyitott ? { oldalBizonytalan: true } : {}), ...(csakModell ? { csakModell: true } : {}) });
+    ki.push({ ...f, pm: fp, helyiseg: p?.h ?? null, irany: p?.irany ?? null, kulso, fajta, ...(folt && !elteroIrany ? { hely: kompHely(folt) } : {}), ...(!kulso && p?.masik !== undefined ? { masik: p.masik } : {}), ...(kulso && tipp ? { iranyTipp: true } : {}), ...(!kulso && p?.nyitott ? { oldalBizonytalan: true } : {}), ...(csakModell ? { csakModell: true } : {}) });
     kiFolt.push(folt && !elteroIrany ? folt : 0);
   }
   // tömör homlokzati betét (pl. alumíniumburkolatú panel a portálban): a felirata egy másik felirat nyílásfoltjához

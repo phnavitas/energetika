@@ -418,7 +418,9 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
         }
         if (!leg) continue;
         const fal = falak.find((q) => q.id === leg!.id)!;
-        nyilasok.push({ id: `N${++nySzam}`, fal: leg.id, szint: sz0.id, t: sz(leg.t, 2), szel: n.szel, mag: n.mag > 0 ? n.mag : (n.szel >= 1.6 ? 2.4 : 1.5), pm: n.pm ?? (n.mag >= 1.9 ? 0 : 0.9), fajta: n.fajta, burok: fal.burok !== null });
+        // (felirat nélküli nyílás: becsült magasság; a mellvéd a becsült magassághoz illő – ajtómagasságnál 0)
+        const nMag = n.mag > 0 ? n.mag : (n.szel >= 1.6 ? 2.4 : 1.5);
+        nyilasok.push({ id: `N${++nySzam}`, fal: leg.id, szint: sz0.id, t: sz(leg.t, 2), szel: n.szel, mag: nMag, pm: n.pm ?? (nMag >= 1.9 ? 0 : 0.9), fajta: n.fajta, burok: fal.burok !== null });
       }
       // (teljes modell) a hosszának legalább 70 %-án nyílással áttört külső fal (pl. garázskapu sávja) vastagsága a
       // rajzon nem látszik – a kapukeret / küszöb vonala adja –: a végeihez csatlakozó külső falaké

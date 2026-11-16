@@ -139,6 +139,28 @@ export function lapFeloszt(lap: Lap): { lap: Lap; cim: string }[] {
   }));
 }
 
+/** A lap szürkeképe ≈ 1,5 képpont / pt felbontásban (a „tinta” falfelismeréshez; 1:100-nál ≈ 2,4 cm / képpont, ≤ 16 M képpont). */
+async function tintaRender(page: any): Promise<TintaKep | undefined> {
+  try {
+    const vp0 = page.getViewport({ scale: 1 });
+    const ts = Math.min(1.5, Math.sqrt(16e6 / (vp0.width * vp0.height)));
+    const tv = page.getViewport({ scale: ts });
+    const tc = document.createElement('canvas'); tc.width = Math.round(tv.width); tc.height = Math.round(tv.height);
+    const tx = tc.getContext('2d', { willReadFrequently: true })!; tx.fillStyle = '#fff'; tx.fillRect(0, 0, tc.width, tc.height);
+    await page.render({ canvasContext: tx, viewport: tv, canvas: tc }).promise;
+    const px = tx.getImageData(0, 0, tc.width, tc.height).data; const adat = new Uint8Array(tc.width * tc.height);
+    for (let i = 0; i < adat.length; i++) adat[i] = Math.round(0.299 * px[i * 4]! + 0.587 * px[i * 4 + 1]! + 0.114 * px[i * 4 + 2]!);
+    return { w: tc.width, h: tc.height, ptPx: ts, adat };
+  } catch { return undefined; }
+}
+
+/** Utólag alaprajznak jelölt lap (a felismerés nem annak vette) tinta-képe – a fájl adott oldaláról. */
+export async function lapTinta(f: File, oldal: number): Promise<TintaKep | undefined> {
+  const pdfjs = await pdfjsBetolt();
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(await f.arrayBuffer()), verbosity: 0, isEvalSupported: false }).promise;
+  return tintaRender(await doc.getPage(oldal));
+}
+
 export async function pdfLapok(f: File, kepSzel = 2000, halad?: (kesz: number, ossz: number) => void): Promise<TervLap[]> {
   const pdfjs = await pdfjsBetolt();
   const bajtok = new Uint8Array(await f.arrayBuffer());
@@ -161,20 +183,7 @@ export async function pdfLapok(f: File, kepSzel = 2000, halad?: (kesz: number, o
     const ctx = c.getContext('2d')!; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
     await page.render({ canvasContext: ctx, viewport: vp, canvas: c }).promise;
     const { szerep, cim } = lapSzerep(lap, f.name, doc.numPages > 1);
-    let tinta: TintaKep | undefined;
-    if (szerep === 'alaprajz') {
-      try {
-        // a falfelismeréshez ≈ 1,5 képpont / pt (1:100-nál ≈ 2,4 cm / képpont), legfeljebb 16 M képpont
-        const ts = Math.min(1.5, Math.sqrt(16e6 / (vp0.width * vp0.height)));
-        const tv = page.getViewport({ scale: ts });
-        const tc = document.createElement('canvas'); tc.width = Math.round(tv.width); tc.height = Math.round(tv.height);
-        const tx = tc.getContext('2d', { willReadFrequently: true })!; tx.fillStyle = '#fff'; tx.fillRect(0, 0, tc.width, tc.height);
-        await page.render({ canvasContext: tx, viewport: tv, canvas: tc }).promise;
-        const px = tx.getImageData(0, 0, tc.width, tc.height).data; const adat = new Uint8Array(tc.width * tc.height);
-        for (let i = 0; i < adat.length; i++) adat[i] = Math.round(0.299 * px[i * 4]! + 0.587 * px[i * 4 + 1]! + 0.114 * px[i * 4 + 2]!);
-        tinta = { w: tc.width, h: tc.height, ptPx: ts, adat };
-      } catch { tinta = undefined; }
-    }
+    const tinta = szerep === 'alaprajz' ? await tintaRender(page) : undefined;
     const kep = c.toDataURL('image/jpeg', 0.82), szurke = szurkeKep(c, scale);
     const reszek = szerep === 'alaprajz' ? lapFeloszt(lap) : [];
     if (reszek.length) for (const r of reszek) ki.push({ fajl: f.name, oldal: n, szerep, cim: r.cim, lap: r.lap, kep, kepSzel: c.width, kepMag: c.height, szurke, ...(tinta ? { tinta } : {}) });
