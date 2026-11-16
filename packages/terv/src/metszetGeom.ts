@@ -41,3 +41,65 @@ export function terdfalGeometria(lap: Lap, mPerPt: number): number | null {
 }
 
 export type { Utvonal };
+
+/** Vízszintes szerkezeti sáv a metszeten: a PDF-réteg, a felső és alsó síkja (m, ±0,00-hoz) és a rajzolt szélessége. */
+export interface FodemSav { reteg: string; zFelso: number; zAlso: number; vastag: number; szel: number;
+  /** A metszetlap azonosítója (a több metszet sávjai külön láncolódnak). */
+  lap?: number }
+
+const SZINTJEL = /^([±+\-−–])\s?(\d{1,3}[,.]\d{2,3})$/;
+const SAV_NEM = /terep|k[öo]rnyezet|k[üu]lt[ée]ri|j[áa]rda|m[ée]retez|felirat|b[úu]tor/i;
+
+/**
+ * A metszet vízszintes kitöltött sávjai (födém, aljzat, padlórétegek, tetőrétegek): legalább 1,5 m széles, 1–60 cm vastag
+ * kitöltés, PDF-réteggel. A magasság a szintjelekből (±/+/− előjeles „+2,60”): a jel függőleges helye és értéke közti
+ * lineáris kapcsolat (a léptéket is ez adja) – a jelek többségével egyező meredekség.
+ */
+export function fodemSavok(lap: Lap): FodemSav[] {
+  // vízszintes vonaldarabok (a szintjel vonalához)
+  const vv: [number, number, number][] = [];
+  for (const u of lap.utvonalak) if (u.muvelet !== 'fill' && u.muvelet !== 'none') for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2)
+    if (Math.abs(p[i + 3]! - p[i + 1]!) < 0.05 && Math.abs(p[i + 2]! - p[i]!) > 2) vv.push([Math.min(p[i]!, p[i + 2]!), Math.max(p[i]!, p[i + 2]!), p[i + 1]!]);
+  // a jel helye a hozzá tartozó (alatta / fölötte, a szövegmagasság 1,5-szeresén belüli, vele átfedő) vonal, ennek híján a szöveg
+  const jelY = (t: { x: number; y: number; meret: number; szel: number }) => {
+    let leg: number | null = null, d0 = 1.5 * t.meret;
+    for (const [x0, x1, y] of vv) if (x0 <= t.x + t.szel + t.meret && x1 >= t.x - t.meret && Math.abs(y - t.y) < d0) { d0 = Math.abs(y - t.y); leg = y; }
+    return leg ?? t.y;
+  };
+  const jel = lap.szovegek.filter((t) => Math.abs(t.szog) < 2).map((t) => ({ t, m: SZINTJEL.exec(t.s.replace(/\s+/g, ' ').trim()) }))
+    .filter((x) => x.m).map((x) => ({ y: jelY(x.t), v: (/[\-−–]/.test(x.m![1]!) ? -1 : 1) * Number(x.m![2]!.replace(',', '.')) }));
+  if (jel.length < 2) return [];
+  // meredekség (m / pt): a jelpárok meredekségei közül a legtöbb párral (± 2 %) egyező
+  const mer: number[] = [];
+  for (let i = 0; i < jel.length; i++) for (let j = i + 1; j < jel.length; j++) { const dv = jel[j]!.v - jel[i]!.v, dy = jel[j]!.y - jel[i]!.y; if (Math.abs(dv) >= 1 && Math.abs(dy) > 1) mer.push(dv / dy); }
+  if (!mer.length) return [];
+  let k = mer[0]!, kDb = 0;
+  for (const c of mer) { const db = mer.filter((d) => Math.abs(d - c) <= 0.02 * Math.abs(c)).length; if (db > kDb) { kDb = db; k = c; } }
+  const egy = mer.filter((d) => Math.abs(d - k) <= 0.02 * Math.abs(k)).sort((a, b) => a - b); k = egy[Math.floor(egy.length / 2)]!;
+  // tengelymetszet: a meredekséggel egyező jelek medián eltolása
+  // (egy lapon több metszet is lehet egymás alatt: a jelek tengelymetszet szerint csoportosítva, mindegyik a saját
+  // függőleges sávjában érvényes)
+  const csop: { b: number; y0: number; y1: number; n: number }[] = [];
+  for (const j of jel) { const bj = j.v - k * j.y; const c = csop.find((q) => Math.abs(q.b - bj) <= 0.04);
+    if (c) { c.b = (c.b * c.n + bj) / (c.n + 1); c.n++; c.y0 = Math.min(c.y0, j.y); c.y1 = Math.max(c.y1, j.y); } else csop.push({ b: bj, y0: j.y, y1: j.y, n: 1 }); }
+  const ervenyes = csop.filter((c) => c.n >= 2);
+  if (!ervenyes.length) return [];
+  const mPt = Math.abs(k);
+  const z = (y: number) => { const c = ervenyes.reduce((p, q) => { const d = (x: typeof q) => (y < x.y0 ? x.y0 - y : y > x.y1 ? y - x.y1 : 0); return d(q) < d(p) ? q : p; }); return k * y + c.b; };
+  const savok: FodemSav[] = [];
+  for (const u of lap.utvonalak) {
+    if (u.muvelet === 'stroke' || u.muvelet === 'none' || !u.reteg || SAV_NEM.test(u.reteg)) continue;
+    const w = (u.bbox[2] - u.bbox[0]) * mPt, h = (u.bbox[3] - u.bbox[1]) * mPt;
+    if (w < 1.5 || h < 0.01 || h > 0.6) continue;
+    const z1 = Math.max(z(u.bbox[1]), z(u.bbox[3])), z0 = Math.min(z(u.bbox[1]), z(u.bbox[3]));
+    const r2 = (v: number) => Math.round(v * 100) / 100;
+    const m = savok.find((s) => s.reteg === u.reteg && Math.abs(s.zFelso - z1) < 0.02 && Math.abs(s.vastag - (z1 - z0)) < 0.02);
+    if (m) m.szel = r2(m.szel + w); else savok.push({ reteg: u.reteg, zFelso: r2(z1), zAlso: r2(z0), vastag: r2(z1 - z0), szel: r2(w) });
+  }
+  // a földszinti kész padló a ±0,00: ha a padlóréteg (burkolat, aljzat) legfelső, széles sávja ± 35 cm-en belül van, de
+  // nem a nullán (a szintjel vonala a szövegtől eltérő helyen), a magasságok ehhez igazítva
+  const padlo = savok.filter((s) => PADLO_RETEG.test(s.reteg) && s.szel >= 3 && Math.abs(s.zFelso) <= 0.35).sort((p, q) => q.zFelso - p.zFelso)[0];
+  if (padlo && Math.abs(padlo.zFelso) > 0.02) { const d = padlo.zFelso; for (const s of savok) { s.zFelso = Math.round((s.zFelso - d) * 100) / 100; s.zAlso = Math.round((s.zAlso - d) * 100) / 100; } }
+  return savok.sort((p, q) => q.zFelso - p.zFelso);
+}
+const PADLO_RETEG = /padl[óo]|burkolat|aljzat|esztrich/i;

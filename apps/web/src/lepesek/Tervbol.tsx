@@ -19,6 +19,7 @@ import { Burok3D, modellOsszesites, tetoGeo, type Burok3DSzint } from './Burok3D
 import { homlokzatRajzok, mertMagassagok, eszakHomlokzatbol, tetoAblakokHomlokzatrol, oromSzelessegek, type HomlokzatRajz, type MertMagassag } from '@terv/homlokzatIllesztes';
 import { nezetOszlopok } from '@terv/homlokzatProfil';
 import { Epulet3D } from './Epulet3D';
+import { fodemSavok } from '@terv/metszetGeom';
 import { epuletModell, type EpuletModell, type LapBemenet, type Szint as EpSzint, type TerKategoria } from '@terv/epulet';
 import { falMagassagModell, type HomlokzatNezetAdat } from '@terv/homlokzatModell';
 import { vonalIndex, keretek, homlokzatIrany, homlokzatCimek } from '@terv/homlokzat';
@@ -995,7 +996,9 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
       return { lap: i, a, szintek, m, kategoria, adat, pecsetTerek, kizart, ...(k.ismKulso ? { ismKulso: k.ismKulso } : {}), falMagassag, ...(tt && szk.includes('T') ? { tetoter: { ...tt, orom: oromok(eszakSz, a.e.meretarany ?? undefined) } } : {}),
         ...(burokPol ? { burokPol, burokR: a.r3d ?? r } : {}) };
     });
-    return epuletModell(be);
+    // födémek rétegrendje a metszetlapok vízszintes sávjaiból
+    const fodemSav = lapok.flatMap((l, li) => (l.szerep === 'metszet' ? fodemSavok(l.lap).map((q) => ({ ...q, lap: li })) : []));
+    return epuletModell(be, { fodemSavok: fodemSav });
   };
   try { (globalThis as any).__epulet = epuletModellApp; } catch { /* */ }
   const epMd = useMemo(() => { if (!nezet3d || modell3d !== 'teljes') return null; try { return epuletModellApp(); } catch { return null; } }, [nezet3d, modell3d, elemzesek, kijelolesek, bm, lapok]); // eslint-disable-line react-hooks/exhaustive-deps

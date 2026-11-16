@@ -132,14 +132,15 @@ export function Epulet3D({ modell, magassag = 600 }: { modell: EpuletModell; mag
     // födémek (tető / legalsó padló) körvonallal, áttetszően
     for (const fd of modell.fodemek) {
       const sz = fd.folott ?? fd.alatt; if (sz && !lathato(sz)) continue;
-      if (fd.burok !== 'teto' && fd.burok !== 'padlo') continue;
+      // (a közbenső födém akkor, ha a metszetből ismert a rétegrendje)
+      if (fd.burok !== 'teto' && fd.burok !== 'padlo' && !fd.retegek) continue;
       if (fd.burok === 'teto' && fd.alatt && tetoSzint.has(fd.alatt)) continue;
       for (const p of fd.poligonok) {
         if (p.length < 3) continue;
         const sh = new THREE.Shape(p.map(([x, y]) => new THREE.Vector2(x, y)));
         const g = new THREE.ExtrudeGeometry(sh, { depth: fd.vastag, bevelEnabled: false }); g.rotateX(Math.PI / 2);
         const m = new THREE.Mesh(g, mat(fd.burok === 'teto' ? SZIN.teto : SZIN.fodem, fd.burok === 'teto' ? 0.35 : 0.5));
-        m.position.y = fd.burok === 'teto' ? fd.z + fd.vastag : fd.z; grp.add(m);
+        m.position.y = fd.z; grp.add(m); // (z a födém teteje, lefelé vastag)
       }
     }
     // kamera a modell befoglalójához

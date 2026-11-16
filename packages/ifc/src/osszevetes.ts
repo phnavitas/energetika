@@ -75,6 +75,7 @@ export function osszevet(md: ModellEpulet, ifc: IfcKivonat, vagasFolott = 1.2, d
   // szintpárok: a modell szintje ↔ az IFC azonos (±0,6 m) magasságú szintje
   const parok = md.szintek.flatMap((sz) => { const i = ifc.szintek.find((s) => Math.abs(s.magassag - sz.z0) < 0.6); return i ? [{ m: sz, i }] : []; });
   add('szintek (párosítva)', 'db', parok.length, md.szintek.length);
+  for (const { m, i } of parok) add(`${m.nev} ↔ ${i.nev}`, 'padlószint m', m.z0, i.magassag);
 
   let osszM = 0, osszI = 0;
   for (const { m: msz, i: isz } of parok) {
