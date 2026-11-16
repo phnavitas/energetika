@@ -5,6 +5,8 @@
  * Koordináták: méter, x jobbra, y lefelé (a lap szerint), z felfelé. A lapok egymáshoz igazítását (eltolás) és a
  * szintmagasságokat a hívó adja meg (lapbemenet).
  */
+import { pillerKeres } from './pillerek';
+import type { Lap } from './kinyeres';
 import type { FodemSav } from './metszetGeom';
 import type { AlaprajzFeldolgozas } from './elemzes';
 import type { FalSzakasz, Raszter } from './raszter';
@@ -145,7 +147,10 @@ export interface FalLefedes { lap: number; szint: string; rajzA: number; modellA
   /** a modell többlete (m²): rajzolt fal mellett (≤ 0,3 m: vastagság-, hosszeltérés) ill. attól távol (fölösleges fal);
    * a hiány (m²): modellfal mellett (vékonyabb / rövidebb modellfal) ill. attól távol (hiányzó fal) */
   tobbletKozel: number; tobbletTavol: number; hianyKozel: number; hianyTavol: number }
-export interface EpuletModell { szintek: Szint[]; terek: Ter[]; falak: Fal[]; nyilasok: Nyilas[]; fodemek: Fodem[]; vizszintes: VizszintesBurok[]; tetok: TetoGeom[]; lefedes?: FalLefedes[] }
+/** Pillér: az alaprajz tartószerkezeti rétegén álló, közel négyzetes, 15–80 cm-es téglalap (pillerKeres). */
+export interface Piller { id: string; szint: string; kozep: P2; /** keresztmetszet (m, x / y irányban) */ a: number; b: number; z0: number; h: number; reteg: string }
+
+export interface EpuletModell { szintek: Szint[]; terek: Ter[]; falak: Fal[]; nyilasok: Nyilas[]; fodemek: Fodem[]; vizszintes: VizszintesBurok[]; tetok: TetoGeom[]; lefedes?: FalLefedes[]; pillerek?: Piller[] }
 
 /** Egy alaprajzi lap bemenete. */
 export interface LapBemenet {
@@ -172,6 +177,8 @@ export interface LapBemenet {
   /** A felirattal azonosított, de a modellből kizárt terek (raszterindex) – megadásakor a többi, felirat nélküli zárt
    * terület (lépcső-, légtér) felé is belső fal készül. */
   kizart?: ReadonlySet<number>;
+  /** A lap rajzolata (PDF-elemek) – a teljes modellben a pillérekhez. */
+  rajz?: Lap;
   pecsetTerek?: { kod?: string; nev: string; A: number; burkolat?: string; kategoria: TerKategoria }[];
   /** Tetőtér (metszetből): hajlás, térdfal, padlásfödém-magasság, oromzatok (lapirány → szélesség) – a T jelű szinten. */
   tetoter?: { hajlas: number; terdfal: number; belmag: number; orom?: Record<number, number> };
@@ -366,11 +373,21 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
   }
   const tetok: TetoGeom[] = lapok.flatMap((L) => (L.tetoter && L.burokPol?.length ? L.szintek.filter((s) => s.kod === 'T').map((s) => ({ szint: s.id, z0: s.z0, poligonok: L.burokPol!.map((q) => q.map(([x, y]) => L.m(x, y))), ...L.tetoter! })) : []));
   const lefedes = lapok.flatMap((L) => { try { const sz0 = L.szintek[0]; return sz0 ? [falLefedes(L, falak.filter((f) => f.szint === sz0.id), sz0.id)] : []; } catch { return []; } });
+  // pillérek (a teljes modellben, a lap rajzolatából)
+  const pillerek: Piller[] = [];
+  for (const L of lapok) {
+    const r = L.a.r; if (!L.rajz || !L.kizart || !r) continue;
+    for (const q of pillerKeres(L.rajz, r.mPerPt)) {
+      const [ax, ay] = L.m(q.x0, q.y0), [bx, by] = L.m(q.x1, q.y1);
+      for (const sz0 of L.szintek) pillerek.push({ id: `P${pillerek.length + 1}`, szint: sz0.id, kozep: [sz((ax + bx) / 2), sz((ay + by) / 2)], a: sz(Math.abs(bx - ax), 2), b: sz(Math.abs(by - ay), 2), z0: sz0.z0, h: sz0.h, reteg: q.reteg });
+    }
+  }
   if (opt.fodemSavok?.length) {
     const elt = fodemRetegrend(fodemek, szintek, opt.fodemSavok);
-    for (const f of falak) { const d = elt.get(f.szint); if (d) f.z0 = Math.round((f.z0 + d) * 100) / 100; }
+    for (const f of [...falak, ...pillerek]) { const d = elt.get(f.szint); if (d) f.z0 = Math.round((f.z0 + d) * 100) / 100; }
+    for (const p of pillerek) { const s0 = szintek.find((q) => q.id === p.szint); if (s0) p.h = s0.h; }
   }
-  return { szintek, terek, falak, nyilasok, fodemek, vizszintes: vizszintesBurok(szintek, terek, lapok, fodemek), tetok, lefedes };
+  return { szintek, terek, falak, nyilasok, fodemek, vizszintes: vizszintesBurok(szintek, terek, lapok, fodemek), tetok, lefedes, ...(pillerek.length ? { pillerek } : {}) };
 }
 
 

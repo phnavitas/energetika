@@ -10,7 +10,7 @@ import { tetoGeo } from '@terv/teto';
 
 const SZIN = {
   fal: 0xd8d2c4, falKulso: 0xc9bfa8, burok: 0xe8833a, futetlen: 0x5b9bd5, szomszed: 0x9ca3af, talaj: 0x8b6b4a,
-  nyilas: 0x7fb7e6, padloFutott: 0xf3e3b5, padloFutetlen: 0xd5e3f0, padloKulter: 0xcfe8c5, fodem: 0xb8b0d8, teto: 0xb5643f,
+  nyilas: 0x7fb7e6, padloFutott: 0xf3e3b5, padloFutetlen: 0xd5e3f0, padloKulter: 0xcfe8c5, fodem: 0xb8b0d8, piller: 0x8a8f99, teto: 0xb5643f,
 };
 const burokSzin = (b: BurokSzerep) => (b === 'kulso' ? SZIN.burok : b === 'futetlen' ? SZIN.futetlen : b === 'szomszed' ? SZIN.szomszed : b === 'talaj' ? SZIN.talaj : null);
 
@@ -128,6 +128,12 @@ export function Epulet3D({ modell, magassag = 600 }: { modell: EpuletModell; mag
         const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.computeVertexNormals();
         const m = new THREE.Mesh(geo, mat(SZIN.teto, 0.45)); grp.add(m);
       }
+    }
+    // pillérek
+    for (const p of modell.pillerek ?? []) {
+      if (!lathato(p.szint)) continue;
+      const g = new THREE.BoxGeometry(p.a, p.h, p.b); const m = new THREE.Mesh(g, mat(SZIN.piller, 0.95));
+      m.position.set(p.kozep[0], p.z0 + p.h / 2, p.kozep[1]); grp.add(m);
     }
     // födémek (tető / legalsó padló) körvonallal, áttetszően
     for (const fd of modell.fodemek) {

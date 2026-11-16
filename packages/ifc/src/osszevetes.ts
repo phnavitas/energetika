@@ -19,7 +19,8 @@ export interface ModellFal { szint: string; vastag: number; mag?: number; szerke
 export interface ModellNyilas { szint: string; szel: number; mag: number; fajta: string }
 export interface ModellTer { szint: string; A: number; kategoria: string }
 export interface ModellSzint { id: string; nev: string; z0: number }
-export interface ModellEpulet { szintek: ModellSzint[]; terek: ModellTer[]; falak: ModellFal[]; nyilasok: ModellNyilas[] }
+export interface ModellPiller { szint: string; a: number; b: number }
+export interface ModellEpulet { szintek: ModellSzint[]; terek: ModellTer[]; falak: ModellFal[]; nyilasok: ModellNyilas[]; pillerek?: ModellPiller[] }
 
 type Elem = { ifc: string; gid?: string; folia?: string; nev?: string; tipusNev?: string; anyag?: string; szint?: string; oszt?: string; hely?: { z?: number | null };
   retegek?: { anyag: string; vast: number }[]; menny?: { L?: number | null; A?: number | null; V?: number | null };
@@ -144,6 +145,19 @@ export function osszevet(md: ModellEpulet, ifc: IfcKivonat, vagasFolott = 1.2, d
     .map((e) => ({ e, d: e.gid ? DOBOZ[e.gid] : undefined, reteg: RETEG_JEL.test(`${e.anyag ?? ''} ${e.tipusNev ?? ''}`), nem: NEM_TARTO.test(`${e.tipusNev ?? ''} ${e.folia ?? ''}`) }));
   const tSor = new Map<string, { db: number; L: number }>();
   for (const { d, reteg, nem } of tarto) { const k = reteg ? 'réteg (hőszigetelés stb.)' : nem ? 'nem tartószerkezet (eresz, csatorna, járda…)' : d ? alak(d) : 'méret nélkül'; const v = tSor.get(k) ?? { db: 0, L: 0 }; v.db++; if (d && k === 'gerenda') v.L += Math.max(d.x1 - d.x0, d.y1 - d.y0); tSor.set(k, v); }
+  // pillérek szintenként: db, és keresztmetszet szerint (± 3 cm, mindkét oldal) párosítva
+  for (const { m: sz, i: iSz } of parok) {
+    const mP = (md.pillerek ?? []).filter((p) => p.szint === sz.id);
+    // (keresztmetszet a típusnévből – „… 250 x 300” mm –, ennek híján a befoglaló dobozból; az elforgatott épületnél a
+    // tengelyirányú doboz nagyobb)
+    const km = (t: (typeof tarto)[number]) => { const m = /(\d{2,4})\s*[x×]\s*(\d{2,4})/.exec(t.e.tipusNev ?? '');
+      return (m ? [Number(m[1]) / 1000, Number(m[2]) / 1000] : [t.d!.x1 - t.d!.x0, t.d!.y1 - t.d!.y0]).sort((x, y) => x - y); };
+    const iP = tarto.filter((t) => !t.reteg && !t.nem && t.d && alak(t.d) === 'pillér' && t.e.szint === iSz.nev).map(km);
+    add(`${sz.nev} ↔ ${iSz.nev}`, 'pillér db', mP.length, iP.length);
+    const maradt = mP.map((p) => [p.a, p.b].sort((x, y) => x - y)); let par = 0;
+    for (const [u, v] of iP) { const k = maradt.findIndex(([x, y]) => Math.abs(x! - u!) <= 0.03 && Math.abs(y! - v!) <= 0.03); if (k >= 0) { par++; maradt.splice(k, 1); } }
+    if (iP.length) add(`${sz.nev} ↔ ${iSz.nev}`, 'pillér db keresztmetszet szerint párosítva', par, iP.length);
+  }
   for (const [k, v] of tSor) { add(`pillér / gerenda jelölt (IFC): ${k}`, 'db (IFC)', 0, v.db); if (k === 'gerenda') add(`pillér / gerenda jelölt (IFC): ${k}`, 'hossz m (IFC)', 0, v.L); }
 
   // helyiségek
