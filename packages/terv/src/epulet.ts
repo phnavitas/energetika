@@ -354,6 +354,13 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
         const extra: Partial<Fal> = typeof mag === 'number' ? { belsoMag: sz(mag, 2) } : mag && 'profil' in mag ? { profil: mag.profil.map((q) => ({ t: sz(q.t, 4), z: sz(q.z, 3) })), ...(mag.jelleg ? { jelleg: mag.jelleg } : {}) } : mag ? { belsoMag: sz(mag.belsoMag, 2), ...(mag.jelleg ? { jelleg: mag.jelleg } : {}) } : {};
         // (a szerkezeti magasság: alacsonyabb belső magasságnál a födém vastagságával fölötte, különben a szintmagasság)
         const hSz = extra.profil ? Math.max(...extra.profil.map((q) => q.z)) + (sz0.h - sz0.belmag) : extra.belsoMag !== undefined ? Math.min(sz0.h, extra.belsoMag + (sz0.h - sz0.belmag)) : sz0.h;
+        // (teljes modell) vékonynak mért, anyag nélküli helyiségközi „fal”: ha mellette fal-fólia vonalpár fut, a fal az
+        // (a raszterben a bútor / szaniter fehér takarása a falsávot elvékonyíthatja, a helyiséghatár ott elcsúszik)
+        if (L.kizart && f.vastag <= 0.06 && typeof f.bal === 'number' && typeof f.jobb === 'number' && !falAnyag(L, f) && !falRetegek(L, f)) {
+          const p = falVonalPar(L, f);
+          if (p) { const l = Math.hypot(f.b[0] - f.a[0], f.b[1] - f.a[1]), nx = -(f.b[1] - f.a[1]) / l, ny = (f.b[0] - f.a[0]) / l;
+            f.a = [f.a[0] + nx * p.d, f.a[1] + ny * p.d]; f.b = [f.b[0] + nx * p.d, f.b[1] + ny * p.d]; f.vastag = p.v; }
+        }
         const anyag = falAnyag(L, f), retegek = falRetegek(L, f);
         falak.push({ id, szint: sz0.id, a: [sz(f.a[0]), sz(f.a[1])], b: [sz(f.b[0]), sz(f.b[1])], vastag: sz(f.vastag, 2), z0: sz0.z0, h: sz(hSz, 3), ...extra,
           ...(anyag ? { anyag } : {}), ...(retegek ? { retegek } : {}), szerkezet: !anyag && !retegek && f.vastag <= 0.06 && typeof f.bal === 'number' && typeof f.jobb === 'number' && !falVonalMent(L, f) ? 'hatar' : falSzerkezet(f.vastag, anyag),
@@ -374,6 +381,28 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
       falMagPontosit(falak.filter((q) => falIdk.some((x) => x.id === q.id)), L);
       // hőburokfalak belső síkjába csatlakozó belső falak (a belső felület ezekkel rövidebb – a raszter szerint)
       for (const { id, f } of falIdk) { const cs = f.burokEl?.csatl; if (cs && cs > 0) { const fal = falak.find((q) => q.id === id)!; fal.csatlakozas = sz(Math.min(cs, fal.sikHossz), 2); } }
+      // (teljes modell) két helyiség közti rövid, falazóelemnél vastagabb (> 60 cm) „fal” két egy vonalba eső fal között:
+      // a köztük lévő ajtó / áttörés környéke (a raszter a nyíláson át mér vastagságot) – a két szomszéd fal közti
+      // szakasz, azok vastagságával és rétegrendjével (a nyílás így falra kerül)
+      if (L.kizart) for (const { id, f: fn } of falIdk) {
+        const w = falak.find((q) => q.id === id)!, v = w.mag ?? w.vastag;
+        if (!(v > 0.6 && w.hossz < 2 * v && w.bal.fajta === 'ter' && w.jobb.fajta === 'ter')) continue;
+        const ux = (w.b[0] - w.a[0]) / w.hossz, uy = (w.b[1] - w.a[1]) / w.hossz, mx = (w.a[0] + w.b[0]) / 2, my = (w.a[1] + w.b[1]) / 2;
+        const jel = falIdk.map((x) => falak.find((q) => q.id === x.id)!).filter((q) => q.id !== id && q.szerkezet !== 'hatar' && (q.mag ?? q.vastag) <= 0.5 && q.hossz > 0.3 &&
+          Math.abs(((q.b[0] - q.a[0]) * uy - (q.b[1] - q.a[1]) * ux) / q.hossz) < 0.05 && Math.abs((mx - q.a[0]) * uy - (my - q.a[1]) * ux) <= 0.3);
+        // a két oldalon a legközelebbi vég (a középponttól mért vetület szerint)
+        let e1: { t: number; q: Fal } | null = null, e2: { t: number; q: Fal } | null = null;
+        for (const q of jel) for (const p of [q.a, q.b]) { const t = (p[0] - mx) * ux + (p[1] - my) * uy;
+          if (t < 0 && (!e1 || t > e1.t) && [q.a, q.b].every((r) => (r[0] - mx) * ux + (r[1] - my) * uy <= t + 1e-6)) e1 = { t, q };
+          if (t > 0 && (!e2 || t < e2.t) && [q.a, q.b].every((r) => (r[0] - mx) * ux + (r[1] - my) * uy >= t - 1e-6)) e2 = { t, q }; }
+        if (!e1 || !e2 || e2.t - e1.t > 3 || Math.abs((e1.q.mag ?? e1.q.vastag) - (e2.q.mag ?? e2.q.vastag)) > 0.02) continue;
+        // (a tengely az egyik szomszédé)
+        const q = e1.q, qx = q.a[0], qy = q.a[1], vet = (t: number): P2 => { const px = mx + ux * t, py = my + uy * t; const s = (px - qx) * ux + (py - qy) * uy; return [sz(qx + ux * s), sz(qy + uy * s)]; };
+        w.a = vet(e1.t); w.b = vet(e2.t); w.hossz = sz(e2.t - e1.t, 2); w.sikHossz = w.hossz; w.vastag = q.vastag; w.szerkezet = q.szerkezet;
+        if (q.mag !== undefined) w.mag = q.mag; else delete w.mag;
+        if (q.retegek) w.retegek = q.retegek.map((x) => ({ ...x })); if (q.anyag) w.anyag = { ...q.anyag };
+        fn.a = w.a; fn.b = w.b; fn.vastag = w.vastag;
+      }
       // nyílászárók: a helyiség (és a túloldal) falai közül a legközelebbi, amelynek tengelyére a nyílás közepe esik
       // (a teljes épületmodellben – kizart megadva – a csak a modellnek szóló belső ajtók is)
       for (const n of [...L.a.nyilasok, ...(L.kizart ? L.a.modellAjtok ?? [] : [])]) {
@@ -390,6 +419,18 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
         if (!leg) continue;
         const fal = falak.find((q) => q.id === leg!.id)!;
         nyilasok.push({ id: `N${++nySzam}`, fal: leg.id, szint: sz0.id, t: sz(leg.t, 2), szel: n.szel, mag: n.mag > 0 ? n.mag : (n.szel >= 1.6 ? 2.4 : 1.5), pm: n.pm ?? (n.mag >= 1.9 ? 0 : 0.9), fajta: n.fajta, burok: fal.burok !== null });
+      }
+      // (teljes modell) a hosszának legalább 70 %-án nyílással áttört külső fal (pl. garázskapu sávja) vastagsága a
+      // rajzon nem látszik – a kapukeret / küszöb vonala adja –: a végeihez csatlakozó külső falaké
+      if (L.kizart) for (const { id } of falIdk) {
+        const f = falak.find((q) => q.id === id)!; if (!f.kulso || f.szerkezet === 'hatar') continue;
+        const ny = nyilasok.filter((n) => n.fal === id).reduce((t, n) => t + n.szel, 0); if (ny < 0.7 * f.hossz) continue;
+        const veg = (p: P2) => falak.filter((q) => q.id !== id && q.szint === f.szint && q.kulso && q.szerkezet !== 'hatar' && !nyilasok.some((n) => n.fal === q.id && n.szel >= 0.7 * q.hossz) &&
+          [q.a, q.b].some((r) => Math.hypot(r[0] - p[0], r[1] - p[1]) <= 0.45));
+        const szomsz = [...veg(f.a), ...veg(f.b)]; if (!szomsz.length) continue;
+        const db = new Map<number, { n: number; q: Fal }>(); for (const q of szomsz) { const k = q.mag ?? q.vastag; const e = db.get(k) ?? { n: 0, q }; e.n += q.hossz; db.set(k, e); }
+        const { q } = [...db.values()].sort((a, b) => b.n - a.n)[0]!;
+        f.mag = q.mag ?? q.vastag; f.vastag = q.vastag; f.szerkezet = q.szerkezet; if (q.retegek) f.retegek = q.retegek.map((x) => ({ ...x }));
       }
     }
   }
@@ -430,6 +471,12 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
       const [ax, ay] = L.m(q.x0, q.y0), [bx, by] = L.m(q.x1, q.y1);
       for (const sz0 of L.szintek) pillerek.push({ id: `P${pillerek.length + 1}`, szint: sz0.id, kozep: [sz((ax + bx) / 2), sz((ay + by) / 2)], a: sz(Math.abs(bx - ax), 2), b: sz(Math.abs(by - ay), 2), z0: sz0.z0, h: sz0.h, reteg: q.reteg });
     }
+  }
+  // (teljes modell) 60 cm-nél vastagabb, a vastagsága kétszeresénél rövidebb, nyílás nélküli „fal” nem fal: kitöltött
+  // folt (burkolat- / szigetelés-sraff, akna, kéménytest) – a falazóelemek legfeljebb 50 cm-esek
+  if (lapok.some((L) => L.kizart)) for (let i = falak.length - 1; i >= 0; i--) {
+    const f = falak[i]!, v = f.mag ?? f.vastag;
+    if (f.szerkezet !== 'hatar' && v > 0.6 && f.hossz < 2 * v && !nyilasok.some((n) => n.fal === f.id)) falak.splice(i, 1);
   }
   pillerFalhoz(pillerek, falak);
   if (opt.fodemSavok?.length) {
@@ -935,6 +982,30 @@ function fodemRetegrend(fodemek: Fodem[], szintek: Szint[], savok0: FodemSav[]):
     elt.set(sz0.id, d);
   }
   return elt;
+}
+
+/** Rétegzett lapon a fal tengelyével párhuzamos (± 30 cm-en belüli) fal-fólia vonalpár, amely a hossz legalább felén fut
+ *  és távolsága falazóelem-vastagság (5–32 cm, ± 2 cm): a tengely eltolása a normális irányában és a vastagság. */
+function falVonalPar(L: LapBemenet, f: FalNyers): { d: number; v: number } | null {
+  const r = L.a.r; if (!r?.falVonal) return null;
+  const dx = f.b[0] - f.a[0], dy = f.b[1] - f.a[1], l = Math.hypot(dx, dy); if (l < 0.5) return null;
+  const nx = -dy / l, ny = dx / l, lep = r.px / 2;
+  const fed: { d: number; f: number }[] = [];
+  for (let d = -0.3; d <= 0.3 + 1e-9; d += lep) { let van = 0, n = 0;
+    for (let t = 0.1; t < 0.91; t += 0.05) { n++; const [x, y] = modellbolPt(L, [f.a[0] + dx * t + nx * d, f.a[1] + dy * t + ny * d]);
+      const gx = Math.floor(((x - r.x0) * r.mPerPt) / r.px), gy = Math.floor(((y - r.y0) * r.mPerPt) / r.px);
+      if (gx >= 0 && gy >= 0 && gx < r.w && gy < r.h && r.falVonal[gy * r.w + gx]) van++; }
+    fed.push({ d, f: van / n }); }
+  // csúcsok: helyi maximumok ≥ 50 % fedéssel (szomszédos azonos értékek közül az első)
+  const csucs = fed.filter((q, i) => q.f >= 0.5 && q.f >= (fed[i - 1]?.f ?? 0) && q.f > (fed[i + 1]?.f ?? 0)).map((q) => q.d);
+  let leg: { d: number; v: number; e: number } | null = null;
+  for (let i = 0; i < csucs.length; i++) for (let j = i + 1; j < csucs.length; j++) {
+    const v = csucs[j]! - csucs[i]!; if (v < 0.04 || v > 0.34) continue;
+    const s = [...FAL_SZABVANY, 0.32].reduce((p, q) => (Math.abs(q - v) < Math.abs(p - v) ? q : p)); if (Math.abs(s - v) > 0.02 + r.px / 2) continue;
+    const kozep = (csucs[i]! + csucs[j]!) / 2, e = Math.abs(kozep) + Math.abs(s - v);
+    if (!leg || e < leg.e) leg = { d: kozep, v: s, e };
+  }
+  return leg && { d: leg.d, v: leg.v };
 }
 
 /** Rétegzett lapon a fal tengelye mentén (± 8 cm-en belül) fal-fólia vonala fut-e a hossz legalább felén. */

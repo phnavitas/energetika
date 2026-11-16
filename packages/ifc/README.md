@@ -23,3 +23,9 @@ a két mintán ez hibás (2026-11-16):
 Javítás: az `osszevetes.ts` alak- és anyagszabálya (pillér: függőleges, ≥ 1,5 m, ≤ 0,8 m, közel négyzetes, beton /
 acél; gerenda / koszorú: vízszintes, 0,1–0,9 m magas – rétegrésznél a hossz térfogat / keresztmetszet; lemez; a
 hőszigetelés-burkolat a pillér hőszigetelése; eresz, csatorna, járda, korlát nem tartószerkezet) a javaslat előtt.
+
+A falmennyiségben (iTWO-proxy, Nyárfa) ugyanígy:
+- a „szekcionált garázsajtó” (a fal fóliáján) nem fal – a nyílászáró-szűrő a név bármely részére nézzen (ajtó, ablak,
+  kapu), ne csak az elejére; a fal fóliáján ülő pillér („VB FAL” fólia, „VASBETON pillér …” típus) nem fal;
+- a vastagság a típusnév végi mm-értéke („FAL - POROTHERM 30 300” → 30 cm), ha a mért eltér: az összetevő-szélesség a
+  nyílás melletti rövid daraboknál (4–23 cm-t ad a 30-as falra), a befoglaló doboz a nem tengelyirányú falnál téves.

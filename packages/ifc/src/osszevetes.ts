@@ -45,20 +45,25 @@ function falE(e: Elem) {
   if (/^IFCWALL/.test(e.ifc)) return true;
   // proxy-export: a típusnév / anyag / fólia mondja (FAL - POROTHERM…, SZERKEZET - … FAL)
   // (a nyílászáró-proxy – „ajtó 21”, „ablak …” – a fal fóliáján is ülhet: az nem fal)
-  if (/PROXY/.test(e.ifc) && /^(ajt[óo]|ablak|kapu|nyíl[áa]s|tet[őo]ablak)/i.test(e.tipusNev ?? e.nev ?? '')) return false;
+  // (a garázskapu is: „szekcionált garázsajtó”; a pillér a fal fóliáján – „VB FAL” – is ülhet: azt a pillérsor számolja)
+  if (/PROXY/.test(e.ifc) && /ajt[óo]|ablak|kapu|nyíl[áa]s|pill[ée]r|oszlop/i.test(e.tipusNev ?? e.nev ?? '')) return false;
   if (/PROXY/.test(e.ifc) && (/^fal\b/i.test(e.tipusNev ?? e.anyag ?? '') || /\bfal\b/i.test(e.folia ?? ''))) return true;
   if (e.oszt === 'Fal') return true;
   return (e.pset?.['ArchiCADProperties'] as Record<string, unknown> | undefined)?.['Elemtípus'] === 'Fal';
 }
 function falMeret(e: Elem): { v: number; hossz: number; magassag: number | null; mod: 'osszetevo' | 'falhossz' | 'doboz'; z?: number } | null {
   const q = e.q ?? {};
+  // a típusnév végén a vastagság mm-ben („FAL - POROTHERM 30 300”): az összetevő-szélesség a nyílás melletti rövid
+  // daraboknál, a doboz a nem tengelyirányú falnál téves – ezeknél ez dönt
+  const nm = /(?:^|\s)(\d{2,3})\s*$/.exec(e.tipusNev ?? ''), nv = nm ? Number(nm[1]) / 1000 : null;
+  const nevV = (v: number) => (nv && nv >= 0.05 && nv <= 0.6 && Math.abs(v - nv) > 0.02 ? nv : v);
   const v1 = q['Téglalap összetevő szélessége'], h1 = q['Téglalap összetevő magassága'], A1 = q['Összetevő vetített területe (bruttó)'];
-  if (v1 && h1 && A1) return { v: v1, hossz: A1 / h1, magassag: h1, mod: 'osszetevo' };
+  if (v1 && h1 && A1) return { v: nevV(v1), hossz: A1 / h1, magassag: h1, mod: 'osszetevo' };
   const v2 = q['Vastagság'] ?? q['Szélesség'], b = q['Fal hossza a belső oldalon'], k = q['Fal hossza a külső oldalon'];
   if (v2 && (b != null || k != null)) { const L = b != null && k != null ? (b + k) / 2 : (b ?? k)!; if (L > 0) return { v: v2, hossz: L, magassag: q['Magasság'] ?? null, mod: 'falhossz' }; }
   // befoglaló doboz (tengelyirányú fal): hossz a hosszabb, vastagság a rövidebb vízszintes oldal
   const d = e.gid ? DOBOZ[e.gid] : undefined;
-  if (d) { const dx = d.x1 - d.x0, dy = d.y1 - d.y0; if (Math.max(dx, dy) > 0.1) return { v: Math.min(dx, dy), hossz: Math.max(dx, dy), magassag: d.z1 - d.z0, mod: 'doboz', z: d.z0 }; }
+  if (d) { const dx = d.x1 - d.x0, dy = d.y1 - d.y0; if (Math.max(dx, dy) > 0.1) return { v: nevV(Math.min(dx, dy)), hossz: Math.max(dx, dy), magassag: d.z1 - d.z0, mod: 'doboz', z: d.z0 }; }
   return null;
 }
 /** A modellfal magvastagsága: a rétegrendből a szerkezeti rétegek (név szerint nem réteg; név híján a sraffozott). */
