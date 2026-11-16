@@ -548,7 +548,25 @@ export function nyilasokHozzarendel(feliratok0: NyilasFelirat[], r: Raszter, nev
     }
     // vegyes írású ajtófelirat nyílásfolt nélkül (az ajtólap, tok a falsávot zárja): a feliratból a falra merőlegesen
     // átnézve két különböző helyiség – belső ajtó
-    if (!p && f.vegyesAjto && fx >= 0 && fy >= 0 && fx < r.w && fy < r.h) { const q = vizsgal(fy * r.w + fx, f.fal === 'f'); if (q && !q.kulso && q.masik !== undefined) p = q; }
+    // (a felirat a helyiségben áll: a saját helyiségén és a falon túl, legfeljebb 1,6 m-en belül a legközelebbi másik
+    // helyiség; előbb a felirattal párhuzamos irányban – a vízszintes felirat függőleges fal ajtaja mellett áll)
+    if (!p && f.vegyesAjto && fx >= 0 && fy >= 0 && fx < r.w && fy < r.h && r.cimke[fy * r.w + fx]! >= 2) {
+      const sajat = r.cimke[fy * r.w + fx]!, maxL2 = Math.round(1.6 / r.px);
+      const tengelyek = f.fal === 'f' ? [[[1, 0, 90], [-1, 0, 270]], [[0, -1, 0], [0, 1, 180]]] : [[[0, -1, 0], [0, 1, 180]], [[1, 0, 90], [-1, 0, 270]]];
+      for (const iranyok of tengelyek) {
+        let leg: { c: number; d: number; ir: number } | null = null;
+        for (const [dx, dy, ir] of iranyok as [number, number, number][]) {
+          let x = fx, y = fy, falon = false;
+          for (let k = 1; k <= maxL2; k++) { x += dx; y += dy; if (x < 0 || y < 0 || x >= r.w || y >= r.h) break;
+            const i = y * r.w + x, c = r.cimke[i]!;
+            if (r.fal[i] || r.nyilas[i]) { falon = true; continue; }
+            if (c === sajat) { if (falon) break; continue; }
+            if (c >= 2) { if (!leg || k < leg.d) leg = { c, d: k, ir }; break; } // (az ajtónyílásban fal nélkül is)
+            if (c === 1) break; }
+        }
+        if (leg) { p = { h: sajat - 2, irany: leg.ir, kulso: false, masik: leg.c - 2 }; break; }
+      }
+    }
     if (!jeloltek.length && !p) continue;
     const kulso = !!p?.kulso;
     const garazsban = p ? GARAZS.test(nevek[p.h] ?? '') : false;
