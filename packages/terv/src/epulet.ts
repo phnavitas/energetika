@@ -177,8 +177,8 @@ export interface Alapozas { id: string; fajta: 'savalap' | 'labazat' | 'pontalap
  * fő tetőre és tetőszakaszokra (ElbaBimGeometria.tetoBontas) –, az ereszvonal, a hajlás és az ereszkiállás.
  */
 export interface Magasteto { szint: string; hajlas: number; kiallas: number; kiallasBecsult: boolean;
-  /** derekszogu: pontos (téglalapos bontás, főirányba forgatva); konvex: élsíkok alsó burkolója; kozelito: derékszögűsített körvonal */
-  mod: 'derekszogu' | 'konvex' | 'kozelito'; zEresz: number; eresz: P2[]; haromszogek: [number, number, number][][] }
+  /** derekszogu: pontos (téglalapos bontás, főirányba forgatva); konvex: élsíkok alsó burkolója; vaz: egyenes váz (ferde, nem konvex); kozelito: derékszögűsített körvonal */
+  mod: 'derekszogu' | 'konvex' | 'vaz' | 'kozelito'; zEresz: number; eresz: P2[]; haromszogek: [number, number, number][][] }
 
 /** Koszorú szintenként: a teherhordó falak tetején (a metszet szerinti keresztmetszettel), a hossza a falaké. */
 export interface Koszoru { id: string; szint: string; szel: number; magas: number; zFelso: number; reteg: string; falak: string[]; hossz: number;

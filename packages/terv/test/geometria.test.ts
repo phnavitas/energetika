@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { tetoHaromszogek } from '../src/tetoModell';
+import { tetoHaromszogek, egyenesVazTeto, kifeleTol } from '../src/tetoModell';
 import { poligonKulonbseg } from '../src/poligonKulonbseg';
 
 type P2 = [number, number];
@@ -21,8 +21,17 @@ describe('magastető-geometria', () => {
     // azonos hajlású síkok: felület = vetület / cos(hajlás)
     expect(felulet(t.haromszogek)).toBeCloseTo(60 / Math.cos(Math.PI / 6), 4);
   });
-  it('nem konvex, ferde élű körvonal: közelítő', () => {
-    expect(tetoHaromszogek({ korvonal: [[0, 0], [12, 0], [12, 4], [6, 4], [4, 6], [4, 10], [0, 10]], hajlas: 30, kiallas: 0.5 })!.mod).toBe('kozelito');
+  it('nem konvex, ferde élű körvonal: egyenes váz, a vetület az ereszvonalon belüli terület', () => {
+    const t = tetoHaromszogek({ korvonal: [[0, 0], [12, 0], [12, 4], [6, 4], [4, 6], [4, 10], [0, 10]], hajlas: 30, kiallas: 0 })!;
+    expect(t.mod).toBe('vaz');
+    expect(felulet(t.haromszogek)).toBeCloseTo(74 / Math.cos(Math.PI / 6), 4);
+  });
+  it('egyenes váz derékszögű körvonalon = a téglalapos módszer', () => {
+    const a = tetoHaromszogek({ korvonal: L, hajlas: 30, kiallas: 0.5 })!, v = egyenesVazTeto(kifeleTol(L, 0.5), 30)!;
+    // (azonos hajlás: felület = ereszvonalon belüli vetület / cos – a téglalapos háló átfedő darabokat is tartalmazhat)
+    expect(felulet(v)).toBeCloseTo(101 / Math.cos(Math.PI / 6), 6);
+    const zMax = (h: [number, number, number][][]) => Math.max(...h.flat().map((p) => p[2]!));
+    expect(zMax(v)).toBeCloseTo(zMax(a.haromszogek), 6);
   });
 });
 

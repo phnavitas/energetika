@@ -131,7 +131,117 @@ function konvexTeto(be: TetoBemenet): { haromszogek: [P3, P3, P3][]; eresz: P2[]
   return { haromszogek, eresz };
 }
 
-export type TetoMod = 'derekszogu' | 'konvex' | 'kozelito';
+/**
+ * Egyenes váz (straight skeleton) tető tetszőleges egyszerű sokszögre: a hullámfront (az ereszvonal) minden éle egységnyi
+ * sebességgel befelé tolódik; élesemény (egy él nullára rövidül – a két csúcs összeolvad) és osztásesemény (konkáv csúcs
+ * eléri a szemközti élt – a sokszög kettéválik) a következő legkorábbi. Két esemény között minden él egy trapézt söpör a
+ * saját síkjában (z = tg · t): ezek a tetőlapok darabjai. Sikertelen (elfajuló) esetben null.
+ */
+export function egyenesVazTeto(eresz0: P2[], hajlas: number, ze = 0, naplo?: string[]): [P3, P3, P3][] | null {
+  type Cs = { p: P2; v: P2; eBe: number; eKi: number };
+  const pol = tisztit(eresz0); if (pol.length < 3) return null;
+  const P = terElojel(pol) < 0 ? pol.slice().reverse() : pol.slice(), n = P.length;
+  const tg = Math.tan((hajlas * Math.PI) / 180);
+  // eredeti élek: befelé mutató (bal) normális, n·x = c + t
+  const E = P.map((a, i) => { const b = P[(i + 1) % n]!, l = Math.hypot(b[0] - a[0], b[1] - a[1]); const nx = -(b[1] - a[1]) / l, ny = (b[0] - a[0]) / l; return { nx, ny, c: nx * a[0] + ny * a[1], dx: (b[0] - a[0]) / l, dy: (b[1] - a[1]) / l }; });
+  const seb = (a: number, b: number): P2 | null => { const A = E[a]!, B = E[b]!, det = A.nx * B.ny - A.ny * B.nx;
+    if (Math.abs(det) < 1e-9) return A.nx * B.nx + A.ny * B.ny > 0 ? [A.nx, A.ny] : null; return [(B.ny - A.ny) / det, (A.nx - B.nx) / det]; };
+  const uj = (p: P2, eBe: number, eKi: number): Cs | null => { const v = seb(eBe, eKi); return v ? { p, v, eBe, eKi } : null; };
+  let frontok: Cs[][] = [P.map((p, i) => uj(p, (i - 1 + n) % n, i)!)];
+  if (frontok[0]!.some((c) => !c)) return null;
+  const darabok: P3[][] = [];
+  let T = 0;
+  const hely = (c: Cs, d: number): P2 => [c.p[0] + c.v[0] * d, c.p[1] + c.v[1] * d];
+  // kiesett csúcs után a front élláncának helyreállítása: a csúcs bejövő éle az előző kimenő éle (az egybeeső, ellentétes
+  // élpár közül az, amelynek belső oldalán a megmaradt rész van); ellentétes élpárú csúcs (tüske) kiesik
+  const javit = (f: Cs[]) => {
+    for (let it = 0; it < 4 * f.length + 4 && f.length >= 3; it++) {
+      let jo = true;
+      for (let k = 0; k < f.length; k++) { const ke = (k - 1 + f.length) % f.length, el = f[ke]!, c = f[k]!; if (c.eBe === el.eKi) continue;
+        // a két csúcs közti él: a két jelölt közül az, amelynek befelé mutató normálisa a front belseje (bal oldal) felé néz
+        const dx = c.p[0] - el.p[0], dy = c.p[1] - el.p[1], A = E[el.eKi]!;
+        const e = Math.hypot(dx, dy) < 1e-9 || A.nx * -dy + A.ny * dx > 0 ? el.eKi : c.eBe;
+        el.eKi = e; c.eBe = e;
+        const v1 = seb(el.eBe, el.eKi), v2 = seb(c.eBe, c.eKi);
+        if (!v1) { f.splice(ke, 1); jo = false; break; } el.v = v1;
+        if (!v2) { f.splice(k, 1); jo = false; break; } c.v = v2; }
+      if (jo) for (let k = 0; k < f.length; k++) { const c = f[k]!; if (!seb(c.eBe, c.eKi)) { f.splice(k, 1); jo = false; break; } }
+      if (jo) return;
+    }
+  };
+  for (let lepes = 0; lepes < 20 * n + 50; lepes++) {
+    frontok = frontok.filter((f) => f.length >= 3 && Math.abs(terElojel(f.map((c) => c.p))) > 1e-7);
+    if (!frontok.length) return illeszt(darabok);
+    // a legkorábbi esemény
+    let ev: { d: number; f: number; i: number; e?: number } | null = null;
+    frontok.forEach((f, fi) => f.forEach((c, i) => {
+      const k = f[(i + 1) % f.length]!, e = E[c.eKi]!;
+      const dv = (k.v[0] - c.v[0]) * e.dx + (k.v[1] - c.v[1]) * e.dy, dp = (k.p[0] - c.p[0]) * e.dx + (k.p[1] - c.p[1]) * e.dy;
+      if (dv < -1e-12) { const d = -dp / dv; if (d > -1e-9 && (!ev || d < ev.d - 1e-12)) ev = { d: Math.max(0, d), f: fi, i }; }
+      // konkáv csúcs (jobbra fordul) → osztás
+      const a = E[c.eBe]!; if (a.dx * e.dy - a.dy * e.dx >= -1e-9) return;
+      f.forEach((m, j) => {
+        if (j === i || (j + 1) % f.length === i) return;
+        const s = E[m.eKi]!, nev = s.nx * c.v[0] + s.ny * c.v[1] - 1; if (Math.abs(nev) < 1e-12) return;
+        const d = (s.c + T - (s.nx * c.p[0] + s.ny * c.p[1])) / nev; if (!(d > 1e-9) || (ev && d >= ev.d - 1e-12)) return;
+        const X = hely(c, d), A0 = hely(m, d), B0 = hely(f[(j + 1) % f.length]!, d);
+        const L = (B0[0] - A0[0]) * s.dx + (B0[1] - A0[1]) * s.dy, t = (X[0] - A0[0]) * s.dx + (X[1] - A0[1]) * s.dy;
+        if (t >= -1e-7 && t <= L + 1e-7) ev = { d, f: fi, i, e: j };
+      });
+    }));
+    if (!ev) return null;
+    const { d, f: fi, i, e: ej } = ev as { d: number; f: number; i: number; e?: number };
+    naplo?.push(`T=${(T + d).toFixed(4)} ${ej === undefined ? 'él' : 'osztás→' + ej} f${fi} i${i} | ` + frontok.map((f) => f.map((c) => `${c.eBe}/${c.eKi}@${hely(c, d).map((v) => v.toFixed(2)).join(',')}`).join(' ')).join(' ‖ '));
+    // söpört trapézok, majd a csúcsok előre
+    if (d > 1e-12) for (const f of frontok) f.forEach((c, k) => { const m = f[(k + 1) % f.length]!;
+      const a0: P3 = [c.p[0], c.p[1], ze + tg * T], b0: P3 = [m.p[0], m.p[1], ze + tg * T], a1h = hely(c, d), b1h = hely(m, d);
+      const a1: P3 = [a1h[0], a1h[1], ze + tg * (T + d)], b1: P3 = [b1h[0], b1h[1], ze + tg * (T + d)];
+      const q = [a0, b0, b1, a1].filter((x, k, t) => { const y = t[(k + 1) % 4]!; return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]) > 1e-9; });
+      if (q.length >= 3) darabok.push(q); });
+    for (const f of frontok) for (const c of f) c.p = hely(c, d);
+    T += d;
+    const f = frontok[fi]!, c = f[i]!;
+    if (ej === undefined) {
+      const j = (i + 1) % f.length, m = f[j]!, w = uj(c.p, c.eBe, m.eKi);
+      // (ellentétes élek – a szárny gerincvonallá fogyott –: mindkét csúcs kiesik)
+      if (!w) { f.splice(Math.max(i, j), 1); f.splice(Math.min(i, j), 1); }
+      else if (j === 0) { f.splice(i, 1); f[0] = w; } else f.splice(i, 2, w);
+      javit(f);
+    } else {
+      const s = ej, m = f[s]!, wA = uj(c.p, c.eBe, m.eKi), wB = uj(c.p, m.eKi, c.eKi);
+      // A: … c-1, wA, s+1 … ; B: s+1-ig … s, wB, c+1 …
+      const A: Cs[] = [], B: Cs[] = [], L = f.length;
+      for (let k = (s + 1) % L; k !== i; k = (k + 1) % L) A.push(f[k]!); if (wA) A.push(wA);
+      for (let k = (i + 1) % L; k !== (s + 1) % L; k = (k + 1) % L) B.push(f[k]!); if (wB) B.push(wB);
+      javit(A); javit(B);
+      frontok.splice(fi, 1, A, B);
+    }
+  }
+  return null;
+}
+/** A söpört darabok illesztése: minden darab élére a rá eső többi csúcs is felkerül (T-csatlakozás nélküli háló – az ELBA
+ *  tetőbontása az élek egyezéséből keresi a gerincet, élt, vápát), majd a konvex darab legyezője a súlypontjából. */
+function illeszt(darabok: P3[][]): [P3, P3, P3][] {
+  const pontok: P3[] = [], kulcs = new Set<string>();
+  for (const d of darabok) for (const p of d) { const k = p.map((v) => Math.round(v * 1e6)).join(','); if (!kulcs.has(k)) { kulcs.add(k); pontok.push(p); } }
+  const ki: [P3, P3, P3][] = [];
+  for (const d of darabok) {
+    const sor: P3[] = [];
+    d.forEach((a, k) => { const b = d[(k + 1) % d.length]!; sor.push(a);
+      const ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], L2 = ab[0]! ** 2 + ab[1]! ** 2 + ab[2]! ** 2; if (L2 < 1e-14) return;
+      const kozte: { t: number; p: P3 }[] = [];
+      for (const p of pontok) { const t = ((p[0] - a[0]) * ab[0]! + (p[1] - a[1]) * ab[1]! + (p[2] - a[2]) * ab[2]!) / L2; if (t <= 1e-9 || t >= 1 - 1e-9) continue;
+        const dx = a[0] + ab[0]! * t - p[0], dy = a[1] + ab[1]! * t - p[1], dz = a[2] + ab[2]! * t - p[2]; if (dx * dx + dy * dy + dz * dz < 1e-12) kozte.push({ t, p }); }
+      kozte.sort((x, y) => x.t - y.t); for (const x of kozte) sor.push(x.p); });
+    if (sor.length === 3) { ki.push([sor[0]!, sor[1]!, sor[2]!]); continue; }
+    const s: P3 = [0, 1, 2].map((k) => d.reduce((t, p) => t + p[k]!, 0) / d.length) as P3;
+    sor.forEach((a, k) => ki.push([s, a, sor[(k + 1) % sor.length]!]));
+  }
+  return ki;
+}
+const terElojel = (p: P2[]) => p.reduce((s, [x, y], i) => { const [x2, y2] = p[(i + 1) % p.length]!; return s + x * y2 - x2 * y; }, 0) / 2;
+
+export type TetoMod = 'derekszogu' | 'konvex' | 'vaz' | 'kozelito';
 
 /** A tető felülete háromszögekben (az ElbaBimGeometria.tetoBontas bemenete), és az ereszvonal.
  *  A körvonalat a főirányába forgatjuk: ha így derékszögű, a téglalapos módszer pontos; ha nem derékszögű, de konvex,
@@ -141,10 +251,21 @@ export function tetoHaromszogek(be: TetoBemenet): { haromszogek: [P3, P3, P3][];
   const loc = forg ? be.korvonal.map((q) => forgat(q, -th)) : be.korvonal;
   const dsz = derekszogu(loc);
   if (!dsz && konvex(tisztit(be.korvonal))) { const r = konvexTeto(be); return r && { ...r, mod: 'konvex' }; }
+  // nem derékszögű, nem konvex: egyenes váz (oromfal nélkül); ha elfajul, a derékszögűsített közelítés
+  if (!dsz) {
+    const eresz = kifeleTol(tisztit(be.korvonal), be.kiallas), h = egyenesVazTeto(eresz, be.hajlas, be.zEresz ?? 0);
+    const vet = h ? h.reduce((s, [a, b, c]) => s + Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])) / 2, 0) : 0;
+    if (h && Math.abs(vet - terulet(eresz)) <= 0.005 * terulet(eresz)) return { haromszogek: h, eresz, mod: 'vaz' };
+  }
   const irM = (ir: number) => { const d = forgat(ir === 0 ? [0, -1] : ir === 90 ? [1, 0] : ir === 180 ? [0, 1] : [-1, 0], th);
     return ((Math.round((Math.atan2(d[0], -d[1]) * 180) / Math.PI / 90) * 90) % 360 + 360) % 360; };
-  const r = tetoDerekszogu({ ...be, korvonal: loc, ...(be.orom ? { orom: (ir: number, szel: number) => be.orom!(forg ? irM(ir) : ir, szel) } : {}) });
+  let orom = false;
+  const r = tetoDerekszogu({ ...be, korvonal: loc, ...(be.orom ? { orom: (ir: number, szel: number) => { const v = be.orom!(forg ? irM(ir) : ir, szel); if (v) orom = true; return v; } } : {}) });
   if (!r) return null;
+  // oromfal nélkül a kontyolt tető az egyenes váz is (ugyanaz a tető, de átfedés és T-csatlakozás nélküli háló)
+  if (!orom) { const h = egyenesVazTeto(r.eresz, be.hajlas, be.zEresz ?? 0);
+    const vet = h ? h.reduce((s, [a, b, c]) => s + Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])) / 2, 0) : 0;
+    if (h && Math.abs(vet - terulet(r.eresz)) <= 0.005 * terulet(r.eresz)) r.haromszogek = h; }
   const vissza = forg ? { haromszogek: r.haromszogek.map((h) => h.map(([x, y, z]) => { const [a, b] = forgat([x, y], th); return [a, b, z] as P3; }) as [P3, P3, P3]), eresz: r.eresz.map((q) => forgat(q, th)) } : r;
   return { ...vissza, mod: dsz ? 'derekszogu' : 'kozelito' };
 }
