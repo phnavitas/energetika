@@ -148,7 +148,12 @@ export interface FalLefedes { lap: number; szint: string; rajzA: number; modellA
    * a hiány (m²): modellfal mellett (vékonyabb / rövidebb modellfal) ill. attól távol (hiányzó fal) */
   tobbletKozel: number; tobbletTavol: number; hianyKozel: number; hianyTavol: number }
 /** Pillér: az alaprajz tartószerkezeti rétegén álló, közel négyzetes, 15–80 cm-es téglalap (pillerKeres). */
-export interface Piller { id: string; szint: string; kozep: P2; /** keresztmetszet (m, x / y irányban) */ a: number; b: number; z0: number; h: number; reteg: string }
+export interface Piller { id: string; szint: string; kozep: P2; /** keresztmetszet (m, x / y irányban) */ a: number; b: number; z0: number; h: number; reteg: string;
+  /** Helye a falakhoz képest (az ELBA pillerFalhoz szabálya): falban (a fal átmegy rajta, ill. T-csatlakozás), falvégen,
+   * sarkon, szabadon álló. A falban álló pillér a fal hosszában benne van – az ELBA a falfelületből vonja le. */
+  hely?: 'fal' | 'veg' | 'sarok' | 'szabad';
+  /** A befogadó fal (a tengelyéhez legközelebbi) és a pillérhez érő falak. */
+  falId?: string; falak?: string[] }
 
 export interface EpuletModell { szintek: Szint[]; terek: Ter[]; falak: Fal[]; nyilasok: Nyilas[]; fodemek: Fodem[]; vizszintes: VizszintesBurok[]; tetok: TetoGeom[]; lefedes?: FalLefedes[]; pillerek?: Piller[] }
 
@@ -382,6 +387,7 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
       for (const sz0 of L.szintek) pillerek.push({ id: `P${pillerek.length + 1}`, szint: sz0.id, kozep: [sz((ax + bx) / 2), sz((ay + by) / 2)], a: sz(Math.abs(bx - ax), 2), b: sz(Math.abs(by - ay), 2), z0: sz0.z0, h: sz0.h, reteg: q.reteg });
     }
   }
+  pillerFalhoz(pillerek, falak);
   if (opt.fodemSavok?.length) {
     const elt = fodemRetegrend(fodemek, szintek, opt.fodemSavok);
     for (const f of [...falak, ...pillerek]) { const d = elt.get(f.szint); if (d) f.z0 = Math.round((f.z0 + d) * 100) / 100; }
@@ -672,6 +678,43 @@ function nevVastag(n?: string): number | undefined {
   const sz = [...n.replace(/\.\d{3,}$/, '').matchAll(/(?:^|\D)(\d{1,2})(?=\D|$)/g)].map((m) => Number(m[1])).filter((v) => v >= 5 && v <= 60);
   return sz.length ? sz[sz.length - 1]! / 100 : undefined;
 }
+/**
+ * A pillér helye a falakhoz képest – az ELBA `pillerFalhoz` szabálya: a pillérhez érő falak (a fal tengelye legfeljebb
+ * fél falvastagság + fél pillérméret + 15 cm-re, a fal hosszán belül) iránya dönt: nincs fal → szabad; egy irány, a fal
+ * mindkét oldalon tovább fut → fal; egy irány, csak egyik oldalon → vég; két irány, egyikben átmenő fal (T) → fal;
+ * két irány, egyikben sem → sarok. A befogadó fal a tengelyével legközelebbi.
+ */
+function pillerFalhoz(pillerek: Piller[], falak: Fal[]) {
+  for (const p of pillerek) {
+    const meret = Math.max(p.a, p.b); let jo: Fal | null = null, leg = Infinity;
+    const ero: { f: Fal; ux: number; uy: number; elotte: boolean; utana: boolean }[] = [];
+    for (const f of falak) {
+      if (f.szint !== p.szint || f.szerkezet === 'hatar') continue;
+      const dx = f.b[0] - f.a[0], dy = f.b[1] - f.a[1], L = Math.hypot(dx, dy); if (L < 0.2) continue;
+      const ux = dx / L, uy = dy / L, t0 = (p.kozep[0] - f.a[0]) * ux + (p.kozep[1] - f.a[1]) * uy, t = Math.max(0, Math.min(L, t0));
+      const d = Math.hypot(p.kozep[0] - (f.a[0] + ux * t), p.kozep[1] - (f.a[1] + uy * t));
+      if (d > f.vastag / 2 + meret / 2 + 0.15) continue;
+      ero.push({ f, ux, uy, elotte: t0 > meret / 2 + 0.05, utana: t0 < L - meret / 2 - 0.05 });
+      if (d < leg) { leg = d; jo = f; }
+    }
+    const iranyok: { a: number; ket: boolean; egy: boolean; falak: Fal[] }[] = [];
+    for (const x of ero) {
+      const a = ((Math.atan2(x.uy, x.ux) * 180) / Math.PI + 180) % 180;
+      let ir = iranyok.find((i) => Math.min(Math.abs(i.a - a), 180 - Math.abs(i.a - a)) < 20);
+      if (!ir) { ir = { a, ket: false, egy: false, falak: [] }; iranyok.push(ir); }
+      ir.falak.push(x.f);
+      if (x.elotte && x.utana) ir.ket = true; else ir.egy = true;
+      if (ir.egy && ir.falak.length >= 2) ir.ket = true;
+    }
+    let hely: NonNullable<Piller['hely']> = 'szabad', fo: (typeof iranyok)[number] | undefined;
+    if (iranyok.length >= 2) { fo = iranyok.find((i) => i.ket); hely = fo ? 'fal' : 'sarok'; }
+    else if (iranyok.length === 1) { fo = iranyok[0]!; hely = fo.ket ? 'fal' : 'veg'; }
+    p.hely = hely;
+    if (jo) p.falId = jo.id;
+    p.falak = (hely === 'fal' && fo ? fo.falak : ero.map((x) => x.f)).map((f) => f.id);
+  }
+}
+
 /**
  * A födémek rétegrendje a metszet vízszintes sávjaiból: a födém síkjához (padló: a szint padlója, ± 35 cm; tető: a szint
  * teteje, ± 40 cm) legközelebbi legfelső, legalább 2 m széles sávtól lefelé az egymáshoz (± 2 cm) csatlakozó sávok
