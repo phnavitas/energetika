@@ -7,7 +7,7 @@
  */
 import { pillerKeres } from './pillerek';
 import type { Lap } from './kinyeres';
-import type { FodemSav } from './metszetGeom';
+import type { FodemSav, MetszetElem } from './metszetGeom';
 import type { AlaprajzFeldolgozas } from './elemzes';
 import type { FalSzakasz, Raszter } from './raszter';
 import { burokMeres, burokTomeg, elKornyezet, helyisegKorvonal, type Poligon } from './burok';
@@ -155,7 +155,10 @@ export interface Piller { id: string; szint: string; kozep: P2; /** keresztmetsz
   /** A befogadó fal (a tengelyéhez legközelebbi) és a pillérhez érő falak. */
   falId?: string; falak?: string[] }
 
-export interface EpuletModell { szintek: Szint[]; terek: Ter[]; falak: Fal[]; nyilasok: Nyilas[]; fodemek: Fodem[]; vizszintes: VizszintesBurok[]; tetok: TetoGeom[]; lefedes?: FalLefedes[]; pillerek?: Piller[] }
+/** Koszorú szintenként: a teherhordó falak tetején (a metszet szerinti keresztmetszettel), a hossza a falaké. */
+export interface Koszoru { id: string; szint: string; szel: number; magas: number; zFelso: number; reteg: string; falak: string[]; hossz: number }
+
+export interface EpuletModell { szintek: Szint[]; terek: Ter[]; falak: Fal[]; nyilasok: Nyilas[]; fodemek: Fodem[]; vizszintes: VizszintesBurok[]; tetok: TetoGeom[]; lefedes?: FalLefedes[]; pillerek?: Piller[]; koszoruk?: Koszoru[] }
 
 /** Egy alaprajzi lap bemenete. */
 export interface LapBemenet {
@@ -234,7 +237,7 @@ const terId = (lap: number, szint: string, ri: number) => `T${lap}.${szint}.${ri
 /**
  * Épületmodell a lapokból. A típusszintes lap minden szintjére ugyanaz a geometria kerül (más azonosítóval).
  */
-export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[] } = {}): EpuletModell {
+export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]; metszetElemek?: MetszetElem[] } = {}): EpuletModell {
   const szintek: Szint[] = [], terek: Ter[] = [], falak: Fal[] = [], nyilasok: Nyilas[] = [], fodemek: Fodem[] = [];
   let falSzam = 0, nySzam = 0;
   for (const L of lapok) {
@@ -393,7 +396,8 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
     for (const f of [...falak, ...pillerek]) { const d = elt.get(f.szint); if (d) f.z0 = Math.round((f.z0 + d) * 100) / 100; }
     for (const p of pillerek) { const s0 = szintek.find((q) => q.id === p.szint); if (s0) p.h = s0.h; }
   }
-  return { szintek, terek, falak, nyilasok, fodemek, vizszintes: vizszintesBurok(szintek, terek, lapok, fodemek), tetok, lefedes, ...(pillerek.length ? { pillerek } : {}) };
+  const koszoruk = opt.metszetElemek?.length ? koszoruKeres(szintek, falak, fodemek, opt.metszetElemek) : [];
+  return { szintek, terek, falak, nyilasok, fodemek, vizszintes: vizszintesBurok(szintek, terek, lapok, fodemek), tetok, lefedes, ...(pillerek.length ? { pillerek } : {}), ...(koszoruk.length ? { koszoruk } : {}) };
 }
 
 
@@ -678,6 +682,31 @@ function nevVastag(n?: string): number | undefined {
   const sz = [...n.replace(/\.\d{3,}$/, '').matchAll(/(?:^|\D)(\d{1,2})(?=\D|$)/g)].map((m) => Number(m[1])).filter((v) => v >= 5 && v <= 60);
   return sz.length ? sz[sz.length - 1]! / 100 : undefined;
 }
+/**
+ * Koszorú szintenként a metszet kis keresztmetszetű elemeiből: szerkezeti (nem hőszigetelés, padló, tető, zsalukő,
+ * alapozás) rétegen álló, 20–50 cm széles, 15–80 cm magas elem, amelynek felső síkja a szint fölötti födém alsó síkjához
+ * (± 30 cm) esik, és a szint padlója fölött legalább 1,5 m-rel kezdődik; több jelölt közül a födém alsó síkjához
+ * legközelebbi, azonos távolságnál a gyakoribb keresztmetszet. A koszorú a szint teherhordó falain fut.
+ */
+function koszoruKeres(szintek: Szint[], falak: Fal[], fodemek: Fodem[], elemek: MetszetElem[]): Koszoru[] {
+  const NEM = /h[őo]szig|padl[óo]|tet[őo]|zsalu|alapoz|s[áa]valap|metszet kit|kieg[ée]sz|pill[ée]r|burkolat|f[öo]d[ée]m/i;
+  const ki: Koszoru[] = [];
+  for (const sz0 of szintek) {
+    const fd = fodemek.find((f) => f.alatt === sz0.id);
+    const alja = fd ? fd.z - fd.vastag : sz0.z0 + sz0.h - 0.3;
+    const jel = elemek.filter((e) => !NEM.test(e.reteg) && e.szel >= 0.2 && e.szel <= 0.5 && e.magas >= 0.15 && e.magas <= 0.8
+      && Math.abs(e.zFelso - alja) <= 0.3 && e.zAlso >= sz0.z0 + 1.5);
+    if (!jel.length) continue;
+    const kulcs = (e: MetszetElem) => `${e.szel}|${e.magas}`;
+    const db = (e: MetszetElem) => jel.filter((q) => kulcs(q) === kulcs(e)).length;
+    const leg = jel.sort((p, q) => Math.abs(p.zFelso - alja) - Math.abs(q.zFelso - alja) || db(q) - db(p))[0]!;
+    const tf = falak.filter((f) => f.szint === sz0.id && f.szerkezet === 'teherhordo');
+    if (!tf.length) continue;
+    ki.push({ id: `K${sz0.id}`, szint: sz0.id, szel: leg.szel, magas: leg.magas, zFelso: leg.zFelso, reteg: leg.reteg.trim(), falak: tf.map((f) => f.id), hossz: sz(tf.reduce((t, f) => t + f.hossz, 0), 2) });
+  }
+  return ki;
+}
+
 /**
  * A pillér helye a falakhoz képest – az ELBA `pillerFalhoz` szabálya: a pillérhez érő falak (a fal tengelye legfeljebb
  * fél falvastagság + fél pillérméret + 15 cm-re, a fal hosszán belül) iránya dönt: nincs fal → szabad; egy irány, a fal

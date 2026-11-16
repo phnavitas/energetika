@@ -55,7 +55,14 @@ const SAV_NEM = /terep|k[öo]rnyezet|k[üu]lt[ée]ri|j[áa]rda|m[ée]retez|felir
  * kitöltés, PDF-réteggel. A magasság a szintjelekből (±/+/− előjeles „+2,60”): a jel függőleges helye és értéke közti
  * lineáris kapcsolat (a léptéket is ez adja) – a jelek többségével egyező meredekség.
  */
-export function fodemSavok(lap: Lap): FodemSav[] {
+export function fodemSavok(lap: Lap): FodemSav[] { return metszetElemek(lap).savok; }
+
+/** Kis keresztmetszetű kitöltött elem a metszeten (koszorú, áthidaló, pillér, falmetszet): réteg, felső / alsó sík (m),
+ * szélesség (m) és a lapon a vízszintes helye (pt). */
+export interface MetszetElem { reteg: string; zFelso: number; zAlso: number; magas: number; szel: number; x: number; lap?: number }
+
+/** A metszet vízszintes sávjai (fodemSavok) és kis keresztmetszetű elemei (12–60 cm széles, 10–80 cm magas kitöltés). */
+export function metszetElemek(lap: Lap): { savok: FodemSav[]; kisElemek: MetszetElem[] } {
   // vízszintes vonaldarabok (a szintjel vonalához)
   const vv: [number, number, number][] = [];
   for (const u of lap.utvonalak) if (u.muvelet !== 'fill' && u.muvelet !== 'none') for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2)
@@ -68,11 +75,11 @@ export function fodemSavok(lap: Lap): FodemSav[] {
   };
   const jel = lap.szovegek.filter((t) => Math.abs(t.szog) < 2).map((t) => ({ t, m: SZINTJEL.exec(t.s.replace(/\s+/g, ' ').trim()) }))
     .filter((x) => x.m).map((x) => ({ y: jelY(x.t), v: (/[\-−–]/.test(x.m![1]!) ? -1 : 1) * Number(x.m![2]!.replace(',', '.')) }));
-  if (jel.length < 2) return [];
+  if (jel.length < 2) return { savok: [], kisElemek: [] };
   // meredekség (m / pt): a jelpárok meredekségei közül a legtöbb párral (± 2 %) egyező
   const mer: number[] = [];
   for (let i = 0; i < jel.length; i++) for (let j = i + 1; j < jel.length; j++) { const dv = jel[j]!.v - jel[i]!.v, dy = jel[j]!.y - jel[i]!.y; if (Math.abs(dv) >= 1 && Math.abs(dy) > 1) mer.push(dv / dy); }
-  if (!mer.length) return [];
+  if (!mer.length) return { savok: [], kisElemek: [] };
   let k = mer[0]!, kDb = 0;
   for (const c of mer) { const db = mer.filter((d) => Math.abs(d - c) <= 0.02 * Math.abs(c)).length; if (db > kDb) { kDb = db; k = c; } }
   const egy = mer.filter((d) => Math.abs(d - k) <= 0.02 * Math.abs(k)).sort((a, b) => a - b); k = egy[Math.floor(egy.length / 2)]!;
@@ -83,13 +90,19 @@ export function fodemSavok(lap: Lap): FodemSav[] {
   for (const j of jel) { const bj = j.v - k * j.y; const c = csop.find((q) => Math.abs(q.b - bj) <= 0.04);
     if (c) { c.b = (c.b * c.n + bj) / (c.n + 1); c.n++; c.y0 = Math.min(c.y0, j.y); c.y1 = Math.max(c.y1, j.y); } else csop.push({ b: bj, y0: j.y, y1: j.y, n: 1 }); }
   const ervenyes = csop.filter((c) => c.n >= 2);
-  if (!ervenyes.length) return [];
+  if (!ervenyes.length) return { savok: [], kisElemek: [] };
   const mPt = Math.abs(k);
   const z = (y: number) => { const c = ervenyes.reduce((p, q) => { const d = (x: typeof q) => (y < x.y0 ? x.y0 - y : y > x.y1 ? y - x.y1 : 0); return d(q) < d(p) ? q : p; }); return k * y + c.b; };
-  const savok: FodemSav[] = [];
+  const savok: FodemSav[] = [], kisElemek: MetszetElem[] = [];
   for (const u of lap.utvonalak) {
     if (u.muvelet === 'stroke' || u.muvelet === 'none' || !u.reteg || SAV_NEM.test(u.reteg)) continue;
     const w = (u.bbox[2] - u.bbox[0]) * mPt, h = (u.bbox[3] - u.bbox[1]) * mPt;
+    if (w >= 0.12 && w <= 0.6 && h >= 0.1 && h <= 0.8 && u.pontok.length === 1) {
+      const z1 = Math.max(z(u.bbox[1]), z(u.bbox[3])), z0 = Math.min(z(u.bbox[1]), z(u.bbox[3])), r2 = (v: number) => Math.round(v * 100) / 100;
+      if (!kisElemek.some((q) => Math.abs(q.x - u.bbox[0]) < 0.5 && Math.abs(q.zFelso - z1) < 0.01 && Math.abs(q.zAlso - z0) < 0.01))
+        kisElemek.push({ reteg: u.reteg, zFelso: r2(z1), zAlso: r2(z0), magas: r2(z1 - z0), szel: r2(w), x: u.bbox[0] });
+      continue;
+    }
     if (w < 1.5 || h < 0.01 || h > 0.6) continue;
     const z1 = Math.max(z(u.bbox[1]), z(u.bbox[3])), z0 = Math.min(z(u.bbox[1]), z(u.bbox[3]));
     const r2 = (v: number) => Math.round(v * 100) / 100;
@@ -99,7 +112,7 @@ export function fodemSavok(lap: Lap): FodemSav[] {
   // a földszinti kész padló a ±0,00: ha a padlóréteg (burkolat, aljzat) legfelső, széles sávja ± 35 cm-en belül van, de
   // nem a nullán (a szintjel vonala a szövegtől eltérő helyen), a magasságok ehhez igazítva
   const padlo = savok.filter((s) => PADLO_RETEG.test(s.reteg) && s.szel >= 3 && Math.abs(s.zFelso) <= 0.35).sort((p, q) => q.zFelso - p.zFelso)[0];
-  if (padlo && Math.abs(padlo.zFelso) > 0.02) { const d = padlo.zFelso; for (const s of savok) { s.zFelso = Math.round((s.zFelso - d) * 100) / 100; s.zAlso = Math.round((s.zAlso - d) * 100) / 100; } }
-  return savok.sort((p, q) => q.zFelso - p.zFelso);
+  if (padlo && Math.abs(padlo.zFelso) > 0.02) { const d = padlo.zFelso; for (const s of [...savok, ...kisElemek]) { s.zFelso = Math.round((s.zFelso - d) * 100) / 100; s.zAlso = Math.round((s.zAlso - d) * 100) / 100; } }
+  return { savok: savok.sort((p, q) => q.zFelso - p.zFelso), kisElemek: kisElemek.sort((p, q) => q.zFelso - p.zFelso) };
 }
 const PADLO_RETEG = /padl[óo]|burkolat|aljzat|esztrich/i;

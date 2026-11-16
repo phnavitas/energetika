@@ -20,7 +20,8 @@ export interface ModellNyilas { szint: string; szel: number; mag: number; fajta:
 export interface ModellTer { szint: string; A: number; kategoria: string }
 export interface ModellSzint { id: string; nev: string; z0: number }
 export interface ModellPiller { szint: string; a: number; b: number }
-export interface ModellEpulet { szintek: ModellSzint[]; terek: ModellTer[]; falak: ModellFal[]; nyilasok: ModellNyilas[]; pillerek?: ModellPiller[] }
+export interface ModellKoszoru { szint: string; szel: number; magas: number; hossz: number }
+export interface ModellEpulet { szintek: ModellSzint[]; terek: ModellTer[]; falak: ModellFal[]; nyilasok: ModellNyilas[]; pillerek?: ModellPiller[]; koszoruk?: ModellKoszoru[] }
 
 type Elem = { ifc: string; gid?: string; folia?: string; nev?: string; tipusNev?: string; anyag?: string; szint?: string; oszt?: string; hely?: { z?: number | null };
   retegek?: { anyag: string; vast: number }[]; menny?: { L?: number | null; A?: number | null; V?: number | null };
@@ -140,11 +141,19 @@ export function osszevet(md: ModellEpulet, ifc: IfcKivonat, vagasFolott = 1.2, d
   const tarto = ifc.elemek.filter((e) => { const d = e.gid ? DOBOZ[e.gid] : undefined;
       // (a fal-fólián csak a közel négyzetes, beton / acél / profil elem – a falazott falcsonk, pillérnyi falvég nem pillér)
       const negyzet = !!d && Math.max(d.x1 - d.x0, d.y1 - d.y0) <= 1.6 * Math.min(d.x1 - d.x0, d.y1 - d.y0);
+      // (a rétegekre bontott fal vasbeton része – ArchiCAD „…+koszorú” fal – is jelölt: az alakja dönt)
       return /COLUMN|BEAM|MEMBER/.test(e.ifc) || /pill[ée]r|gerend|oszlop/i.test(e.tipusNev ?? '')
+        || (/ELEMENTPART/.test(e.ifc) && /vasbeton|monolit beton/i.test(`${e.anyag ?? ''} ${e.tipusNev ?? ''}`) && /fal/i.test(e.folia ?? ''))
         || (falE(e) && !!d && alak(d) === 'pillér' && negyzet && /beton|\bvb\b|ac[ée]l|profil/i.test(`${e.tipusNev ?? ''} ${e.anyag ?? ''} ${e.folia ?? ''}`)); })
     .map((e) => ({ e, d: e.gid ? DOBOZ[e.gid] : undefined, reteg: RETEG_JEL.test(`${e.anyag ?? ''} ${e.tipusNev ?? ''}`), nem: NEM_TARTO.test(`${e.tipusNev ?? ''} ${e.folia ?? ''}`) }));
+  // (összetevő-mennyiséggel – ArchiCAD-rétegrész – a hossz a térfogat / keresztmetszet, magassága a téglalap
+  // összetevő magassága: az elforgatott épületnél a befoglaló doboz nem mond alakot)
+  const qGerenda = (e: Elem) => { const q = e.q ?? {}; const A = q['Összetevő keresztmetszeti területe'], V = q['Összetevő térfogata (nettó)'], h = q['Téglalap összetevő magassága'];
+    return A && V && h && h >= 0.1 && h <= 0.9 && V / A >= 0.3 ? V / A : null; };
+  const fajta = (t: (typeof tarto)[number]) => t.reteg ? 'réteg (hőszigetelés stb.)' : t.nem ? 'nem tartószerkezet (eresz, csatorna, járda…)' : qGerenda(t.e) ? 'gerenda' : t.d ? alak(t.d) : 'méret nélkül';
+  const hossz = (t: (typeof tarto)[number]) => qGerenda(t.e) ?? (t.d ? Math.max(t.d.x1 - t.d.x0, t.d.y1 - t.d.y0) : 0);
   const tSor = new Map<string, { db: number; L: number }>();
-  for (const { d, reteg, nem } of tarto) { const k = reteg ? 'réteg (hőszigetelés stb.)' : nem ? 'nem tartószerkezet (eresz, csatorna, járda…)' : d ? alak(d) : 'méret nélkül'; const v = tSor.get(k) ?? { db: 0, L: 0 }; v.db++; if (d && k === 'gerenda') v.L += Math.max(d.x1 - d.x0, d.y1 - d.y0); tSor.set(k, v); }
+  for (const t of tarto) { const k = fajta(t); const v = tSor.get(k) ?? { db: 0, L: 0 }; v.db++; if (k === 'gerenda') v.L += hossz(t); tSor.set(k, v); }
   // pillérek szintenként: db, és keresztmetszet szerint (± 3 cm, mindkét oldal) párosítva
   for (const { m: sz, i: iSz } of parok) {
     const mP = (md.pillerek ?? []).filter((p) => p.szint === sz.id);
@@ -152,12 +161,29 @@ export function osszevet(md: ModellEpulet, ifc: IfcKivonat, vagasFolott = 1.2, d
     // tengelyirányú doboz nagyobb)
     const km = (t: (typeof tarto)[number]) => { const m = /(\d{2,4})\s*[x×]\s*(\d{2,4})/.exec(t.e.tipusNev ?? '');
       return (m ? [Number(m[1]) / 1000, Number(m[2]) / 1000] : [t.d!.x1 - t.d!.x0, t.d!.y1 - t.d!.y0]).sort((x, y) => x - y); };
-    const iP = tarto.filter((t) => !t.reteg && !t.nem && t.d && alak(t.d) === 'pillér' && t.e.szint === iSz.nev).map(km);
+    const iP = tarto.filter((t) => fajta(t) === 'pillér' && t.e.szint === iSz.nev).map(km);
     add(`${sz.nev} ↔ ${iSz.nev}`, 'pillér db', mP.length, iP.length);
     const maradt = mP.map((p) => [p.a, p.b].sort((x, y) => x - y)); let par = 0;
     for (const [u, v] of iP) { const k = maradt.findIndex(([x, y]) => Math.abs(x! - u!) <= 0.03 && Math.abs(y! - v!) <= 0.03); if (k >= 0) { par++; maradt.splice(k, 1); } }
     if (iP.length) add(`${sz.nev} ↔ ${iSz.nev}`, 'pillér db keresztmetszet szerint párosítva', par, iP.length);
   }
+  let kM = 0, kI = 0;
+  // koszorú / gerenda szintenként: a modell koszorúja (teherhordó falak hossza) ↔ az IFC gerenda alakú elemei; az
+  // egymás fölötti (alaprajzban ≥ 50 %-ban átfedő) darabok egy elem
+  for (const { m: sz, i: iSz } of parok) {
+    const gt = tarto.filter((t) => fajta(t) === 'gerenda' && t.e.szint === iSz.nev);
+    const db = gt.filter((t) => !qGerenda(t.e) && t.d).map((t) => t.d!);
+    const egy: Doboz[] = [];
+    for (const d of db) { const o = egy.find((q) => { const ax = Math.min(q.x1, d.x1) - Math.max(q.x0, d.x0), ay = Math.min(q.y1, d.y1) - Math.max(q.y0, d.y0);
+        return ax > 0 && ay > 0 && ax * ay >= 0.5 * Math.min((q.x1 - q.x0) * (q.y1 - q.y0), (d.x1 - d.x0) * (d.y1 - d.y0)); });
+      if (o) { o.z0 = Math.min(o.z0, d.z0); o.z1 = Math.max(o.z1, d.z1); } else egy.push({ ...d }); }
+    const L = egy.reduce((t, d) => t + Math.max(d.x1 - d.x0, d.y1 - d.y0), 0) + gt.reduce((t, x) => t + (qGerenda(x.e) ?? 0), 0);
+    const mk = (md.koszoruk ?? []).filter((k) => k.szint === sz.id);
+    if (L || mk.length) add(`${sz.nev} ↔ ${iSz.nev}`, 'koszorú / gerenda hossz m', mk.reduce((t, k) => t + k.hossz, 0), L);
+    kM += mk.reduce((t, k) => t + k.hossz, 0); kI += L;
+  }
+  // (az IFC a szintváltásnál álló koszorút a felső szinthez is rendelheti: az összeg a mérvadó)
+  if (kM || kI) add('koszorú / gerenda összesen', 'hossz m', kM, kI);
   for (const [k, v] of tSor) { add(`pillér / gerenda jelölt (IFC): ${k}`, 'db (IFC)', 0, v.db); if (k === 'gerenda') add(`pillér / gerenda jelölt (IFC): ${k}`, 'hossz m (IFC)', 0, v.L); }
 
   // helyiségek

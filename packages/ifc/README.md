@@ -11,3 +11,15 @@ kiíráshoz (ELBA), ahogy az energetikánál a WinWatt.
 - Az IFC- és PDF-mintafájlok nem kerülnek a repóba.
 
 A közös PDF-tervfelismerő mag itt fejlődik; ha kész, átkerül az ELBA-ba.
+
+## Költözéskor az ELBA-ba (az ELBA besorolójának javítása)
+
+Az ELBA `javasol` (elba-bim-epito.js) a proxy- és pillérelemeket csak név, fólia, anyag és IFC-típus szerint sorolja be –
+a két mintán ez hibás (2026-11-16):
+- Nyárfa (iTWO): a „VASBETON pillér 250/300” típusnevű koszorúk / áthidalók (29 db) → MON_FAL; a „VASBETON pillér 150”
+  födémlemez → PILLER;
+- Naszály (ArchiCAD): a pillérek körüli XPS-burkolat (13 db IFCCOLUMN) → PILLER; az eresz-dobozolás → MON_GERENDA.
+
+Javítás: az `osszevetes.ts` alak- és anyagszabálya (pillér: függőleges, ≥ 1,5 m, ≤ 0,8 m, közel négyzetes, beton /
+acél; gerenda / koszorú: vízszintes, 0,1–0,9 m magas – rétegrésznél a hossz térfogat / keresztmetszet; lemez; a
+hőszigetelés-burkolat a pillér hőszigetelése; eresz, csatorna, járda, korlát nem tartószerkezet) a javaslat előtt.
