@@ -356,6 +356,7 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
         for (const q of sajatFal) if (q.retegek && q.retegek.some((x) => (x.reteg ? !RETEG_JEL.test(x.reteg) : x.sraff))) { const m = tipusok.get(tk(q)) ?? new Map(); tipusok.set(tk(q), m); const k = q.retegek.map((x) => `${x.stilus}:${x.vastag}`).join(','); const e = m.get(k) ?? { n: 0, r: q.retegek }; e.n += q.hossz; m.set(k, e); }
         for (const q of sajatFal) if (!q.retegek && q.szerkezet !== 'hatar') { const m = tipusok.get(tk(q)); if (!m) continue; const best = [...m.values()].sort((a, b) => b.n - a.n)[0]; if (best) q.retegek = best.r.map((x) => ({ ...x })); } }
       for (const q of falak) if (falIdk.some((x) => x.id === q.id)) { const m = falMag(q); if (m !== undefined) q.mag = m; }
+      falMagPontosit(falak.filter((q) => falIdk.some((x) => x.id === q.id)), L);
       // hőburokfalak belső síkjába csatlakozó belső falak (a belső felület ezekkel rövidebb – a raszter szerint)
       for (const { id, f } of falIdk) { const cs = f.burokEl?.csatl; if (cs && cs > 0) { const fal = falak.find((q) => q.id === id)!; fal.csatlakozas = sz(Math.min(cs, fal.sikHossz), 2); } }
       // nyílászárók: a helyiség (és a túloldal) falai közül a legközelebbi, amelynek tengelyére a nyílás közepe esik
@@ -902,6 +903,48 @@ function falVonalMent(L: LapBemenet, f: FalNyers): boolean {
       if (gx >= 0 && gy >= 0 && gx < r.w && gy < r.h && r.falVonal[gy * r.w + gx]) { van++; break; } } }
   return van >= 0.5 * n;
 }
+/** Falazóelem-vastagságok (m): a mért mag (a rajzon a vakolat is benne lehet – a 33 cm-es fal 30 cm-es falazat) ezekre
+ * igazodik; a 32 cm ritka, csak méretszám szerint. */
+const FAL_SZABVANY = [0.06, 0.075, 0.1, 0.12, 0.15, 0.2, 0.25, 0.3, 0.38, 0.44, 0.5];
+
+/**
+ * A falmag pontosítása (Balázs: a fal vastagságát a méretszámok és a feliratok – rétegrend – alapján ellenőrizni kell):
+ * 1. méretszám: a fal mentén (a tengelyre vetítve a hosszán belül, tőle legfeljebb 1,2 m-re) álló egész cm-szám
+ *    (5–60), amely a mért maghoz ± 3,5 cm-en belül van – a rajz szerinti vastagság;
+ * 2. ennek híján a legközelebbi falazóelem-vastagság (± 3,5 cm);
+ * 3. faltípus: a külső fal, amelynek magja a lap uralkodó külső falmagjától eltér, de a teljes vastagsága a
+ *    uralkodó külső fal teljes vastagságával (± 6 cm) egyezik, ugyanaz a faltípus (a rétegek szétválasztása hibázott).
+ */
+function falMagPontosit(falak: Fal[], L: LapBemenet) {
+  // (méretszám: a lap egész számos feliratainak leggyakoribb betűméretével írt, vezető nulla nélküli szám – a
+  // helyiségszám, „09”, nagyobb betűs vagy nullával kezdődik –, értéke falazóelem-vastagság vagy 32 cm)
+  const szamok: { v: number; p: P2 }[] = [];
+  if (L.rajz) {
+    const egesz = L.rajz.szovegek.filter((t) => /^\s*[1-9]\d?\s*$/.test(t.s));
+    const mdb = new Map<number, number>(); for (const t of egesz) { const k = Math.round(t.meret * 2) / 2; mdb.set(k, (mdb.get(k) ?? 0) + 1); }
+    const fo = [...mdb].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 0;
+    for (const t of egesz) { const v = Number(t.s.trim()) / 100; if (Math.abs(t.meret - fo) > 0.2 * fo) continue;
+      if (!FAL_SZABVANY.some((q) => Math.abs(q - v) < 0.001) && Math.abs(v - 0.32) > 0.001) continue; szamok.push({ v, p: L.m(t.x, t.y) }); }
+  }
+  for (const f of falak) {
+    if (f.szerkezet === 'hatar') continue;
+    const mert = f.mag ?? f.vastag;
+    const dx = f.b[0] - f.a[0], dy = f.b[1] - f.a[1], l = Math.hypot(dx, dy); if (l < 0.2) continue;
+    const ux = dx / l, uy = dy / l;
+    const jel = szamok.filter(({ v, p }) => { const t = (p[0] - f.a[0]) * ux + (p[1] - f.a[1]) * uy, d = Math.abs(-(p[0] - f.a[0]) * uy + (p[1] - f.a[1]) * ux);
+      return t >= -0.3 && t <= l + 0.3 && d <= 1.2 && Math.abs(v - mert) <= 0.035; }).map((q) => q.v);
+    if (jel.length) { const db = new Map<number, number>(); for (const v of jel) db.set(v, (db.get(v) ?? 0) + 1); f.mag = [...db].sort((a, b) => b[1] - a[1] || Math.abs(a[0] - mert) - Math.abs(b[0] - mert))[0]![0]; continue; }
+    const sz0 = FAL_SZABVANY.reduce((p, q) => (Math.abs(q - mert) < Math.abs(p - mert) ? q : p));
+    if (Math.abs(sz0 - mert) <= 0.035) f.mag = sz0;
+  }
+  // faltípus a külső falakon
+  const kulso = falak.filter((f) => f.kulso && f.szerkezet !== 'hatar' && f.mag !== undefined);
+  const hossz = new Map<string, { L: number; mag: number; v: number }>();
+  for (const f of kulso) if ((f.retegek?.length ?? 0) >= 2) { const k = `${f.mag}`; const e = hossz.get(k) ?? { L: 0, mag: f.mag!, v: 0 }; e.v = (e.v * e.L + f.vastag * f.hossz) / (e.L + f.hossz); e.L += f.hossz; hossz.set(k, e); }
+  const ur = [...hossz.values()].sort((a, b) => b.L - a.L)[0];
+  if (ur) for (const f of kulso) if (Math.abs(f.mag! - ur.mag) > 0.04 && Math.abs(f.vastag - ur.v) <= 0.06) f.mag = ur.mag;
+}
+
 /** A fal magvastagsága (lásd Fal.mag). */
 function falMag(f: Fal): number | undefined {
   const igazit = (mert: number, nev?: string) => { const v = nevVastag(nev); return v !== undefined && Math.abs(v - mert) <= 0.12 ? v : mert; };
