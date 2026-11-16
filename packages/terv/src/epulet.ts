@@ -5,6 +5,7 @@
  * Koordináták: méter, x jobbra, y lefelé (a lap szerint), z felfelé. A lapok egymáshoz igazítását (eltolás) és a
  * szintmagasságokat a hívó adja meg (lapbemenet).
  */
+import { tetoHaromszogek } from './tetoModell';
 import { pillerKeres } from './pillerek';
 import type { Lap } from './kinyeres';
 import type { FodemSav, MetszetElem } from './metszetGeom';
@@ -167,12 +168,18 @@ export interface Alapozas { id: string; fajta: 'savalap' | 'labazat' | 'pontalap
   /** lemezalapnál a területe (m², a legalsó szint körvonala) */
   terulet?: number }
 
+/**
+ * Magastető a legfelső szint körvonalán (tetoModell.tetoHaromszogek): a tetőfelület háromszögei – az ELBA ebből bontja
+ * fő tetőre és tetőszakaszokra (ElbaBimGeometria.tetoBontas) –, az ereszvonal, a hajlás és az ereszkiállás.
+ */
+export interface Magasteto { szint: string; hajlas: number; kiallas: number; kiallasBecsult: boolean; zEresz: number; eresz: P2[]; haromszogek: [number, number, number][][] }
+
 /** Koszorú szintenként: a teherhordó falak tetején (a metszet szerinti keresztmetszettel), a hossza a falaké. */
 export interface Koszoru { id: string; szint: string; szel: number; magas: number; zFelso: number; reteg: string; falak: string[]; hossz: number;
   /** 'attika': a koszorúra ülő vasbeton sáv a lapostetős részen (a fölötte lévő szint körvonalán kívüli teherhordó falakon). */
   fajta?: 'koszoru' | 'attika' }
 
-export interface EpuletModell { szintek: Szint[]; terek: Ter[]; falak: Fal[]; nyilasok: Nyilas[]; fodemek: Fodem[]; vizszintes: VizszintesBurok[]; tetok: TetoGeom[]; lefedes?: FalLefedes[]; pillerek?: Piller[]; koszoruk?: Koszoru[]; gerendak?: Gerenda[]; alapozas?: Alapozas[] }
+export interface EpuletModell { szintek: Szint[]; terek: Ter[]; falak: Fal[]; nyilasok: Nyilas[]; fodemek: Fodem[]; vizszintes: VizszintesBurok[]; tetok: TetoGeom[]; lefedes?: FalLefedes[]; pillerek?: Piller[]; koszoruk?: Koszoru[]; gerendak?: Gerenda[]; alapozas?: Alapozas[]; magasteto?: Magasteto }
 
 /** Egy alaprajzi lap bemenete. */
 export interface LapBemenet {
@@ -251,7 +258,9 @@ const terId = (lap: number, szint: string, ri: number) => `T${lap}.${szint}.${ri
 /**
  * Épületmodell a lapokból. A típusszintes lap minden szintjére ugyanaz a geometria kerül (más azonosítóval).
  */
-export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]; metszetElemek?: MetszetElem[] } = {}): EpuletModell {
+export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]; metszetElemek?: MetszetElem[];
+  /** magastető: hajlás (fok), oromzatok lapirányonként (szélesség, m), ereszkiállás (m, alapból 0,5 – becsült) */
+  teto?: { hajlas: number; orom?: Record<number, number>; kiallas?: number } } = {}): EpuletModell {
   const szintek: Szint[] = [], terek: Ter[] = [], falak: Fal[] = [], nyilasok: Nyilas[] = [], fodemek: Fodem[] = [];
   let falSzam = 0, nySzam = 0;
   for (const L of lapok) {
@@ -413,8 +422,9 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
   }
   const koszoruk = opt.metszetElemek?.length ? koszoruKeres(szintek, falak, fodemek, opt.metszetElemek) : [];
   const gerendak = gerendaKeres(lapok, falak, fodemek, koszoruk);
+  const magasteto = opt.teto ? magastetoEpit(szintek, fodemek, koszoruk, opt.teto) : null;
   const alapozas = opt.metszetElemek?.length ? alapozasKeres(szintek, falak, opt.metszetElemek, pillerek, opt.fodemSavok ?? [], fodemek) : [];
-  return { szintek, terek, falak, nyilasok, fodemek, vizszintes: vizszintesBurok(szintek, terek, lapok, fodemek), tetok, lefedes, ...(pillerek.length ? { pillerek } : {}), ...(koszoruk.length ? { koszoruk } : {}), ...(gerendak.length ? { gerendak } : {}), ...(alapozas.length ? { alapozas } : {}) };
+  return { szintek, terek, falak, nyilasok, fodemek, vizszintes: vizszintesBurok(szintek, terek, lapok, fodemek), tetok, lefedes, ...(pillerek.length ? { pillerek } : {}), ...(koszoruk.length ? { koszoruk } : {}), ...(gerendak.length ? { gerendak } : {}), ...(alapozas.length ? { alapozas } : {}), ...(magasteto ? { magasteto } : {}) };
 }
 
 
@@ -707,6 +717,20 @@ function pontBenne(pl: P2[], x: number, y: number, tol = 0): boolean {
   for (let i = 0, j = pl.length - 1; i < pl.length; j = i++) { const [ax, ay] = pl[j]!, [bx, by] = pl[i]!; const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy || 1;
     const u = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2)); if (Math.hypot(x - ax - u * dx, y - ay - u * dy) <= tol) return true; }
   return false;
+}
+
+/** Magastető a legfelső szint körvonalán; oromfalas a téglalapvég, ha azon a homlokzaton a végszélesség legalább 60 %-a
+ * oromzat. Az eresz a legfelső szint koszorújának tetején (ennek híján a szint tetején). */
+function magastetoEpit(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], t: { hajlas: number; orom?: Record<number, number>; kiallas?: number }): Magasteto | null {
+  const fel = [...szintek].sort((a, b) => b.z0 - a.z0)[0]; if (!fel || !(t.hajlas > 5)) return null;
+  const fd = fodemek.find((f) => f.alatt === fel.id && f.id.startsWith('FT')) ?? fodemek.find((f) => f.folott === fel.id);
+  const pol = fd?.poligonok.slice().sort((a, b) => b.length - a.length)[0]; if (!pol || pol.length < 4) return null;
+  const kiallas = t.kiallas ?? 0.5, k = koszoruk.find((q) => q.szint === fel.id && q.fajta !== 'attika');
+  const zEresz = sz(k ? k.zFelso : fel.z0 + fel.h, 2);
+  const g = tetoHaromszogek({ korvonal: pol, hajlas: t.hajlas, kiallas, zEresz, orom: (ir, szel) => (t.orom?.[ir] ?? 0) >= 0.6 * szel });
+  if (!g) return null;
+  return { szint: fel.id, hajlas: t.hajlas, kiallas, kiallasBecsult: t.kiallas === undefined, zEresz, eresz: g.eresz.map(([x, y]) => [sz(x), sz(y)] as P2),
+    haromszogek: g.haromszogek.map((h) => h.map(([x, y, z]) => [sz(x), sz(y), sz(z)] as [number, number, number])) };
 }
 
 /**

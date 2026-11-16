@@ -999,7 +999,10 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     // födémek rétegrendje a metszetlapok vízszintes sávjaiból
     const mE = lapok.flatMap((l, li) => (l.szerep === 'metszet' ? [{ li, e: metszetElemek(l.lap) }] : []));
     const fodemSav = mE.flatMap(({ li, e }) => e.savok.map((q) => ({ ...q, lap: li })));
-    return epuletModell(be, { fodemSavok: fodemSav, metszetElemek: mE.flatMap(({ li, e }) => e.kisElemek.map((q) => ({ ...q, lap: li }))) });
+    // magastető: a metszet hajlása, a homlokzatok oromzatai (az ereszkiállás becsült, 0,5 m – az ELBA alapértéke)
+    const M0 = be[0] ? (be[0].a as AlaprajzFeldolgozas).e.meretarany ?? undefined : undefined;
+    const teto = me?.tetoter ? { hajlas: me.tetoter.hajlas, orom: oromok(eszakSz, M0) } : undefined;
+    return epuletModell(be, { fodemSavok: fodemSav, metszetElemek: mE.flatMap(({ li, e }) => e.kisElemek.map((q) => ({ ...q, lap: li }))), ...(teto ? { teto } : {}) });
   };
   try { (globalThis as any).__epulet = epuletModellApp; } catch { /* */ }
   const epMd = useMemo(() => { if (!nezet3d || modell3d !== 'teljes') return null; try { return epuletModellApp(); } catch { return null; } }, [nezet3d, modell3d, elemzesek, kijelolesek, bm, lapok]); // eslint-disable-line react-hooks/exhaustive-deps

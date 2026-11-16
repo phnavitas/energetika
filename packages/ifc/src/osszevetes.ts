@@ -23,13 +23,15 @@ export interface ModellPiller { szint: string; a: number; b: number }
 export interface ModellKoszoru { szint: string; szel: number; magas: number; hossz: number }
 export interface ModellGerenda { szint: string; a: [number, number]; b: [number, number] }
 export interface ModellAlapozas { fajta: string; szel: number; magas: number; hossz: number }
-export interface ModellEpulet { szintek: ModellSzint[]; terek: ModellTer[]; falak: ModellFal[]; nyilasok: ModellNyilas[]; pillerek?: ModellPiller[]; koszoruk?: ModellKoszoru[]; gerendak?: ModellGerenda[]; alapozas?: ModellAlapozas[] }
+export interface ModellEpulet { szintek: ModellSzint[]; terek: ModellTer[]; falak: ModellFal[]; nyilasok: ModellNyilas[]; pillerek?: ModellPiller[]; koszoruk?: ModellKoszoru[]; gerendak?: ModellGerenda[]; alapozas?: ModellAlapozas[]; magasteto?: { haromszogek: number[][][] } }
 
 type Elem = { ifc: string; gid?: string; folia?: string; nev?: string; tipusNev?: string; anyag?: string; szint?: string; oszt?: string; hely?: { z?: number | null };
   retegek?: { anyag: string; vast: number }[]; menny?: { L?: number | null; A?: number | null; V?: number | null };
   q?: Record<string, number>; pset?: Record<string, Record<string, unknown>> };
 /** Az ELBA IFC-kivonatának felhasznált része. */
-export interface IfcKivonat { szintek: { id: number; nev: string; magassag: number }[]; elemek: Elem[]; helyisegek: { szint: string; terulet: number; belso?: boolean }[] }
+/** Az ELBA tetőbontása (ElbaBimGeometria.tetoBontas) – a felhasznált mezők. */
+export interface TetoBontas { tipusNev?: string; felulet: number; elek: Record<string, number>; fo?: { szel: number; hossz: number; vegzodes: string } | null; szakaszok?: { szel: number; kiallas: number; vegzodes: string }[] }
+export interface IfcKivonat { szintek: { id: number; nev: string; magassag: number }[]; elemek: Elem[]; helyisegek: { szint: string; terulet: number; belso?: boolean }[]; teto?: TetoBontas | null }
 
 export interface OsszevetSor { csoport: string; mertek: string; modell: number; ifc: number; elteres: number | null }
 
@@ -71,7 +73,7 @@ function magVastag(f: ModellFal): number {
 }
 const oszt5 = (v: number) => Math.round(v * 20) * 5;
 
-export function osszevet(md: ModellEpulet, ifc: IfcKivonat, vagasFolott = 1.2, dobozok: Record<string, Doboz> = {}): OsszevetSor[] {
+export function osszevet(md: ModellEpulet, ifc: IfcKivonat, vagasFolott = 1.2, dobozok: Record<string, Doboz> = {}, tetoBontas?: (h: number[][][]) => TetoBontas | null): OsszevetSor[] {
   DOBOZ = dobozok;
   const sorok: OsszevetSor[] = [];
   const add = (csoport: string, mertek: string, a: number, b: number) => sorok.push({ csoport, mertek, modell: kerek(a), ifc: kerek(b), elteres: b > 0 ? kerek(((a - b) / b) * 100, 1) : a > 0 ? null : 0 });
@@ -201,6 +203,17 @@ export function osszevet(md: ModellEpulet, ifc: IfcKivonat, vagasFolott = 1.2, d
   const mCs = new Map<string, number>();
   for (const a of md.alapozas ?? []) { const k = `${oszt5(a.szel)}×${oszt5(a.magas)} cm`; mCs.set(k, (mCs.get(k) ?? 0) + a.hossz); }
   for (const k of new Set([...aCs.keys(), ...mCs.keys()])) add(`alapozás ${k}`, 'hossz m', mCs.get(k) ?? 0, aCs.get(k) ?? 0);
+
+  // magastető: a modell tetőfelülete és az IFC héjalása ugyanazzal az ELBA-bontással (felület, élek, fő tető, szakaszok)
+  const mT = md.magasteto && tetoBontas ? tetoBontas(md.magasteto.haromszogek) : null, iT = ifc.teto ?? null;
+  if (mT || iT) {
+    add('magastető', 'felület m²', mT?.felulet ?? 0, iT?.felulet ?? 0);
+    for (const k of ['eresz', 'gerinc', 'el', 'vapa', 'orom']) add(`magastető: ${k}`, 'hossz m', mT?.elek[k] ?? 0, iT?.elek[k] ?? 0);
+    add('magastető: fő tető', 'fesztáv m', mT?.fo?.szel ?? 0, iT?.fo?.szel ?? 0);
+    add('magastető: fő tető', 'hossz m', mT?.fo?.hossz ?? 0, iT?.fo?.hossz ?? 0);
+    add('magastető: tetőszakaszok', 'db', mT?.szakaszok?.length ?? 0, iT?.szakaszok?.length ?? 0);
+    add(`magastető típus: ${mT?.tipusNev ?? '–'} ↔ ${iT?.tipusNev ?? '–'}`, 'egyezik', mT?.tipusNev === iT?.tipusNev ? 1 : 0, 1);
+  }
 
   // helyiségek
   const iH = ifc.helyisegek.filter((h) => h.belso !== false);

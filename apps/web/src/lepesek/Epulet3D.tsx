@@ -139,6 +139,12 @@ export function Epulet3D({ modell, magassag = 600 }: { modell: EpuletModell; mag
     for (const k of modell.koszoruk ?? []) { if (!lathato(k.szint)) continue;
       for (const id of k.falak) { const f = falIx.get(id); if (f) rud(f.a, f.b, k.szel, k.zFelso - k.magas, k.zFelso, SZIN.piller); } }
     for (const g of modell.gerendak ?? []) if (lathato(g.szint)) rud(g.a, g.b, g.szel, g.alsoSik, g.felsoSik, SZIN.piller);
+    // magastető (a modell tetőfelülete háromszögekben)
+    if (modell.magasteto && lathato(modell.magasteto.szint)) {
+      const pos: number[] = []; for (const h of modell.magasteto.haromszogek) for (const [x, y, z] of h) pos.push(x!, z!, y!);
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals();
+      const m = new THREE.Mesh(g, mat(SZIN.teto, 0.85)); (m.material as THREE.Material).side = THREE.DoubleSide; grp.add(m);
+    }
     // pillérek
     for (const p of modell.pillerek ?? []) {
       if (!lathato(p.szint)) continue;

@@ -24,4 +24,4 @@ if (gidk.length) {
     for (const [g, b] of Object.entries<any>(d)) dobozok[g] = { ...b, z0: b.z0 - nulla, z1: b.z1 - nulla };
   } catch (e) { console.error('doboz-hiba', String(e).slice(0, 200)); }
 }
-for (const s of osszevet(md, ifc, 1.2, dobozok)) console.log(`${s.csoport.padEnd(48)} ${s.mertek.padEnd(14)} modell ${String(s.modell).padStart(8)}  IFC ${String(s.ifc).padStart(8)}  ${s.elteres === null ? '   új' : `${s.elteres >= 0 ? '+' : ''}${s.elteres.toFixed(1)}%`}`);
+for (const s of osszevet(md, ifc, 1.2, dobozok, (h) => G.tetoBontas(h, {}))) console.log(`${s.csoport.padEnd(48)} ${s.mertek.padEnd(14)} modell ${String(s.modell).padStart(8)}  IFC ${String(s.ifc).padStart(8)}  ${s.elteres === null ? '   új' : `${s.elteres >= 0 ? '+' : ''}${s.elteres.toFixed(1)}%`}`);

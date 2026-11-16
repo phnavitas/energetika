@@ -116,3 +116,21 @@ export function metszetElemek(lap: Lap): { savok: FodemSav[]; kisElemek: Metszet
   return { savok: savok.sort((p, q) => q.zFelso - p.zFelso), kisElemek: kisElemek.sort((p, q) => q.zFelso - p.zFelso) };
 }
 const PADLO_RETEG = /padl[óo]|burkolat|aljzat|esztrich/i;
+
+/**
+ * A metszet ferde (a hajlásszöggel ± 2°-on belül emelkedő / lejtő) vonalainak összhossza méterben – a magastetőt a ferde
+ * tetősíkok rajzolata igazolja (a „25°” felirat egymagában lehet lépcső, előtető, lejtés is). Méretezés, felirat, terep
+ * rétegei nem számítanak; lépték: a szintjelekből (metszetElemek), ennek híján 1:100.
+ */
+export function ferdeTetoHossz(lap: Lap, hajlas: number, mPerPt = 0.0352778): number {
+  let L = 0;
+  for (const u of lap.utvonalak) {
+    if (u.reteg && /m[ée]retez|felirat|terep|k[öo]rnyezet|jel/i.test(u.reteg)) continue;
+    for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) {
+      const dx = p[i + 2]! - p[i]!, dy = p[i + 3]! - p[i + 1]!, l = Math.hypot(dx, dy) * mPerPt; if (l < 0.3) continue;
+      const a = (Math.atan2(Math.abs(dy), Math.abs(dx)) * 180) / Math.PI;
+      if (Math.abs(a - hajlas) <= 2) L += l;
+    }
+  }
+  return Math.round(L * 10) / 10;
+}
