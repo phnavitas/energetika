@@ -19,7 +19,7 @@ import { Burok3D, modellOsszesites, tetoGeo, type Burok3DSzint } from './Burok3D
 import { homlokzatRajzok, mertMagassagok, eszakHomlokzatbol, tetoAblakokHomlokzatrol, oromSzelessegek, type HomlokzatRajz, type MertMagassag } from '@terv/homlokzatIllesztes';
 import { nezetOszlopok } from '@terv/homlokzatProfil';
 import { Epulet3D } from './Epulet3D';
-import { metszetElemek, ferdeTetoHossz } from '@terv/metszetGeom';
+import { metszetElemek, ferdeTetoHossz, ereszKiallasok, ereszKiallas } from '@terv/metszetGeom';
 import { epuletModell, type EpuletModell, type LapBemenet, type Szint as EpSzint, type TerKategoria } from '@terv/epulet';
 import { falMagassagModell, type HomlokzatNezetAdat } from '@terv/homlokzatModell';
 import { vonalIndex, keretek, homlokzatIrany, homlokzatCimek } from '@terv/homlokzat';
@@ -999,11 +999,13 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     // födémek rétegrendje a metszetlapok vízszintes sávjaiból
     const mE = lapok.flatMap((l, li) => (l.szerep === 'metszet' ? [{ li, e: metszetElemek(l.lap) }] : []));
     const fodemSav = mE.flatMap(({ li, e }) => e.savok.map((q) => ({ ...q, lap: li })));
-    // magastető: a metszet hajlása, a homlokzatok oromzatai (az ereszkiállás becsült, 0,5 m – az ELBA alapértéke)
+    // magastető: a metszet hajlása, a homlokzatok oromzatai, az ereszkiállás a metszetekből
     const M0 = be[0] ? (be[0].a as AlaprajzFeldolgozas).e.meretarany ?? undefined : undefined;
     // (csak ha a metszeteken a hajlásszögű ferde vonalak összesen ≥ 4 m – a szögfelirat egymagában lépcső, lejtés is lehet)
     const ferde = me?.tetoter ? lapok.filter((l) => l.szerep === 'metszet').reduce((t, l) => t + ferdeTetoHossz(l.lap, me.tetoter!.hajlas), 0) : 0;
-    const teto = me?.tetoter && ferde >= 4 ? { hajlas: me.tetoter.hajlas, orom: oromok(eszakSz, M0) } : undefined;
+    // ereszkiállás a metszetekből (a ferde tetővonal alsó vége – a fal külső síkja); ennek híján becsült
+    const kiallas = me?.tetoter ? ereszKiallas(mE.flatMap(({ li, e }) => ereszKiallasok(lapok[li]!.lap, me.tetoter!.hajlas, e.mPt))) : undefined;
+    const teto = me?.tetoter && ferde >= 4 ? { hajlas: me.tetoter.hajlas, orom: oromok(eszakSz, M0), ...(kiallas ? { kiallas } : {}) } : undefined;
     return epuletModell(be, { fodemSavok: fodemSav, metszetElemek: mE.flatMap(({ li, e }) => e.kisElemek.map((q) => ({ ...q, lap: li }))), ...(teto ? { teto } : {}) });
   };
   try { (globalThis as any).__epulet = epuletModellApp; } catch { /* */ }

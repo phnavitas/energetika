@@ -62,7 +62,7 @@ export function fodemSavok(lap: Lap): FodemSav[] { return metszetElemek(lap).sav
 export interface MetszetElem { reteg: string; zFelso: number; zAlso: number; magas: number; szel: number; x: number; lap?: number }
 
 /** A metszet vízszintes sávjai (fodemSavok) és kis keresztmetszetű elemei (12–150 cm széles, 10–150 cm magas kitöltés). */
-export function metszetElemek(lap: Lap): { savok: FodemSav[]; kisElemek: MetszetElem[] } {
+export function metszetElemek(lap: Lap): { savok: FodemSav[]; kisElemek: MetszetElem[]; mPt?: number } {
   // vízszintes vonaldarabok (a szintjel vonalához)
   const vv: [number, number, number][] = [];
   for (const u of lap.utvonalak) if (u.muvelet !== 'fill' && u.muvelet !== 'none') for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2)
@@ -113,7 +113,7 @@ export function metszetElemek(lap: Lap): { savok: FodemSav[]; kisElemek: Metszet
   // nem a nullán (a szintjel vonala a szövegtől eltérő helyen), a magasságok ehhez igazítva
   const padlo = savok.filter((s) => PADLO_RETEG.test(s.reteg) && s.szel >= 3 && Math.abs(s.zFelso) <= 0.35).sort((p, q) => q.zFelso - p.zFelso)[0];
   if (padlo && Math.abs(padlo.zFelso) > 0.02) { const d = padlo.zFelso; for (const s of [...savok, ...kisElemek]) { s.zFelso = Math.round((s.zFelso - d) * 100) / 100; s.zAlso = Math.round((s.zAlso - d) * 100) / 100; } }
-  return { savok: savok.sort((p, q) => q.zFelso - p.zFelso), kisElemek: kisElemek.sort((p, q) => q.zFelso - p.zFelso) };
+  return { savok: savok.sort((p, q) => q.zFelso - p.zFelso), kisElemek: kisElemek.sort((p, q) => q.zFelso - p.zFelso), mPt };
 }
 const PADLO_RETEG = /padl[óo]|burkolat|aljzat|esztrich/i;
 
@@ -133,4 +133,48 @@ export function ferdeTetoHossz(lap: Lap, hajlas: number, mPerPt = 0.0352778): nu
     }
   }
   return Math.round(L * 10) / 10;
+}
+
+/** Ereszkiállás-jelöltek a metszetből: a tetőhajlású (±2°) szakaszok alsó vége és az alatta álló
+ *  legkülső falkitöltés külső síkja közti vízszintes távolság (m). Csak 0,15–1,5 m közti értékek. */
+export function ereszKiallasok(lap: Lap, hajlas: number, mPerPt = 0.0352778): number[] {
+  const also: { x: number; y: number; dir: number }[] = [];
+  for (const u of lap.utvonalak) {
+    if (u.reteg && /m[ée]retez|felirat|terep|k[öo]rnyezet|jel/i.test(u.reteg)) continue;
+    for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) {
+      const dx = p[i + 2]! - p[i]!, dy = p[i + 3]! - p[i + 1]!;
+      if (Math.hypot(dx, dy) * mPerPt < 1) continue;
+      const a = (Math.atan2(Math.abs(dy), Math.abs(dx)) * 180) / Math.PI;
+      if (Math.abs(a - hajlas) > 2) continue;
+      const [lx, ly, hx] = p[i + 1]! > p[i + 3]! ? [p[i]!, p[i + 1]!, p[i + 2]!] : [p[i + 2]!, p[i + 3]!, p[i]!];
+      also.push({ x: lx, y: ly, dir: Math.sign(lx - hx) });
+    }
+  }
+  const falak = lap.utvonalak.filter((u) => {
+    if (u.muvelet === 'stroke' || u.muvelet === 'none') return false;
+    const w = (u.bbox[2] - u.bbox[0]) * mPerPt, h = (u.bbox[3] - u.bbox[1]) * mPerPt;
+    return h > 1.5 && w > 0.1 && w < 0.8;
+  });
+  const tav = 1.6 / mPerPt, le = 2 / mPerPt;
+  const ki: number[] = [];
+  for (const e of also) {
+    const jel = falak.filter((f) => f.bbox[1] > e.y - 5 && f.bbox[1] < e.y + le &&
+      (e.dir > 0 ? f.bbox[2] <= e.x + 1 && e.x - f.bbox[2] < tav : f.bbox[0] >= e.x - 1 && f.bbox[0] - e.x < tav));
+    if (!jel.length) continue;
+    const kulso = e.dir > 0 ? Math.max(...jel.map((f) => f.bbox[2])) : Math.min(...jel.map((f) => f.bbox[0]));
+    const d = Math.abs(e.x - kulso) * mPerPt;
+    if (d >= 0.15 && d <= 1.5) ki.push(d);
+  }
+  return ki;
+}
+
+/** A jelöltek leggyakoribb 10 cm-es ablakának mediánja (≥ 3 jelölt kell), egyébként undefined. */
+export function ereszKiallas(jeloltek: number[]): number | undefined {
+  if (jeloltek.length < 3) return undefined;
+  const db = new Map<number, number>();
+  for (const v of jeloltek) for (const k of [Math.floor(v / 0.05), Math.floor(v / 0.05) - 1]) db.set(k, (db.get(k) ?? 0) + 1);
+  const [k] = [...db].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]!;
+  const s = jeloltek.filter((v) => v >= k * 0.05 && v < (k + 2) * 0.05).sort((a, b) => a - b);
+  if (s.length < 3) return undefined;
+  return Math.round(s[Math.floor(s.length / 2)]! * 100) / 100;
 }

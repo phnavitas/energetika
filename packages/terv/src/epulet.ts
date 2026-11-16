@@ -7,6 +7,7 @@
  */
 import { tetoHaromszogek } from './tetoModell';
 import { pillerKeres } from './pillerek';
+import { poligonKulonbseg } from './poligonKulonbseg';
 import type { Lap } from './kinyeres';
 import type { FodemSav, MetszetElem } from './metszetGeom';
 import type { AlaprajzFeldolgozas } from './elemzes';
@@ -121,6 +122,9 @@ export interface Fodem {
   burok: BurokSzerep | 'teto' | 'padlo';
   /** Rétegrend a metszetből (felülről lefelé: PDF-réteg, vastagság m) – ekkor z a legfelső réteg teteje, vastag az összeg. */
   retegek?: { reteg: string; vastag: number }[];
+  /** Lapostető (az alsó szint felső szint által le nem fedett része, a teljes modellben): vetületi terület (m²), szabad
+   *  széle (m), a felső szint falához csatlakozó hossza (m), a rajta álló attika hossza (m). */
+  lapos?: { terulet: number; szel: number; csatl: number; attika: number };
 }
 
 /**
@@ -172,7 +176,9 @@ export interface Alapozas { id: string; fajta: 'savalap' | 'labazat' | 'pontalap
  * Magastető a legfelső szint körvonalán (tetoModell.tetoHaromszogek): a tetőfelület háromszögei – az ELBA ebből bontja
  * fő tetőre és tetőszakaszokra (ElbaBimGeometria.tetoBontas) –, az ereszvonal, a hajlás és az ereszkiállás.
  */
-export interface Magasteto { szint: string; hajlas: number; kiallas: number; kiallasBecsult: boolean; zEresz: number; eresz: P2[]; haromszogek: [number, number, number][][] }
+export interface Magasteto { szint: string; hajlas: number; kiallas: number; kiallasBecsult: boolean;
+  /** derekszogu: pontos (téglalapos bontás, főirányba forgatva); konvex: élsíkok alsó burkolója; kozelito: derékszögűsített körvonal */
+  mod: 'derekszogu' | 'konvex' | 'kozelito'; zEresz: number; eresz: P2[]; haromszogek: [number, number, number][][] }
 
 /** Koszorú szintenként: a teherhordó falak tetején (a metszet szerinti keresztmetszettel), a hossza a falaké. */
 export interface Koszoru { id: string; szint: string; szel: number; magas: number; zFelso: number; reteg: string; falak: string[]; hossz: number;
@@ -403,6 +409,17 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
       if (felso) fodemek.push({ id: `FT${sz0.id}`, alatt: sz0.id, folott: null, poligonok: pol, z: sz0.z0 + sz0.h, vastag: 0.3, burok: vanFut ? 'teto' : null });
     }
   }
+  // lapostetők (teljes modell): az alsó szint felső szint által le nem fedett része
+  for (const L of lapok) {
+    if (!L.kizart) continue;
+    for (const sz0 of L.szintek) {
+      const i = szintek.findIndex((x) => x.id === sz0.id), kov = szintek[i + 1]; if (!kov) continue;
+      const A = fodemek.find((f) => f.id === `FP${sz0.id}`), B = fodemek.find((f) => f.id === `FP${kov.id}`); if (!A || !B) continue;
+      const k = poligonKulonbseg(A.poligonok, B.poligonok); if (k.terulet < 2) continue;
+      fodemek.push({ id: `FL${sz0.id}`, alatt: sz0.id, folott: null, poligonok: k.poligonok, z: sz0.z0 + sz0.h, vastag: 0.3, burok: [...L.kategoria.values()].includes('futott') ? 'teto' : null,
+        lapos: { terulet: k.terulet, szel: k.szel, csatl: k.csatl, attika: 0 } });
+    }
+  }
   const tetok: TetoGeom[] = lapok.flatMap((L) => (L.tetoter && L.burokPol?.length ? L.szintek.filter((s) => s.kod === 'T').map((s) => ({ szint: s.id, z0: s.z0, poligonok: L.burokPol!.map((q) => q.map(([x, y]) => L.m(x, y))), ...L.tetoter! })) : []));
   const lefedes = lapok.flatMap((L) => { try { const sz0 = L.szintek[0]; return sz0 ? [falLefedes(L, falak.filter((f) => f.szint === sz0.id), sz0.id)] : []; } catch { return []; } });
   // pillérek (a teljes modellben, a lap rajzolatából)
@@ -421,6 +438,7 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
     for (const p of pillerek) { const s0 = szintek.find((q) => q.id === p.szint); if (s0) p.h = s0.h; }
   }
   const koszoruk = opt.metszetElemek?.length ? koszoruKeres(szintek, falak, fodemek, opt.metszetElemek) : [];
+  for (const fd of fodemek) if (fd.lapos) fd.lapos.attika = sz(koszoruk.filter((k) => k.fajta === 'attika' && k.szint === fd.alatt).reduce((t, k) => t + k.hossz, 0), 2);
   const gerendak = gerendaKeres(lapok, falak, fodemek, koszoruk);
   const magasteto = opt.teto ? magastetoEpit(szintek, fodemek, koszoruk, opt.teto) : null;
   const alapozas = opt.metszetElemek?.length ? alapozasKeres(szintek, falak, opt.metszetElemek, pillerek, opt.fodemSavok ?? [], fodemek) : [];
@@ -729,7 +747,7 @@ function magastetoEpit(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], 
   const zEresz = sz(k ? k.zFelso : fel.z0 + fel.h, 2);
   const g = tetoHaromszogek({ korvonal: pol, hajlas: t.hajlas, kiallas, zEresz, orom: (ir, szel) => (t.orom?.[ir] ?? 0) >= 0.6 * szel });
   if (!g) return null;
-  return { szint: fel.id, hajlas: t.hajlas, kiallas, kiallasBecsult: t.kiallas === undefined, zEresz, eresz: g.eresz.map(([x, y]) => [sz(x), sz(y)] as P2),
+  return { szint: fel.id, hajlas: t.hajlas, kiallas, kiallasBecsult: t.kiallas === undefined, mod: g.mod, zEresz, eresz: g.eresz.map(([x, y]) => [sz(x), sz(y)] as P2),
     haromszogek: g.haromszogek.map((h) => h.map(([x, y, z]) => [sz(x), sz(y), sz(z)] as [number, number, number])) };
 }
 
@@ -889,7 +907,7 @@ function fodemRetegrend(fodemek: Fodem[], szintek: Szint[], savok0: FodemSav[]):
   const szeles = savok0.filter((q) => q.szel >= 2);
   for (const fd of fodemek) {
     const sz0 = szintek.find((q) => q.id === (fd.folott ?? fd.alatt)); if (!sz0) continue;
-    const cel = fd.id.startsWith('FT') ? sz0.z0 + sz0.h : sz0.z0, tol = fd.id.startsWith('FT') ? 0.4 : 0.35;
+    const cel = !fd.folott ? sz0.z0 + sz0.h : sz0.z0, tol = !fd.folott ? 0.4 : 0.35;
     // (minden jelölt kezdősávból lánc, metszetlaponként; a lánc a legszélesebb tagja 30 %-ánál keskenyebb sávnál véget
     // ér – más szerkezet, pl. alatta lévő lapostető rétege; a nagyobb összszélességű lánc nyer)
     const lancol = (elso: FodemSav) => { const lanc = [elso];
@@ -900,7 +918,10 @@ function fodemRetegrend(fodemek: Fodem[], szintek: Szint[], savok0: FodemSav[]):
     const lancok = szeles.filter((q) => Math.abs(q.zFelso - cel) <= tol).map(lancol).sort((p, q) => q.reduce((t, x) => t + x.szel, 0) - p.reduce((t, x) => t + x.szel, 0));
     // (a szint padlója burkolattal / aljzattal kezdődik: ha van ilyen lánc, csak ezek közül – a lapostető rétegei nem padló)
     const padloLanc = fd.id.startsWith('FP') ? lancok.filter((l) => /padl[óo]|burkolat|aljzat|esztrich/i.test(l[0]!.reteg)) : [];
-    const lanc = (padloLanc.length ? padloLanc : lancok)[0]; if (!lanc) continue; const elso = lanc[0]!;
+    // (lapostető: nem padlóval kezdődő, tető- / hőszigetelő réteget tartalmazó lánc – a felső szint padlója nem az)
+    const lapLanc = fd.lapos ? lancok.filter((l) => !/padl[óo]|burkolat|aljzat|esztrich/i.test(l[0]!.reteg) && l.some((q) => /tet[őo]|h[őo]\s*szig|v[íi]zszig|lejt/i.test(q.reteg))) : [];
+    if (fd.lapos && !lapLanc.length) continue;
+    const lanc = (fd.lapos ? lapLanc : padloLanc.length ? padloLanc : lancok)[0]; if (!lanc) continue; const elso = lanc[0]!;
     fd.retegek = lanc.map((q) => ({ reteg: q.reteg.trim(), vastag: q.vastag }));
     fd.vastag = Math.round(lanc.reduce((t, q) => t + q.vastag, 0) * 100) / 100; fd.z = elso.zFelso;
   }

@@ -91,8 +91,65 @@ export interface TetoBemenet {
   zEresz?: number;
 }
 
-/** A tető felülete háromszögekben (az ElbaBimGeometria.tetoBontas bemenete), és az ereszvonal. */
-export function tetoHaromszogek(be: TetoBemenet): { haromszogek: [P3, P3, P3][]; eresz: P2[] } | null {
+/** A körvonal főiránya (fok, −45…45): az élek hosszal súlyozott iránya 90°-os periódussal. */
+export function foIrany(p: P2[]): number {
+  let s = 0, c = 0;
+  for (let i = 0; i < p.length; i++) { const a = p[i]!, b = p[(i + 1) % p.length]!; const l = Math.hypot(b[0] - a[0], b[1] - a[1]), f = 4 * Math.atan2(b[1] - a[1], b[0] - a[0]); s += l * Math.sin(f); c += l * Math.cos(f); }
+  return (Math.atan2(s, c) / 4) * 180 / Math.PI;
+}
+const forgat = (q: P2, fok: number): P2 => { const r = (fok * Math.PI) / 180, co = Math.cos(r), si = Math.sin(r); return [q[0] * co - q[1] * si, q[0] * si + q[1] * co]; };
+/** Az élek (≥ 0,3 m) mind a tengelyek ±3°-án belül? */
+function derekszogu(p: P2[]): boolean {
+  return p.every((a, i) => { const b = p[(i + 1) % p.length]!; const dx = b[0] - a[0], dy = b[1] - a[1]; if (Math.hypot(dx, dy) < 0.3) return true;
+    const f = (Math.atan2(Math.abs(dy), Math.abs(dx)) * 180) / Math.PI; return f <= 3 || f >= 87; });
+}
+function konvex(p: P2[]): boolean {
+  let jel = 0;
+  for (let i = 0; i < p.length; i++) { const a = p[i]!, b = p[(i + 1) % p.length]!, c = p[(i + 2) % p.length]!;
+    const k = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]); if (Math.abs(k) < 1e-6) continue;
+    if (jel && Math.sign(k) !== jel) return false; jel = Math.sign(k); }
+  return true;
+}
+
+/** Konvex (nem derékszögű) körvonal kontyolt teteje: minden ereszél síkja, a tető a síkok alsó burkolója
+ *  (konvex sokszögön ez az egyenes váz – straight skeleton – pontos teteje). */
+function konvexTeto(be: TetoBemenet): { haromszogek: [P3, P3, P3][]; eresz: P2[] } | null {
+  const k0 = tisztit(be.korvonal); if (k0.length < 3) return null;
+  const eresz = kifeleTol(k0, be.kiallas), n = eresz.length;
+  const tg = Math.tan((be.hajlas * Math.PI) / 180), ze = be.zEresz ?? 0;
+  const A = eresz.reduce((s, [x, y], i) => { const [x2, y2] = eresz[(i + 1) % n]!; return s + x * y2 - x2 * y; }, 0), el = Math.sign(A) || 1;
+  const S: Sik[] = eresz.map((a, i) => { const b = eresz[(i + 1) % n]!; const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    const nx = (-el * (b[1] - a[1])) / l, ny = (el * (b[0] - a[0])) / l; return { nx, ny, c: nx * a[0] + ny * a[1] }; });
+  const haromszogek: [P3, P3, P3][] = [];
+  S.forEach((s, si) => {
+    let p: P2[] = eresz.slice();
+    for (const [sj, q] of S.entries()) if (sj !== si) { p = vag(p, q.nx - s.nx, q.ny - s.ny, -(q.c - s.c) + (sj < si ? -1e-9 : 0)); if (!p.length) return; }
+    if (terulet(p) < 1e-6) return;
+    const P = p.map(([x, y]) => [x, y, ze + tg * z0(s, x, y)] as P3);
+    for (let i = 1; i + 1 < P.length; i++) haromszogek.push([P[0]!, P[i]!, P[i + 1]!]);
+  });
+  return { haromszogek, eresz };
+}
+
+export type TetoMod = 'derekszogu' | 'konvex' | 'kozelito';
+
+/** A tető felülete háromszögekben (az ElbaBimGeometria.tetoBontas bemenete), és az ereszvonal.
+ *  A körvonalat a főirányába forgatjuk: ha így derékszögű, a téglalapos módszer pontos; ha nem derékszögű, de konvex,
+ *  az élsíkok alsó burkolója; egyébként a derékszögűsített körvonal teteje (közelítő). */
+export function tetoHaromszogek(be: TetoBemenet): { haromszogek: [P3, P3, P3][]; eresz: P2[]; mod: TetoMod } | null {
+  const th = foIrany(be.korvonal), forg = Math.abs(th) > 0.1;
+  const loc = forg ? be.korvonal.map((q) => forgat(q, -th)) : be.korvonal;
+  const dsz = derekszogu(loc);
+  if (!dsz && konvex(tisztit(be.korvonal))) { const r = konvexTeto(be); return r && { ...r, mod: 'konvex' }; }
+  const irM = (ir: number) => { const d = forgat(ir === 0 ? [0, -1] : ir === 90 ? [1, 0] : ir === 180 ? [0, 1] : [-1, 0], th);
+    return ((Math.round((Math.atan2(d[0], -d[1]) * 180) / Math.PI / 90) * 90) % 360 + 360) % 360; };
+  const r = tetoDerekszogu({ ...be, korvonal: loc, ...(be.orom ? { orom: (ir: number, szel: number) => be.orom!(forg ? irM(ir) : ir, szel) } : {}) });
+  if (!r) return null;
+  const vissza = forg ? { haromszogek: r.haromszogek.map((h) => h.map(([x, y, z]) => { const [a, b] = forgat([x, y], th); return [a, b, z] as P3; }) as [P3, P3, P3]), eresz: r.eresz.map((q) => forgat(q, th)) } : r;
+  return { ...vissza, mod: dsz ? 'derekszogu' : 'kozelito' };
+}
+
+function tetoDerekszogu(be: TetoBemenet): { haromszogek: [P3, P3, P3][]; eresz: P2[] } | null {
   const k0 = derekszogusit(be.korvonal); if (k0.length < 4) return null;
   const eresz = kifeleTol(k0, be.kiallas);
   const tg = Math.tan((be.hajlas * Math.PI) / 180), ze = be.zEresz ?? 0;
