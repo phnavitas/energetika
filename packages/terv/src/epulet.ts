@@ -159,12 +159,16 @@ export interface Piller { id: string; szint: string; kozep: P2; /** keresztmetsz
  * alsó síkja a feliratból, a felső a fölötte lévő födém alsó síkja. */
 export interface Gerenda { id: string; szint: string; a: P2; b: P2; szel: number; alsoSik: number; felsoSik: number; magas: number; falId: string }
 
+/** Alapozás a legalsó szint teherhordó falai alatt (a metszet szerinti keresztmetszettel): sávalap, ill. a rá ülő lábazati
+ * fal (zsalukő); a hossz a falaké. */
+export interface Alapozas { id: string; fajta: 'savalap' | 'labazat'; szel: number; magas: number; zFelso: number; reteg: string; falak: string[]; hossz: number }
+
 /** Koszorú szintenként: a teherhordó falak tetején (a metszet szerinti keresztmetszettel), a hossza a falaké. */
 export interface Koszoru { id: string; szint: string; szel: number; magas: number; zFelso: number; reteg: string; falak: string[]; hossz: number;
   /** 'attika': a koszorúra ülő vasbeton sáv a lapostetős részen (a fölötte lévő szint körvonalán kívüli teherhordó falakon). */
   fajta?: 'koszoru' | 'attika' }
 
-export interface EpuletModell { szintek: Szint[]; terek: Ter[]; falak: Fal[]; nyilasok: Nyilas[]; fodemek: Fodem[]; vizszintes: VizszintesBurok[]; tetok: TetoGeom[]; lefedes?: FalLefedes[]; pillerek?: Piller[]; koszoruk?: Koszoru[]; gerendak?: Gerenda[] }
+export interface EpuletModell { szintek: Szint[]; terek: Ter[]; falak: Fal[]; nyilasok: Nyilas[]; fodemek: Fodem[]; vizszintes: VizszintesBurok[]; tetok: TetoGeom[]; lefedes?: FalLefedes[]; pillerek?: Piller[]; koszoruk?: Koszoru[]; gerendak?: Gerenda[]; alapozas?: Alapozas[] }
 
 /** Egy alaprajzi lap bemenete. */
 export interface LapBemenet {
@@ -404,7 +408,8 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
   }
   const koszoruk = opt.metszetElemek?.length ? koszoruKeres(szintek, falak, fodemek, opt.metszetElemek) : [];
   const gerendak = gerendaKeres(lapok, falak, fodemek, koszoruk);
-  return { szintek, terek, falak, nyilasok, fodemek, vizszintes: vizszintesBurok(szintek, terek, lapok, fodemek), tetok, lefedes, ...(pillerek.length ? { pillerek } : {}), ...(koszoruk.length ? { koszoruk } : {}), ...(gerendak.length ? { gerendak } : {}) };
+  const alapozas = opt.metszetElemek?.length ? alapozasKeres(szintek, falak, opt.metszetElemek) : [];
+  return { szintek, terek, falak, nyilasok, fodemek, vizszintes: vizszintesBurok(szintek, terek, lapok, fodemek), tetok, lefedes, ...(pillerek.length ? { pillerek } : {}), ...(koszoruk.length ? { koszoruk } : {}), ...(gerendak.length ? { gerendak } : {}), ...(alapozas.length ? { alapozas } : {}) };
 }
 
 
@@ -697,6 +702,28 @@ function pontBenne(pl: P2[], x: number, y: number, tol = 0): boolean {
   for (let i = 0, j = pl.length - 1; i < pl.length; j = i++) { const [ax, ay] = pl[j]!, [bx, by] = pl[i]!; const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy || 1;
     const u = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2)); if (Math.hypot(x - ax - u * dx, y - ay - u * dy) <= tol) return true; }
   return false;
+}
+
+/**
+ * Alapozás a metszetből: sávalap a ±0,00 alatti, alapozás- / sávalap-rétegű, 30–150 cm széles és magas elem (a
+ * leggyakoribb keresztmetszet); lábazati fal a sávalapra (± 5 cm) ülő, 15–45 cm széles, zsalukő / lábazat / alapozás-
+ * rétegű elem, a teteje ±0,00 alatt. Mindkettő a legalsó szint teherhordó falai alatt fut.
+ */
+function alapozasKeres(szintek: Szint[], falak: Fal[], elemek: MetszetElem[]): Alapozas[] {
+  const also = szintek[0]; if (!also) return [];
+  const tf = falak.filter((f) => f.szint === also.id && f.szerkezet === 'teherhordo'); if (!tf.length) return [];
+  const ALAP = /alapoz|s[áa]valap|\.FUN\b|fundament/i, NEM = /h[őo]szig|v[íi]zszig|xps|eps|vakolat|szigetel/i;
+  const kulcs = (e: MetszetElem) => `${e.szel}|${e.magas}`;
+  const sav = elemek.filter((e) => ALAP.test(e.reteg) && !NEM.test(e.reteg) && e.szel >= 0.3 && e.szel <= 1.5 && e.magas >= 0.3 && e.magas <= 1.5 && e.zFelso < -0.1);
+  if (!sav.length) return [];
+  const db = (e: MetszetElem, l: MetszetElem[]) => l.filter((q) => kulcs(q) === kulcs(e)).length;
+  const s0 = [...sav].sort((p, q) => db(q, sav) - db(p, sav) || q.szel - p.szel)[0]!;
+  const falIdk = tf.map((f) => f.id), hossz = sz(tf.reduce((t, f) => t + f.hossz, 0), 2);
+  const ki: Alapozas[] = [{ id: 'S1', fajta: 'savalap', szel: s0.szel, magas: s0.magas, zFelso: s0.zFelso, reteg: s0.reteg.trim(), falak: falIdk, hossz }];
+  const lab = elemek.filter((e) => (/zsalu|l[áa]bazat/i.test(e.reteg) || ALAP.test(e.reteg)) && !NEM.test(e.reteg) && e.szel >= 0.15 && e.szel <= 0.45 && e.magas >= 0.15 && e.zFelso <= 0.05 && Math.abs(e.zAlso - s0.zFelso) <= 0.05);
+  if (lab.length) { const l0 = [...lab].sort((p, q) => db(q, lab) - db(p, lab) || q.szel - p.szel)[0]!;
+    ki.push({ id: 'L1', fajta: 'labazat', szel: l0.szel, magas: l0.magas, zFelso: l0.zFelso, reteg: l0.reteg.trim(), falak: falIdk, hossz }); }
+  return ki;
 }
 
 /**

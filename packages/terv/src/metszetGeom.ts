@@ -61,7 +61,7 @@ export function fodemSavok(lap: Lap): FodemSav[] { return metszetElemek(lap).sav
  * szélesség (m) és a lapon a vízszintes helye (pt). */
 export interface MetszetElem { reteg: string; zFelso: number; zAlso: number; magas: number; szel: number; x: number; lap?: number }
 
-/** A metszet vízszintes sávjai (fodemSavok) és kis keresztmetszetű elemei (12–60 cm széles, 10–80 cm magas kitöltés). */
+/** A metszet vízszintes sávjai (fodemSavok) és kis keresztmetszetű elemei (12–150 cm széles, 10–150 cm magas kitöltés). */
 export function metszetElemek(lap: Lap): { savok: FodemSav[]; kisElemek: MetszetElem[] } {
   // vízszintes vonaldarabok (a szintjel vonalához)
   const vv: [number, number, number][] = [];
@@ -97,7 +97,7 @@ export function metszetElemek(lap: Lap): { savok: FodemSav[]; kisElemek: Metszet
   for (const u of lap.utvonalak) {
     if (u.muvelet === 'stroke' || u.muvelet === 'none' || !u.reteg || SAV_NEM.test(u.reteg)) continue;
     const w = (u.bbox[2] - u.bbox[0]) * mPt, h = (u.bbox[3] - u.bbox[1]) * mPt;
-    if (w >= 0.12 && w <= 0.6 && h >= 0.1 && h <= 0.8 && u.pontok.length === 1) {
+    if (w >= 0.12 && w <= 1.5 && h >= 0.1 && h <= 1.5 && u.pontok.length === 1) {
       const z1 = Math.max(z(u.bbox[1]), z(u.bbox[3])), z0 = Math.min(z(u.bbox[1]), z(u.bbox[3])), r2 = (v: number) => Math.round(v * 100) / 100;
       if (!kisElemek.some((q) => Math.abs(q.x - u.bbox[0]) < 0.5 && Math.abs(q.zFelso - z1) < 0.01 && Math.abs(q.zAlso - z0) < 0.01))
         kisElemek.push({ reteg: u.reteg, zFelso: r2(z1), zAlso: r2(z0), magas: r2(z1 - z0), szel: r2(w), x: u.bbox[0] });

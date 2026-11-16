@@ -22,7 +22,8 @@ export interface ModellSzint { id: string; nev: string; z0: number }
 export interface ModellPiller { szint: string; a: number; b: number }
 export interface ModellKoszoru { szint: string; szel: number; magas: number; hossz: number }
 export interface ModellGerenda { szint: string; a: [number, number]; b: [number, number] }
-export interface ModellEpulet { szintek: ModellSzint[]; terek: ModellTer[]; falak: ModellFal[]; nyilasok: ModellNyilas[]; pillerek?: ModellPiller[]; koszoruk?: ModellKoszoru[]; gerendak?: ModellGerenda[] }
+export interface ModellAlapozas { fajta: string; szel: number; magas: number; hossz: number }
+export interface ModellEpulet { szintek: ModellSzint[]; terek: ModellTer[]; falak: ModellFal[]; nyilasok: ModellNyilas[]; pillerek?: ModellPiller[]; koszoruk?: ModellKoszoru[]; gerendak?: ModellGerenda[]; alapozas?: ModellAlapozas[] }
 
 type Elem = { ifc: string; gid?: string; folia?: string; nev?: string; tipusNev?: string; anyag?: string; szint?: string; oszt?: string; hely?: { z?: number | null };
   retegek?: { anyag: string; vast: number }[]; menny?: { L?: number | null; A?: number | null; V?: number | null };
@@ -188,6 +189,18 @@ export function osszevet(md: ModellEpulet, ifc: IfcKivonat, vagasFolott = 1.2, d
   }
   if (kM || kI) add('koszorú / gerenda összesen', 'hossz m', kM, kI);
   for (const [k, v] of tSor) { add(`pillér / gerenda jelölt (IFC): ${k}`, 'db (IFC)', 0, v.db); if (k === 'gerenda') add(`pillér / gerenda jelölt (IFC): ${k}`, 'hossz m (IFC)', 0, v.L); }
+
+  // alapozás: az IFC alaptest / alapozás-fóliás elemei (a hőszigetelés, vízszigetelés, vakolat nem; a ±0,00 fölötti –
+  // tévesen alaptestként exportált tetőelem – sem), keresztmetszet (5 cm-re) szerint: hossz
+  const ALAPF = /alap|s[áa]v|\.FUN\b/i;
+  const alapE = ifc.elemek.filter((e) => (/FOOTING/.test(e.ifc) || ALAPF.test(e.folia ?? '')) && !RETEG_JEL.test(`${e.anyag ?? ''} ${e.tipusNev ?? ''}`) && !/v[íi]zszig|bitumen|szigetel/i.test(`${e.anyag ?? ''} ${e.tipusNev ?? ''}`)
+    && !(e.gid && DOBOZ[e.gid] && DOBOZ[e.gid]!.z0 > 0.2) && !/aljzat/i.test(e.folia ?? ''));
+  const aCs = new Map<string, number>();
+  for (const e of alapE) { const q = e.q ?? {}; const w = q['Téglalap összetevő szélessége'], h = q['Téglalap összetevő magassága'], A = q['Összetevő keresztmetszeti területe'], V = q['Összetevő térfogata (nettó)'];
+    if (!w || !h || !A || !V || w < 0.1) continue; const k = `${oszt5(w)}×${oszt5(h)} cm`; aCs.set(k, (aCs.get(k) ?? 0) + V / A); }
+  const mCs = new Map<string, number>();
+  for (const a of md.alapozas ?? []) { const k = `${oszt5(a.szel)}×${oszt5(a.magas)} cm`; mCs.set(k, (mCs.get(k) ?? 0) + a.hossz); }
+  for (const k of new Set([...aCs.keys(), ...mCs.keys()])) add(`alapozás ${k}`, 'hossz m', mCs.get(k) ?? 0, aCs.get(k) ?? 0);
 
   // helyiségek
   const iH = ifc.helyisegek.filter((h) => h.belso !== false);
