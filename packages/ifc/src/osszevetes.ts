@@ -127,6 +127,25 @@ export function osszevet(md: ModellEpulet, ifc: IfcKivonat, vagasFolott = 1.2, d
     if (sz2.length) add(`${sz.nev} ↔ ${iSz.nev}`, 'nyílászáró db szélesség szerint párosítva', par, sz2.length);
   }
 
+  // pillérek és gerendák / koszorúk: a név (az iTWO-export a profil típusnevét adja: „VASBETON pillér 250” a koszorú is) és
+  // az entitás nem elég – az alak dönt: pillér a függőleges (≥ 1,5 m magas, vízszintesen ≤ 0,8 m), gerenda / koszorú a
+  // vízszintes (≥ 1 m hosszú, 0,1–0,9 m magas), lemez a mindkét irányban ≥ 2 m széles, vékony elem; a hőszigetelés-
+  // burkolat (XPS a pillér körül) és a többi réteg nem tartószerkezet
+  // (a jelölt: pillér / gerenda entitás, a típusnévben pillér / gerenda / oszlop – az elemnév nem: ott „…oszlophoz” is
+  // akad –, ill. a fal-fólián álló, pillér alakú elem; nem tartószerkezet a tetőkiegészítő, járda, burkolat, korlát)
+  const alak = (d: Doboz) => { const a = Math.max(d.x1 - d.x0, d.y1 - d.y0), b = Math.min(d.x1 - d.x0, d.y1 - d.y0), h = d.z1 - d.z0;
+    return h >= 1.5 && a <= 0.8 ? 'pillér' : b >= 2 && h <= 0.5 ? 'lemez' : a >= 1 && h >= 0.1 && h <= 0.9 ? 'gerenda' : 'egyéb'; };
+  const NEM_TARTO = /eresz|dobozol|csatorna|lefoly|j[áa]rda|szeg[ée]ly|burkolat|korl[áa]t|kiegész/i;
+  const tarto = ifc.elemek.filter((e) => { const d = e.gid ? DOBOZ[e.gid] : undefined;
+      // (a fal-fólián csak a közel négyzetes, beton / acél / profil elem – a falazott falcsonk, pillérnyi falvég nem pillér)
+      const negyzet = !!d && Math.max(d.x1 - d.x0, d.y1 - d.y0) <= 1.6 * Math.min(d.x1 - d.x0, d.y1 - d.y0);
+      return /COLUMN|BEAM|MEMBER/.test(e.ifc) || /pill[ée]r|gerend|oszlop/i.test(e.tipusNev ?? '')
+        || (falE(e) && !!d && alak(d) === 'pillér' && negyzet && /beton|\bvb\b|ac[ée]l|profil/i.test(`${e.tipusNev ?? ''} ${e.anyag ?? ''} ${e.folia ?? ''}`)); })
+    .map((e) => ({ e, d: e.gid ? DOBOZ[e.gid] : undefined, reteg: RETEG_JEL.test(`${e.anyag ?? ''} ${e.tipusNev ?? ''}`), nem: NEM_TARTO.test(`${e.tipusNev ?? ''} ${e.folia ?? ''}`) }));
+  const tSor = new Map<string, { db: number; L: number }>();
+  for (const { d, reteg, nem } of tarto) { const k = reteg ? 'réteg (hőszigetelés stb.)' : nem ? 'nem tartószerkezet (eresz, csatorna, járda…)' : d ? alak(d) : 'méret nélkül'; const v = tSor.get(k) ?? { db: 0, L: 0 }; v.db++; if (d && k === 'gerenda') v.L += Math.max(d.x1 - d.x0, d.y1 - d.y0); tSor.set(k, v); }
+  for (const [k, v] of tSor) { add(`pillér / gerenda jelölt (IFC): ${k}`, 'db (IFC)', 0, v.db); if (k === 'gerenda') add(`pillér / gerenda jelölt (IFC): ${k}`, 'hossz m (IFC)', 0, v.L); }
+
   // helyiségek
   const iH = ifc.helyisegek.filter((h) => h.belso !== false);
   add('helyiségek', 'db', md.terek.length, iH.length);

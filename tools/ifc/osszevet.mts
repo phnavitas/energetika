@@ -14,7 +14,7 @@ const md = JSON.parse(fs.readFileSync(process.argv[2]!, 'utf8'));
 const sz = fs.readFileSync(process.argv[3]!, 'latin1');
 const ifc = O.olvas(sz);
 // mennyiség nélküli falak: befoglaló doboz (a ±0-hoz mért z)
-const gidk = ifc.elemek.filter((e: any) => /PROXY|WALL/.test(e.ifc) && !(e.q && Object.keys(e.q).length)).map((e: any) => e.gid);
+const gidk = ifc.elemek.filter((e: any) => /PROXY|WALL/.test(e.ifc) || /COLUMN|BEAM|MEMBER/.test(e.ifc) || /pill[ée]r|gerend|koszor/i.test(e.tipusNev ?? '')).map((e: any) => e.gid);
 let dobozok: Record<string, Doboz> = {};
 if (gidk.length) {
   try {
