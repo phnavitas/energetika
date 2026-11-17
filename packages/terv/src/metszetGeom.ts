@@ -208,3 +208,83 @@ export function ereszKiallas(jeloltek: number[]): number | undefined {
   if (s.length < 3) return undefined;
   return Math.round(s[Math.floor(s.length / 2)]! * 100) / 100;
 }
+
+/** A metszet egy rajza (egy lapon több metszet is lehet): a szintjelek szerinti függőleges lépték (m / pt), az épület
+ *  vízszintes kiterjedése a lapon (pt) és a benne mért belmagasság-sávok. */
+export interface BelmagSavok {
+  /** A rajz függőleges sávja a lapon (pt). */
+  y0: number; y1: number;
+  /** m / pt (a vízszintes is ezzel a léptékkel). */
+  mPt: number;
+  /** Az épület vízszintes kiterjedése a rajzon (pt): a falmetszetek (kitöltött, ≥ 1,5 m magas elemek) széle. */
+  s0: number; s1: number;
+  /** Egymás melletti sávok (pt), mindegyik a benne írt függőleges belmagasság-méretszámmal (m). */
+  savok: { s0: number; s1: number; h: number }[];
+}
+
+/**
+ * Belmagasság-sávok a metszetből: a rajzba írt függőleges méretszámok (2,2–12 m – a padlótól a födém / tető alsó síkjáig)
+ * a vízszintes helyükkel. Csak az a rajz számít, amelyben legalább két, egymástól ≥ 0,5 m-rel eltérő belmagasság van
+ * (eltérő magasságú épületrészek, pl. csarnok + fejépület); a sávhatár a két méretszám közti legerősebb falmetszet.
+ */
+export function belmagassagSavok(lap: Lap): BelmagSavok[] {
+  const vv: [number, number, number][] = [];
+  for (const u of lap.utvonalak) if (u.muvelet !== 'fill' && u.muvelet !== 'none') for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2)
+    if (Math.abs(p[i + 3]! - p[i + 1]!) < 0.05 && Math.abs(p[i + 2]! - p[i]!) > 2) vv.push([Math.min(p[i]!, p[i + 2]!), Math.max(p[i]!, p[i + 2]!), p[i + 1]!]);
+  const jelY = (t: { x: number; y: number; meret: number; szel: number }) => {
+    let leg: number | null = null, d0 = 1.5 * t.meret;
+    for (const [x0, x1, y] of vv) if (x0 <= t.x + t.szel + t.meret && x1 >= t.x - t.meret && Math.abs(y - t.y) < d0) { d0 = Math.abs(y - t.y); leg = y; }
+    return leg ?? t.y;
+  };
+  const jel = lap.szovegek.filter((t) => Math.abs(t.szog) < 2).map((t) => ({ t, m: SZINTJEL.exec(t.s.replace(/\s+/g, ' ').trim()) }))
+    .filter((x) => x.m).map((x) => ({ y: jelY(x.t), x: x.t.x, v: (/[\-−–]/.test(x.m![1]!) ? -1 : 1) * Number(x.m![2]!.replace(',', '.')) }));
+  if (jel.length < 2) return [];
+  const mer: number[] = [];
+  for (let i = 0; i < jel.length; i++) for (let j = i + 1; j < jel.length; j++) { const dv = jel[j]!.v - jel[i]!.v, dy = jel[j]!.y - jel[i]!.y; if (Math.abs(dv) >= 1 && Math.abs(dy) > 1) mer.push(dv / dy); }
+  if (!mer.length) return [];
+  const ki: BelmagSavok[] = [];
+  // (lapon belül eltérő léptékű rajzok is lehetnek: a meredekségek csoportjai külön)
+  const kk: number[] = [];
+  for (const c of mer) { if (kk.some((q) => Math.abs(q - c) <= 0.02 * Math.abs(q))) continue; if (mer.filter((d) => Math.abs(d - c) <= 0.02 * Math.abs(c)).length >= 2) kk.push(c); }
+  const csop: { k: number; b: number; y0: number; y1: number; x0: number; x1: number; n: number }[] = [];
+  for (const k of kk) for (const j of jel) {
+    const bj = j.v - k * j.y; const c = csop.find((q) => q.k === k && Math.abs(q.b - bj) <= 0.04);
+    if (c) { c.b = (c.b * c.n + bj) / (c.n + 1); c.n++; c.y0 = Math.min(c.y0, j.y); c.y1 = Math.max(c.y1, j.y); c.x0 = Math.min(c.x0, j.x); c.x1 = Math.max(c.x1, j.x); }
+    else csop.push({ k, b: bj, y0: j.y, y1: j.y, x0: j.x, x1: j.x, n: 1 });
+  }
+  const ervenyes = csop.filter((c) => c.n >= 3).sort((a, b) => b.n - a.n);
+  const fogl: [number, number][] = [];
+  for (const c of ervenyes) {
+    if (fogl.some(([a, b]) => c.y0 < b && c.y1 > a)) continue; // (átfedő csoport: a több jelet adó marad)
+    fogl.push([c.y0, c.y1]);
+    const mPt = Math.abs(c.k);
+    // a rajz falmetszetei: kitöltött, ≥ 1,5 m magas, ≤ 1,6 m széles elemek a rajz függőleges sávjában
+    const falak = lap.utvonalak.filter((u) => u.muvelet !== 'stroke' && u.muvelet !== 'none' && u.bbox[1] >= c.y0 - 2 / mPt && u.bbox[3] <= c.y1 + 2 / mPt
+      && (u.bbox[3] - u.bbox[1]) * mPt >= 1.5 && (u.bbox[2] - u.bbox[0]) * mPt <= 1.6 && u.bbox[0] >= c.x0 - 5 / mPt && u.bbox[2] <= c.x1 + 5 / mPt);
+    // az épület kiterjedése: a szintjelek (a rajz két szélén, kívül) és a falmetszetek közül a legkülső
+    // (a rajz minden szintjele – a más tengelymetszetű csoportba sorolt, a rajz másik szélén álló jelek is)
+    const sajat = jel.filter((j) => j.y >= c.y0 - 1 && j.y <= c.y1 + 1);
+    const s0 = Math.min(c.x0, ...sajat.map((j) => j.x), ...falak.map((u) => u.bbox[0])), s1 = Math.max(c.x1, ...sajat.map((j) => j.x), ...falak.map((u) => u.bbox[2]));
+    // függőleges méretszámok a rajzban (belmagasság: a padlótól a födém / tető alsó síkjáig)
+    const meret = lap.szovegek.filter((t) => Math.abs(Math.abs(t.szog) - 90) < 2 && /^\d{1,2},\d{2}$/.test(t.s.trim()) && t.x > s0 && t.x < s1 && t.y > c.y0 && t.y < c.y1)
+      .map((t) => ({ s: t.x, h: Number(t.s.trim().replace(',', '.')) })).filter((m) => m.h >= 2.2 && m.h <= 12).sort((a, b) => a.s - b.s);
+    if (meret.length < 2) continue;
+    const hs = meret.map((m) => m.h);
+    if (Math.max(...hs) - Math.min(...hs) < 0.5) continue;
+    // sávok: két méretszám közt falmetszet áll → külön tér (a sávhatár a fal közepe); fal nélkül egy tér, a nagyobbik
+    // értékkel (a kisebb a nyílás – kapu, ajtó – mérete)
+    const savok: BelmagSavok['savok'] = [];
+    let elo = s0, aktH = meret[0]!.h, aktS = meret[0]!.s;
+    for (let i = 1; i < meret.length; i++) {
+      const m = meret[i]!;
+      const koz = falak.filter((u) => u.bbox[0] > aktS && u.bbox[2] < m.s).sort((a, b) => (b.bbox[3] - b.bbox[1]) - (a.bbox[3] - a.bbox[1]))[0];
+      if (!koz || Math.abs(m.h - aktH) < 0.5) { aktH = Math.max(aktH, m.h); aktS = m.s; continue; }
+      const hatar = (koz.bbox[0] + koz.bbox[2]) / 2;
+      savok.push({ s0: elo, s1: hatar, h: aktH }); elo = hatar; aktH = m.h; aktS = m.s;
+    }
+    savok.push({ s0: elo, s1: s1, h: aktH });
+    if (new Set(savok.map((q) => q.h)).size < 2) continue;
+    ki.push({ y0: c.y0, y1: c.y1, mPt, s0, s1, savok });
+  }
+  return ki;
+}

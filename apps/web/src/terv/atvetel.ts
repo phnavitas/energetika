@@ -22,6 +22,8 @@ export interface AtvettHelyiseg {
     /** Térdfal (tetőablakos helyiség lejtés felőli fala): a magassága mindig érvényes. */ terd?: boolean }[];
   /** Fal fűtetlen, gyengén kapcsolt helyiség (pl. garázs) felé. */
   futetlenFalak?: { hossz: number; fele: string }[];
+  /** A helyiség saját belmagassága (eltérő magasságú épületrészeknél, a metszetből); különben a lap belmagassága. */
+  belmagassag?: number;
 }
 export interface AtvettRetegrend { rr: TervRetegrend; becsles: SzerepBecsles; retegek: TervRetegUI[] }
 export interface AtvettNyilas {
@@ -180,7 +182,7 @@ export function tervAtvesz(p: Projekt, a: TervAtvetel): { uzenetek: string[] } {
     // a szintenként ismétlődő kód („A.1.L.1.”) a többi szinten a szint számával
     const kod = h.kod && n > 1 && sz ? h.kod.replace(new RegExp(`^([A-ZÁÉ]{1,2}\\.)${szintek[0]}(\\.)`), (_m, a: string, b: string) => `${a}${sz}${b}`) : h.kod;
     const hz: Helyiseg = {
-      id, nev: (kod ? `${h.nev} (${kod})` : h.nev) + (n > 1 && kod === h.kod && sz ? ` – ${szintCimke(sz)}` : ''), kategoria: h.kategoria, A: kerek(h.A), h: a.belmagassag,
+      id, nev: (kod ? `${h.nev} (${kod})` : h.nev) + (n > 1 && kod === h.kod && sz ? ` – ${szintCimke(sz)}` : ''), kategoria: h.kategoria, A: kerek(h.A), h: h.belmagassag ?? a.belmagassag,
       ...(sz ? { szint: szintNev(sz) } : {}), ...(h.egyseg ? { egyseg: h.egyseg.replace(/ · (földszint|pince|tetőtér|\d+\. emelet)/, '') } : {}),
       hsz: {
         kulsoFalak: falRid ? h.falak.filter((f) => f.hossz >= 0.3).map((f) => ({ id: ujId(), retegrendId: falRid, hossz: kerek(f.hossz) })) : [],

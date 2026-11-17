@@ -133,7 +133,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const F = tervFolyamat({ get lapok() { return lapok; }, get elemzesek() { return elemzesek; }, get kijelolesek() { return kijelolesek; }, get szintKi() { return szintKi; }, get kihagyLap() { return kihagyLap; },
     get eszakKulon() { return eszakKulon; }, get eszakKozos() { return eszakKozos; }, get futottValasz() { return futottValasz; }, get mindFutott() { return mindFutott; }, get reszKod() { return reszKod; },
     get bm() { return bm; }, get me() { return me; }, get terdfalKezi() { return terdfalKezi; }, get homlokzatLapok() { return homlokzatLapok; } });
-  const { reszKizar, masSzintKizar, kjVeg, lapSzintek, kimarad, eszakHomSajat, eszakHom, eszakFelismert, eszakLap, mert3d, homMag3d, elMagFv, oromok, homMagModell } = F;
+  const { reszKizar, masSzintKizar, kjVeg, lapSzintek, kimarad, eszakHomSajat, eszakHom, eszakFelismert, eszakLap, mert3d, homMag3d, elMagFv, oromok, homMagModell, szobaMagassag } = F;
   void eszakHomSajat; void eszakHom; void reszKizar; void masSzintKizar;
   // beolvasáskor eldöntendő kérdések: a fűtetlennek javasolt helyiségek (garázs, pince, padlás…) fűtöttek-e, és a
   // szomszédos épület fűtött-e – a válasz minden lapra érvényes (a soronkénti kézi besorolás elsőbbséget élvez)
@@ -434,6 +434,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     .filter((f) => f.szel >= 0.4 && f.szel <= 1.6 && f.mag >= 0.6 && f.mag <= 1.8)
     .filter((f, i, l) => l.findIndex((g) => Math.hypot(g.x - f.x, g.y - f.y) * (al?.r?.mPerPt ?? 0.035) < 0.5) === i);
   const belsoAjtok = (al?.nyilasok ?? []).filter((n) => !n.kulso).length;
+  // eltérő belmagasságú épületrészek (a metszetből) – a helyiséglistában jelezve
+  const szmLap = al && aIdx >= 0 && !lapSzintek(aIdx).includes('T') ? szobaMagassag(aIdx, al) : null;
   const eszakSz = eszakLap(aIdx, al);
   /** A 3D modell szintjei (a hőburok-körvonal szintenként, a választott méretezéssel) – a 3D nézethez és a modellből számolt felületekhez. */
   const modellSzintek = (mod: 'belso' | 'kulso'): Burok3DSzint[] | null => {
@@ -451,6 +453,27 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                 const belso = mod === 'belso';
                 const r3 = a.r3d ?? r;
                 // a szerkesztett hőburok a 3D-ben is: külső méretnél a körvonal, belső méretnél a mért belső falsíkok
+                // eltérő belmagasságú épületrészek: magasságonként külön hasáb (a fűtött helyiségek csoportjainak burka)
+                const szm3 = !k.burok && !lapSzintek(i).includes('T') ? szobaMagassag(i, a) : null;
+                if (szm3) {
+                  const fut = futottRiK(a, k);
+                  const blokkok: { hv: number; pol: [number, number][][] }[] = [];
+                  for (const hv of [...new Set([...fut].map((x) => szm3.magassag.get(x)).filter((v): v is number => v !== undefined))].sort((x, y) => y - x)) {
+                    const cs = new Set([...fut].filter((x) => szm3.magassag.get(x) === hv));
+                    const pp = burok3dCache(i, r3, cs, lapok[i]?.lap, a, belso); if (!pp.length) continue;
+                    const pol2 = pp.map((q) => q.map(([x, y]) => m(x, y)));
+                    const ny2 = burokNyilasokPt(a, k, pp).map((n) => { const [x, y] = m(n.x, n.y); return { x, y, szel: n.szel, mag: n.mag > 0 ? n.mag : n.szel >= 1.6 ? 2.4 : 1.5, pm: n.pm ?? 0 }; });
+                    // (az alacsonyabb rész magasabb rész felé eső fala nem külső fal: ott a két rész csatlakozik)
+                    const kozos = (A: [number, number], B: [number, number]) => blokkok.some((bl) => bl.pol.some((q) => q.some((P, j) => { const Q = q[(j + 1) % q.length]!;
+                      const dx = Q[0] - P[0], dy = Q[1] - P[1], L = Math.hypot(dx, dy); if (L < 0.3) return false;
+                      const d = (X: [number, number]) => Math.abs((X[0] - P[0]) * dy - (X[1] - P[1]) * dx) / L, t = (X: [number, number]) => ((X[0] - P[0]) * dx + (X[1] - P[1]) * dy) / (L * L);
+                      return d(A) < 0.6 && d(B) < 0.6 && Math.min(1, Math.max(t(A), t(B))) - Math.max(0, Math.min(t(A), t(B))) > 0.6 * Math.hypot(B[0] - A[0], B[1] - A[1]) / L; })));
+                    const korny = blokkok.length ? pol2.map((q) => q.map((P, j) => (kozos(P, q[(j + 1) % q.length]!) ? [[0, 1, 'belso' as const]] : [[0, 1, 'kulso' as const]]) as [number, number, 'kulso' | 'belso'][])) : undefined;
+                    blokkok.push({ hv, pol: pol2 });
+                    szint3.push({ nev: `${szintNev(lapSzintek(i)[0] ?? 'F')} – ${String(hv).replace('.', ',')} m belmagasságú rész`, poligonok: pol2, z0: 0, h: belso ? hv : hv + 0.35, nyilasok: ny2, ...(korny ? { kornyezet: korny } : {}), ...(lapok[i] ? { forras: { fajl: lapok[i]!.fajl, oldal: lapok[i]!.oldal, pt: pp } } : {}) });
+                  }
+                  continue;
+                }
                 const polPt = k.burok
                   ? (belso ? burokMeres(r, k.burok).map((l, pi) => (l.length === k.burok![pi]!.length ? l.map((e) => e.belso[0]) : k.burok![pi]!)) : k.burok)
                   : burok3dCache(i, r3, futottRiK(a, k), lapok[i]?.lap, a, belso);
@@ -535,6 +558,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   // teljes épületmodell (IFC-szerű): a közös folyamatból, az aktuális lap északi irányával
   const epuletModellApp = (): EpuletModell | null => F.epuletModell(eszakSz);
   try { (globalThis as any).__epulet = epuletModellApp; } catch { /* */ }
+  try { (globalThis as any).__szobaMag = () => alaprajzLapok.map(({ i }) => { const a = elemzesek[i]; if (typeof a !== 'object') return null; const v = szobaMagassag(i, a); return v ? { lap: i, tengely: v.tengely, hatarok: v.hatarok, savok: v.savok, helyisegek: [...v.magassag.entries()].map(([ri, h]) => [a.magHelyisegek[ri]?.kod, a.magHelyisegek[ri]?.nev, h]) } : null; }); } catch { /* */ }
   const epMd = useMemo(() => { if (!nezet3d || modell3d !== 'teljes') return null; try { return epuletModellApp(); } catch { return null; } }, [nezet3d, modell3d, elemzesek, kijelolesek, bm, lapok]); // eslint-disable-line react-hooks/exhaustive-deps
   try { (globalThis as any).__burok3d = () => ({ belso: modellSzintek('belso'), kulso: modellSzintek('kulso') }); } catch { /* */ }
   try { (globalThis as any).__modell3d = () => ({ belso: (() => { const x = modellSzintek('belso'); return x ? modellOsszesites(x, eszakSz) : null; })(), kulso: (() => { const x = modellSzintek('kulso'); return x ? modellOsszesites(x, eszakSz) : null; })() }); } catch { /* */ }
@@ -660,6 +684,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     return homRes.length ? homRes : alaprajzrol;
   }
 
+  /** Az elemzés lapindexe (a kézi méretarányú újrafelismerésnél az aktuális lap). */
+  const lapIndex = (a: AlaprajzFeldolgozas) => Object.keys(elemzesek).map(Number).find((k2) => elemzesek[k2] === a) ?? aIdx;
   function egyAtvetel(q: Projekt, a: AlaprajzFeldolgozas, k: Kijeloles, o: { csere: boolean; padloAt: boolean; tetoAt: boolean; eszak: number; szintek: string[]; fajl?: string }): string[] {
     // terepszint alatti szint (pince, alagsor): a feltételes rétegrendek (pincefal, pincepadló) is átkerülnek
     const terepAlatt = o.szintek.includes('P');
@@ -687,7 +713,15 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
       if (terdE(sg, x)) { const v = hmag(sg); (sg as { terd?: boolean }).terd = true; return me?.tetoter?.terdfal ?? (v !== null && v >= 0.3 && v <= 1.5 ? v : terdfalKezi ?? me?.tetoter?.terdfalTipp ?? 0.9); }
       return hmag(sg);
     } : undefined;
-    const { helyisegek: hs, nyilasok: ny0, ri: riL } = atvetelReszek(a, k, mert, falMag, !tetoterLap);
+    // eltérő belmagasságú épületrészek (csarnok + fejépület): a helyiség falai és térfogata a metszet szerinti belmagassággal
+    const szm = tetoterLap ? null : szobaMagassag(lapIndex(a), a);
+    const falMag2 = szm ? (sg: FalSzakasz, x: number) => falMag?.(sg, x) ?? szm.magassag.get(x) ?? null : falMag;
+    const { helyisegek: hs, nyilasok: ny0, ri: riL } = atvetelReszek(a, k, mert, falMag2, !tetoterLap);
+    if (szm) {
+      hs.forEach((h, j) => { const v = szm.magassag.get(riL[j]!); if (v === undefined) return; h.belmagassag = v; for (const f of h.falak) if (f.magassag === undefined) f.magassag = v; });
+      const cs = [...new Set(szm.magassag.values())].sort((x, y) => x - y);
+      extraUz.push(`Eltérő belmagasságú épületrészek a metszetből: ${cs.map((v) => `${String(v).replace('.', ',')} m (${hs.filter((h) => h.belmagassag === v).length} helyiség)`).join(', ')} – a helyiségek falmagassága és térfogata ennek megfelelő; ellenőrizd a Helyiségek lépésben.`);
+    }
     // a homlokzaton látszó, az alaprajzon nem jelölt nyílások (a helyiség a homlokzati falszakasza szerint)
     const plusz = hModell ? hModell.mod.pluszNyilasok(hModell.fl, hModell.zf, hModell.zc).flatMap((q): AtvettNyilas[] => {
       const hi = riL.indexOf(q.h); if (hi < 0) return [];
@@ -1581,6 +1615,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   if (h.forras === 'jegyzek') megj.push('csak a jegyzékben: helye a rajzon nem ismert');
                   if (h.jegyzekA !== undefined && Math.abs(h.jegyzekA - h.A) > 0.011) megj.push(`jegyzék: ${sz(h.jegyzekA)} m²`);
                   if (R?.szivarog) megj.push('a helyiség körvonala nem zárt – a külső falakat ellenőrizd');
+                  { const v = szmLap && ri >= 0 ? szmLap.magassag.get(ri) : undefined; if (v !== undefined) megj.push(`belmagasság a metszetből: ${String(v).replace('.', ',')} m`); }
                   return (<>
                     {csoportFej}
                     <tr id={`hs-sor-${i}`} style={`${valasztott[i] ? '' : 'opacity:.55;'}${kivH === i ? 'background:#FEF3C7;outline:2px solid #F59E0B;outline-offset:-2px' : ''}`} onClick={() => setKivH(kivH === i ? null : i)}>

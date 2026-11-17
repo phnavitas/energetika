@@ -15,7 +15,8 @@ import { tervAtvesz, type AtvettNyilas, type AtvettHelyiseg } from './atvetel';
 import type { Raszter, FalSzakasz } from '@terv/raszter';
 import { homlokzatRajzok, mertMagassagok, eszakHomlokzatbol, tetoAblakokHomlokzatrol, oromSzelessegek, type HomlokzatRajz, type MertMagassag } from '@terv/homlokzatIllesztes';
 import { nezetOszlopok } from '@terv/homlokzatProfil';
-import { metszetElemek, ferdeTetoHossz, ereszKiallasok, ereszKiallas } from '@terv/metszetGeom';
+import { metszetElemek, ferdeTetoHossz, ereszKiallasok, ereszKiallas, belmagassagSavok, type BelmagSavok } from '@terv/metszetGeom';
+import { helyisegMagassagok, type HelyisegMagassag } from '@terv/magassag';
 import { epuletModell, type EpuletModell, type LapBemenet, type Szint as EpSzint, type TerKategoria } from '@terv/epulet';
 import { falMagassagModell, type HomlokzatNezetAdat } from '@terv/homlokzatModell';
 import { vonalIndex, keretek, homlokzatIrany, homlokzatCimek } from '@terv/homlokzat';
@@ -379,6 +380,9 @@ export function atvetelReszek(al: AlaprajzFeldolgozas, k: Kijeloles, mert?: Map<
 export const tervbolFuggo = { lapok: 0 };
 
 export const homMagGy = new WeakMap<AlaprajzFeldolgozas, Map<string, any>>();
+/** A metszetlapok belmagasság-sávjai és a helyiségenkénti belmagasság (gyorstár). */
+export const belmagSavGy = new WeakMap<Lap, BelmagSavok[]>();
+export const szobaMagGy = new WeakMap<AlaprajzFeldolgozas, Map<string, HelyisegMagassag | null>>();
 
 /** A Tervből lépés felhasználói döntései és bemenetei (a komponens getterekkel adja át – a záradékok híváskor olvassák). */
 export interface FolyamatAllapot {
@@ -625,6 +629,24 @@ export function tervFolyamat(S: FolyamatAllapot) {
       const mod = falMagassagModell(a.nyilasok, a.e.mPerPt, eszak, nz, zf, fl, kiterjedes); if (!mod.db) return null;
       return { mod, zf, zc, felso, fl };
   }
+  /**
+   * Eltérő belmagasságú épületrészek (csarnok + fejépület) egyszintes épületnél: a metszet belmagasság-sávjai az alaprajz
+   * fűtött helyiségeire illesztve (raszterindex → belmagasság). Többszintes épületnél, ill. egyértelmű illesztés híján null.
+   */
+  function szobaMagassag(i: number, a: AlaprajzFeldolgozas): HelyisegMagassag | null {
+    if (!a.r || !S.me) return null;
+    const szintek = new Set(alaprajzLapok().filter(({ i: j }) => !kimarad(j)).flatMap(({ i: j }) => lapSzintek(j)).filter((x) => x !== 'P'));
+    if (szintek.size > 1 || (S.me.szintek.szintszam ?? 1) > 2) return null;
+    const ms = S.lapok.filter((l) => l.szerep === 'metszet').flatMap((l) => { let v = belmagSavGy.get(l.lap); if (!v) { try { v = belmagassagSavok(l.lap); } catch { v = []; } belmagSavGy.set(l.lap, v); } return v; });
+    // (csak ha az épületrészek belmagassága valóban eltér a szint belmagasságától: legalább egy sáv ≥ 1 m-rel magasabb)
+    if (!ms.some((m) => m.savok.some((q) => q.h >= (S.bm ?? 2.7) + 1))) return null;
+    const fut = futottRiK(a, kjVeg(i, a)); const kulcs = [...fut].sort((x, y) => x - y).join(',');
+    let gy = szobaMagGy.get(a); if (!gy) { gy = new Map(); szobaMagGy.set(a, gy); }
+    if (gy.has(kulcs)) return gy.get(kulcs)!;
+    let v: HelyisegMagassag | null = null; try { v = helyisegMagassagok(a.r, ms, [...fut]); } catch { v = null; }
+    if (v && new Set(v.magassag.values()).size < 2) v = null;
+    gy.set(kulcs, v); return v;
+  }
   // teljes épületmodell (IFC-szerű): szintek, terek, falak, nyílászárók, födémek – a hőburok jelölve
   const epuletModellApp = (eszakSz?: number): EpuletModell | null => {
     const me = S.me;
@@ -689,5 +711,5 @@ export function tervFolyamat(S: FolyamatAllapot) {
     const teto = hj && ferde >= 4 ? { hajlas: hj, orom: oromok(eszakSz, M0, true), ...(kiallas ? { kiallas } : {}) } : undefined;
     return epuletModell(be, { fodemSavok: fodemSav, metszetElemek: mE.flatMap(({ li, e }) => e.kisElemek.map((q) => ({ ...q, lap: li }))), ...(teto ? { teto } : {}) });
   };
-  return { reszKizar, masSzintKizar, kjVeg, lapSzintek, kimarad, eszakHomSajat, eszakHom, eszakFelismert, eszakLap, mert3d, homMag3d, elMagFv, oromok, homMagModell, epuletModell: epuletModellApp };
+  return { reszKizar, masSzintKizar, kjVeg, lapSzintek, kimarad, eszakHomSajat, eszakHom, eszakFelismert, eszakLap, mert3d, homMag3d, elMagFv, oromok, homMagModell, szobaMagassag, epuletModell: epuletModellApp };
 }

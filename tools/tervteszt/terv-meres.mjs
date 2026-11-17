@@ -30,6 +30,7 @@ L('LAPOK', await p.evaluate(() => [...document.querySelectorAll('main table')][0
 L('FIGY', (await p.evaluate(() => [...document.querySelectorAll('.figyelmeztetes')].map((d) => d.innerText).join(' | '))));
 const ep = await p.evaluate(() => { try { return globalThis.__epulet?.() ?? null; } catch (e) { return { hiba: String(e) }; } });
 fs.writeFileSync(`${ki}_epulet.json`, JSON.stringify(ep));
+const szm = await p.evaluate(() => { try { return globalThis.__szobaMag?.() ?? null; } catch (e) { return { hiba: String(e) }; } }); L("SZOBAMAG", JSON.stringify(szm));
 const m3 = await p.evaluate(() => { try { return globalThis.__modell3d?.() ?? null; } catch (e) { return { hiba: String(e) }; } });
 fs.writeFileSync(`${ki}_modell3d.json`, JSON.stringify(m3));
 // átvétel
