@@ -10,7 +10,7 @@ import { raszterEpit, type Raszter, type RaszterBeallitas } from './raszter';
 import { kotaEllenoriz } from './kota';
 import type { TintaKep } from './tinta';
 import { meretaranyKotabol, automatikusHelyisegek, lakasCsoportok, arnyalatHatarok, type SzurkeKep } from './autohelyiseg';
-import { terdfalGeometria } from './metszetGeom';
+import { terdfalGeometria, tetoHajlasRajzbol } from './metszetGeom';
 import { fuggonyfalak, szarnyFeliratE, jeloletlenNyilasok, lancNyilasok, tetoablakJelek, type TetoablakJel, nyilasFeliratok, nyilasokHozzarendel, falfulkeE, type TervNyilas, type NyilasFelirat } from './nyilaszarok';
 import { talajOldal } from './talaj';
 import { retegrendBlokkok, szerepBecsles, retegekEpit, szintekKeres, tetoterKeres, type TetoterAdat, type TervRetegrend, type SzerepBecsles, type TervRetegUI, type SzintEredmeny } from './metszet';
@@ -68,7 +68,8 @@ function szurkeKep(c: HTMLCanvasElement, scale: number): SzurkeKep | undefined {
 
 /** Lapcím-jelölt: rövid felirat, amelyben önálló szóként szerepel a lap fajtája („Földszinti alaprajz”, „A-A metszet”,
  * „Keresztmetszetek”, „Homlokzatok”) – nem szóösszetétel része („keresztmetszetű”, „homlokzati”, „homlokzaton”). */
-const CIM_SZO = /(alaprajz(?:ok)?|(?:kereszt|hossz)?metszet(?:ek)?|homlokzat(?:ok)?|helyszínrajz|tetőfelülnézet)(?![\p{L}])/iu;
+// (birtokos alakban is: „Földszint alaprajza”, „Keleti homlokzata”)
+const CIM_SZO = /(alaprajz(?:ok|a|ai)?|(?:kereszt|hossz)?metszet(?:ek|e|ei)?|homlokzat(?:ok|a|ai)?|helyszínrajz(?:a)?|tetőfelülnézet(?:e)?)(?![\p{L}])/iu;
 
 export function lapSzerep(lap: Lap, fajlnev = '', tobbLapos = false): { szerep: TervLap['szerep']; cim: string } {
   const sz = lap.szovegek.map((t) => t.s).join(' \n ');
@@ -304,8 +305,13 @@ function zonaHelyisegek(zonak: NonNullable<Lap['zonak']>, pecsetek: TervHelyiseg
     // egyezik (a zónába eső, más kódú és területű pecsét – pl. a szomszéd kis helyiség mutatóvonal nélküli pecsétje – nem)
     const kn = (q?: string) => (q ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
     const azonos = kod ? pecsetek.filter((h) => !foglalt.has(h) && kn(h.kod) === kn(kod)) : [];
+    // ennek híján (a kis helyiség pecsétje a zónán kívülre lóg): a legközelebbi, azonos nevű, a zóna kódjára végződő kódú
+    // és a zónával egyező (± 5 %) területű szabad pecsét – a két lakás „01 Előtér”-e a „L01-01” / „L02-01” pecsét
+    const nevKn = (q: string) => q.toLowerCase().replace(/\s+/g, ' ').trim();
+    const kozeli = () => pecsetek.filter((h) => !foglalt.has(h) && h.A > 0 && Math.abs(h.A - A) <= 0.05 * A && nevKn(h.nev) === nevKn(nev)
+      && (!kod || !h.kod || kn(h.kod).endsWith(kn(kod)))).sort((p, q) => Math.hypot(p.x - x, p.y - y) - Math.hypot(q.x - x, q.y - y))[0];
     const pecset = azonos.length === 1 ? azonos[0] : pecsetek.find((h) => !foglalt.has(h) && poli.some((p) => poliBenne(p, (h.mutato ?? h).x, (h.mutato ?? h).y))
-      && (!kod || !h.kod || kn(h.kod) === kn(kod) || kn(h.kod).endsWith(kn(kod)) || !(h.A > 0) || Math.abs(h.A - A) <= 0.25 * A));
+      && (!kod || !h.kod || kn(h.kod) === kn(kod) || kn(h.kod).endsWith(kn(kod)) || !(h.A > 0) || Math.abs(h.A - A) <= 0.25 * A)) ?? kozeli();
     if (pecset) foglalt.add(pecset);
     const h: TervHelyiseg = pecset
       ? { ...pecset, kod: pecset.kod ?? kod, nev: pecset.nev || nev, A: pecset.A > 0 ? pecset.A : Math.round(A * 100) / 100, x, y, mutato: undefined, mutatoTartalek: undefined }
@@ -586,6 +592,8 @@ export interface MetszetFeldolgozas {
   szintek: SzintEredmeny;
   /** Tetőtér-beépítés adatai (hajlásszög, térdfal), ha a metszeten van tetőhajlás-felirat. */
   tetoter: TetoterAdat | null;
+  /** A magastető hajlásszöge felirat nélkül, a metszet ferde tetővonalaiból (csak az épületmodellhez). */
+  tetoHajlas?: number;
 }
 
 /**
@@ -607,6 +615,7 @@ export function metszetFeldolgoz(lap: Lap): MetszetFeldolgozas {
     blokkok: b.map((rr) => { const becsles = szerepBecsles(rr, b); return { rr, becsles, retegek: retegekEpit(rr, becsles, ujId) }; }),
     szintek: szintekKeres(lap.szovegek),
     tetoter: tt,
+    ...(!tt ? (() => { const M = meretaranyKeres(lap.szovegek); const h = tetoHajlasRajzbol(lap, M ? (25.4 / 72) / 1000 * M : undefined); return h ? { tetoHajlas: h } : {}; })() : {}),
   };
 }
 

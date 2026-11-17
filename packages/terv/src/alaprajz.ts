@@ -128,8 +128,17 @@ export function pecsetek(sz: Szoveg[]): TervHelyiseg[] {
       if (kodE(ts) || kodE(ts.split(/\s+/)[0] ?? '')) break;
     }
     if (!sorok.length) continue;
+    // két soros kód: a lakásjel („L01”) a helyiségszám („05”) fölött – „L01-05” (a jegyzék „Lakás | Helyiségszám” oszlopaival egyező)
+    { const k0 = sorok[0]!, ks = szovegJavit(k0.s).trim();
+      if (/^\d{1,3}$/.test(ks)) {
+        const egy = vsz.find((t) => t !== k0 && /^[A-ZÁÉ]{1,3}\d{1,3}$/.test(szovegJavit(t.s).trim()) && Math.abs(t.meret - k0.meret) < k0.meret * 0.2
+          && t.y < k0.y - k0.meret * 0.6 && t.y > k0.y - k0.meret * 1.9 && Math.abs(kozep(t) - kozep(k0)) < k0.meret * 1.5);
+        if (egy) sorok.unshift(egy);
+      } }
     const szovegek = sorok.map((t) => szovegJavit(t.s));
     let kod: string | undefined; let burkolat: string | undefined; const nevResz: string[] = [];
+    // („L01” + „05” → „L01-05”)
+    if (szovegek.length >= 2 && /^[A-ZÁÉ]{1,3}\d{1,3}$/.test(szovegek[0]!.trim()) && /^\d{1,3}$/.test(szovegek[1]!.trim())) szovegek.splice(0, 2, `${szovegek[0]!.trim()}-${szovegek[1]!.trim()}`);
     for (const t0 of szovegek) {
       let t = t0;
       // kód és név egy sorban: „001 előtér”, „T002 tároló-gépészet”
@@ -228,7 +237,9 @@ export function jegyzekSorok(sz: Szoveg[]): TervHelyiseg[] {
     const kodok: string[] = [];
     while (i < r.length - 2 && ONALLO.test(r[i]!.s.trim()) && ONALLO.test(r[i + 1]!.s.trim())) { kodok.push(r[i]!.s.trim()); i++; }
     if (kodok.length) { kodok.push(r[i]!.s.trim()); i++; }
-    else while (i < r.length - 1 && ((/^[A-ZÁÉ][A-Za-zÁÉáé]{0,4}\.?\d{0,3}[.\-/]?\s?\d{0,3}\.?$|^\d{1,3}[.\-/]?\s?\d{0,3}\.?$/.test(r[i]!.s) && /\d/.test(r[i]!.s)) || tagoltKod(r[i]!.s)) && kod.length < 16) { kod += r[i]!.s.replace(/\s/g, ''); i++; }
+    else while (i < r.length - 1 && ((/^[A-ZÁÉ][A-Za-zÁÉáé]{0,4}\.?\d{0,3}[.\-/]?\s?\d{0,3}\.?$|^\d{1,3}[.\-/]?\s?\d{0,3}\.?$/.test(r[i]!.s) && /\d/.test(r[i]!.s)) || tagoltKod(r[i]!.s)) && kod.length < 16) {
+      // külön oszlopban a lakásjel és a helyiségszám („L01 | 05”): „L01-05”
+      const d = r[i]!.s.replace(/\s/g, ''); kod += /^[A-ZÁÉ]{1,3}\d{1,3}$/.test(kod) && /^\d{1,3}$/.test(d) ? `-${d}` : d; i++; }
     const kozepso = r.slice(i, -1).map((t) => t.s);
     if (kodok.length) {
       const nevK = kozepso.join(' ');

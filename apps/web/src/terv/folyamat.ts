@@ -584,10 +584,12 @@ export function tervFolyamat(S: FolyamatAllapot) {
   /** A homlokzatokon látszó oromzatok szélessége alaprajzi irányonként (0/90/180/270). */
   function oromok(eszak: number, M?: number, kontyNelkul = false): Record<number, number> {
     const ki: Record<number, number> = {};
-    if (!S.me?.tetoter) return ki;
+    // (a felirat nélküli, rajzból mért hajlás csak a teljes modell tetőjéhez)
+    const hj = S.me?.tetoter?.hajlas ?? (kontyNelkul ? S.me?.tetoHajlas : undefined);
+    if (!hj) return ki;
     const konty = new Set<number>();
     for (const { l } of S.homlokzatLapok) {
-      let lista: { az: number; orom: number; kontyOldal?: boolean }[] = []; try { lista = oromSzelessegek(l.lap, S.me.tetoter.hajlas, M, { kontyNelkul }); } catch { lista = []; }
+      let lista: { az: number; orom: number; kontyOldal?: boolean }[] = []; try { lista = oromSzelessegek(l.lap, hj, M, { kontyNelkul }); } catch { lista = []; }
       for (const x of lista) { const ir = (Math.round(norm(x.az + eszak) / 90) * 90) % 360; ki[ir] = Math.max(ki[ir] ?? 0, x.orom); if (x.kontyOldal) konty.add(ir); }
     }
     // a kontyolt tetőt oldalról (trapéz) mutató homlokzatra merőleges homlokzatokon a háromszög a kontylap, nem oromzat
@@ -674,11 +676,13 @@ export function tervFolyamat(S: FolyamatAllapot) {
     // magastető: a metszet hajlása, a homlokzatok oromzatai, az ereszkiállás a metszetekből
     const M0 = be[0] ? (be[0].a as AlaprajzFeldolgozas).e.meretarany ?? undefined : undefined;
     // (csak ha a metszeteken a hajlásszögű ferde vonalak összesen ≥ 4 m – a szögfelirat egymagában lépcső, lejtés is lehet)
-    const ferde = me?.tetoter ? S.lapok.filter((l) => l.szerep === 'metszet').reduce((t, l) => t + ferdeTetoHossz(l.lap, me.tetoter!.hajlas), 0) : 0;
+    // (szögfelirat nélkül a metszet ferde tetővonalaiból mért hajlás)
+    const hj = me?.tetoter?.hajlas ?? me?.tetoHajlas;
+    const ferde = hj ? S.lapok.filter((l) => l.szerep === 'metszet').reduce((t, l) => t + ferdeTetoHossz(l.lap, hj), 0) : 0;
     // ereszkiállás a metszetekből (a ferde tetővonal alsó vége – a fal külső síkja); ennek híján becsült
-    const kiallas = me?.tetoter ? ereszKiallas(mE.flatMap(({ li, e }) => ereszKiallasok(S.lapok[li]!.lap, me.tetoter!.hajlas, e.mPt))) : undefined;
+    const kiallas = hj ? ereszKiallas(mE.flatMap(({ li, e }) => ereszKiallasok(S.lapok[li]!.lap, hj, e.mPt))) : undefined;
     // (a teljes modell magastetőjénél a kontylap nem oromfal – a Navitherm tetőterénél egyelőre a régi szabály)
-    const teto = me?.tetoter && ferde >= 4 ? { hajlas: me.tetoter.hajlas, orom: oromok(eszakSz, M0, true), ...(kiallas ? { kiallas } : {}) } : undefined;
+    const teto = hj && ferde >= 4 ? { hajlas: hj, orom: oromok(eszakSz, M0, true), ...(kiallas ? { kiallas } : {}) } : undefined;
     return epuletModell(be, { fodemSavok: fodemSav, metszetElemek: mE.flatMap(({ li, e }) => e.kisElemek.map((q) => ({ ...q, lap: li }))), ...(teto ? { teto } : {}) });
   };
   return { reszKizar, masSzintKizar, kjVeg, lapSzintek, kimarad, eszakHomSajat, eszakHom, eszakFelismert, eszakLap, mert3d, homMag3d, elMagFv, oromok, homMagModell, epuletModell: epuletModellApp };

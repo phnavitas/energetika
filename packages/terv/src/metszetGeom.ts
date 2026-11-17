@@ -135,6 +135,30 @@ export function ferdeTetoHossz(lap: Lap, hajlas: number, mPerPt = 0.0352778): nu
   return Math.round(L * 10) / 10;
 }
 
+/**
+ * A tető hajlásszöge a metszet rajzolatából, ha nincs szögfelirat: a 15–60°-os, legalább 1 m-es ferde szakaszok
+ * hossza fokonként; a legnagyobb összhosszú fok (± 1° átlaga), ha ott emelkedő és lejtő szakasz is van (≥ 2–2 m,
+ * összesen ≥ 6 m – két tetősík). Méretezés, felirat, terep rétegei nem számítanak.
+ */
+export function tetoHajlasRajzbol(lap: Lap, mPerPt = 0.0352778): number | null {
+  const fok = new Map<number, { L: number; fel: number; le: number; sz: number }>();
+  for (const u of lap.utvonalak) {
+    if (u.reteg && /m[ée]retez|felirat|terep|k[öo]rnyezet|jel/i.test(u.reteg)) continue;
+    for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) {
+      const dx = p[i + 2]! - p[i]!, dy = p[i + 3]! - p[i + 1]!, l = Math.hypot(dx, dy) * mPerPt; if (l < 1) continue;
+      const a = (Math.atan2(Math.abs(dy), Math.abs(dx)) * 180) / Math.PI; if (a < 15 || a > 60) continue;
+      const k = Math.round(a), q = fok.get(k) ?? { L: 0, fel: 0, le: 0, sz: 0 };
+      q.L += l; q.sz += a * l; if (dx * dy < 0) q.fel += l; else q.le += l; fok.set(k, q);
+    }
+  }
+  const leg = [...fok.entries()].sort((a, b) => b[1].L - a[1].L)[0];
+  if (!leg) return null;
+  const kor = [leg[0] - 1, leg[0], leg[0] + 1].map((k) => fok.get(k)).filter((q): q is NonNullable<typeof q> => !!q);
+  const L = kor.reduce((t, q) => t + q.L, 0), fel = kor.reduce((t, q) => t + q.fel, 0), le = kor.reduce((t, q) => t + q.le, 0);
+  if (L < 6 || fel < 2 || le < 2) return null;
+  return Math.round((kor.reduce((t, q) => t + q.sz, 0) / L) * 2) / 2;
+}
+
 /** Ereszkiállás-jelöltek a metszetből: a tetőhajlású (±2°) szakaszok alsó vége és az alatta álló
  *  legkülső falkitöltés külső síkja közti vízszintes távolság (m). Csak 0,15–1,5 m közti értékek. */
 export function ereszKiallasok(lap: Lap, hajlas: number, mPerPt = 0.0352778): number[] {
