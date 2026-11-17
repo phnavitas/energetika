@@ -539,8 +539,9 @@ export function tervFolyamat(S: FolyamatAllapot) {
     // külső fala térdfal (a homlokzat szerinti, ennek híján az alapértelmezett térdfal-magasság)
     const ar = a.r, tab = a.tetoablakok ?? [];
     const terdfalE = (A: [number, number], B: [number, number], nx: number, ny: number, irany: number) => {
-      // metszettel a szint belmagassága ismert (a tetőablak lehet fénycsatornás, sík mennyezetű helyiségben is)
-      if (!ar || !tab.length || S.me?.szintek.belmagassag.length) return false;
+      // metszettel a szint belmagassága ismert (a tetőablak lehet fénycsatornás, sík mennyezetű helyiségben is) – kivéve, ha a
+      // metszeten tetőtér (ferde tető alatti helyiség) van
+      if (!ar || !tab.length || (S.me?.szintek.belmagassag.length && !S.me.tetoter)) return false;
       // a fal mögötti helyiség: a fal közepétől befelé 0,5–2 m-re az első helyiségpixel (a külső méretű körvonal
       // a falvastagságon, a belső közelében rajzi vonal – pl. eresz – lehet)
       const ptPx = ar.mPerPt / ar.px; let h = -1;
@@ -553,7 +554,7 @@ export function tervFolyamat(S: FolyamatAllapot) {
       if (h < 0) return false;
       return tab.some((t) => t.helyiseg === h && Math.abs(((t.irany - irany + 540) % 360) - 180) <= 30);
     };
-    const terdAlap = S.me?.tetoter?.terdfal ?? S.terdfalKezi ?? 0.9;
+    const terdAlap = S.me?.tetoter?.terdfal ?? S.terdfalKezi ?? S.me?.tetoter?.terdfalTipp ?? 0.9;
     if (!(hm?.felso || tab.length)) return null;
     const hh = belso ? emelet - 0.35 : emelet;
     return (A: [number, number], B: [number, number], nx: number, ny: number): number | null => {

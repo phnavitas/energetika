@@ -624,14 +624,17 @@ export function szintekKeres(sz: Szoveg[]): SzintEredmeny {
   for (let k = 0; k < 6; k++) {
     // födém alsó síkja: a függőleges méretszámmal igazolt magasság, ill. amely fölött 15–80 cm-en belül újabb szint (födém teteje) van
     const legfelso = Math.max(...jelek.map((j) => j.ertek));
+    // a belmagasság méretszámát a metszeten helyiségenként, többször is kiírják: a gyakoribb méretszám erősebb jelölt
+    const db = (c: number) => fuggoMeretek.filter((m) => Math.abs(m - (c - f)) < 0.015).length;
     // (a szintmagasság – a következő padlószint – nem födémalsó: ha a kétszerese is szintjel, ismétlődő emelet)
-    const ismetlodo = (c: number) => jelek.some((j) => Math.abs(j.ertek - (f + 2 * (c - f))) < 0.02);
+    // (kivéve, ha a magasságot legalább két függőleges méretszám igazolja és a háromszorosa nem szintjel: az belmagasság, a
+    // kétszeresénél álló jel véletlen egyezés, pl. ereszmagasság)
+    const jelE = (v: number) => jelek.some((j) => Math.abs(j.ertek - v) < 0.02);
+    const ismetlodo = (c: number) => jelE(f + 2 * (c - f)) && !(db(c) >= 2 && !jelE(f + 3 * (c - f)));
     // (a ±0,00 oszlopán kívüli szintjel is jelölt, ha függőleges méretszám igazolja – pl. a másik metszet-oszlop födémalsója)
     const merettel = jelek.map((j) => j.ertek).filter((v) => !kulsoErtekek.has(v) && fuggoMeretek.some((m) => Math.abs(m - (v - f)) < 0.015));
     const jeloltek0 = [...new Set([...belsoTiszta, ...merettel])].filter((v) => v >= f + 2.2 && v <= f + 4.2 && v < legfelso);
     const jeloltek = jeloltek0.filter((v) => !ismetlodo(v)).length ? jeloltek0.filter((v) => !ismetlodo(v)) : jeloltek0;
-    // a belmagasság méretszámát a metszeten helyiségenként, többször is kiírják: a gyakoribb méretszám erősebb jelölt
-    const db = (c: number) => fuggoMeretek.filter((m) => Math.abs(m - (c - f)) < 0.015).length;
     const pont = (c: number) => 2 * db(c) + (belsoTiszta.some((v) => v > c + 0.15 && v <= c + 0.8) ? 1 : 0);
     const c = jeloltek.sort((a, b) => pont(b) - pont(a) || (db(a) && db(b) ? b - a : a - b))[0];
     if (c === undefined) break;
@@ -701,6 +704,13 @@ export function tetoterKeres(sz: Szoveg[], szintek: SzintEredmeny): TetoterAdat 
       if (jelek.some((q) => q !== j && q.v === j.v && Math.abs(q.y - j.y) < 3 && Math.abs(q.x - j.x) > 20)) gy.set(h, (gy.get(h) ?? 0) + 1);
     }
     if (gy.size) terdfalTipp = [...gy.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]![0];
+    // ennek híján: a tetőtéri padló feletti 0,3–2,0 m-es szintjel, amelynek magasságát egy függőleges méretszám is kiadja
+    // (pl. „1,28” a +3,08-as padló és a +4,35-ös térdfal-tető között)
+    if (terdfalTipp === null) {
+      const fm = sz.filter((t) => Math.abs(Math.abs(t.szog) - 90) < 3 && /^\d,\d{2}$/.test(t.s.trim())).map((t) => ({ x: t.x, y: t.y, v: szamErtek(t.s) }));
+      const jo = jelek.map((j) => ({ j, h: Math.round((j.v - z0) * 100) / 100 })).filter(({ j, h }) => h >= 0.3 && h <= 2.0 && fm.some((m) => Math.abs(m.v - h) < 0.015));
+      if (jo.length) terdfalTipp = jo.sort((a, b) => a.h - b.h)[0]!.h;
+    }
   }
   return { hajlas, terdfal, terdfalTipp, belmagassag, padlo: z0 ?? null };
 }

@@ -639,11 +639,11 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     const hModell = homMagModell(a, o.szintek, o.eszak, tetoterLap);
     // tetőablakos helyiség metszet nélkül: a lejtés felőli külső fal térdfal (mint a 3D-ben) – homlokzat szerint 0,3–1,5 m,
     // ennek híján az alapértelmezett / megadott térdfal-magasság
-    const tab = !tetoterLap && !me?.szintek.belmagassag.length ? a.tetoablakok ?? [] : [];
+    const tab = !tetoterLap && (!me?.szintek.belmagassag.length || me.tetoter) ? a.tetoablakok ?? [] : [];
     const terdE = (sg: FalSzakasz, x: number) => tab.some((t) => t.helyiseg === x && Math.abs(((t.irany - sg.irany + 540) % 360) - 180) <= 30);
     const hmag = (sg: FalSzakasz) => (hModell?.felso ? hModell.mod.magassag(sg.irany, sg.pontok, hModell.zf, hModell.zc) : null);
     const falMag = hModell?.felso || tab.length ? (sg: FalSzakasz, x: number) => {
-      if (terdE(sg, x)) { const v = hmag(sg); (sg as { terd?: boolean }).terd = true; return v !== null && v >= 0.3 && v <= 1.5 ? v : terdfalKezi ?? 0.9; }
+      if (terdE(sg, x)) { const v = hmag(sg); (sg as { terd?: boolean }).terd = true; return me?.tetoter?.terdfal ?? (v !== null && v >= 0.3 && v <= 1.5 ? v : terdfalKezi ?? me?.tetoter?.terdfalTipp ?? 0.9); }
       return hmag(sg);
     } : undefined;
     const { helyisegek: hs, nyilasok: ny0, ri: riL } = atvetelReszek(a, k, mert, falMag, !tetoterLap);
@@ -671,7 +671,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
       if (kimaradt.length) extraUz.push(`${kimaradt.length} nyílásfelirat (${[...new Set(kimaradt.map((f) => `${Math.round(f.szel * 100)}×${Math.round(f.mag * 100)}`))].join(', ')}) nem köthető falnyíláshoz, és a hőburok mentén sem helyezhető el: nem került át. Ha homlokzati nyílás, add hozzá a Határolás lépésben.`);
     }
     // tetőablakos helyiség metszet nélkül: a 3D modellben a lejtés felőli fal térdfal
-    if (a.tetoablakok?.length && !me?.szintek.belmagassag.length && !tetoterLap) extraUz.push(`Tetőablakos helyiség metszet nélkül: a lejtés felőli külső falat térdfalnak vettem (magassága a homlokzatról, ennek híján ${String(me?.tetoter?.terdfal ?? terdfalKezi ?? 0.9).replace('.', ',')} m) – ellenőrizd a falmagasságot az „Ellenőrizendő” részben.`);
+    if (a.tetoablakok?.length && (!me?.szintek.belmagassag.length || me.tetoter) && !tetoterLap) extraUz.push(`Tetőablakos helyiség ${me?.szintek.belmagassag.length ? 'a ferde tető alatt' : 'metszet nélkül'}: a lejtés felőli külső falat térdfalnak vettem (magassága ${me?.tetoter?.terdfal ? 'a metszetről' : 'a homlokzatról'}, ennek híján ${String(me?.tetoter?.terdfal ?? terdfalKezi ?? me?.tetoter?.terdfalTipp ?? 0.9).replace('.', ',')} m) – ellenőrizd a falmagasságot az „Ellenőrizendő” részben.`);
     const mertDb = ny.length && mert ? [...mert.values()] : [];
     if (mertDb.length) {
       const h = mertDb.filter((x) => x.forras === 'homlokzat').length, sz = mertDb.filter((x) => x.forras === 'szelesseg').length, b = mertDb.filter((x) => x.forras === 'becsult').length;
@@ -1108,7 +1108,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             const atvett = new Set(burokNyilasok(al, kj).map(({ kk }) => kk));
             const arvak = (al.arvaFeliratok ?? []).map((f, j) => ({ f, j })).filter(({ f, j }) => kj.arvaBe?.has(j) || (!atvett.has(10000 + j) && !!al.r && ab0.length > 0 &&
               (!ab0.some((p) => bennE(p, f.x, f.y)) ? nyilasEl(al.r, ab0, f.x, f.y, 2.5) !== null : nyilasEl(al.r, ab0, f.x, f.y, 1.0) !== null)));
-            const terdE = !!al.tetoablakok?.length && !me?.szintek.belmagassag.length && !lapSzintek(aIdx).includes('T');
+            const terdE = !!al.tetoablakok?.length && (!me?.szintek.belmagassag.length || !!me?.tetoter) && !lapSzintek(aIdx).includes('T');
             const taBecs = (al.tetoablakok ?? []).map((t, ti) => ({ t, ti })).filter(({ t }) => t.becsult);
             if (!gyanus.length && !arvak.length && !terdE && !taBecs.length) return null;
             const valt = (mezo: 'kulsoNy' | 'arvaBe', i: number, be: boolean) => kjMod((k) => { const x = new Set(k[mezo] ?? []); if (be) x.add(i); else x.delete(i); return { ...k, [mezo]: x }; });
