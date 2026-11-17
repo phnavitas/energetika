@@ -1169,6 +1169,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                 <button class="gomb" onClick={() => setEszak(norm(eszakSz + 45))}>+45°</button>
               </div>
               <label class="halkabb" style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" checked={kulonE} onChange={(e) => { const be = (e.target as HTMLInputElement).checked; setEszakKulon((x) => { const y = { ...x }; if (be) y[aIdx] = eszakSz; else delete y[aIdx]; return y; }); }} /> Ennél a lapnál külön érték{!kulonE && eszakKozos !== null ? ' (most: közös, minden lapra érvényes)' : ''}</label>
+              <EszakOsszevetes kep={aLap?.kep} lapSzel={aLap?.lap.szel ?? 0} lapMag={aLap?.lap.mag ?? 0} jel={ej ?? null} szog={eszakSz} />
               {(!ej || ej.bizonytalan) && eszakKozos === null && !kulonE && eszakHom(al) !== null && <small class="halkabb">{ej ? 'Az északjel alakja nem egyértelmű' : 'Északjel nincs a lapon'}: az irányt a homlokzati rajzokból becsültem (a címükben szereplő égtáj és a nyílások helyzete szerint){eszakHomSajat(al) === null ? ', egy másik alaprajzi lap illesztése alapján (ezen a lapon a homlokzatok nem illeszthetők)' : ''} – ellenőrizd.</small>}
               {ej && eszakKozos === null && !kulonE && <small class="halkabb">{ej.forras === 'betu' ? 'Az „É” / „N” betűs északjelből.' : eszakJavitas(ej.alairas) !== 0 ? 'Ismert északjel: a korábban rögzített iránnyal. Ellenőrizd az előnézeten (piros nyíl).' : 'Az északjel alakjából – ellenőrizd az előnézeten (piros nyíl), a javítást a program ehhez a jelhez megjegyzi.'}</small>}
             </div>
@@ -1467,7 +1468,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   </g>
                 ))}
                 <g transform={`translate(${ejX} ${ejY})`}>
-                  <circle r={nyilHossz * 0.75} fill="#fff" stroke="#B91C1C" stroke-width={nyilHossz * 0.04} opacity={0.9} />
+                  {/* (a kör átlátszó: alatta a terv saját északjele is látszik) */}
+                  <circle r={nyilHossz * 0.75} fill={ej && ejX === ej.x ? 'none' : '#fff'} stroke="#B91C1C" stroke-width={nyilHossz * 0.04} opacity={0.9} />
                   <line x1={0} y1={0} x2={Math.sin(rad) * nyilHossz * 0.7} y2={-Math.cos(rad) * nyilHossz * 0.7} stroke="#B91C1C" stroke-width={nyilHossz * 0.08} />
                   <text x={Math.sin(rad) * nyilHossz * 0.95} y={-Math.cos(rad) * nyilHossz * 0.95 + nyilHossz * 0.12} font-size={nyilHossz * 0.35} text-anchor="middle" fill="#B91C1C" font-weight="700" font-family="system-ui">É</text>
                 </g>
@@ -1712,6 +1714,41 @@ function NyilasMeretSzerk({ adat, allit, bezar, beagyazott }: { adat: { n: TervN
       <span class="halkabb" style="font-size:12px">felismert: {cm(n0.szel)} × {n0.mag > 0 ? cm(n0.mag) : '?'} cm{n0.pm !== null ? `, mellvéd ${cm(n0.pm)} cm` : ''}{n0.mert ? ' (felirat nélkül mért)' : ''}</span>
       {kezi && <button class="gomb halk-gomb semleges" onClick={() => allit(null)}>Vissza a felismertre</button>}
       <button class="gomb halk-gomb semleges" onClick={bezar}>Kijelölés vége</button>
+    </div>
+  );
+}
+
+/** A terv saját északjele (kivágás a lapról) és mellette a számításban használt északi irány – egyben ellenőrizhető. */
+function EszakOsszevetes({ kep, lapSzel, lapMag, jel, szog }: { kep: string | undefined; lapSzel: number; lapMag: number; jel: { x: number; y: number; meret: number; bbox?: [number, number, number, number] } | null; szog: number }) {
+  const rad = (szog * Math.PI) / 180, sx = Math.sin(rad), sy = -Math.cos(rad);
+  const nyil = (r: number, szin: string, vast: number) => (
+    <g>
+      <line x1={-sx * r * 0.55} y1={-sy * r * 0.55} x2={sx * r * 0.7} y2={sy * r * 0.7} stroke={szin} stroke-width={vast} stroke-linecap="round" />
+      <polygon points={`${sx * r * 0.9},${sy * r * 0.9} ${sx * r * 0.62 - sy * r * 0.13},${sy * r * 0.62 + sx * r * 0.13} ${sx * r * 0.62 + sy * r * 0.13},${sy * r * 0.62 - sx * r * 0.13}`} fill={szin} />
+    </g>
+  );
+  const bb = jel ? jel.bbox ?? [jel.x - jel.meret / 2, jel.y - jel.meret / 2, jel.x + jel.meret / 2, jel.y + jel.meret / 2] : null;
+  const s = bb ? Math.max(bb[2] - bb[0], bb[3] - bb[1]) * 1.5 : 0, cx = bb ? (bb[0] + bb[2]) / 2 : 0, cy = bb ? (bb[1] + bb[3]) / 2 : 0;
+  const egtaj = (az: number) => ['É', 'K', 'D', 'Ny'].map((t, i) => { const a = ((az + i * 90) * Math.PI) / 180; return <text x={50 + Math.sin(a) * 40} y={50 - Math.cos(a) * 40 + 4} font-size={11} text-anchor="middle" fill={i === 0 ? '#B91C1C' : '#64748B'} font-weight={i === 0 ? 700 : 400} font-family="system-ui">{t}</text>; });
+  return (
+    <div style="display:flex;gap:10px;align-items:flex-start;margin:6px 0">
+      <figure style="margin:0;text-align:center">
+        {kep && bb ? (
+          <svg width={110} height={110} viewBox={`${cx - s / 2} ${cy - s / 2} ${s} ${s}`} style="border:1px solid #CBD5E1;border-radius:6px;background:#fff">
+            <image href={kep} x={0} y={0} width={lapSzel} height={lapMag} />
+            <g transform={`translate(${cx} ${cy})`} opacity={0.75}>{nyil(s * 0.5, '#B91C1C', s * 0.02)}</g>
+          </svg>
+        ) : <div style="width:110px;height:110px;border:1px dashed #CBD5E1;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#64748B;text-align:center">nincs északjel a lapon</div>}
+        <figcaption class="halkabb" style="font-size:11px">a terv északjele{kep && bb ? ' + a felvett irány' : ''}</figcaption>
+      </figure>
+      <figure style="margin:0;text-align:center">
+        <svg width={110} height={110} viewBox="0 0 100 100" style="border:1px solid #CBD5E1;border-radius:6px;background:#fff">
+          <circle cx={50} cy={50} r={30} fill="none" stroke="#E2E8F0" />
+          {egtaj(szog)}
+          <g transform="translate(50 50)">{nyil(32, '#B91C1C', 3)}</g>
+        </svg>
+        <figcaption class="halkabb" style="font-size:11px">a számításban: {Math.round(szog)}°</figcaption>
+      </figure>
     </div>
   );
 }
