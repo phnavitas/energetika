@@ -594,7 +594,8 @@ export function pecsetBelmagassag(lapok: readonly { lap: { szovegek: readonly { 
 
 export function szintekCimbol(cim: string): string[] {
   // betűvel / római számmal írt sorszám („Első emeleti”, „II. emelet”) → „1.”
-  const c = cim.toLowerCase().replace(/\bm\s*=?\s*1\s*:\s*\d+/g, ' ')
+  // (a rajzszám-szerű kód – „E01”, „F00”, „EB-02”, „A_01” – nem szintszám)
+  const c = cim.toLowerCase().replace(/\bm\s*=?\s*1\s*:\s*\d+/g, ' ').replace(/(?<![\p{L}\d])[a-z]{1,3}[-_]?\d{1,3}(?![\p{L}\d.])/gu, ' ')
     .replace(/(első|második|harmadik|negyedik|ötödik|hatodik|hetedik|nyolcadik|kilencedik|tizedik)(?=[\s,–-]|$)/g, (m) => `${SORSZAM[m]}.`)
     .replace(/(?<![a-záéíóöőúüű])(i{1,3}|iv|v|vi{1,3}|ix|x)\s*\.(?=\s*(?:[-–,]|és|emelet))/g, (_m, r: string) => `${ROMAI[r]}.`);
   if (/pince|alagsor|mélygarázs/.test(c)) return ['P'];

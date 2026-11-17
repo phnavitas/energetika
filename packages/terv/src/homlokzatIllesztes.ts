@@ -166,8 +166,8 @@ function tetoFeluletAlatt(lap: Lap, [bx0, by0, bx1, by1]: number[], m: number): 
     }
   }
   const R = 0.25 / m, A = Math.PI * 0.25 * 0.25;
-  const teto = (x: number, y: number) => kitolt.some((b) => x >= b[0]! && x <= b[2]! && y >= b[1]! && y <= b[3]!) ||
-    kozep.reduce((n, [cx, cy]) => n + ((cx - x) ** 2 + (cy - y) ** 2 <= R * R ? 1 : 0), 0) / A >= 40;
+  const suru = (pts: [number, number][], x: number, y: number) => pts.reduce((n, [cx, cy]) => n + ((cx - x) ** 2 + (cy - y) ** 2 <= R * R ? 1 : 0), 0) / A;
+  const teto = (x: number, y: number) => kitolt.some((b) => x >= b[0]! && x <= b[2]! && y >= b[1]! && y <= b[3]!) || suru(kozep, x, y) >= 40;
   return (x0, y0, x1, y1) => {
     let igen = 0, db = 0;
     for (const t of [0.2, 0.35, 0.5, 0.65, 0.8]) for (const d of [0.3, 0.6, 0.9]) {
@@ -182,10 +182,11 @@ function tetoFeluletAlatt(lap: Lap, [bx0, by0, bx1, by1]: number[], m: number): 
  * Oromfalak a homlokzaton: a tető hajlásszögével (±4°) futó, legalább 1 m-es ferde vonalak vízszintes vetületének
  * uniója rajzonként (m) – az oromzat (nyeregtető vége) a homlokzaton ferde tetőszélként látszik, az eresz vízszintesként.
  * A rajz területe: a hozzá rendelt keretek befoglalója, kibővítve (a cím szerinti rajzhoz tartozó vonalak).
+ * Trapéz alakú tetőkontúr (két ferde él, köztük vízszintes gerinc) kontyolt tető oldalnézete: `kontyOldal`, oromzat nélkül.
  */
-export function oromSzelessegek(lap: Lap, hajlas: number, tartalekM?: number, opt: { kontyNelkul?: boolean } = {}): { az: number; orom: number }[] {
+export function oromSzelessegek(lap: Lap, hajlas: number, tartalekM?: number, opt: { kontyNelkul?: boolean } = {}): { az: number; orom: number; kontyOldal?: boolean }[] {
   const rajzok = homlokzatRajzok(lap, tartalekM); if (!rajzok.length) return [];
-  const ki: { az: number; orom: number }[] = [];
+  const ki: { az: number; orom: number; kontyOldal?: boolean }[] = [];
   for (const r of rajzok) {
     const m = r.mPerPt;
     const bx0 = Math.min(...r.keretek.map((k) => k.x0)) - 12 / m, bx1 = Math.max(...r.keretek.map((k) => k.x1)) + 12 / m;
@@ -194,17 +195,31 @@ export function oromSzelessegek(lap: Lap, hajlas: number, tartalekM?: number, op
     // alatt tetőfelület van (tetőréteg kitöltése, ill. sűrű héjazat-sraffozás), oromfalnál falfelület
     const tetoAlatta = opt.kontyNelkul ? tetoFeluletAlatt(lap, [bx0, by0, bx1, by1], m) : null;
     const tart: [number, number][] = [];
+    // a ferde élek felső végpontja (bal oldali emelkedő: a felső vég jobbra; jobb oldali süllyedő: balra) és a vízszintes vonalak
+    const felsoBal: [number, number][] = [], felsoJobb: [number, number][] = [], vizsz: [number, number, number][] = [];
     for (const u of lap.utvonalak) {
       if (u.muvelet === 'none' || u.bbox[2] < bx0 || u.bbox[0] > bx1 || u.bbox[3] < by0 || u.bbox[1] > by1) continue;
       for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) {
         const dx = Math.abs(p[i + 2]! - p[i]!), dy = Math.abs(p[i + 3]! - p[i + 1]!);
+        if (dy * m < 0.02 && dx * m >= 0.3) vizsz.push([Math.min(p[i]!, p[i + 2]!), Math.max(p[i]!, p[i + 2]!), (p[i + 1]! + p[i + 3]!) / 2]);
         if (Math.hypot(dx, dy) * m < 1) continue;
         const sz = Math.atan2(dy, dx) * 180 / Math.PI;
         if (Math.abs(sz - hajlas) > 4) continue;
+        const [fx, fy, ax] = p[i + 1]! < p[i + 3]! ? [p[i]!, p[i + 1]!, p[i + 2]!] : [p[i + 2]!, p[i + 3]!, p[i]!];
+        (fx > ax ? felsoBal : felsoJobb).push([fx, fy]);
         if (tetoAlatta?.(p[i]!, p[i + 1]!, p[i + 2]!, p[i + 3]!)) continue;
         tart.push([Math.min(p[i]!, p[i + 2]!), Math.max(p[i]!, p[i + 2]!)]);
       }
     }
+    // kontyolt tető oldalnézetben: a két ferde él nem találkozik, felső végeiket (azonos magasságban, ≥ 0,5 m-re) vízszintes
+    // gerincvonal köti össze – trapéz. A ferde élek itt a kontylapok oldalról, nem oromzatok.
+    const kontyOldal = felsoBal.some(([xb, yb]) => felsoJobb.some(([xj, yj]) => {
+      if ((xj - xb) * m < 0.5 || Math.abs(yj - yb) * m > 0.15) return false;
+      const fed = vizsz.filter(([a, b, y]) => Math.abs(y - (yb + yj) / 2) * m <= 0.15 && b > xb && a < xj).map(([a, b]) => [Math.max(a, xb), Math.min(b, xj)] as [number, number]).sort((q, w) => q[0] - w[0]);
+      let o = 0, v = -Infinity; for (const [a, b] of fed) { if (b > v) { o += b - Math.max(a, v); v = b; } }
+      return o >= 0.8 * (xj - xb);
+    }));
+    if (kontyOldal) { ki.push({ az: r.az, orom: 0, kontyOldal: true }); continue; }
     tart.sort((a, b) => a[0] - b[0]);
     let ossz = 0, veg = -Infinity;
     for (const [a, b] of tart) { if (b > veg) { ossz += b - Math.max(a, veg); veg = b; } }

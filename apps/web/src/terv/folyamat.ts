@@ -445,7 +445,9 @@ export function tervFolyamat(S: FolyamatAllapot) {
         // területéhez illő helyiség tartozik hozzá, 3. ahol a kódszáma a megtalált helyiségekéhez közelebb esik
         const ea = elotagDb(a, h.kod), eb = elotagDb(b, h.kod);
         const fa = illik(a, h) <= 0.3, fb = illik(b, x) <= 0.3;
-        const masik = ea !== eb ? eb > ea : fa !== fb ? fb : tav(b, h.kod) < tav(a, h.kod);
+        // (az előtag csak akkor szintjelölő, ha az egyik lapon nincs ilyen előtagú rajzi helyiség – pl. lakásjel („L01-…”)
+        // mindkét szinten van)
+        const masik = ea !== eb && (ea === 0 || eb === 0) ? eb > ea : fa !== fb ? fb : tav(b, h.kod) < tav(a, h.kod);
         if (masik) { ki.push(j); break; }
       }
     });
@@ -583,10 +585,13 @@ export function tervFolyamat(S: FolyamatAllapot) {
   function oromok(eszak: number, M?: number, kontyNelkul = false): Record<number, number> {
     const ki: Record<number, number> = {};
     if (!S.me?.tetoter) return ki;
+    const konty = new Set<number>();
     for (const { l } of S.homlokzatLapok) {
-      let lista: { az: number; orom: number }[] = []; try { lista = oromSzelessegek(l.lap, S.me.tetoter.hajlas, M, { kontyNelkul }); } catch { lista = []; }
-      for (const x of lista) { const ir = (Math.round(norm(x.az + eszak) / 90) * 90) % 360; ki[ir] = Math.max(ki[ir] ?? 0, x.orom); }
+      let lista: { az: number; orom: number; kontyOldal?: boolean }[] = []; try { lista = oromSzelessegek(l.lap, S.me.tetoter.hajlas, M, { kontyNelkul }); } catch { lista = []; }
+      for (const x of lista) { const ir = (Math.round(norm(x.az + eszak) / 90) * 90) % 360; ki[ir] = Math.max(ki[ir] ?? 0, x.orom); if (x.kontyOldal) konty.add(ir); }
     }
+    // a kontyolt tetőt oldalról (trapéz) mutató homlokzatra merőleges homlokzatokon a háromszög a kontylap, nem oromzat
+    for (const ir of konty) for (const m of [(ir + 90) % 360, (ir + 270) % 360]) ki[m] = 0;
     return ki;
   }
   /**

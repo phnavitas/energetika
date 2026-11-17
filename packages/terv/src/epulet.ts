@@ -792,13 +792,48 @@ function pontBenne(pl: P2[], x: number, y: number, tol = 0): boolean {
   return false;
 }
 
+/**
+ * A körvonal kis (≤ 40 cm) lépcsőinek elhagyása a tetőhöz: két párhuzamos él közti rövid, rájuk merőleges élnél a
+ * belső él a külsőre tolódik (a tető az ereszkiállással a falsík kis ugrásait is lefedi – pl. 28 cm-es falkiugrás).
+ */
+function kisLepcsoNelkul(pol: P2[], max = 0.4): P2[] {
+  let p = pol.map(([x, y]) => [x, y] as P2);
+  const ter = (q: P2[]) => q.reduce((t, a, i) => { const b = q[(i + 1) % q.length]!; return t + a[0] * b[1] - b[0] * a[1]; }, 0) / 2;
+  for (let kor = 0; kor < 20; kor++) {
+    const n = p.length; if (n <= 4) break;
+    let valt = false;
+    for (let i = 0; i < n && !valt; i++) {
+      const a = p[(i + n - 1) % n]!, b = p[i]!, c = p[(i + 1) % n]!, d = p[(i + 2) % n]!;
+      const l = Math.hypot(c[0] - b[0], c[1] - b[1]); if (l > max || l < 1e-6) continue;
+      const u = [(b[0] - a[0]), (b[1] - a[1])], w = [(d[0] - c[0]), (d[1] - c[1])], e = [(c[0] - b[0]) / l, (c[1] - b[1]) / l];
+      const lu = Math.hypot(u[0]!, u[1]!), lw = Math.hypot(w[0]!, w[1]!); if (lu < 1e-6 || lw < 1e-6) continue;
+      // a két szomszéd él párhuzamos, azonos irányú, és merőleges a rövid élre (lépcső, nem „U” bemélyedés)
+      if (Math.abs(u[0]! * e[0]! + u[1]! * e[1]!) / lu > 0.02 || Math.abs(w[0]! * e[0]! + w[1]! * e[1]!) / lw > 0.02 || (u[0]! * w[0]! + u[1]! * w[1]!) / (lu * lw) < 0.98) continue;
+      // két változat: b → c vonalára (b' = b + e·l), vagy c → b vonalára; a nagyobb területű marad
+      const v1 = p.slice(); v1[i] = [b[0] + (c[0] - b[0]), b[1] + (c[1] - b[1])]; v1[(i + n - 1) % n] = [a[0] + (c[0] - b[0]), a[1] + (c[1] - b[1])];
+      const v2 = p.slice(); v2[(i + 1) % n] = [c[0] - (c[0] - b[0]), c[1] - (c[1] - b[1])]; v2[(i + 2) % n] = [d[0] - (c[0] - b[0]), d[1] - (c[1] - b[1])];
+      const s0 = Math.sign(ter(p)), j1 = ter(v1) * s0, j2 = ter(v2) * s0;
+      const uj = j1 >= j2 ? v1 : v2;
+      // egybeeső / egy egyenesbe eső csúcsok elhagyása
+      const t: P2[] = [];
+      for (const q of uj) { const z = t[t.length - 1]; if (!z || Math.hypot(q[0] - z[0], q[1] - z[1]) > 1e-6) t.push(q); }
+      if (t.length > 1 && Math.hypot(t[0]![0] - t[t.length - 1]![0], t[0]![1] - t[t.length - 1]![1]) < 1e-6) t.pop();
+      const k = t.filter((q, j) => { const r0 = t[(j + t.length - 1) % t.length]!, r1 = t[(j + 1) % t.length]!; return Math.abs((q[0] - r0[0]) * (r1[1] - q[1]) - (q[1] - r0[1]) * (r1[0] - q[0])) > 1e-6; });
+      if (k.length >= 4) { p = k; valt = true; }
+    }
+    if (!valt) break;
+  }
+  return p;
+}
+
 /** Magastető a legfelső szint körvonalán; oromfalas a téglalapvég, ha azon a homlokzaton a végszélesség legalább 60 %-a
  * oromzat. Az eresz a legfelső szint koszorújának tetején (ennek híján a szint tetején). */
 function magastetoEpit(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], t: { hajlas: number; orom?: Record<number, number>; kiallas?: number }, pillerek: Piller[] = []): Magasteto | null {
   const fel = [...szintek].sort((a, b) => b.z0 - a.z0)[0]; if (!fel || !(t.hajlas > 5)) return null;
   const fd = fodemek.find((f) => f.alatt === fel.id && f.id.startsWith('FT')) ?? fodemek.find((f) => f.folott === fel.id);
   const pol0 = fd?.poligonok.slice().sort((a, b) => b.length - a.length)[0]; if (!pol0 || pol0.length < 4) return null;
-  const { pol, fedett } = fedettTerasz(pol0, pillerek.filter((p) => p.szint === fel.id && p.hely === 'szabad'));
+  const { pol: pol1, fedett } = fedettTerasz(pol0, pillerek.filter((p) => p.szint === fel.id && p.hely === 'szabad'));
+  const pol = kisLepcsoNelkul(pol1);
   const kiallas = t.kiallas ?? 0.5, k = koszoruk.find((q) => q.szint === fel.id && q.fajta !== 'attika');
   const zEresz = sz(k ? k.zFelso : fel.z0 + fel.h, 2);
   const g = tetoHaromszogek({ korvonal: pol, hajlas: t.hajlas, kiallas, zEresz, orom: (ir, szel) => (t.orom?.[ir] ?? 0) >= 0.6 * szel });
