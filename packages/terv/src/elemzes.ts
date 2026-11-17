@@ -321,7 +321,9 @@ function zonaHelyisegek(zonak: NonNullable<Lap['zonak']>, pecsetek: TervHelyiseg
   return ki;
 }
 
-export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: SzurkeKep, tinta0?: TintaKep, leirasJegyzek?: TervHelyiseg[]): AlaprajzFeldolgozas {
+/** Kézzel felvett helyiség (a rajzon pecsét nélküli, zárt terület – pl. lépcső): a kattintás helye (lapkoordináta) és neve. */
+export interface PluszHelyiseg { x: number; y: number; nev: string }
+export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: SzurkeKep, tinta0?: TintaKep, leirasJegyzek?: TervHelyiseg[], plusz?: PluszHelyiseg[]): AlaprajzFeldolgozas {
   // rétegzett PDF: a bútor, környezet, burkolat, födém/tető, raszter rétegek vonalai nélkül; ilyenkor a lapkép
   // „tintája” (amely minden réteget – bútort, burkolatot – tartalmaz) nem kell: a falat a réteg adja
   const lap = retegSzures(lap0);
@@ -347,10 +349,13 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
       for (const z of zr) zonaPoliMap.set(z.h, z.poli);
     }
   }
+  // kézzel felvett helyiségek (a lista végén – a meglévők sorszáma nem változik): a területük a raszterből
+  const pluszH: TervHelyiseg[] = (plusz ?? []).map((q) => ({ nev: q.nev, A: 0, x: q.x, y: q.y, forras: 'pecset', kulter: false, kezi: true }));
+  if (pluszH.length) e.helyisegek = [...e.helyisegek, ...pluszH];
   let magHelyisegek = e.helyisegek.filter((h) => h.forras === 'pecset' && !h.kulter);
   let leiras: AlaprajzFeldolgozas['leiras'];
   // pecsét nélküli (egyszerűsített) alaprajz: a falakkal körbezárt terek a helyiségek
-  const auto = !magHelyisegek.length && !!e.mPerPt;
+  const auto = !magHelyisegek.filter((h) => !h.kezi).length && !!e.mPerPt;
   if (auto && szurke && !szurke.hatar) szurke = { ...szurke, hatar: arnyalatHatarok(szurke) };
   if (auto) {
     magHelyisegek = automatikusHelyisegek(lap, e.mPerPt!, reteges ? undefined : szurke, tinta);
@@ -584,6 +589,12 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
   if (bizOldal.length) e.figyelmeztetesek.push(`${bizOldal.length} nyílás (${meretL(bizOldal)}) túloldala nem azonosítható (sem helyiség, sem külső tér – pl. rajzi vonalakkal zárt sáv a fal előtt, pecsét nélküli tér): belső nyílásnak vettem. Ha homlokzati nyílás, jelöld külsőnek a Határolás lépésben.`);
   const becsTA = tetoablakok.filter((t) => t.becsult);
   if (becsTA.length) e.figyelmeztetesek.push(`${becsTA.length} tetősík ablak méretfelirat nélkül (a jelből / típusjeles keretből): a mérete a rajzolt keretből becsült – ellenőrizd a konszignáció szerint.`);
+  // falnyílás + nyílászáró feliratpár: a nyílás a nyílászáró (tok) méretével
+  const tokra = <T extends { szel: number; mag: number; pm: number | null; tok?: { szel: number; mag: number; pm: number | null } }>(n: T): T => { if (!n.tok) return n; const { tok, ...u } = n; return { ...u, szel: tok.szel, mag: tok.mag, pm: tok.pm } as T; };
+  for (let k = 0; k < nyilasok.length; k++) nyilasok[k] = tokra(nyilasok[k]!);
+  for (let k = 0; k < modellAjtok.length; k++) modellAjtok[k] = tokra(modellAjtok[k]!);
+  for (let k = 0; k < arva.length; k++) arva[k] = tokra(arva[k]!);
+  for (const h of pluszH) { const ri = magHelyisegek.indexOf(h); const A = ri >= 0 ? r.helyisegek[ri]?.A : undefined; if (A) h.A = Math.round(A * 100) / 100; }
   return { e, magHelyisegek, r, ...(r3d ? { r3d } : {}), nyilasok, ...(modellAjtok.length ? { modellAjtok } : {}), auto, arvaFeliratok: arva, ...(leiras ? { leiras } : {}), ...(tetoablakok.length ? { tetoablakok } : {}) };
 }
 

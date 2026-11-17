@@ -49,9 +49,11 @@ export interface Kijeloles { egysegek: Set<string>; kizartH: Set<number>; kat: R
   arvaBe?: Set<number>;
   /** Felirat nélküli (becsült méretű) tetősík ablakok kézzel megadott mérete (al.tetoablakok indexe → [szél, mag] m). */
   taMeret?: Record<number, [number, number]>;
-  /** Nyílászárók kézzel átírt mérete (al.nyilasok indexe, ≥ 20000: al.modellAjtok – a 3D modellben kijelölve, a listában
+  /** Nyílászárók kézzel átírt mérete (al.nyilasok indexe, 10000–19999: al.arvaFeliratok, ≥ 20000: al.modellAjtok – a 3D modellben kijelölve, a listában
    *  átírva): szélesség, magasság, mellvéd (m). */
-  nyMeret?: Record<number, { szel: number; mag: number; pm: number | null }> }
+  nyMeret?: Record<number, { szel: number; mag: number; pm: number | null }>;
+  /** Kézzel felvett helyiségek (pecsét nélküli zárt terület, pl. lépcső) – a lap újrafelismerésekor magként. */
+  plusz?: { x: number; y: number; nev: string }[] }
 
 const nyMeretGy = new WeakMap<AlaprajzFeldolgozas, { kulcs: string; a: AlaprajzFeldolgozas }>();
 /** Az elemzés a kézzel átírt nyílásméretekkel (változatlan elemzésnél ugyanaz az objektum – a gyorsítótárak miatt). */
@@ -63,7 +65,9 @@ export function nyilasMeretAlkalmaz(a: AlaprajzFeldolgozas, m?: Kijeloles['nyMer
     return { ...u, szel: x.szel, mag: x.mag, pm: x.pm, kezi: true } as TervNyilas;
   };
   const b: AlaprajzFeldolgozas = { ...a, nyilasok: a.nyilasok.map((n, i) => (m[i] ? ir(n, m[i]!) : n)),
-    ...(a.modellAjtok ? { modellAjtok: a.modellAjtok.map((n, j) => (m[20000 + j] ? ir(n, m[20000 + j]!) : n)) } : {}) };
+    ...(a.modellAjtok ? { modellAjtok: a.modellAjtok.map((n, j) => (m[20000 + j] ? ir(n, m[20000 + j]!) : n)) } : {}),
+    // (a falhoz nem rendelt, a hőburok mentén átvett feliratok is – a 3D-ben és a listában 10000 + index)
+    ...(a.arvaFeliratok ? { arvaFeliratok: a.arvaFeliratok.map((f, j) => (m[10000 + j] ? { ...f, szel: m[10000 + j]!.szel, mag: m[10000 + j]!.mag, pm: m[10000 + j]!.pm } : f)) } : {}) };
   const lap = elemzesLap.get(a); if (lap) elemzesLap.set(b, lap);
   nyMeretGy.set(a, { kulcs, a: b });
   return b;
@@ -76,7 +80,7 @@ export function futottRiK(al: AlaprajzFeldolgozas, k: Kijeloles): Set<number> {
   const ki = new Set<number>();
   hs.forEach((h, i) => {
     if (!egysegben(i) || h.kulter || k.kizartH.has(i) || k.kulterH?.has(i)) return;
-    if ((k.kat[i] ?? (k.mindFutott ? 'kondicionalt' : kategoriaJavaslat(h.nev) ?? 'kondicionalt')) === 'gyengen_kapcsolt') return;
+    if ((k.kat[i] ?? (k.mindFutott ? 'kondicionalt' : kategoriaJavaslat(h.nev, h.A) ?? 'kondicionalt')) === 'gyengen_kapcsolt') return;
     const x = al.magHelyisegek.indexOf(h); if (x >= 0) ki.add(x);
   });
   return ki;
@@ -290,7 +294,7 @@ export function lapKategoriak(a: AlaprajzFeldolgozas, k: Kijeloles) {
   const pecsetTerek: { kod?: string; nev: string; A: number; burkolat?: string; kategoria: TerKategoria }[] = [];
   hs.forEach((h, j) => {
     if (!egysegben(j) || k.kizartH.has(j)) return;
-    const kt: TerKategoria = h.kulter || k.kulterH?.has(j) ? 'kulter' : (k.kat[j] ?? (k.mindFutott ? 'kondicionalt' : kategoriaJavaslat(h.nev) ?? 'kondicionalt')) === 'gyengen_kapcsolt' ? 'futetlen' : 'futott';
+    const kt: TerKategoria = h.kulter || k.kulterH?.has(j) ? 'kulter' : (k.kat[j] ?? (k.mindFutott ? 'kondicionalt' : kategoriaJavaslat(h.nev, h.A) ?? 'kondicionalt')) === 'gyengen_kapcsolt' ? 'futetlen' : 'futott';
     const ri = a.magHelyisegek.indexOf(h);
     // (a rajzon helyiséghez nem köthető, jegyzékbeli tér: körvonal nélkül – a vízszintes elemekhez a szint átlaga szerint)
     if (ri < 0) { if (kt !== 'kulter' && (h.hasznosA ?? h.A)) pecsetTerek.push({ kod: h.kod, nev: h.nev, A: h.hasznosA ?? h.A, burkolat: h.burkolat, kategoria: kt }); return; }
@@ -307,7 +311,7 @@ export function burokNyilasokPt(al: AlaprajzFeldolgozas, k: Kijeloles, b: Poligo
   // mint az átvételnél: csak a kiválasztott (átvett), hőburkon belüli helyiségek nem kizárt nyílásai
   const hs = al.e.helyisegek;
   // (a fűtetlen, gyengén kapcsolt helyiség – pl. garázs – nyílászárói nem a hőburok részei)
-  const kat = (i: number): HelyisegKategoria => k.kat[i] ?? (k.mindFutott ? 'kondicionalt' : kategoriaJavaslat(hs[i]!.nev) ?? 'kondicionalt');
+  const kat = (i: number): HelyisegKategoria => k.kat[i] ?? (k.mindFutott ? 'kondicionalt' : kategoriaJavaslat(hs[i]!.nev, hs[i]!.A) ?? 'kondicionalt');
   const valasztott = (i: number) => i >= 0 && (!al.e.egysegek.length || !hs[i]!.egyseg || k.egysegek.has(hs[i]!.egyseg!)) && !hs[i]!.kulter && !k.kizartH.has(i) && !k.kulterH?.has(i) && kat(i) !== 'gyengen_kapcsolt';
   // felismert (nem szerkesztett) buroknál ugyanaz a nyílászáró-készlet, mint az átvételnél; a mért magassághoz az eredeti nyílás
   return burokNyilasok(al, k.burok ? k : { ...k, burok: undefined })
@@ -320,7 +324,7 @@ export function atvetelReszek(al: AlaprajzFeldolgozas, k: Kijeloles, mert?: Map<
   const hs = al.e.helyisegek;
   const egysegben = (i: number) => !al.e.egysegek.length || !hs[i]!.egyseg || k.egysegek.has(hs[i]!.egyseg!);
   const valasztott = hs.map((h, i) => egysegben(i) && !h.kulter && !k.kizartH.has(i) && !k.kulterH?.has(i));
-  const kategoria = (i: number): HelyisegKategoria => k.kat[i] ?? (k.mindFutott ? 'kondicionalt' : kategoriaJavaslat(hs[i]!.nev) ?? 'kondicionalt');
+  const kategoria = (i: number): HelyisegKategoria => k.kat[i] ?? (k.mindFutott ? 'kondicionalt' : kategoriaJavaslat(hs[i]!.nev, hs[i]!.A) ?? 'kondicionalt');
   const ri = (i: number) => al.magHelyisegek.indexOf(hs[i]!);
   const kulterRi = kulterRaszter(al, k);
   // (tetőtéri lapon nem: ott a térdfal / oromfal a metszet szerint, a helyiségek falszakaszaiból)
@@ -456,7 +460,7 @@ export function tervFolyamat(S: FolyamatAllapot) {
   const kjVeg = (i: number, a: AlaprajzFeldolgozas): Kijeloles => {
     const k = S.kijelolesek[i] ?? alapKijeloles(a); const rk = reszKizar(a), msz = masSzintKizar(i, a);
     const kat = { ...k.kat };
-    a.e.helyisegek.forEach((h, j) => { if (kat[j] === undefined && S.futottValasz[kerdesKulcs(h.nev)] && kategoriaJavaslat(h.nev) === 'gyengen_kapcsolt') kat[j] = 'kondicionalt'; });
+    a.e.helyisegek.forEach((h, j) => { if (kat[j] === undefined && S.futottValasz[kerdesKulcs(h.nev)] && kategoriaJavaslat(h.nev, h.A) === 'gyengen_kapcsolt') kat[j] = 'kondicionalt'; });
     // (más szint jegyzéktétele: rajzi helyiség nélkül kimarad, rajzi helyiséggel a helyiség marad, az adata nem)
     const mszKi = msz.filter((j) => a.magHelyisegek.indexOf(a.e.helyisegek[j]!) < 0), mszR = msz.filter((j) => !mszKi.includes(j));
     const kiz = [...rk, ...mszKi];

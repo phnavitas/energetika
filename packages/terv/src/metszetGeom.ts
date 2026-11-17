@@ -144,6 +144,10 @@ export function tetoHajlasRajzbol(lap: Lap, mPerPt = 0.0352778): number | null {
   const fok = new Map<number, { L: number; fel: number; le: number; sz: number }>();
   for (const u of lap.utvonalak) {
     if (u.reteg && /m[ée]retez|felirat|terep|k[öo]rnyezet|jel/i.test(u.reteg)) continue;
+    // sraffozás: sok (≥ 8) azonos irányú szakasz egy útvonalban – nem tetősík
+    { const db = new Map<number, number>(); let n = 0;
+      for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) { const dx = p[i + 2]! - p[i]!, dy = p[i + 3]! - p[i + 1]!; if (!dx && !dy) continue; n++; const k = Math.round((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 180; db.set(k, (db.get(k) ?? 0) + 1); }
+      if (n >= 8 && Math.max(...db.values()) >= 0.8 * n) continue; }
     for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) {
       const dx = p[i + 2]! - p[i]!, dy = p[i + 3]! - p[i + 1]!, l = Math.hypot(dx, dy) * mPerPt; if (l < 1) continue;
       const a = (Math.atan2(Math.abs(dy), Math.abs(dx)) * 180) / Math.PI; if (a < 15 || a > 60) continue;
@@ -151,7 +155,9 @@ export function tetoHajlasRajzbol(lap: Lap, mPerPt = 0.0352778): number | null {
       q.L += l; q.sz += a * l; if (dx * dy < 0) q.fel += l; else q.le += l; fok.set(k, q);
     }
   }
-  const leg = [...fok.entries()].sort((a, b) => b[1].L - a[1].L)[0];
+  // a tető mindkét irányban lejt: a legtöbb kétirányú (min(fel, le)) hosszú szakasz szöge
+  const ket = (k: number) => { const kk = [k - 1, k, k + 1].map((x) => fok.get(x)).filter((q): q is NonNullable<typeof q> => !!q); return Math.min(kk.reduce((t, q) => t + q.fel, 0), kk.reduce((t, q) => t + q.le, 0)); };
+  const leg = [...fok.entries()].sort((a, b) => ket(b[0]) - ket(a[0]) || b[1].L - a[1].L)[0];
   if (!leg) return null;
   const kor = [leg[0] - 1, leg[0], leg[0] + 1].map((k) => fok.get(k)).filter((q): q is NonNullable<typeof q> => !!q);
   const L = kor.reduce((t, q) => t + q.L, 0), fel = kor.reduce((t, q) => t + q.fel, 0), le = kor.reduce((t, q) => t + q.le, 0);

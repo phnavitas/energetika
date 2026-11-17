@@ -73,8 +73,32 @@ export function modellSikok(szintek: Burok3DSzint[], eszakSzog: number) {
     const tajol = (nx: number, ny: number) => { const b = (Math.atan2(nx, -ny) * 180) / Math.PI; const az = (((b - eszakSzog) % 360) + 360) % 360; return EGTAJ[Math.round(az / 45) % 8]!; };
     const zMin = Math.min(...szintek.map((s) => s.z0)), zMax = Math.max(...szintek.map((s) => s.z0 + s.h));
     const hasabok: { cx: number; cy: number; z0: number; bb: [number, number, number, number] }[] = [];
+    const bennPol = (q: [number, number][], x: number, y: number) => { let b = false; for (let i = 0, j = q.length - 1; i < q.length; j = i++) { const [xi, yi] = q[i]!, [xj, yj] = q[j]!; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) b = !b; } return b; };
     for (const s of szintek) {
       const z1 = s.z0 + s.h;
+      // a közvetlenül fölötte / alatta lévő szint körvonalai: a hőburok vízszintes lezárása ott, ahol nincs szomszédos szint
+      const zFel = Math.min(...szintek.filter((x) => x.z0 > s.z0 + 0.5).map((x) => x.z0)), zLe = Math.max(...szintek.filter((x) => x.z0 < s.z0 - 0.5).map((x) => x.z0));
+      const felett = szintek.filter((x) => Math.abs(x.z0 - zFel) < 0.01).flatMap((x) => x.poligonok);
+      const alatt = szintek.filter((x) => Math.abs(x.z0 - zLe) < 0.01).flatMap((x) => x.poligonok);
+      /** Vízszintes lezárás: a szomszédos szint körvonalán kívüli rész `kint` (tető / padló), a belüli `bent` (födém,
+       *  null: nincs) – részleges fedésnél 0,5 m-es cellákban. */
+      const zarolap = (p: [number, number][], z: number, szomsz: [number, number][][], kint: Tipus, bent: Tipus | null, grp: number, Ab: number) => {
+        const le = kint === 'padlo';
+        const lap = (pts2: [number, number][], tip: Tipus, A: number, cella = false) => sikok.push({ tipus: tip, pts: (le ? pts2.slice().reverse() : pts2).map(([x, y]) => [x, y, z] as P3), n: [0, 0, le ? -1 : 1], szint: s.nev, info: `vízszintes · ${tip === 'fodem' ? 'szintek közötti födém' : le ? 'alsó lezárás (a lenti szint körvonalán kívül)' : 'felső lezárás (a fenti szint körvonalán kívül)'}`, terulet: A, grp, ...(cella ? { cella: true } : {}) });
+        const xs = p.map((q) => q[0]), ys = p.map((q) => q[1]); const c = 0.5;
+        const cellak: { q: [number, number][]; A: number; fedett: boolean }[] = [];
+        for (let x = Math.floor(Math.min(...xs) / c) * c; x < Math.max(...xs); x += c) for (let y = Math.floor(Math.min(...ys) / c) * c; y < Math.max(...ys); y += c) {
+          let q = vag(p, (u) => u[0] - x); q = vag(q, (u) => x + c - u[0]); q = vag(q, (u) => u[1] - y); q = vag(q, (u) => y + c - u[1]);
+          if (q.length < 3) continue;
+          const A = Math.abs(q.reduce((t0, [x1, y1], i) => { const [x2, y2] = q[(i + 1) % q.length]!; return t0 + x1 * y2 - x2 * y1; }, 0) / 2);
+          const cx = q.reduce((t0, u) => t0 + u[0], 0) / q.length, cy = q.reduce((t0, u) => t0 + u[1], 0) / q.length;
+          cellak.push({ q, A, fedett: szomsz.some((sp) => bennPol(sp, cx, cy)) });
+        }
+        const nyitott = cellak.filter((x) => !x.fedett);
+        if (!nyitott.length) { if (bent) lap(p, bent, Ab); return; }
+        if (nyitott.length === cellak.length) { lap(p, kint, Ab); return; }
+        for (const x of cellak) { if (!x.fedett) lap(x.q, kint, x.A, true); else if (bent) lap(x.q, bent, x.A, true); }
+      };
       // a nyílászáró egyetlen élhez tartozik: a legközelebbihez, amelynek a hosszára esik (sarok közelében két él is
       // ≤ 2,5 m-re van – ott korábban mindkettőn megjelent)
       const nyEl = s.nyilasok.map((n) => {
@@ -165,9 +189,11 @@ export function modellSikok(szintek: Burok3DSzint[], eszakSzog: number) {
             const ferde = nn[2] < 0.995;
             sikok.push({ tipus: 'teto', pts: pts3, n: nn, szint: s.nev, info: ferde ? `ferde tető · ${Math.round(s.teto.hajlas)}° hajlás (térdfal ${sz(s.teto.terdfal)} m)` : `padlásfödém · ${sz(s.teto.belmag)} m magasan`, terulet: ferde ? Av / Math.max(0.2, nn[2]) : Av, grp, cella: true });
           }
-        } else
-        sikok.push({ tipus: felso ? 'teto' : 'fodem', pts: p.map(([x, y]) => [x, y, z1] as P3), n: [0, 0, 1], szint: s.nev, info: `vízszintes · ${sz(Ab, 1)} m² (a körvonalon belül)`, terulet: Ab, grp });
+        } else if (felso) sikok.push({ tipus: 'teto', pts: p.map(([x, y]) => [x, y, z1] as P3), n: [0, 0, 1], szint: s.nev, info: `vízszintes · ${sz(Ab, 1)} m² (a körvonalon belül)`, terulet: Ab, grp });
+        else zarolap(p, z1, felett, 'teto', 'fodem', grp, Ab);
+        // alul: a legalsó szinten padló; feljebb a lenti szint körvonalán kívül eső rész (konzol, árkád) is padló
         if (also) sikok.push({ tipus: 'padlo', pts: p.map(([x, y]) => [x, y, s.z0] as P3).reverse(), n: [0, 0, -1], szint: s.nev, info: `vízszintes · ${sz(Ab, 1)} m² (a körvonalon belül)`, terulet: Ab, grp });
+        else if (alatt.length) zarolap(p, s.z0, alatt, 'padlo', null, grp, Ab);
       });
     }
     const pts = sikok.flatMap((x) => x.pts);
