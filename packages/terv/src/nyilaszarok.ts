@@ -160,6 +160,19 @@ function meretlancE(a: Szoveg, b: Szoveg, utvonalak: { muvelet: string; pontok: 
 
 export function nyilasFeliratok(sz0: Szoveg[], utvonalak?: { muvelet: string; pontok: number[][]; bbox: number[] }[]): NyilasFelirat[] {
   const sz = sz0.map(tokMeret);
+  // méretláncbeli szám: ugyanabban a sorban (azonos irány és betűméret, a sorra merőlegesen ≤ 0,35 betűméret), szorosan
+  // mellette (a két szöveg közti hézag ≤ 2,5 betűméret) másik szám áll – a láncszakaszok számai; a nyílásfelirat sora magában áll
+  const SOR_SZAM = /^[+-]?\d{1,4}(?:[,.]\d{1,3})?(?:\s+\d{1,4}(?:[,.]\d{1,3})?)*$/;
+  // (2: mindkét oldalán – a lánc közbenső szakasza; 1: egyik oldalán; 0: magában)
+  const sorbanSzam = (t: Szoveg) => { const g = geom(t); const old = new Set<number>(); for (const u of sz) {
+    if (u === t || !SOR_SZAM.test(u.s.trim()) || Math.abs(u.szog - t.szog) > 2 || Math.abs(u.meret - t.meret) > t.meret * 0.15) continue;
+    const gu = geom(u), dx = gu.cx - g.cx, dy = gu.cy - g.cy;
+    if (Math.abs(dx * g.fel[0] + dy * g.fel[1]) > t.meret * 0.35) continue;
+    const menti = dx * g.dir[0] + dy * g.dir[1];
+    if (Math.abs(menti) - (t.szel + u.szel) / 2 <= t.meret * 2.5) old.add(Math.sign(menti)); }
+    return old.has(1) && old.has(-1) ? 2 : old.size ? 1 : 0; };
+  // a pár láncbeli: az egyik szám mindkét oldalán, a másik legalább egyik oldalán láncszám áll
+  const lancPar = (a: Szoveg, b: Szoveg) => { const x = sorbanSzam(a), y = sorbanSzam(b); return x + y >= 3; };
   const szamok = sz.filter((t) => SZAM.test(t.s.trim()) && szamCm(t.s) >= 30 && szamCm(t.s) <= 600);
   const pmek = sz.map((t) => ({ t, m: PM.exec(szovegJavit(t.s)) })).filter((x) => x.m);
   // „pm” és a szám külön szövegelemben
@@ -185,6 +198,8 @@ export function nyilasFeliratok(sz0: Szoveg[], utvonalak?: { muvelet: string; po
       if (!legjobb || Math.abs(perp) < Math.abs(legjobb.perp)) legjobb = { b, perp };
     }
     if (!legjobb) continue;
+    // két párhuzamos méretlánc egymás alatti számai: mindkettő mellett ugyanabban a sorban további láncszám áll
+    if (lancPar(a, legjobb.b)) continue;
     // méretlánc: a két szám között a szöveg irányával párhuzamos, a számoknál jóval hosszabb (≥ 4 szövegszélesség)
     // vonal fut, amely a számok mindkét oldalán túlnyúlik – a nyílásfelirat törtvonala rövid (≈ a szám szélessége)
     // (kikapcsolva: a nyílásfelirat törtvonala sok tervben a falsíkon futó hosszú vonal – a valódi feliratokat is kiszűrte)
@@ -304,6 +319,7 @@ export function nyilasFeliratok(sz0: Szoveg[], utvonalak?: { muvelet: string; po
     if (h < 1.8 || h > 6 || (h > 3.2 && !(w >= 4 && kapuSzoveg()))) continue;
     // két párhuzamos méretlánc egymás alatti számai („2,72” / „2,74⁵”): a számpár között méretvonal fut – nem kapu
     if (utvonalak && !kapuSzoveg() && ketMeretvonalE(a, legjobb.b, utvonalak)) continue;
+    if (!kapuSzoveg() && lancPar(a, legjobb.b)) continue;
     const gb = geom(legjobb.b);
     mHasznalt.add(a); mHasznalt.add(legjobb.b);
     ki.push({ szel: w, mag: h, pm: null, x: (ga.cx + gb.cx) / 2, y: (ga.cy + gb.cy) / 2, fal: Math.abs(ga.fel[0]) >= Math.abs(ga.fel[1]) ? 'v' : 'f', kapuJelolt: true });
@@ -381,7 +397,8 @@ export function nyilasFeliratok(sz0: Szoveg[], utvonalak?: { muvelet: string; po
     }
     ki.push({ szel: w / 100, mag: h / 100, pm, x: g.cx, y: g.cy, fal: Math.abs(g.dir[0]) >= Math.abs(g.dir[1]) ? 'v' : 'f' });
   }
-  return ki;
+  // 40 × 40 cm alatti, mellvéd nélküli „felirat” a méretláncok egymás alatti kis számai (pl. „30 / 30”), nem nyílás
+  return ki.filter((f) => !(f.szel < 0.4 && f.mag < 0.4 && f.pm === null));
 }
 
 /**
