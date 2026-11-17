@@ -7,6 +7,9 @@ kiíráshoz (ELBA), ahogy az energetikánál a WinWatt.
 
 - Az IFC-olvasó az ELBA-é: `vendor/elba-bim-olvaso.cjs` (forrás: phnavitas/elba `app/elba-bim-olvaso.js`).
   Egy olvasó van – ha javítani kell, az ELBA-ban javítjuk, és ide átmásoljuk.
+  Jelenlegi másolat: az ELBA `teszt` ága, 341436f (md5 ffa435bd…) – a main csak élesítéskor frissül, átvétel a `teszt`-ről.
+  A tartószerkezet-jelöltek befoglaló dobozát (`e.doboz`) csak `ElbaBimGeometria` mellett tölti; az összevetés ezt nem
+  használja, a két mintán (Naszály, Nyárfa) az eredmény változatlan.
 - Parancssor: `npx tsx tools/ifc/osszevet.mts modell_epulet.json projekt.ifc`
 - Az IFC- és PDF-mintafájlok nem kerülnek a repóba.
 

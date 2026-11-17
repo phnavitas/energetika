@@ -1261,6 +1261,27 @@ function olvas(szoveg,opciok){
           e.zAlja=Math.round((b.z0-nulla)*1000)/1000; e.zTeteje=Math.round((b.z1-nulla)*1000)/1000; } }
     } }catch(err){} }
 
+  /* --- TARTÓSZERKEZET-JELÖLTEK ALAKJA (2026-11-16) ----------------------------
+     Az energetika szál összevetése (PDF-modell ↔ IFC, docs/ELBA-atadas.md): a
+     proxy-exportban (iTWO, Nyárfa) a „VASBETON pillér 300" típusnevet a koszorú és
+     az áthidaló is viseli, a „VASBETON pillér 150"-et a födémlemez — a név nem dönt,
+     az ALAK igen. A javaslat (ElbaBimEpito, tartoAlak) ehhez a befoglaló dobozt kéri:
+     pillér = függőleges (≥ 1,5 m, vízszintesen ≤ 0,8 m), gerenda/koszorú = vízszintes
+     (0,1–0,9 m magas), lemez. Csak a jelöltekre (pillér/oszlop/gerenda/koszorú nevű
+     vagy beton anyagú proxy, oszlop, gerenda), legfeljebb 2000 elemre. */
+  try{ const G=gyoker.ElbaBimGeometria;
+    if(G&&G.dobozok){
+      const TARTO_JEL=/pill[ée]r|oszlop|gerenda|koszor[úu]|\bvb\b|vasbeton|beton/i;
+      const jel=elemek.filter(e=>!e.doboz&&!e.tarolo&&(/^IFC(COLUMN|BEAM|MEMBER)$/.test(e.ifc)
+        ||(e.ifc==='IFCBUILDINGELEMENTPROXY'&&TARTO_JEL.test([e.tipusNev,e.anyag,e.nev].filter(Boolean).join(' ')))));
+      if(jel.length&&jel.length<=2000){
+        const d=G.dobozok(szoveg,{R,hosszSzorzo:H,gidk:jel.map(e=>e.gid),vilag:true})||{};
+        const k3=v=>Math.round(v*1000)/1000;
+        for(const e of jel){ const b=d[e.gid]; if(!b||!isFinite(b.x0)) continue;
+          e.doboz={x0:k3(b.x0),x1:k3(b.x1),y0:k3(b.y0),y1:k3(b.y1),z0:k3(b.z0),z1:k3(b.z1)}; }
+      }
+    } }catch(err){}
+
   /* --- CSARNOK: BEFOGLALÓ DOBOZOK (2026-10-27) -------------------------------
      A csarnok-építés (ElbaBimEpito) a csarnok alaprajzát a falak, nyílászárók és a
      tető dobozából veszi, és ebből dönti el, melyik födém a csarnoké — a telepi
