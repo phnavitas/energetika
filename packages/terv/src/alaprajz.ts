@@ -577,6 +577,21 @@ export const SZINT_NEV: Record<string, string> = { P: 'Pince', F: 'Földszint', 
 export const szintNev = (k: string) => SZINT_NEV[k] ?? `${k}. emelet`;
 const SORSZAM: Record<string, number> = { első: 1, második: 2, harmadik: 3, negyedik: 4, ötödik: 5, hatodik: 6, hetedik: 7, nyolcadik: 8, kilencedik: 9, tizedik: 10 };
 const ROMAI: Record<string, number> = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10 };
+/**
+ * A helyiségpecsétek belmagassága („bm: 2,90 m”, „b.m.: 2,75”, „belmag.: 2,6 m”) az alaprajzlapokon: a leggyakoribb érték,
+ * ha legalább 3 pecsétben szerepel, és a pecsétek legalább felében ez áll (metszet nélküli tervhez).
+ */
+export function pecsetBelmagassag(lapok: readonly { lap: { szovegek: readonly { s: string }[] } }[]): number | undefined {
+  const db = new Map<number, number>(); let n = 0;
+  for (const l of lapok) for (const t of l.lap.szovegek) {
+    const m = /^(?:bm|b\.\s?m\.|belm(?:ag(?:asság)?)?\.?)\s*[:=]?\s*(\d[,.]\d{1,2})\s*m?$/i.exec(szovegJavit(t.s).trim());
+    if (!m) continue; const v = Number(m[1]!.replace(',', '.')); if (!(v >= 2 && v <= 6)) continue;
+    db.set(v, (db.get(v) ?? 0) + 1); n++;
+  }
+  const leg = [...db.entries()].sort((a, b) => b[1] - a[1])[0];
+  return leg && leg[1] >= 3 && leg[1] >= n / 2 ? leg[0] : undefined;
+}
+
 export function szintekCimbol(cim: string): string[] {
   // betűvel / római számmal írt sorszám („Első emeleti”, „II. emelet”) → „1.”
   const c = cim.toLowerCase().replace(/\bm\s*=?\s*1\s*:\s*\d+/g, ' ')

@@ -11,7 +11,7 @@ import { eltolas, fedettArany } from '@terv/fedes';
 import { burokAuto, burokFalak, burokMeres, burokTomeg, csatlakozasok, elKornyezet, kulsoSikra, kulsoSraff, nyilasEl, bennE, type Poligon } from '@terv/burok';
 import type { TervNyilas } from '@terv/nyilaszarok';
 import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, eszakJavitas, eszakJavitasMent, type TervLap, type AlaprajzFeldolgozas } from '@terv/elemzes';
-import { egtaj, jegyzekenKivul, jegyzekSorok, szintekCimbol, szintNev } from '@terv/alaprajz';
+import { egtaj, jegyzekenKivul, pecsetBelmagassag, jegyzekSorok, szintekCimbol, szintNev } from '@terv/alaprajz';
 import { tervAtvesz, type AtvettNyilas, type AtvettHelyiseg } from '../terv/atvetel';
 import type { Raszter, FalSzakasz } from '@terv/raszter';
 import { MintaLakasok } from './MintaLakasok';
@@ -315,6 +315,12 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     setRrKi(Object.fromEntries(me.blokkok.map((b) => [b.rr.kod, !!b.becsles.szerep && !b.becsles.kihagy])));
     setBm(me.szintek.belmagassag[0]); setSzintszam(me.szintek.szintszam);
   }, [me]);
+  // metszet (belmagasság) nélkül a helyiségpecsétek belmagassága („bm: 2,90 m”), ha egységes – kézi érték felülírja
+  useEffect(() => {
+    if (me?.szintek.belmagassag.length) return;
+    const v = pecsetBelmagassag(lapok.filter((l) => l.szerep === 'alaprajz'));
+    if (v !== undefined) setBm((b) => b ?? v);
+  }, [lapok, me]);
 
   const helyisegek = al?.e.helyisegek ?? [];
   const raszterIdx = (i: number) => (al ? al.magHelyisegek.indexOf(helyisegek[i]!) : -1);

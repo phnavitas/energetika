@@ -25,7 +25,8 @@ const { modell, lapok, figyelmeztetes } = await pdfbolEpulet(fajlok, {  // File[
 
 Felhasználói döntések nélkül fut, a Tervből lépés alapértelmezéseivel: a helyiségek besorolása a nevükből, a szintek a
 lapcímből, az északi irány a rajzról / a homlokzatokból (északjel nélküli alaprajznál a helyszínrajz északjele, ha a
-homlokzatok égtáj-elnevezésétől legfeljebb 45°-kal tér el), a belmagasság és a metszet az első metszetlapról. Felülírható
+homlokzatok égtáj-elnevezésétől legfeljebb 45°-kal tér el), a belmagasság és a metszet az első metszetlapról (metszet
+nélkül a belmagasság a helyiségpecsétek egységes „bm” értékéből, pl. „bm: 2,90 m”). Felülírható
 (`allapot`): `lapSzerep` (lapindex → `'alaprajz' | 'metszet' | 'homlokzat' | 'leiras' | 'egyeb'`; a lapindex a visszaadott
 `lapok` sorrendje – az alaprajznak jelölt lap képét a csomag újra előállítja), `szintKi` (lapindex → szintkódok, pl. `{0: ['F'], 1: ['T']}`), `bm` (belmagasság), `terdfalKezi`,
 `kijelolesek`, `eszakKozos` stb. (`FolyamatAllapot`, `apps/web/src/terv/folyamat.ts`).

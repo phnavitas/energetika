@@ -10,7 +10,7 @@ import { eltolas, fedettArany } from '@terv/fedes';
 import { burokAuto, burokFalak, burokMeres, burokTomeg, csatlakozasok, elKornyezet, kulsoSikra, kulsoSraff, nyilasEl, bennE, type Poligon } from '@terv/burok';
 import type { TervNyilas } from '@terv/nyilaszarok';
 import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, eszakJavitas, eszakJavitasMent, type TervLap, type AlaprajzFeldolgozas } from '@terv/elemzes';
-import { egtaj, eszakjelKeres, jegyzekenKivul, jegyzekSorok, szintekCimbol, szintNev } from '@terv/alaprajz';
+import { egtaj, eszakjelKeres, jegyzekenKivul, pecsetBelmagassag, jegyzekSorok, szintekCimbol, szintNev } from '@terv/alaprajz';
 import { tervAtvesz, type AtvettNyilas, type AtvettHelyiseg } from './atvetel';
 import type { Raszter, FalSzakasz } from '@terv/raszter';
 import { homlokzatRajzok, mertMagassagok, eszakHomlokzatbol, tetoAblakokHomlokzatrol, oromSzelessegek, type HomlokzatRajz, type MertMagassag } from '@terv/homlokzatIllesztes';
@@ -400,9 +400,10 @@ export const kerdesKulcs = (nev: string) => nev.toLowerCase().replace(/\s*\([^)]
 /** A számított épületrész helyiségkód-előtagjai („A, B1” → [„a”, „b1”]). */
 export const reszElotagokKodbol = (reszKod: string) => reszKod.split(/[,;\s]+/).map((x) => x.trim().toLowerCase().replace(/[^a-z0-9]/g, '')).filter(Boolean);
 
-/** Felhasználói döntések nélküli (alapértelmezett) állapot a lapokból – pl. az ELBA-hoz. A belmagasság a metszetből (mint a Tervből lépésben). */
+/** Felhasználói döntések nélküli (alapértelmezett) állapot a lapokból – pl. az ELBA-hoz. A belmagasság a metszetből, ennek híján a
+ * helyiségpecsétekből (mint a Tervből lépésben). */
 export function alapAllapot(lapok: TervLap[], elemzesek: Record<number, AlaprajzFeldolgozas | string>, me: MetszetAdat | null, tovabbi: Partial<FolyamatAllapot> = {}): FolyamatAllapot {
-  return { lapok, elemzesek, kijelolesek: {}, szintKi: {}, kihagyLap: {}, eszakKulon: {}, eszakKozos: null, futottValasz: {}, mindFutott: false, reszKod: '', bm: me?.szintek.belmagassag[0], me,
+  return { lapok, elemzesek, kijelolesek: {}, szintKi: {}, kihagyLap: {}, eszakKulon: {}, eszakKozos: null, futottValasz: {}, mindFutott: false, reszKod: '', bm: me?.szintek.belmagassag[0] ?? pecsetBelmagassag(lapok.filter((l) => l.szerep === 'alaprajz')), me,
     terdfalKezi: undefined, homlokzatLapok: lapok.map((l, i) => ({ l, i })).filter(({ l }) => l.szerep === 'homlokzat'), ...tovabbi };
 }
 
