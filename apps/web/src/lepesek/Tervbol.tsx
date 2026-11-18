@@ -19,6 +19,7 @@ import { Burok3D, modellOsszesites, tetoGeo, type Burok3DSzint } from './Burok3D
 import { homlokzatRajzok, mertMagassagok, eszakHomlokzatbol, tetoAblakokHomlokzatrol, oromSzelessegek, type HomlokzatRajz, type MertMagassag } from '@terv/homlokzatIllesztes';
 import { nezetOszlopok } from '@terv/homlokzatProfil';
 import { Epulet3D } from './Epulet3D';
+import { zartsagEllenoriz } from '@terv/zartsag';
 import { metszetElemek, ferdeTetoHossz, ereszKiallasok, ereszKiallas } from '@terv/metszetGeom';
 import { epuletModell, type EpuletModell, type LapBemenet, type Szint as EpSzint, type TerKategoria } from '@terv/epulet';
 import { falMagassagModell, type HomlokzatNezetAdat } from '@terv/homlokzatModell';
@@ -1303,7 +1304,15 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                 if (modell3d === 'teljes') {
                   const md = epMd;
                   if (!md || !md.falak.length) return <div class="kartya halkabb" style="padding:60px 16px 16px">{valto}A 3D modellhez a lap léptéke és a felismert falak kellenek (add meg a méretarányt).</div>;
-                  return <div class="kartya" style="padding:56px 0 0;overflow:hidden;position:relative">{valto}<Epulet3D modell={md} kivNy={kivNy} onNyilas={(f) => { setKivNy(f); if (f && f.lap !== aIdx && f.lap >= 0) setAIdx(f.lap); }} magassag={Math.round(Math.min(760, Math.max(420, (typeof window !== 'undefined' ? window.innerHeight : 800) * 0.7)))} />{kivNyAdat && <NyilasMeretSzerk adat={kivNyAdat} allit={(x) => nyMeretAllit(kivNy!.lap, kivNy!.ny, x)} bezar={() => setKivNy(null)} />}</div>;
+                  const hibak = (() => { try { return zartsagEllenoriz(md); } catch { return []; } })();
+                  return <div class="kartya" style="padding:56px 0 0;overflow:hidden;position:relative">{valto}<Epulet3D modell={md} hibak={hibak} kivNy={kivNy} onNyilas={(f) => { setKivNy(f); if (f && f.lap !== aIdx && f.lap >= 0) setAIdx(f.lap); }} magassag={Math.round(Math.min(760, Math.max(420, (typeof window !== 'undefined' ? window.innerHeight : 800) * 0.7)))} />{kivNyAdat && <NyilasMeretSzerk adat={kivNyAdat} allit={(x) => nyMeretAllit(kivNy!.lap, kivNy!.ny, x)} bezar={() => setKivNy(null)} />}
+                    {hibak.length > 0 && (
+                      <div role="status" style="margin:0;padding:10px 14px;border-top:1px solid #FCA5A5;background:#FEF2F2">
+                        <strong style="color:#B91C1C">A modell nem zárt – a beolvasás itt hiányos ({hibak.length} hely, a 3D-ben pirossal jelölve):</strong>
+                        <ul style="margin:6px 0 0 18px;padding:0;font-size:13px">{hibak.slice(0, 12).map((h) => <li>{h.leiras} <span class="halkabb">({h.szint ? `${szintNev(h.szint)}, ` : ''}x {String(Math.round(h.hely[0] * 10) / 10).replace('.', ',')} m, y {String(Math.round(h.hely[1] * 10) / 10).replace('.', ',')} m)</span></li>)}</ul>
+                        {hibak.length > 12 && <div class="halkabb" style="font-size:13px">… és még {hibak.length - 12} hely.</div>}
+                      </div>
+                    )}</div>;
                 }
                 const szint3 = modellSzintek(meretMod);
                 if (!szint3) return <div class="kartya halkabb" style="padding:60px 16px 16px">A 3D nézethez a lap léptéke és a felismert falak kellenek (add meg a méretarányt).</div>;

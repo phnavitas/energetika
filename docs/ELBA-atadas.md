@@ -21,6 +21,12 @@ const { modell, lapok, figyelmeztetes } = await pdfbolEpulet(fajlok, {  // File[
 - `lapok`: a beolvasott oldalak szerepe (`alaprajz | metszet | homlokzat | leiras | egyeb`), címe, hibája – ezt érdemes
   megmutatni a felhasználónak (rossz szerep = hiányos modell).
 - `figyelmeztetes`: nem végzetes gondok (nincs metszet → nincs födém-rétegrend, tetőhajlás, koszorú).
+- `zartsag`: `ZartsagHiba[]` – a modell zártságának ellenőrzése (`packages/terv/src/zartsag.ts`). Ha nem üres, a
+  beolvasás hiányos: a felhasználónak meg kell mutatni, hol. Elemei: `fajta` (`fal` = a födém/padló körvonalán
+  ≥ 0,3 m-es falhiány, `a→b` a rés két vége; `orom` = külső fal teteje és a tető alsó síkja között rés; `teto` = a
+  tetőfelület nyitott éle nem az ereszen; `fedes` = a legfelső szint ≥ 1 m²-es része tető nélkül), `szint`, `hely`
+  (m), `meret` (m vagy m²), `leiras` (magyar szöveg, közvetlenül kiírható). Javaslat: piros jelölés a 3D-ben a
+  `hely` / `a→b` pontokon + lista; a `figyelmeztetes` is tartalmaz egy összefoglaló sort.
 - `modell`: `EpuletModell` (típus: `packages/terv/src/epulet.ts`), ld. lent. Egy 3 lapos családi ház ≈ 15–20 s.
 
 Felhasználói döntések nélkül fut, a Tervből lépés alapértelmezéseivel: a helyiségek besorolása a nevükből, a szintek a
@@ -52,6 +58,18 @@ alkalmazás teljes modelljével.
 A tető körvonala a legfelső szint körvonala, kiegészítve a fedett teraszokkal (a körvonal egy élén kívül, vele párhuzamos
 sorban álló, legalább két szabad pillérig). Oromfal csak ott, ahol a homlokzaton a tető hajlásával futó háromszög alatt
 falfelület van – a kontylap (alatta héjazat-sraffozás / tetőréteg) nem oromfal. A helyszínrajz nem alaprajz (`egyeb`).
+
+A tető formáját (konty / oromfal végenként) a helyszínrajz vagy tetőfelülnézet tetővonalai pontosítják
+(`packages/terv/src/tetoFelulnezet.ts`: a 45°-os élpárok + gerinc → konty, élek nélküli gerincvég → orom); a lapon
+a méretek szerint egyező épülettömb számít, a szomszéd épületek nem.
+
+A külső falak, amelyeknél a tető alsó síkja a fal teteje fölött van (oromfal, magastetős szint), `profil`-t kapnak
+(a tető vonalát követő felső él, `jelleg: 'oromfal'`), így a fal és a tető között nincs rés.
+
+Külső fal rétegei: ha az alaprajzi falvastagság a metszet / leírás falrétegrendjéből hiányzik (pl. a rajzon csak a
+falazat + 20 cm, a rétegrend 30 cm hőszigetelést ír), a fal a rétegrend teljes vastagságát kapja, a tengely kifelé
+tolódik (a belső síkja marad), a sarkok összeérnek; a rétegek a rétegrendből jönnek (`retegForras` = a rétegrend
+kódja). Így az épület külső mérete is a rétegrend szerinti.
 
 A tető `mod`-ja: `derekszogu` (pontos), `konvex`, `vaz` (egyenes váz, ferde alaprajz), `kozelito` (csak elfajuló
 esetben – ezt jelezni kell). Oromfalat csak a derékszögű ág kezel.

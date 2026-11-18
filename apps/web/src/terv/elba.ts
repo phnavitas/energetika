@@ -7,18 +7,23 @@
  * Böngészőben fut (a lapok képe vásznon készül); a pdf.js a csomagban van, munkaszál nélkül.
  */
 import { pdfLapok, lapTinta, alaprajzFeldolgoz, metszetFeldolgoz, type TervLap, type AlaprajzFeldolgozas } from '@terv/elemzes';
-import { jegyzekSorok } from '@terv/alaprajz';
+import { jegyzekSorok, szintekCimbol } from '@terv/alaprajz';
+import { zartsagEllenoriz, type ZartsagHiba } from '@terv/zartsag';
 import type { EpuletModell } from '@terv/epulet';
 import { alapAllapot, elemzesLap, tervFolyamat, type FolyamatAllapot } from './folyamat';
 
 export type { EpuletModell } from '@terv/epulet';
+export type { ZartsagHiba } from '@terv/zartsag';
 
 export interface PdfbolEpuletEredmeny {
   modell: EpuletModell | null;
   /** A beolvasott lapok szerepe (alaprajz / metszet / homlokzat / leírás / egyéb) – ellenőrzéshez. */
   lapok: { fajl: string; oldal: number; szerep: TervLap['szerep']; cim: string; hiba?: string }[];
-  /** Nem végzetes gondok (pl. olvashatatlan alaprajz, hiányzó metszet). */
+  /** Nem végzetes gondok (pl. olvashatatlan alaprajz, hiányzó metszet, nem zárt modell). */
   figyelmeztetes: string[];
+  /** A modell zártság-ellenőrzése: ahol a beolvasás hiányos (hiányzó fal, fal–tető rés, tetőhézag, fedetlen rész) –
+   *  hely (m, a modell koordinátáiban) és leírás, a 3D jelöléséhez. */
+  zartsag: ZartsagHiba[];
 }
 
 /**
@@ -57,15 +62,21 @@ export async function pdfbolEpulet(fajlok: (File | { name: string; type?: string
   if (!mLap) figyelmeztetes.push('Nincs metszet: a födémek rétegrendje, a tető hajlása és a koszorú nem olvasható ki.');
   const me0 = mLap ? metszetFeldolgoz(mLap.lap) : null;
   const terdfal = opciok.allapot?.terdfalKezi;
-  const me = me0?.tetoter ? { ...me0, tetoter: { ...me0.tetoter, terdfal: me0.tetoter.terdfal ?? terdfal ?? null } } : me0;
+  // tetőtéri alaprajz (a lap címe „Tetőtér…”) és szögfelirat nélküli, de rajzolt magastető: tetőtér a rajzból mért hajlással
+  const me1 = me0 && !me0.tetoter && me0.tetoHajlas && alaprajzok.some(({ l }) => szintekCimbol(l.cim ?? '').includes('T'))
+    ? { ...me0, tetoter: { hajlas: me0.tetoHajlas, terdfal: null, terdfalTipp: null, belmagassag: null, padlo: me0.szintek.padlo.at(-1) ?? null } } : me0;
+  const me = me1?.tetoter ? { ...me1, tetoter: { ...me1.tetoter, terdfal: me1.tetoter.terdfal ?? terdfal ?? null } } : me1;
   opciok.halad?.(0.97, 'épületmodell');
   let modell: EpuletModell | null = null;
   const { lapSzerep: _ls, ...allapot } = opciok.allapot ?? {}; void _ls;
   try { modell = tervFolyamat(alapAllapot(lapok, elemzesek, me, allapot)).epuletModell(); }
   catch (e) { figyelmeztetes.push(`Az épületmodell nem állt össze: ${(e as Error).message}`); }
+  let zartsag: ZartsagHiba[] = [];
+  if (modell) { try { zartsag = zartsagEllenoriz(modell); } catch { zartsag = []; } }
+  if (zartsag.length) figyelmeztetes.push(`A modell nem zárt – a beolvasás ${zartsag.length} helyen hiányos: ${zartsag.slice(0, 5).map((h) => h.leiras).join('; ')}${zartsag.length > 5 ? ' …' : ''}`);
   opciok.halad?.(1, 'kész');
   return {
-    modell, figyelmeztetes,
+    modell, figyelmeztetes, zartsag,
     lapok: lapok.map((l, i) => ({ fajl: l.fajl, oldal: l.oldal, szerep: l.szerep, cim: l.cim, ...(typeof elemzesek[i] === 'string' ? { hiba: elemzesek[i] as string } : {}) })),
   };
 }

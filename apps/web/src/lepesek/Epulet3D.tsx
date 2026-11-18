@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { falFelulet, type EpuletModell, type Fal, type BurokSzerep } from '@terv/epulet';
 import { tetoGeo } from '@terv/teto';
+import type { ZartsagHiba } from '@terv/zartsag';
 
 const SZIN = {
   fal: 0xd8d2c4, falKulso: 0xc9bfa8, burok: 0xe8833a, futetlen: 0x5b9bd5, szomszed: 0x9ca3af, talaj: 0x8b6b4a,
@@ -32,7 +33,9 @@ function falDarabok(f: Fal, ny: { t: number; szel: number; mag: number; pm: numb
 }
 
 export type NyilasForras = { lap: number; ny: number };
-export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas }: { modell: EpuletModell; magassag?: number;
+export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, hibak }: { modell: EpuletModell; magassag?: number;
+  /** A zártság-ellenőrzés hibái: piros jelölés a modellben (hiányzó fal, rés, tetőhézag, fedetlen rész). */
+  hibak?: ZartsagHiba[];
   /** A kijelölt nyílászáró (forrása: lap és nyílásindex) – kiemelve; kattintásra onNyilas. */
   kivNy?: NyilasForras | null; onNyilas?: (f: NyilasForras | null) => void }) {
   const hely = useRef<HTMLDivElement>(null);
@@ -171,6 +174,19 @@ export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas }: { modell: 
         m.position.y = fd.z; grp.add(m); // (z a födém teteje, lefelé vastag)
       }
     }
+    // a zártság-ellenőrzés hibái: piros, áttetsző jelölés (hiányzó fal sávja, rés / hézag helye)
+    const jelolt = new THREE.MeshBasicMaterial({ color: 0xdc2626, transparent: true, opacity: 0.55, depthTest: false, side: THREE.DoubleSide });
+    for (const hb of hibak ?? []) {
+      const sz0 = modell.szintek.find((q) => q.id === hb.szint); const z0 = sz0?.z0 ?? 0, hh = sz0?.h ?? 3;
+      if (hb.a && hb.b && hb.fajta === 'fal') {
+        const L = Math.hypot(hb.b[0] - hb.a[0], hb.b[1] - hb.a[1]); if (L < 0.05) continue;
+        const m = new THREE.Mesh(new THREE.BoxGeometry(L, hh, 0.15), jelolt); m.renderOrder = 10;
+        m.position.set((hb.a[0] + hb.b[0]) / 2, z0 + hh / 2, (hb.a[1] + hb.b[1]) / 2); m.rotation.y = -Math.atan2(hb.b[1] - hb.a[1], hb.b[0] - hb.a[0]); grp.add(m);
+      } else {
+        const m = new THREE.Mesh(new THREE.SphereGeometry(0.45, 16, 12), jelolt); m.renderOrder = 10;
+        m.position.set(hb.hely[0], z0 + hh + (hb.fajta === 'teto' ? 1.5 : 0.5), hb.hely[1]); grp.add(m);
+      }
+    }
     // kamera a modell befoglalójához
     const bb = new THREE.Box3().setFromObject(grp); const c = bb.getCenter(new THREE.Vector3()); const R = Math.max(5, bb.getSize(new THREE.Vector3()).length() / 2);
     const cam = new THREE.PerspectiveCamera(40, w / h, 0.1, R * 20);
@@ -193,7 +209,7 @@ export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas }: { modell: 
     renderer.domElement.addEventListener('pointerdown', down); renderer.domElement.addEventListener('pointerup', up);
     (globalThis as { __epulet3dKep?: () => string }).__epulet3dKep = () => renderer.domElement.toDataURL('image/png');
     return () => { nezo.current = { p: cam.position.clone(), t: ctl.target.clone() }; fut = false; ctl.dispose(); renderer.domElement.removeEventListener('pointerdown', down); renderer.domElement.removeEventListener('pointerup', up); renderer.dispose(); grp.traverse((o) => { if ((o as THREE.Mesh).geometry) (o as THREE.Mesh).geometry.dispose(); }); };
-  }, [modell, csakBurok, szintLathato, kijelolt, magassag, kivNy?.lap, kivNy?.ny]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [modell, csakBurok, szintLathato, kijelolt, magassag, kivNy?.lap, kivNy?.ny, hibak]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const info = (() => {
     if (!kijelolt) return null;

@@ -80,6 +80,8 @@ export interface Fal {
   /** Rétegrend a rajz szerint (a bal oldaltól a jobb felé): a fal keresztmetszetében egymást követő kitöltések
    * (stílus: szín, sraffozás, PDF-réteg) és vastagságuk (m) – pl. falazat + homlokzati hőszigetelés. */
   retegek?: { stilus: number; szin: string; sraff: boolean; reteg?: string; vastag: number }[];
+  /** A rétegek a metszet e rétegrendjéből (kód), nem a rajzból. */
+  retegForras?: string;
   /** A fal magjának (szerkezeti rétegének) vastagsága (m): a rétegrendből a nem-réteg (hőszigetelés, vakolat,
    * burkolat nélküli) rétegek összege; ha a PDF-réteg neve vastagságot mond („POROTHERM FAL 30”, „VÁLASZFAL 10”)
    * és a mért érték ± 12 cm-en belül van, a név szerinti. */
@@ -191,6 +193,9 @@ export interface Koszoru { id: string; szint: string; szel: number; magas: numbe
 
 export interface EpuletModell { szintek: Szint[]; terek: Ter[]; falak: Fal[]; nyilasok: Nyilas[]; fodemek: Fodem[]; vizszintes: VizszintesBurok[]; tetok: TetoGeom[]; lefedes?: FalLefedes[]; pillerek?: Piller[]; koszoruk?: Koszoru[]; gerendak?: Gerenda[]; alapozas?: Alapozas[]; magasteto?: Magasteto }
 
+/** A metszet egy külsőfal-rétegrendje (kód, rétegek: leírás, vastagság m, hőszigetelés-e). */
+export interface KulsoFalRetegrend { kod: string; retegek: { leiras: string; vastag: number; szigeteles: boolean }[] }
+
 /** Egy alaprajzi lap bemenete. */
 export interface LapBemenet {
   lap: number;
@@ -270,7 +275,10 @@ const terId = (lap: number, szint: string, ri: number) => `T${lap}.${szint}.${ri
  */
 export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]; metszetElemek?: MetszetElem[];
   /** magastető: hajlás (fok), oromzatok lapirányonként (szélesség, m), ereszkiállás (m, alapból 0,5 – becsült) */
-  teto?: { hajlas: number; orom?: Record<number, number>; kiallas?: number } } = {}): EpuletModell {
+  teto?: { hajlas: number; orom?: Record<number, number>; kiallas?: number };
+  /** A metszet külsőfal-rétegrendjei (kívülről befelé mindegy – a sorrend a táblázaté): ahol az alaprajzon mért fal
+   *  vékonyabb (a homlokzati hőszigetelés sávja nem falként rajzolt), ill. a rajz rétegei közt nincs hőszigetelés. */
+  kulsoFalRetegrend?: KulsoFalRetegrend[] } = {}): EpuletModell {
   const szintek: Szint[] = [], terek: Ter[] = [], falak: Fal[] = [], nyilasok: Nyilas[] = [], fodemek: Fodem[] = [];
   let falSzam = 0, nySzam = 0;
   for (const L of lapok) {
@@ -492,10 +500,12 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
     for (const f of [...falak, ...pillerek]) { const d = elt.get(f.szint); if (d) f.z0 = Math.round((f.z0 + d) * 100) / 100; }
     for (const p of pillerek) { const s0 = szintek.find((q) => q.id === p.szint); if (s0) p.h = s0.h; }
   }
+  if (opt.kulsoFalRetegrend?.length) kulsoFalRetegek(falak, fodemek, nyilasok, opt.kulsoFalRetegrend);
   const koszoruk = opt.metszetElemek?.length ? koszoruKeres(szintek, falak, fodemek, opt.metszetElemek) : [];
   for (const fd of fodemek) if (fd.lapos) fd.lapos.attika = sz(koszoruk.filter((k) => k.fajta === 'attika' && k.szint === fd.alatt).reduce((t, k) => t + k.hossz, 0), 2);
   const gerendak = gerendaKeres(lapok, falak, fodemek, koszoruk);
   const magasteto = opt.teto ? magastetoEpit(szintek, fodemek, koszoruk, opt.teto, pillerek) : null;
+  if (magasteto) oromFalak(falak, szintek, magasteto);
   const alapozas = opt.metszetElemek?.length ? alapozasKeres(szintek, falak, opt.metszetElemek, pillerek, opt.fodemSavok ?? [], fodemek) : [];
   return { szintek, terek, falak, nyilasok, fodemek, vizszintes: vizszintesBurok(szintek, terek, lapok, fodemek), tetok, lefedes, ...(pillerek.length ? { pillerek } : {}), ...(koszoruk.length ? { koszoruk } : {}), ...(gerendak.length ? { gerendak } : {}), ...(alapozas.length ? { alapozas } : {}), ...(magasteto ? { magasteto } : {}) };
 }
@@ -828,6 +838,83 @@ function kisLepcsoNelkul(pol: P2[], max = 0.4): P2[] {
 
 /** Magastető a legfelső szint körvonalán; oromfalas a téglalapvég, ha azon a homlokzaton a végszélesség legalább 60 %-a
  * oromzat. Az eresz a legfelső szint koszorújának tetején (ennek híján a szint tetején). */
+/**
+ * A külső falak rétegrendje a metszetből: ahol az alaprajzon mért vastagság a rétegrendénél legalább 8 cm-rel kisebb
+ * (a hőszigetelés sávja a rajzon nem falként jelent meg), a fal belső síkja marad, a tengelye kifelé tolódik és a
+ * vastagsága a rétegrendé; ahol a mért vastagság egyezik, de a rajz rétegei közt nincs hőszigetelés, a rétegek a
+ * metszet szerintiek (a hőszigetelés neve, vastagsága így a mennyiségekben is megjelenik).
+ */
+function kulsoFalRetegek(falak: Fal[], fodemek: Fodem[], nyilasokRef: Nyilas[], rr: KulsoFalRetegrend[]): void {
+  const jo = rr.filter((x) => x.retegek.some((q) => q.szigeteles) && x.retegek.reduce((t, q) => t + q.vastag, 0) >= 0.15);
+  if (!jo.length) return;
+  for (const f of falak) {
+    if (!f.kulso || f.szerkezet === 'hatar' || f.vastag < 0.15 || f.profil) continue;
+    const vanSzig = (f.retegek ?? []).some((q) => !q.sraff && q.vastag >= 0.04);
+    // a mért vastagsághoz legközelebbi rétegrend
+    const v = jo.map((x) => ({ x, T: x.retegek.reduce((t, q) => t + q.vastag, 0) })).sort((p, q) => Math.abs(p.T - f.vastag) - Math.abs(q.T - f.vastag))[0]!;
+    const hiany = v.T - f.vastag;
+    if (!(hiany >= 0.08 && hiany <= 0.4) && !(Math.abs(hiany) <= 0.1 && !vanSzig)) continue;
+    if (hiany >= 0.08) {
+      // kifelé: a padlófödém körvonalán kívül eső oldal
+      const L = Math.hypot(f.b[0] - f.a[0], f.b[1] - f.a[1]); if (L < 0.1) continue;
+      const n: P2 = [(f.b[1] - f.a[1]) / L, -(f.b[0] - f.a[0]) / L], k: P2 = [(f.a[0] + f.b[0]) / 2, (f.a[1] + f.b[1]) / 2];
+      const pol = fodemek.filter((d) => d.folott === f.szint).flatMap((d) => d.poligonok);
+      const bent = (o: number) => pol.some((q) => pontBenne(q, k[0] + o * n[0] * (f.vastag / 2 + 0.25), k[1] + o * n[1] * (f.vastag / 2 + 0.25)));
+      const ki = bent(1) && !bent(-1) ? -1 : !bent(1) && bent(-1) ? 1 : (f.bal.fajta === 'kulso' ? 1 : f.jobb.fajta === 'kulso' ? -1 : 0);
+      if (!ki) continue;
+      const d = (hiany / 2) * ki;
+      // (sarkon – másik külső fal végpontja 0,5 m-en belül – a fal vége is kitolódik, hogy a sarok zárt maradjon)
+      const u: P2 = [(f.b[0] - f.a[0]) / L, (f.b[1] - f.a[1]) / L];
+      const sarok = (p: P2) => falak.some((q) => q !== f && q.kulso && q.szint === f.szint && [q.a, q.b].some((r) => Math.hypot(r[0] - p[0], r[1] - p[1]) <= 0.5));
+      const ea = sarok(f.a) ? Math.abs(d) : 0, eb = sarok(f.b) ? Math.abs(d) : 0;
+      f.a = [sz(f.a[0] + n[0] * d - u[0] * ea), sz(f.a[1] + n[1] * d - u[1] * ea)]; f.b = [sz(f.b[0] + n[0] * d + u[0] * eb), sz(f.b[1] + n[1] * d + u[1] * eb)];
+      if (ea) for (const ny of nyilasokRef) if (ny.fal === f.id) ny.t = sz(ny.t + ea, 3);
+      f.hossz = sz(f.hossz + ea + eb, 3);
+      f.vastag = sz(v.T, 3); if (f.mag !== undefined) f.mag = Math.max(f.mag, sz(v.T, 3));
+    }
+    f.retegek = v.x.retegek.map((q) => ({ stilus: 0, szin: '', sraff: !q.szigeteles, reteg: q.leiras, vastag: sz(q.vastag, 3) }));
+    f.retegForras = v.x.kod;
+  }
+}
+
+/**
+ * Oromfal: a magastetővel fedett szint külső falai a tető síkjáig érnek – ahol a tető (oromzat, kontylap alatti rész)
+ * a fal teteje fölött van, a fal felső éle a tetőt követi (profil), így a modell zárt (nincs rés a fal és a tető közt).
+ */
+function oromFalak(falak: Fal[], szintek: Szint[], mt: Magasteto): void {
+  const sz0 = szintek.find((s) => s.id === mt.szint); if (!sz0) return;
+  const T = mt.haromszogek;
+  const tetoZ = (x: number, y: number): number | null => {
+    let z: number | null = null;
+    for (const [a, b, c] of T) {
+      const den = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]); if (Math.abs(den) < 1e-12) continue;
+      const w1 = ((b[1] - c[1]) * (x - c[0]) + (c[0] - b[0]) * (y - c[1])) / den, w2 = ((c[1] - a[1]) * (x - c[0]) + (a[0] - c[0]) * (y - c[1])) / den, w3 = 1 - w1 - w2;
+      if (w1 < -1e-6 || w2 < -1e-6 || w3 < -1e-6) continue;
+      const v = w1 * a[2] + w2 * b[2] + w3 * c[2]; if (z === null || v < z) z = v;
+    }
+    return z;
+  };
+  for (const f of falak) {
+    if (f.szint !== mt.szint || !f.kulso || f.szerkezet === 'hatar' || f.profil) continue;
+    const L = Math.hypot(f.b[0] - f.a[0], f.b[1] - f.a[1]); if (L < 0.5) continue;
+    const teto0 = f.z0 + f.h - sz0.z0, n = Math.max(2, Math.ceil(L / 0.25));
+    const pr: { t: number; z: number }[] = [];
+    let res = 0;
+    for (let k = 0; k <= n; k++) {
+      const t = k / n, z = tetoZ(f.a[0] + (f.b[0] - f.a[0]) * t, f.a[1] + (f.b[1] - f.a[1]) * t);
+      const zr = z === null ? teto0 : Math.max(teto0, z - sz0.z0); res = Math.max(res, zr - teto0);
+      pr.push({ t: sz(t, 4), z: sz(zr, 3) });
+    }
+    if (res < 0.15) continue;
+    // (egyenes szakaszok összevonása)
+    const ki = [pr[0]!];
+    for (let i = 1; i < pr.length - 1; i++) { const p = ki[ki.length - 1]!, q = pr[i]!, r = pr[i + 1]!; const zv = p.z + ((r.z - p.z) * (q.t - p.t)) / (r.t - p.t || 1); if (Math.abs(zv - q.z) > 0.01) ki.push(q); }
+    ki.push(pr[pr.length - 1]!);
+    // (a fal magassága a profil legmagasabb pontjáig – a profil a szint padlójától mért)
+    f.profil = ki; f.jelleg = f.jelleg ?? 'oromfal'; f.h = sz(Math.max(...ki.map((q) => q.z)) + sz0.z0 - f.z0, 3);
+  }
+}
+
 function magastetoEpit(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], t: { hajlas: number; orom?: Record<number, number>; kiallas?: number }, pillerek: Piller[] = []): Magasteto | null {
   const fel = [...szintek].sort((a, b) => b.z0 - a.z0)[0]; if (!fel || !(t.hajlas > 5)) return null;
   const fd = fodemek.find((f) => f.alatt === fel.id && f.id.startsWith('FT')) ?? fodemek.find((f) => f.folott === fel.id);
