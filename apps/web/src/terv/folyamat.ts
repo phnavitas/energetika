@@ -7,7 +7,7 @@ import { anyag } from '../katalogus';
 import { pecsetKinyer, type PecsetAdat } from '@terv/pecset';
 import type { SzurkeKep } from '@terv/autohelyiseg';
 import { eltolas, fedettArany } from '@terv/fedes';
-import { burokAuto, burokFalak, burokMeres, burokTomeg, csatlakozasok, elKornyezet, kulsoSikra, kulsoSraff, nyilasEl, bennE, type Poligon } from '@terv/burok';
+import { burokAuto, burokFalak, burokMeres, burokTomeg, burokTomegKezi, csatlakozasok, elKornyezet, kulsoSikra, kulsoSraff, nyilasEl, bennE, type Poligon } from '@terv/burok';
 import type { TervNyilas } from '@terv/nyilaszarok';
 import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, eszakJavitas, eszakJavitasMent, type TervLap, type AlaprajzFeldolgozas } from '@terv/elemzes';
 import { egtaj, eszakjelKeres, jegyzekenKivul, pecsetBelmagassag, jegyzekSorok, szintekCimbol, szintNev, meretaranyKeres } from '@terv/alaprajz';
@@ -402,6 +402,19 @@ export interface FolyamatAllapot {
   readonly me: MetszetAdat | null;
   readonly terdfalKezi: number | undefined;
   readonly homlokzatLapok: { l: TervLap; i: number }[];
+  /** A teljes épületmodell kézi paraméterei (a 3D nézetben állíthatók). */
+  readonly modellKezi?: ModellKezi;
+}
+/** A teljes épületmodell kézzel felülírt paraméterei. */
+export interface ModellKezi {
+  /** Tetőhajlás (fok); 0: lapostető (nincs magastető). */
+  hajlas?: number;
+  /** Ereszkiállás (m). */
+  kiallas?: number;
+  /** Végenként (lapirány: 0 fel, 90 jobbra, 180 le, 270 balra): true = oromfal, false = konty. */
+  orom?: Record<number, boolean>;
+  /** Szintenkénti belmagasság (m), szintkód szerint. */
+  belmag?: Record<string, number>;
 }
 export type MetszetAdat = NonNullable<ReturnType<typeof metszetFeldolgoz>>;
 
@@ -696,9 +709,14 @@ export function tervFolyamat(S: FolyamatAllapot) {
     if (!sor.length) return null;
     const alap = (S.elemzesek[sor[0]!.i] as AlaprajzFeldolgozas).r!;
     if (eszakSz === undefined) eszakSz = eszakLap(sor[0]!.i, S.elemzesek[sor[0]!.i] as AlaprajzFeldolgozas);
-    const emelet = (S.bm ?? 2.7) + 0.35;
+    const emelet = (S.bm ?? 2.7) + 0.35, MK = S.modellKezi ?? {};
     const jelen = [...new Set(sor.flatMap(({ i }) => (lapSzintek(i).length ? lapSzintek(i) : ['F'])))].sort((x, y) => SZINT_SOR.indexOf(x) - SZINT_SOR.indexOf(y));
     const nulla = jelen.indexOf('F') >= 0 ? jelen.indexOf('F') : jelen.findIndex((x) => x !== 'P');
+    // szintmagasság: kézi belmagasság + 0,35 m födém, különben az egységes emeletmagasság; a szintek alja ebből halmozva
+    const szintH = (sz0: string) => (MK.belmag?.[sz0] !== undefined ? MK.belmag[sz0]! + 0.35 : emelet);
+    const szintZ = (sz0: string) => { const j = jelen.indexOf(sz0), n0 = Math.max(0, nulla); let z = 0;
+      if (j >= n0) for (let q = n0; q < j; q++) z += szintH(jelen[q]!); else for (let q = j; q < n0; q++) z -= szintH(jelen[q]!);
+      return Math.round(z * 100) / 100; };
     const be: LapBemenet[] = sor.map(({ i }) => {
       const a = S.elemzesek[i] as AlaprajzFeldolgozas, r = a.r!, k = kjVeg(i, a);
       const el = i === sor[0]!.i ? { dx: 0, dy: 0 } : eltolas(alap, r) ?? { dx: 0, dy: 0 };
@@ -706,10 +724,12 @@ export function tervFolyamat(S: FolyamatAllapot) {
       const szk = lapSzintek(i).length ? lapSzintek(i) : ['F'];
       // tetőtér (metszetből): hajlás, térdfal, padlásfödém
       const tt = me?.tetoter ? { hajlas: me.tetoter.hajlas, terdfal: me.tetoter.terdfal ?? 0.9, belmag: me.tetoter.belmagassag ?? (S.bm ?? 2.6) } : undefined;
-      const szintek: EpSzint[] = szk.map((sz0) => ({ id: sz0, nev: szintNev(sz0), kod: sz0, z0: Math.round((jelen.indexOf(sz0) - Math.max(0, nulla)) * emelet * 100) / 100, h: emelet, belmag: sz0 === 'T' && tt ? tt.belmag : S.bm ?? 2.7 }));
+      const szintek: EpSzint[] = szk.map((sz0) => ({ id: sz0, nev: szintNev(sz0), kod: sz0, z0: szintZ(sz0), h: szintH(sz0), belmag: MK.belmag?.[sz0] ?? (sz0 === 'T' && tt ? tt.belmag : S.bm ?? 2.7) }));
       const m = (x: number, y: number): [number, number] => [(x - el.dx) * r.mPerPt, (y - el.dy) * r.mPerPt];
       // a fűtött terek hőburka: ugyanaz, mint a 3D-ben és az átvételben (belső sík)
-      const burokPol = k.burok ? undefined : burok3dCache(i, a.r3d ?? r, futottRiK(a, k), S.lapok[i]?.lap, a, true);
+      // (kézzel szerkesztett hőburok: a falak és a födémek / a tető abból – a fűtetlen terek tömegével együtt)
+      const burokPol = k.burok ?? burok3dCache(i, a.r3d ?? r, futottRiK(a, k), S.lapok[i]?.lap, a, true);
+      const tomegPol = k.burok ? burokTomegKezi(r, k.burok, new Set([...kategoria.entries()].filter(([, kt]) => kt !== 'kulter' && kt !== 'futott').map(([ri]) => ri))) : undefined;
       // hőburokfalak magassága: tetőtéren a tetősíkok szerinti profil, a legfelső szinten a homlokzat (párkány, térdfal)
       let elMag: ReturnType<typeof elMagFv> | undefined, tg: ReturnType<typeof tetoGeo>[] | undefined;
       const falMagassag: LapBemenet['falMagassag'] = (sz0, w) => {
@@ -736,7 +756,7 @@ export function tervFolyamat(S: FolyamatAllapot) {
         return v === null ? null : { belsoMag: v, jelleg: v < 1.6 ? 'terdfal' : 'parkany' };
       };
       return { lap: i, a, szintek, m, kategoria, adat, pecsetTerek, kizart, ...(S.lapok[i]?.lap ? { rajz: S.lapok[i]!.lap } : {}), ...(k.ismKulso ? { ismKulso: k.ismKulso } : {}), falMagassag, ...(tt && szk.includes('T') ? { tetoter: { ...tt, orom: oromok(eszakSz, a.e.meretarany ?? undefined) } } : {}),
-        ...(burokPol ? { burokPol, burokR: a.r3d ?? r } : {}) };
+        ...(burokPol ? { burokPol, burokR: k.burok ? r : a.r3d ?? r } : {}), ...(tomegPol ? { tomegPol } : {}) };
     });
     // födémek rétegrendje a metszetlapok vízszintes sávjaiból
     const mE = S.lapok.flatMap((l, li) => (l.szerep === 'metszet' ? [{ li, e: metszetElemek(l.lap) }] : []));
@@ -750,7 +770,11 @@ export function tervFolyamat(S: FolyamatAllapot) {
     // ereszkiállás a metszetekből (a ferde tetővonal alsó vége – a fal külső síkja); ennek híján becsült
     const kiallas = hj ? ereszKiallas(mE.flatMap(({ li, e }) => ereszKiallasok(S.lapok[li]!.lap, hj, e.mPt))) : undefined;
     // (a teljes modell magastetőjénél a kontylap nem oromfal – a Navitherm tetőterénél egyelőre a régi szabály)
-    const teto = hj && ferde >= 4 ? { hajlas: hj, orom: oromok(eszakSz, M0, true), ...(kiallas ? { kiallas } : {}) } : undefined;
+    // (kézi paraméterek: hajlás – 0 = lapostető –, ereszkiállás, végenként oromfal / konty)
+    const orom0 = (hj && ferde >= 4) || MK.hajlas ? oromok(eszakSz, M0, true) : undefined;
+    const oromK = orom0 && MK.orom ? { ...orom0, ...Object.fromEntries(Object.entries(MK.orom).map(([ir, v]) => [ir, v ? 99 : 0])) } : orom0;
+    const hajlas = MK.hajlas !== undefined ? MK.hajlas : hj && ferde >= 4 ? hj : undefined, kiall = MK.kiallas ?? kiallas;
+    const teto = hajlas ? { hajlas, orom: oromK, ...(kiall ? { kiallas: kiall } : {}) } : undefined;
     // a metszet külsőfal-rétegrendjei (a fal hőszigetelése, ha az alaprajzon nem falként rajzolt)
     const kulsoFalRetegrend = (me?.blokkok ?? []).filter((b) => b.becsles.szerep === 'fal' && !b.becsles.kihagy).map((b) => ({ kod: b.rr.kod,
       retegek: b.retegek.filter((r) => !r.kimarad && r.dCm > 0).map((r) => ({ leiras: r.forras, vastag: r.dCm / 100, szigeteles: /hőszigetel/i.test(anyag(r.anyagId)?.kategoria ?? '') || /hőszigetel|\beps\b|\bxps\b|kőzetgyapot|üveggyapot/i.test(r.forras) })) }))

@@ -223,6 +223,10 @@ export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, hibak }: { m
     return null;
   })();
   const fm = (v: number) => v.toLocaleString('hu-HU', { maximumFractionDigits: 1 });
+  // a magastető felülete (a háromszögek valós, ferde területe) és a legalsó padló területe
+  const tetoA = (modell.magasteto?.haromszogek ?? []).reduce((t, [a, b, c]) => { const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+    return t + Math.hypot(u[1]! * v[2]! - u[2]! * v[1]!, u[2]! * v[0]! - u[0]! * v[2]!, u[0]! * v[1]! - u[1]! * v[0]!) / 2; }, 0);
+  const padloA = modell.fodemek.filter((f) => f.alatt === null).reduce((t, f) => t + f.poligonok.reduce((s, p) => s + Math.abs(p.reduce((q, a, i) => { const b = p[(i + 1) % p.length]!; return q + a[0] * b[1] - b[0] * a[1]; }, 0) / 2), 0), 0);
   return (
     <div>
       <div class="gombsor" style="gap:8px;flex-wrap:wrap;align-items:center;padding:8px 10px">
@@ -240,6 +244,7 @@ export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, hibak }: { m
         {info ?? 'Kattints egy falra, nyílászáróra vagy helyiségre a részletekért (dupla kattintás: alapnézet).'}<br />
         {modell.szintek.length} szint · {modell.terek.length} tér · {modell.falak.length} fal · {modell.nyilasok.length} nyílászáró ·
         hőburok-fal (belső sík × belmagasság): külső {fm(osszeg.kulso?.A ?? 0)} m² (nyílás {fm(osszeg.kulso?.ny ?? 0)}), fűtetlen felé {fm(osszeg.futetlen?.A ?? 0)} m², szomszéd felé {fm(osszeg.szomszed?.A ?? 0)} m²
+        {padloA > 0 && <> · alsó födém (külső méret) {fm(padloA)} m²</>}{tetoA > 0 && <> · magastető {fm(tetoA)} m² ({String(Math.round((modell.magasteto?.hajlas ?? 0) * 10) / 10).replace('.', ',')}°)</>}
       </div>
     </div>
   );

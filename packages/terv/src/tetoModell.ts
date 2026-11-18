@@ -282,11 +282,11 @@ function tetoDerekszogu(be: TetoBemenet): { haromszogek: [P3, P3, P3][]; eresz: 
     const vegSzabad = (x: number, y: number) => !bennePont(eresz, x, y);
     const add = (nx: number, ny: number, c: number, ir: number, veg: boolean, szel: number, kint: [number, number]) => {
       if (veg && vegSzabad(kint[0], kint[1]) && be.orom?.(ir, szel)) return; s.push({ nx, ny, c }); };
-    const xv = w < h; // a rövidebb élek a végek
-    add(0, 1, r.y0, 0, !xv, w, [(r.x0 + r.x1) / 2, r.y0 - 0.05]);
-    add(0, -1, -r.y1, 180, !xv, w, [(r.x0 + r.x1) / 2, r.y1 + 0.05]);
-    add(1, 0, r.x0, 270, xv, h, [r.x0 - 0.05, (r.y0 + r.y1) / 2]);
-    add(-1, 0, -r.x1, 90, xv, h, [r.x1 + 0.05, (r.y0 + r.y1) / 2]);
+    const xv = w < h; // álló téglalap: a rövidebb (vég-) élek a felső és az alsó
+    add(0, 1, r.y0, 0, xv, w, [(r.x0 + r.x1) / 2, r.y0 - 0.05]);
+    add(0, -1, -r.y1, 180, xv, w, [(r.x0 + r.x1) / 2, r.y1 + 0.05]);
+    add(1, 0, r.x0, 270, !xv, h, [r.x0 - 0.05, (r.y0 + r.y1) / 2]);
+    add(-1, 0, -r.x1, 90, !xv, h, [r.x1 + 0.05, (r.y0 + r.y1) / 2]);
     return { ...r, sikok: s };
   });
   const tetoZ = (t: Teglalap, x: number, y: number) => Math.min(...t.sikok.map((s) => z0(s, x, y)));
@@ -313,7 +313,8 @@ function tetoDerekszogu(be: TetoBemenet): { haromszogek: [P3, P3, P3][]; eresz: 
           let r2 = mar;
           for (const [qj, w] of u.sikok.entries()) if (qj !== qi) { r2 = vag(r2, w.nx - q.nx, w.ny - q.ny, -(w.c - q.c) + (qj < qi ? -1e-9 : 0)); if (!r2.length) break; }
           if (!r2.length) continue;
-          r2 = vag(r2, s.nx - q.nx, s.ny - q.ny, -(s.c - q.c) + (ui < ti ? -1e-9 : 1e-9)); if (r2.length && terulet(r2) > 1e-6) uj.push(r2);
+          // (egyenlő magasságnál – azonos sík két téglalapban – a kisebb indexű nyer; a tűrés nagyobb a vágásénál)
+          r2 = vag(r2, s.nx - q.nx, s.ny - q.ny, -(s.c - q.c) + (ui < ti ? -1e-6 : 1e-6)); if (r2.length && terulet(r2) > 1e-6) uj.push(r2);
         }
       }
       darabok = uj;

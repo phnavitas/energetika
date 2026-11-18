@@ -184,7 +184,9 @@ export interface Magasteto { szint: string; hajlas: number; kiallas: number; kia
   /** derekszogu: pontos (téglalapos bontás, főirányba forgatva); konvex: élsíkok alsó burkolója; vaz: egyenes váz (ferde, nem konvex); kozelito: derékszögűsített körvonal */
   mod: 'derekszogu' | 'konvex' | 'vaz' | 'kozelito'; zEresz: number; eresz: P2[]; haromszogek: [number, number, number][][];
   /** A tető alá vont fedett teraszok (a szint körvonalán kívül, szabad pillérsorig – fedettTerasz) alaprajzi sávjai. */
-  fedett?: P2[][] }
+  fedett?: P2[][];
+  /** A kért oromfal(ak)kal a tetőfelület nem állítható elő (átfedő síkok) – oromfal nélkül (kontyolva) számolva. */
+  oromElvetve?: boolean }
 
 /** Koszorú szintenként: a teherhordó falak tetején (a metszet szerinti keresztmetszettel), a hossza a falaké. */
 export interface Koszoru { id: string; szint: string; szel: number; magas: number; zFelso: number; reteg: string; falak: string[]; hossz: number;
@@ -215,6 +217,9 @@ export interface LapBemenet {
   burokPol?: Poligon[];
   /** A burok raszterje (ha eltér a lap raszterétől, pl. vektoros falú). */
   burokR?: Raszter;
+  /** Az épülettömeg körvonala (pt, a fal külső síkján) – kézzel szerkesztett hőburoknál ebből a födémek / a tető;
+   * ennek híján a raszterből (`burokTomeg`). */
+  tomegPol?: Poligon[];
   /** Hőburokfal magassága szintenként (homlokzat, tetőablakos térdfal, tetőtér-metszet); null: a szint belmagassága. */
   falMagassag?: (sz: Szint, w: { pt: [P2, P2]; irany: number; ri: number; A: P2; B: P2 }) => FalMagassag;
   /** A jegyzékben / pecséten szereplő, a rajzon helyiséghez nem köthető terek (körvonal nélkül, a szint átlagos fedésével). */
@@ -457,7 +462,7 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
     const mind = new Set([...L.kategoria.entries()].filter(([, k]) => k !== 'kulter').map(([ri]) => ri));
     const fut = new Set([...L.kategoria.entries()].filter(([, k]) => k === 'futott').map(([ri]) => ri));
     if (!mind.size) continue;
-    const pol = burokTomeg(r, mind).map((p) => p.map(([x, y]) => L.m(x, y)));
+    const pol = (L.tomegPol ?? burokTomeg(r, mind)).map((p) => p.map(([x, y]) => L.m(x, y)));
     const vanFut = fut.size > 0;
     for (const sz0 of L.szintek) {
       const i = szintek.findIndex((x) => x.id === sz0.id);
@@ -545,6 +550,12 @@ function burokFalakModell(r: Raszter, pol: Poligon[], futott: ReadonlySet<number
         csatl.push(fal);
         for (let d = 0.15; d <= 1.6 && h < 0; d += 0.1) { const c = cella(mx - (n[0] * d) / r.mPerPt, my - (n[1] * d) / r.mPerPt); if (c >= 0 && futott.has(c)) h = c; }
         hely.push(h);
+      }
+      // (kézzel kijjebb húzott körvonal: a fal mögött 1,6 m-en belül nincs helyiség – a teljes él mintáin messzebb, 6 m-ig keresve)
+      if (hely.every((x) => x < 0)) for (let q = 0; q < lepes; q++) {
+        const [mx, my] = pt(t0 + ((q + 0.5) / lepes) * (t1 - t0)); let h = -1;
+        for (let d = 1.7; d <= 6 && h < 0; d += 0.1) { const c = cella(mx - (n[0] * d) / r.mPerPt, my - (n[1] * d) / r.mPerPt); if (c >= 0 && futott.has(c)) h = c; }
+        hely[q] = h;
       }
       // a helyiség nélküli minták (falcsatlakozás, nyílás előtti sáv) a szomszéd mintáéhoz
       for (let q = 0; q < lepes; q++) if (hely[q]! < 0) { const e = hely.slice(0, q).reverse().find((x) => x >= 0) ?? hely.slice(q + 1).find((x) => x >= 0); if (e !== undefined) hely[q] = e; }
@@ -836,6 +847,38 @@ function kisLepcsoNelkul(pol: P2[], max = 0.4): P2[] {
   return p;
 }
 
+/**
+ * A körvonal sekély (≤ ereszkiállás, de legalább 0,6 m – kb. falvastagság –; ≤ 6 m széles) befelé nyíló fülkéi (bejárati fülke) a tetőhöz kitöltve: az eresz
+ * egyenesen fut át fölöttük, nem vápázik be.
+ */
+function sekelyFulkeNelkul(pol: P2[], mely: number): P2[] {
+  let p = pol.map(([x, y]) => [x, y] as P2);
+  const ter = (q: P2[]) => q.reduce((t, a, i) => { const b = q[(i + 1) % q.length]!; return t + a[0] * b[1] - b[0] * a[1]; }, 0) / 2;
+  for (let kor = 0; kor < 20; kor++) {
+    const n = p.length; if (n <= 4) break;
+    let valt = false;
+    for (let i = 0; i < n && !valt; i++) {
+      const a = p[(i + n - 1) % n]!, b = p[i]!, c = p[(i + 1) % n]!, d = p[(i + 2) % n]!;
+      const l = Math.hypot(c[0] - b[0], c[1] - b[1]), l1 = Math.hypot(b[0] - a[0], b[1] - a[1]), l2 = Math.hypot(d[0] - c[0], d[1] - c[1]);
+      if (l < 1e-6 || l > 6 || l1 > mely + 0.05 || l2 > mely + 0.05 || Math.abs(l1 - l2) > 0.05 || l1 < 1e-6) continue;
+      const e = [(c[0] - b[0]) / l, (c[1] - b[1]) / l], u = [(b[0] - a[0]) / l1, (b[1] - a[1]) / l1], w = [(d[0] - c[0]) / l2, (d[1] - c[1]) / l2];
+      // „U”: a két oldal merőleges az aljra és ellentétes irányú
+      if (Math.abs(u[0]! * e[0]! + u[1]! * e[1]!) > 0.02 || Math.abs(w[0]! * e[0]! + w[1]! * e[1]!) > 0.02 || u[0]! * w[0]! + u[1]! * w[1]! > -0.98) continue;
+      // b elhagyva, c az a-oldal mélységével kijjebb (a – c' tengelyirányú; a c' – d maradék lépcsőt a kisLepcsoNelkul viszi)
+      const c2: P2 = [c[0] + w[0]! * l1, c[1] + w[1]! * l1];
+      const uj0 = p.map((q, j) => (j === (i + 1) % n ? c2 : q)).filter((_, j) => j !== i);
+      // csak befelé nyíló fülke (a kitöltés növeli a területet)
+      if (Math.abs(ter(uj0)) <= Math.abs(ter(p))) continue;
+      const uj: P2[] = []; for (const q of uj0) { const z = uj[uj.length - 1]; if (!z || Math.hypot(q[0] - z[0], q[1] - z[1]) > 0.005) uj.push(q); }
+      if (uj.length > 1 && Math.hypot(uj[0]![0] - uj[uj.length - 1]![0], uj[0]![1] - uj[uj.length - 1]![1]) <= 0.005) uj.pop();
+      const k = uj.filter((q, j) => { const r0 = uj[(j + uj.length - 1) % uj.length]!, r1 = uj[(j + 1) % uj.length]!; return Math.abs((q[0] - r0[0]) * (r1[1] - q[1]) - (q[1] - r0[1]) * (r1[0] - q[0])) > 1e-6; });
+      if (k.length >= 4) { p = k; valt = true; }
+    }
+    if (!valt) break;
+  }
+  return p;
+}
+
 /** Magastető a legfelső szint körvonalán; oromfalas a téglalapvég, ha azon a homlokzaton a végszélesség legalább 60 %-a
  * oromzat. Az eresz a legfelső szint koszorújának tetején (ennek híján a szint tetején). */
 /**
@@ -920,13 +963,23 @@ function magastetoEpit(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], 
   const fd = fodemek.find((f) => f.alatt === fel.id && f.id.startsWith('FT')) ?? fodemek.find((f) => f.folott === fel.id);
   const pol0 = fd?.poligonok.slice().sort((a, b) => b.length - a.length)[0]; if (!pol0 || pol0.length < 4) return null;
   const { pol: pol1, fedett } = fedettTerasz(pol0, pillerek.filter((p) => p.szint === fel.id && p.hely === 'szabad'));
-  const pol = kisLepcsoNelkul(pol1);
-  const kiallas = t.kiallas ?? 0.5, k = koszoruk.find((q) => q.szint === fel.id && q.fajta !== 'attika');
+  const kiallas = t.kiallas ?? 0.5;
+  const pol = kisLepcsoNelkul(sekelyFulkeNelkul(kisLepcsoNelkul(pol1), Math.max(kiallas, 0.6)));
+  const k = koszoruk.find((q) => q.szint === fel.id && q.fajta !== 'attika');
   const zEresz = sz(k ? k.zFelso : fel.z0 + fel.h, 2);
-  const g = tetoHaromszogek({ korvonal: pol, hajlas: t.hajlas, kiallas, zEresz, orom: (ir, szel) => (t.orom?.[ir] ?? 0) >= 0.6 * szel });
+  let oromKert = false;
+  let g = tetoHaromszogek({ korvonal: pol, hajlas: t.hajlas, kiallas, zEresz, orom: (ir, szel) => { const v = (t.orom?.[ir] ?? 0) >= 0.6 * szel; if (v) oromKert = true; return v; } });
+  // ellenőrzés: a tetősíkok alaprajzi vetülete nem lehet nagyobb az eresz körvonalánál (oromfallal az összetett – L, T –
+  // alaprajzon a síkok átfedhetnek); ilyenkor oromfal nélkül
+  let oromElvetve = false;
+  if (g && oromKert) {
+    const vet = g.haromszogek.reduce((s0, [a, b, c]) => s0 + Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])) / 2, 0);
+    const er = Math.abs(g.eresz.reduce((s0, a, i) => { const b = g!.eresz[(i + 1) % g!.eresz.length]!; return s0 + a[0] * b[1] - b[0] * a[1]; }, 0) / 2);
+    if (vet > 1.02 * er + 0.5) { g = tetoHaromszogek({ korvonal: pol, hajlas: t.hajlas, kiallas, zEresz }); oromElvetve = true; }
+  }
   if (!g) return null;
   return { szint: fel.id, hajlas: t.hajlas, kiallas, kiallasBecsult: t.kiallas === undefined, mod: g.mod, zEresz, eresz: g.eresz.map(([x, y]) => [sz(x), sz(y)] as P2),
-    ...(fedett.length ? { fedett } : {}),
+    ...(fedett.length ? { fedett } : {}), ...(oromElvetve ? { oromElvetve } : {}),
     // (µm-re kerekítve: a tetőbontás az élek egyezéséből dolgozik – a mm-es kerekítés a T-csatlakozású élpontokat leviszi az élről)
     haromszogek: g.haromszogek.map((h) => h.map(([x, y, z]) => [sz(x, 6), sz(y, 6), sz(z, 6)] as [number, number, number])) };
 }

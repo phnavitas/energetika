@@ -85,7 +85,7 @@ function ferdeOsszevon(p: Poligon, tures: number, ugras: number, minHossz: numbe
  * álló ablak fülkéje) a szomszédos, hosszabb fal síkjára kerül – a körvonal nem „harapja be” a sarkokat. Ismételve,
  * amíg van ilyen; a terület legfeljebb 3 %-kal változhat.
  */
-function fulkeSimit(p: Poligon, D: number, W: number, befele: boolean, Dmin = 0, Lcel = 0, Dsek = 0): Poligon {
+function fulkeSimit(p: Poligon, D: number, W: number, befele: boolean, Dmin = 0, Lcel = 0, Dsek = 0, tart?: (sav: Poligon, cel: Poligon) => boolean): Poligon {
   // (derékszögűsített körvonal: a tengelyirányú élek pontosan tengelyirányúak; a ferde élek érintetlenek)
   const eq = (u: number, v: number) => Math.abs(u - v) < 1e-6;
   const tomor = (q: Poligon): Poligon => {
@@ -153,6 +153,9 @@ function fulkeSimit(p: Poligon, D: number, W: number, befele: boolean, Dmin = 0,
       const a = q[i]!, b = q[(i + 1) % n]!; const dx = a[0] - b[0], dy = a[1] - b[1];
       const mozog = mit === 2 ? [(i + 1) % n, (i + 2) % n] : [(i - 1 + n) % n, i];
       const sx = mit === 2 ? dx : -dx, sy = mit === 2 ? dy : -dy;
+      // (a levágandó sáv egy helyiség saját körvonalán belül: nem fülke, hanem a helyiség része – marad)
+      if (tart && tart([q[mozog[0]!]!, q[mozog[1]!]!, [q[mozog[1]!]![0] + sx, q[mozog[1]!]![1] + sy], [q[mozog[0]!]![0] + sx, q[mozog[0]!]![1] + sy]],
+        mit === 2 ? [q[(i - 1 + n) % n]!, q[i]!] : [q[(i + 1) % n]!, q[(i + 2) % n]!])) continue;
       const t = tomor(q.map((v, k) => (mozog.includes(k) ? [v[0] + sx, v[1] + sy] as [number, number] : v)));
       const At2 = Math.abs(terulet(t));
       // belső méret: csak befelé (a terület csökken – a falba kifolyt rész vissza a fal belső síkjára); külső méret: kifelé
@@ -408,7 +411,48 @@ export function burokAuto(r: Raszter, futott: ReadonlySet<number>, zsebTilto?: {
   const er = tagit(kulso, 1);
   m = new Uint8Array(w * h); for (let k = 0; k < w * h; k++) m[k] = er[k] ? 0 : 1;
   if (vart) pecsetesFoltok(r, m, vart.filter((v) => futott.has(v.ri)));
-  return maszkKorvonal(r, m);
+  return maszkKorvonal(r, m, true, helyisegSavVedo(r, futott));
+}
+
+/**
+ * A burok fülkesimításához: a levágandó sáv (rácskoordináta) egy fűtött helyiség belseje, és a fal külső síkja is
+ * lépcsőzik – pl. egy helyiség kiugrása (≤ 0,7 m) a bejárati fülke mögötti szomszédhoz képest nem simítandó fülke.
+ */
+function helyisegSavVedo(r: Raszter, futott: ReadonlySet<number>): (sav: Poligon, cel: Poligon) => boolean {
+  let pol: Poligon[] | null = null;
+  const falE = (x: number, y: number) => { const cx = Math.floor(x), cy = Math.floor(y); return cx >= 0 && cy >= 0 && cx < r.w && cy < r.h && !!(r.fal[cy * r.w + cx] || r.nyilas[cy * r.w + cx]); };
+  // az él mögötti fal külső síkja (m, medián): az élről kifelé haladva az első 15 cm-en kezdődő fal- / nyíláscellák vége
+  const falVastag = (p0: [number, number], p1: [number, number], kx: number, ky: number): number | null => {
+    const v: number[] = []; const lep = r.px / 2;
+    for (let k = 1; k <= 19; k++) {
+      const t = k / 20, x = p0[0] + (p1[0] - p0[0]) * t, y = p0[1] + (p1[1] - p0[1]) * t;
+      // (a fal rétegei közti rajzi rés – pl. fehér hőszigetelés két vonal között – legfeljebb 15 cm: a fal folytatódik)
+      let kezd = -1, utolso = -1;
+      for (let m = 0; m <= 1.5; m += lep) { const f = falE(x + (kx * m) / r.px, y + (ky * m) / r.px); if (f) { if (kezd < 0) { if (m > 0.15) break; kezd = m; } utolso = m; } else if (kezd >= 0 && m - utolso > 0.15) break; }
+      if (kezd >= 0 && utolso >= kezd) v.push(utolso + lep);
+    }
+    if (v.length < 8) return null; v.sort((a, b) => a - b); return v[v.length >> 1]!;
+  };
+  return (sav, cel) => {
+    // a levágandó (kiugró) rész és a cél-él (ahová a körvonal kerülne) mögötti fal külső síkja: ha az is lépcsőzik
+    // (≥ 15 cm), a lépcső valódi (pl. bejárati fülke a szomszéd helyiség előtt); ha a külső sík egy vonalban van (csak a
+    // fal vastagsága változik), a szokásos simítás
+    const [a0, b0, , d0] = sav as [[number, number], [number, number], [number, number], [number, number]];
+    const D = Math.hypot(d0[0] - a0[0], d0[1] - a0[1]); if (D < 1e-9) return false;
+    const kx = -(d0[0] - a0[0]) / D, ky = -(d0[1] - a0[1]) / D;
+    const t0 = falVastag(cel[0]!, cel[1]!, kx, ky), t2 = falVastag(a0, b0, kx, ky);
+    // (a 40 cm-nél sekélyebb belső lépcső jellemzően csak a falrétegek eltérése – a rajzi rétegek a raszterben nem mindig
+    // egyformán falcellák –, az marad simítva)
+    if (D * r.px < 0.4 || t0 === null || t2 === null || Math.abs(D * r.px + t2 - t0) < 0.15) return false;
+    pol ??= [...futott].flatMap((ri) => helyisegKorvonal(r, ri));
+    // a sáv egy fűtött helyiség belseje (nem a falba kifolyt rész)
+    let be = 0;
+    for (let k = 1; k <= 9; k++) {
+      const t = k / 10; const x = (a0[0] + (b0[0] - a0[0]) * t + d0[0] + (sav[2]![0] - d0[0]) * t) / 2, y = (a0[1] + (b0[1] - a0[1]) * t + d0[1] + (sav[2]![1] - d0[1]) * t) / 2;
+      if (pol.some((p) => bennE(p, lapX(r, x), lapY(r, y)))) be++;
+    }
+    return be >= 8;
+  };
 }
 
 /** Egy helyiség körvonala(i) a raszterből, lapkoordinátában (pt) – a fal belső síkján, egyszerűsítve. */
@@ -419,7 +463,7 @@ export function helyisegKorvonal(r: Raszter, ri: number): Poligon[] {
 }
 
 /** A maszk (rácscellák) külső körvonalai lapkoordinátában, egyszerűsítve (Douglas–Peucker, ferde fal, derékszög). */
-function maszkKorvonal(r: Raszter, m: Uint8Array, befele = true): Poligon[] {
+function maszkKorvonal(r: Raszter, m: Uint8Array, befele = true, tart?: (sav: Poligon, cel: Poligon) => boolean): Poligon[] {
   const { w, h } = r;
   // határélek: a maszkos cella bal oldalán haladva (y lefelé nő) – irányított élek csúcsról csúcsra
   const be = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h && m[y * w + x] === 1;
@@ -448,7 +492,7 @@ function maszkKorvonal(r: Raszter, m: Uint8Array, befele = true): Poligon[] {
   }
   const min = 4 / (r.px * r.px);
   const kulsok = hurkok.filter((p) => terulet(p) > min); // a cella bal oldali bejárásánál a külső határ pozitív előjelű
-  return kulsok.map((p) => { const g = globalThis as any; let q = g.NOFS ? p : fulkeSimit(p, 0.7 / r.px, 6 / r.px, befele, 0.15 / r.px, 1.5 / r.px); q = egyszerusit(q, 0.12 / r.px); if (!g.NOFO) q = ferdeOsszevon(q, 0.6 / r.px, 0.7 / r.px, 2.5 / r.px, 3.0 / r.px); if (!g.NODR) q = derekszog(q, 1.5 / r.px, 0.2 / r.px); if (!g.NOFS && !g.NODR) q = fulkeSimit(q, 0.7 / r.px, 6 / r.px, befele, 0, 0, 0.4 / r.px); return q.map(([gx, gy]) => [Math.round(lapX(r, gx) * 10) / 10, Math.round(lapY(r, gy) * 10) / 10] as [number, number]); })
+  return kulsok.map((p) => { const g = globalThis as any; let q = g.NOFS ? p : fulkeSimit(p, 0.7 / r.px, 6 / r.px, befele, 0.15 / r.px, 1.5 / r.px, 0, tart); q = egyszerusit(q, 0.12 / r.px); if (!g.NOFO) q = ferdeOsszevon(q, 0.6 / r.px, 0.7 / r.px, 2.5 / r.px, 3.0 / r.px); if (!g.NODR) q = derekszog(q, 1.5 / r.px, 0.2 / r.px); if (!g.NOFS && !g.NODR) q = fulkeSimit(q, 0.7 / r.px, 6 / r.px, befele, 0, 0, 0.4 / r.px, tart); return q.map(([gx, gy]) => [Math.round(lapX(r, gx) * 10) / 10, Math.round(lapY(r, gy) * 10) / 10] as [number, number]); })
     .filter((p) => p.length >= 3);
 }
 
@@ -833,7 +877,44 @@ export function burokTomeg(r: Raszter, futott: ReadonlySet<number>, zsebTilto?: 
     if (q.length * r.px * r.px <= 1.5 && !q.some((k) => r.cimke[k]! >= 2 && !H[k])) for (const k of q) M[k] = 1;
   }
   if (vart) pecsetesFoltok(r, M, vart.filter((v) => futott.has(v.ri)));
-  return maszkKorvonal(r, M, false);
+  return maszkKorvonal(r, M, false, fulkeFalVedo(r));
+}
+
+/**
+ * Az épülettömeg (külső sík) kézzel szerkesztett hőburokkal: a szerkesztett körvonal és a fűtetlen helyiségek tömege
+ * (garázs, tároló – `burokTomeg` a nem fűtött terekre) együtt. Fűtetlen tér nélkül maga a szerkesztett körvonal.
+ */
+export function burokTomegKezi(r: Raszter, burok: Poligon[], futetlen: ReadonlySet<number>): Poligon[] {
+  if (!futetlen.size) return burok;
+  const tobbi = burokTomeg(r, futetlen); if (!tobbi.length) return burok;
+  const { w, h } = r; const M = new Uint8Array(w * h);
+  for (const p of [...burok, ...tobbi]) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const [x, y] of p) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    const gx0 = Math.max(0, Math.floor(((x0 - r.x0) * r.mPerPt) / r.px)), gx1 = Math.min(w - 1, Math.ceil(((x1 - r.x0) * r.mPerPt) / r.px));
+    const gy0 = Math.max(0, Math.floor(((y0 - r.y0) * r.mPerPt) / r.px)), gy1 = Math.min(h - 1, Math.ceil(((y1 - r.y0) * r.mPerPt) / r.px));
+    for (let gy = gy0; gy <= gy1; gy++) for (let gx = gx0; gx <= gx1; gx++) if (!M[gy * w + gx] && bennE(p, lapX(r, gx + 0.5), lapY(r, gy + 0.5))) M[gy * w + gx] = 1;
+  }
+  // (a két tömeg közti rés – a közös fal síkja – zárva)
+  return maszkKorvonal(r, zar(M, w, h, Math.max(1, Math.round(0.1 / r.px))), false, fulkeFalVedo(r));
+}
+
+/**
+ * A külső körvonal fülkesimításához: a nagyobb (> 1,5 m²) beugrás, amelynek az alja fal (a beugrás alján, befelé
+ * 0,1–0,25 m-en fal- vagy nyílászárócella – nem rácslépcső), valódi fülke (bejárati fülke, loggia): nem tölthető ki.
+ */
+function fulkeFalVedo(r: Raszter): (sav: Poligon, cel: Poligon) => boolean {
+  return (sav) => {
+    const [a, b, c, d] = sav as [[number, number], [number, number], [number, number], [number, number]];
+    const L = Math.hypot(b[0] - a[0], b[1] - a[1]), D = Math.hypot(d[0] - a[0], d[1] - a[1]);
+    if (L * D * r.px * r.px <= 1.5 || D < 1e-9) return false;
+    // befelé: a beugrás aljától (a – b) a kitolás (a → d) ellentétes irányába
+    const nx = (a[0] - d[0]) / D, ny = (a[1] - d[1]) / D; let fal = 0, db = 0;
+    for (let k = 1; k <= 19; k++) {
+      const t = k / 20, x = a[0] + (b[0] - a[0]) * t, y = a[1] + (b[1] - a[1]) * t; db++;
+      for (const m of [0.1, 0.17, 0.25]) { const cx = Math.floor(x + (nx * m) / r.px), cy = Math.floor(y + (ny * m) / r.px); if (cx >= 0 && cy >= 0 && cx < r.w && cy < r.h && (r.fal[cy * r.w + cx] || r.nyilas[cy * r.w + cx])) { fal++; break; } }
+    }
+    return fal >= 0.5 * db;
+  };
 }
 
 export type ElKornyezet = 'kulso' | 'futetlen' | 'szomszed' | 'belso';

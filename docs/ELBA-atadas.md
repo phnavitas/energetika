@@ -37,6 +37,12 @@ nélkül a belmagasság a helyiségpecsétek egységes „bm” értékéből, p
 `lapok` sorrendje – az alaprajznak jelölt lap képét a csomag újra előállítja), `szintKi` (lapindex → szintkódok, pl. `{0: ['F'], 1: ['T']}`), `bm` (belmagasság), `terdfalKezi`,
 `kijelolesek`, `eszakKozos` stb. (`FolyamatAllapot`, `apps/web/src/terv/folyamat.ts`).
 
+Kézi javítás (a Navitherm 3D nézetében is így működik): `allapot.modellKezi` – `hajlas` (fok, 0 = lapostető),
+`kiallas` (ereszkiállás, m), `orom` (tetővég lapirány szerint – 0 fent, 90 jobbra, 180 lent, 270 balra → `true` oromfal,
+`false` konty), `belmag` (szintkód → belmagasság, m; a szintek magassága ebből halmozódik). A körvonal kézi
+javítása: `allapot.kijelolesek[lapindex].burok` – a hőburok körvonala (pt, a fal külső síkján); megadásakor a külső
+falak és a födémek / a tető alaprajza ebből (a fűtetlen terek tömegével együtt) készül.
+
 **Ellenőrizve:** a csomag kimenete a két IFC-párral rendelkező mintán (Naszály, Nyárfa) bitre azonos a Navitherm
 alkalmazás teljes modelljével.
 
@@ -62,6 +68,9 @@ falfelület van – a kontylap (alatta héjazat-sraffozás / tetőréteg) nem or
 A tető formáját (konty / oromfal végenként) a helyszínrajz vagy tetőfelülnézet tetővonalai pontosítják
 (`packages/terv/src/tetoFelulnezet.ts`: a 45°-os élpárok + gerinc → konty, élek nélküli gerincvég → orom); a lapon
 a méretek szerint egyező épülettömb számít, a szomszéd épületek nem.
+
+A legfelső szint körvonalának sekély (≤ 0,6 m, ill. ≤ ereszkiállás; ≤ 6 m széles) befelé nyíló fülkéi (bejárati
+fülke) fölött az eresz egyenesen fut át – a tető nem vápázik be.
 
 A külső falak, amelyeknél a tető alsó síkja a fal teteje fölött van (oromfal, magastetős szint), `profil`-t kapnak
 (a tető vonalát követő felső él, `jelleg: 'oromfal'`), így a fal és a tető között nincs rés.
