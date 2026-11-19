@@ -5,6 +5,7 @@
 import { lapKinyer, type Lap } from './kinyeres';
 import { alaprajzElemez, meretaranyKeres, kulterNev, szintekCimbol, eszakjelKeres, jegyzekSorok, jegyzekCsoportok, type AlaprajzEredmeny, type TervHelyiseg } from './alaprajz';
 import { retegSzures } from './retegek';
+import { rajzpecsetTeglalap, pecsetKeretNelkul } from './rajzpecset';
 import { pdfZonakNyers, zonakSzur, poliTer, poliBenne, belsoPont } from './zonak';
 import { raszterEpit, type Raszter, type RaszterBeallitas } from './raszter';
 import { kotaEllenoriz } from './kota';
@@ -338,14 +339,26 @@ function zonaHelyisegek(zonak: NonNullable<Lap['zonak']>, pecsetek: TervHelyiseg
   return ki;
 }
 
+/** A lapkép (szürke / tinta) másolata a téglalapon (pt) fehérre takarva. */
+function kepMaszk<K extends { w: number; h: number; ptPx: number; adat: Uint8Array }>(k: K | undefined, t: [number, number, number, number] | null): K | undefined {
+  if (!k || !t) return k;
+  const adat = k.adat.slice();
+  const x0 = Math.max(0, Math.floor(t[0] * k.ptPx)), x1 = Math.min(k.w - 1, Math.ceil(t[2] * k.ptPx)), y0 = Math.max(0, Math.floor(t[1] * k.ptPx)), y1 = Math.min(k.h - 1, Math.ceil(t[3] * k.ptPx));
+  for (let y = y0; y <= y1; y++) adat.fill(255, y * k.w + x0, y * k.w + x1 + 1);
+  return { ...k, adat };
+}
 /** Kézzel felvett helyiség (a rajzon pecsét nélküli, zárt terület – pl. lépcső): a kattintás helye (lapkoordináta) és neve. */
 export interface PluszHelyiseg { x: number; y: number; nev: string }
 export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: SzurkeKep, tinta0?: TintaKep, leirasJegyzek?: TervHelyiseg[], plusz?: PluszHelyiseg[]): AlaprajzFeldolgozas {
   // rétegzett PDF: a bútor, környezet, burkolat, födém/tető, raszter rétegek vonalai nélkül; ilyenkor a lapkép
   // „tintája” (amely minden réteget – bútort, burkolatot – tartalmaz) nem kell: a falat a réteg adja
-  const lap = retegSzures(lap0);
-  const reteges = lap !== lap0;
-  const tinta = reteges ? undefined : tinta0;
+  const lap1 = retegSzures(lap0);
+  const reteges = lap1 !== lap0;
+  // a rajzpecsét (feliratmező) táblázata és a lapkeret nem fal, nem helyiség: vonalaik nélkül, a lapképen kitakarva
+  const pr = rajzpecsetTeglalap(lap1);
+  const lap = pecsetKeretNelkul(lap1, pr);
+  const tinta = reteges ? undefined : kepMaszk(tinta0, pr);
+  szurke = kepMaszk(szurke, pr);
   const e = alaprajzElemez(lap);
   if (meretarany && meretarany > 0) { e.meretarany = meretarany; e.mPerPt = (25.4 / 72) / 1000 * meretarany; }
   // lépték nélküli lap (pl. kicsinyített típusalaprajz): a méretláncokból becsülve

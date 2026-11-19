@@ -135,6 +135,9 @@ tartó) – a hőszigetelés-burkolat, eresz, csatorna, járda, korlát nem.
   keskeny falmag / hajszálrés (≤ 0,4 m-es sávok nélkül), nem nyílik nyitott oldallal (a kerülete ≥ ¼-én nyílással /
   áthidalt réssel) a külső térre, és ha a raszter külső térnek vette, legfeljebb 15 m², döntően fal határolja és nincs
   benne megnevező felirat (erkély, terasz).
+- Rajzpecsét és lapkeret: a feliratmező (≥ 3 jellegzetes mezőnév – tervező, építtető, rajzszám, méretarány, dátum,
+  helyrajzi szám, engedélyezési… – egy csoportban, a táblázat vonalaival a lapszélig bővítve) és a lapkeret vonalai
+  nem falak, nem helyiségek (`packages/terv/src/rajzpecset.ts`); a feliratok maradnak (méretarány, lapcím).
 - ArchiCAD-zónák: az azonos nevű darabok összevonása láncolva sem köthet össze két, külön pecsétet tartalmazó zónát.
 - Pecsét két előtag nélküli területsorral („12,82 m²” fölött „15,85 m²”): a nagyobb a teljes (A), a kisebb a hasznos;
   a jegyzék „Terület | Teljes terület” oszlopai ugyanígy. Csak burkolatnevű pecsét („greslap” + „parketta”) helyiség,
