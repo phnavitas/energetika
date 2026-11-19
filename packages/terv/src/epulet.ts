@@ -462,7 +462,8 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
     const mind = new Set([...L.kategoria.entries()].filter(([, k]) => k !== 'kulter').map(([ri]) => ri));
     const fut = new Set([...L.kategoria.entries()].filter(([, k]) => k === 'futott').map(([ri]) => ri));
     if (!mind.size) continue;
-    const pol = (L.tomegPol ?? burokTomeg(r, mind)).map((p) => p.map(([x, y]) => L.m(x, y)));
+    const fel = L.rajz?.szovegek.filter((t) => /\p{L}{4,}/u.test(t.s)).map((t) => ({ x: t.x + t.szel / 2, y: t.y }));
+    const pol = (L.tomegPol ?? burokTomeg(r, mind, undefined, undefined, fel)).map((p) => p.map(([x, y]) => L.m(x, y)));
     const vanFut = fut.size > 0;
     for (const sz0 of L.szintek) {
       const i = szintek.findIndex((x) => x.id === sz0.id);

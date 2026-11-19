@@ -30,7 +30,9 @@ const { modell, lapok, figyelmeztetes } = await pdfbolEpulet(fajlok, {  // File[
 - `modell`: `EpuletModell` (típus: `packages/terv/src/epulet.ts`), ld. lent. Egy 3 lapos családi ház ≈ 15–20 s.
 
 Felhasználói döntések nélkül fut, a Tervből lépés alapértelmezéseivel: a helyiségek besorolása a nevükből, a szintek a
-lapcímből, az északi irány a rajzról / a homlokzatokból (északjel nélküli alaprajznál a helyszínrajz északjele, ha a
+lapcímből (a két sorba tördelt lapcím – „Harmadik emeleti” / „alaprajz” – egyben; szint nélküli címnél – „UTCASZINTI
+ALAPRAJZ” – a fűtött helyiségpecsétekhez legközelebbi relatív szintjelekből: ±0,6 m földszint, 2,2 m felett emelet,
+−1,5 m alatt pince), az északi irány a rajzról / a homlokzatokból (északjel nélküli alaprajznál a helyszínrajz északjele, ha a
 homlokzatok égtáj-elnevezésétől legfeljebb 45°-kal tér el), a belmagasság és a metszet az első metszetlapról (metszet
 nélkül a belmagasság a helyiségpecsétek egységes „bm” értékéből, pl. „bm: 2,90 m”). Felülírható
 (`allapot`): `lapSzerep` (lapindex → `'alaprajz' | 'metszet' | 'homlokzat' | 'leiras' | 'egyeb'`; a lapindex a visszaadott
@@ -128,6 +130,15 @@ tartó) – a hőszigetelés-burkolat, eresz, csatorna, járda, korlát nem.
   fagyhatárig sávalap / gerenda lehet; lemezalap ≥ 18 cm.
 - Tető: mindig a geometriából, az ELBA megadási szabályai szerint (`tetoBontas`); ha van tetőszerkezet a modellben,
   az elemek onnan is vehetők, ha nincs, az ELBA számolja.
+- Hőburok-körvonal és épülettömeg: a fűtött terekhez fal nélkül csatlakozó belső zseb (a zónából kihagyott, 1,9 m
+  alatti tetőtéri sáv a térdfalig, a zónán kívüli vagy a helyiségből kifolyt lépcső) a burok része, ha ≥ 0,5 m², nem
+  keskeny falmag / hajszálrés (≤ 0,4 m-es sávok nélkül), nem nyílik nyitott oldallal (a kerülete ≥ ¼-én nyílással /
+  áthidalt réssel) a külső térre, és ha a raszter külső térnek vette, legfeljebb 15 m², döntően fal határolja és nincs
+  benne megnevező felirat (erkély, terasz).
+- ArchiCAD-zónák: az azonos nevű darabok összevonása láncolva sem köthet össze két, külön pecsétet tartalmazó zónát.
+- Pecsét két előtag nélküli területsorral („12,82 m²” fölött „15,85 m²”): a nagyobb a teljes (A), a kisebb a hasznos;
+  a jegyzék „Terület | Teljes terület” oszlopai ugyanígy. Csak burkolatnevű pecsét („greslap” + „parketta”) helyiség,
+  nem külső burkolt felület.
 
 ## Fejlesztés, frissítés
 

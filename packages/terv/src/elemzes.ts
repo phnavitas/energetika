@@ -78,7 +78,15 @@ export function lapSzerep(lap: Lap, fajlnev = '', tobbLapos = false): { szerep: 
   // elsőként a rajzpecsét nagy (≥ 12 pt) lapcíme; ha nincs, a legnagyobb cím-jelölt(ek) – több rajz egy lapon: mind
   const nagy = jeloltek.find((t) => t.meret >= 12);
   const legnagyobb = Math.max(0, ...jeloltek.map((t) => t.meret));
-  const cim = nagy ? nagy.s.trim() : [...new Set(jeloltek.filter((t) => t.meret >= legnagyobb - 0.5).map((t) => t.s.trim()))].join(' · ');
+  // (két sorba tördelt cím – „Harmadik emeleti” / „alaprajz_I-II ütem” –: a közvetlenül fölötte / alatta álló, azonos
+  // betűméretű, azonos kezdetű sorral együtt)
+  const sorral = (t: Lap['szovegek'][number]) => {
+    const tars = (u: Lap['szovegek'][number], fel: boolean) => lap.szovegek.find((v) => v !== u && v !== t && Math.abs(v.meret - u.meret) < 0.3 && Math.abs(v.x - u.x) < u.meret
+      && (fel ? u.y - v.y : v.y - u.y) > u.meret * 0.6 && (fel ? u.y - v.y : v.y - u.y) < u.meret * 1.6 && /\p{L}{3}/u.test(v.s) && v.s.trim().length <= 40);
+    const fel = tars(t, true), le = tars(t, false);
+    return [fel, t, le].filter(Boolean).map((v) => v!.s.trim()).join(' ');
+  };
+  const cim = nagy ? sorral(nagy) : [...new Set(jeloltek.filter((t) => t.meret >= legnagyobb - 0.5).map((t) => sorral(t)))].join(' · ');
   // szöveges dokumentum (műszaki leírás): fájlnév szerint, vagy rajzcím nélküli, kevés vonalú, hosszú mondatos lap
   const fn = fajlnev.normalize('NFC');
   const mondat = lap.szovegek.filter((t) => t.s.trim().length >= 50).length;
@@ -286,13 +294,16 @@ function zonaHelyisegek(zonak: NonNullable<Lap['zonak']>, pecsetek: TervHelyiseg
   // (ha az előtagok legalább fele ilyen kategória, a rajz előtagjai mind kategóriák – a két „1.3 Előtér” is)
   const kategoriaElotag = new Set(katE.length && katE.length * 2 >= elotagNevek.size ? [...elotagNevek.keys()] : katE);
   const pecsetBenne = (i: number) => pecsetek.find((h) => poliBenne(zonak[i]!.pontok, (h.mutato ?? h).x, (h.mutato ?? h).y));
+  // (csoportonként a benne lévő pecsét – a láncolt összevonás sem köthet össze két pecsétes zónát egy közös ajtóbéllet-darabon át)
+  const csPecset = zonak.map((_, i) => pecsetBenne(i));
   for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
     if (zonak[i]!.nev !== zonak[j]!.nev) continue;
     // azonos nevű, de két külön pecsétet tartalmazó zóna két helyiség (a két lakás „10 fürdő”-je), nem egy darabolt zóna
-    const pi = pecsetBenne(i), pj = pecsetBenne(j);
+    const gi = gyoker(i), gj = gyoker(j); if (gi === gj) continue;
+    const pi = csPecset[gi], pj = csPecset[gj];
     if (pi && pj && pi !== pj) continue;
     const a = bb[i]!, b = bb[j]!;
-    if (a[0]! - tav <= b[2]! && b[0]! - tav <= a[2]! && a[1]! - tav <= b[3]! && b[1]! - tav <= a[3]!) szulo[gyoker(i)] = gyoker(j);
+    if (a[0]! - tav <= b[2]! && b[0]! - tav <= a[2]! && a[1]! - tav <= b[3]! && b[1]! - tav <= a[3]!) { szulo[gi] = gj; csPecset[gj] = pj ?? pi; }
   }
   const csop = new Map<number, number[]>(); for (let i = 0; i < n; i++) { const g = gyoker(i); csop.set(g, [...(csop.get(g) ?? []), i]); }
   const foglalt = new Set<TervHelyiseg>();

@@ -195,6 +195,26 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     for (const [k, v] of Object.entries(elemzesekNyers)) o[Number(k)] = typeof v === 'string' ? v : nyilasMeretAlkalmaz(v, kijelolesek[Number(k)]?.nyMeret);
     return o;
   }, [elemzesekNyers, kijelolesek]);
+  // a lakásonkénti / épületszintű jegyzék a másik szint helyiségeit is felsorolja: a más alaprajzlapon pecséttel
+  // szereplő (kódú, ill. kód nélkül azonos nevű és területű) sor nem „csak a jegyzékben” szereplő helyiség – a
+  // figyelmeztetés számából kimarad (csak a kiírásban; az elemzés objektuma változatlan)
+  const lapFigy = useMemo(() => {
+    const kn = (q?: string) => (q ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const nt = (h: { nev: string; A: number }) => `${h.nev.toLowerCase().trim()}|${h.A.toFixed(2)}`;
+    const pecsetKod = new Map<number, Set<string>>();
+    for (const [k, v] of Object.entries(elemzesek)) if (typeof v === 'object') pecsetKod.set(Number(k), new Set(v.e.helyisegek.filter((h) => h.forras === 'pecset').map((h) => (h.kod ? kn(h.kod) : nt(h)))));
+    const ki = new Map<number, string[]>();
+    for (const [k, v] of Object.entries(elemzesek)) {
+      if (typeof v !== 'object') continue;
+      const figy = [...v.e.figyelmeztetesek]; ki.set(Number(k), figy);
+      const fi = figy.findIndex((x) => /helyiség csak a jegyzékben szerepel/.test(x)); if (fi < 0) continue;
+      const mas = (h: { kod?: string; nev: string; A: number }) => [...pecsetKod].some(([j, s]) => j !== Number(k) && ((!!h.kod && s.has(kn(h.kod))) || s.has(nt(h))));
+      const db = Number(/^(\d+)/.exec(figy[fi]!)?.[1] ?? 0), le = v.e.helyisegek.filter((h) => h.forras === 'jegyzek' && mas(h)).length;
+      if (!le) continue;
+      if (db - le > 0) figy[fi] = figy[fi]!.replace(/^\d+/, String(db - le)); else figy.splice(fi, 1);
+    }
+    return ki;
+  }, [elemzesek]);
   /** Lapindex → kimarad-e az „Összes átvétele” műveletből (alapból a pince kimarad). */
   const [kihagyLap, setKihagyLap] = useState<Record<number, boolean>>({});
   const [osszesFut, setOsszesFut] = useState(false);
@@ -564,6 +584,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   // teljes épületmodell (IFC-szerű): a közös folyamatból, az aktuális lap északi irányával
   const epuletModellApp = (): EpuletModell | null => F.epuletModell(eszakSz);
   try { (globalThis as any).__epulet = epuletModellApp; } catch { /* */ }
+  try { (globalThis as any).__elemzesek = () => ({ lapok, elemzesek, kijelolesek, futott: (i: number) => { const a = elemzesek[i]; return typeof a === 'object' ? [...futottRiK(a, kijeloles(i, a))] : []; }, nevF: (i: number) => nevFeliratok(lapok[i]!.lap) }); } catch { /* */ }
   try { (globalThis as any).__szobaMag = () => alaprajzLapok.map(({ i }) => { const a = elemzesek[i]; if (typeof a !== 'object') return null; const v = szobaMagassag(i, a); return v ? { lap: i, tengely: v.tengely, hatarok: v.hatarok, savok: v.savok, helyisegek: [...v.magassag.entries()].map(([ri, h]) => [a.magHelyisegek[ri]?.kod, a.magHelyisegek[ri]?.nev, h]) } : null; }); } catch { /* */ }
   const epMd = useMemo(() => { if (!nezet3d || modell3d !== 'teljes') return null; try { return epuletModellApp(); } catch { return null; } }, [nezet3d, modell3d, elemzesek, kijelolesek, bm, lapok, modellKezi]); // eslint-disable-line react-hooks/exhaustive-deps
   try { (globalThis as any).__burok3d = () => ({ belso: modellSzintek('belso'), kulso: modellSzintek('kulso') }); } catch { /* */ }
@@ -1183,7 +1204,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
           })()}
           <h2>1. Helyiségek és tájolás</h2>
           <p class="halk">A helyiségpecsétekből (kód, név, burkolat, terület) és a helyiségjegyzékből. A színes vonalak a felismert külső falszakaszok a helyiségek belső (nettó) síkján, homlokzati irány szerint; a jelölők a nyílászárók.</p>
-          {al.e.figyelmeztetesek.filter((f) => !(al.e.eszak && eszakJavitas(al.e.eszak.alairas) !== 0 && /északjel irányát/.test(f)) && !(/Északjelet nem találtam/.test(f) && eszakHom(al) !== null)).map((f) => <div class="figyelmeztetes" style="margin-bottom:8px">{f}</div>)}
+          {(lapFigy.get(aIdx) ?? al.e.figyelmeztetesek).filter((f) => !(al.e.eszak && eszakJavitas(al.e.eszak.alairas) !== 0 && /északjel irányát/.test(f)) && !(/Északjelet nem találtam/.test(f) && eszakHom(al) !== null)).map((f) => <div class="figyelmeztetes" style="margin-bottom:8px">{f}</div>)}
           {(() => {
             // bizonytalan helyzetek, amelyekről a felhasználó dönt
             const cm = (v: number) => Math.round(v * 100);

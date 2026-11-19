@@ -115,6 +115,11 @@ export function pecsetek(sz: Szoveg[]): TervHelyiseg[] {
     // (geometriai) alapterülettel – a hőburok felületeihez ez kell
     const teruletSor = (t: Szoveg) => { const q = szovegJavit(t.s); return ELOTAG.test(q) && /^\d{1,4}[,.]\d{1,2}\s*(m\s*(²|2)?)?$/.test(q.replace(ELOTAG, '')); };
     if (ELOTAG.test(szovegJavit(a.s)) && vsz.some((t) => t !== a && teruletSor(t) && t.y > a.y + a.meret * 0.4 && t.y < a.y + a.meret * 1.9 && Math.abs(kozep(t) - kozep(a)) < a.meret * 3)) continue;
+    // előtag nélküli két területsor („12,82 m²” fölött „15,85 m²” – tetőtérben az 1,9 m feletti hasznos és a teljes
+    // alapterület): a pecsét az alsó, nagyobb értékű sorból indul, a felső a hasznos terület
+    const tisztaTer = (t: Szoveg) => { const q = szovegJavit(t.s); const mm = TERULET.exec(q); return !ELOTAG.test(q) && mm ? szamErtek(mm[1]!) : null; };
+    const alsoTer = (t: Szoveg) => vsz.find((u) => u !== t && Math.abs(u.meret - t.meret) < t.meret * 0.2 && u.y > t.y + t.meret * 0.6 && u.y < t.y + t.meret * 1.9 && Math.abs(kozep(u) - kozep(t)) < t.meret * 3 && (tisztaTer(u) ?? 0) > (tisztaTer(t) ?? Infinity));
+    if (tisztaTer(a) !== null && alsoTer(a)) continue;
     const sorok: Szoveg[] = [];
     let hasznos: number | undefined;
     let akt = a; const cx = kozep(a);
@@ -130,6 +135,7 @@ export function pecsetek(sz: Szoveg[]): TervHelyiseg[] {
       if (!t) break;
       const ts = szovegJavit(t.s);
       if (teruletSor(t) && ELOTAG.test(ts)) { hasznos = szamErtek(ts.replace(ELOTAG, '').replace(/\s*m.*$/, '')); akt = t; continue; } // a hasznos-terület sora a teljes fölött
+      if (!sorok.length && hasznos === undefined && akt === a && tisztaTer(a) !== null && (tisztaTer(t) ?? Infinity) < ter! && alsoTer(t) === a) { hasznos = tisztaTer(t)!; akt = t; continue; }
       // másik pecsét / méretszám (a magyar méretszám tizedesvesszős; a pontos „1.01” helyiségkód lehet)
       if (TERULET.test(ts) || /^\d+,\d+$/.test(ts) || /^\d{4,}$/.test(ts)) break;
       // nyílásfelirat („90” fölött / alatt „210”, „pm 90”): nem a pecsét kódja
@@ -169,7 +175,7 @@ export function pecsetek(sz: Szoveg[]): TervHelyiseg[] {
     // szerkezeti elem felirata („üvegezett felület A = 0,58 m²”, „üvegkorlát”, „falazott mellvéd”): nem helyiség
     if (ELEM_NEV.test(nev)) continue;
     betu.set(ki.length, a.meret);
-    ki.push({ kod, nev: nagybetuJavit(nev), burkolat, A: ter, ...(hasznos !== undefined && hasznos < ter ? { hasznosA: hasznos } : {}), x: cx, y: (Math.min(...ys) + Math.max(...ys)) / 2 - a.meret / 2, bbox, forras: 'pecset', kulter: kulterE(nev) || (!kod && BURKOLAT.test(nev) && nev.split(' ').length <= 2), egyseg: kod ? egysegKod(kod) : undefined });
+    ki.push({ kod, nev: nagybetuJavit(nev), burkolat, A: ter, ...(hasznos !== undefined && hasznos < ter ? { hasznosA: hasznos } : {}), x: cx, y: (Math.min(...ys) + Math.max(...ys)) / 2 - a.meret / 2, bbox, forras: 'pecset', kulter: kulterE(nev) || (!kod && !burkolat && BURKOLAT.test(nev) && nev.split(' ').length <= 2), egyseg: kod ? egysegKod(kod) : undefined });
   }
   // a helyiségpecsétek betűméreténél jóval kisebb (≤ 60 %) kód nélküli „pecsét”: nyílászáró / szerkezet melletti
   // megjegyzés (pl. tetőablak üvegfelülete), nem helyiség – legalább 4 kódos pecsét betűmérete adja a mértéket
@@ -270,11 +276,15 @@ export function jegyzekSorok(sz: Szoveg[]): TervHelyiseg[] {
       continue;
     }
     if (!kozepso.length || !kod) continue;
+    // két területoszlop („Terület | Teljes terület” – a tetőtérben az 1,9 m feletti hasznos és a teljes): az utolsó a
+    // teljes, az előtte álló kisebb a hasznos terület (nem a név része)
+    let hasznos: number | undefined;
+    if (kozepso.length >= 2 && /^\d{1,4}[,.]\d{1,2}$/.test(kozepso.at(-1)!)) { const v = szamErtek(kozepso.pop()!); if (v < szamErtek(utolso)) hasznos = v; }
     let burkolat: string | undefined = vegBurkolat; const nevResz: string[] = [];
     for (const t of kozepso) { if (!burkolat && nevResz.length && BURKOLAT.test(t)) burkolat = t; else nevResz.push(t); }
     if (!nevResz.length || /összesen|össz\.|sum/i.test(nevResz.join(' ')) || !/\p{L}{2}/u.test(nevResz.join(' '))) continue;
     const nev = nevResz.join(' ');
-    ki.push({ kod, nev: nagybetuJavit(nev), burkolat, A: szamErtek(utolso), x: kozep(r[0]!), y: r[0]!.y, forras: 'jegyzek', kulter: kulterE(nev), egyseg: egysegKod(kod) });
+    ki.push({ kod, nev: nagybetuJavit(nev), burkolat, A: szamErtek(utolso), ...(hasznos !== undefined ? { hasznosA: hasznos } : {}), x: kozep(r[0]!), y: r[0]!.y, forras: 'jegyzek', kulter: kulterE(nev), egyseg: egysegKod(kod) });
   }
   return ki;
 }
@@ -666,6 +676,23 @@ export function szintekCimbol(cim: string): string[] {
   if (tobb.length && /emelet/.test(c)) return [...new Set(tobb)];
   // sorszám nélküli „emelet” (egyetlen emelet: földszint + emelet)
   if (/emelet/.test(c) && !/\d/.test(c)) return ['1'];
+  return [];
+}
+
+/**
+ * Szint a lap szintjeleiből (a címben szint nélküli lapnál – „UTCASZINTI ALAPRAJZ”, „VEZÉRSZINTI ALAPRAJZ”): a fűtött
+ * helyiségpecsétekhez legközelebbi relatív szintjelek („+3,08”, „-0,02”) mediánja. ±0,6 m-en belül földszint, 2,2 m
+ * felett emelet (≈ 3 m-enként), −1,5 m alatt pince; abszolút (Balti) magasságnál, jel vagy pecsét nélkül üres.
+ */
+export function szintJelekbol(sz: Szoveg[], hs: TervHelyiseg[]): string[] {
+  const jelek = sz.filter((t) => Math.abs(t.szog) < 2).flatMap((t) => { const m = /^([±+\-−–])\s?(\d{1,2}[,.]\d{2})$/.exec(szovegJavit(t.s).trim()); return m ? [{ x: t.x + t.szel / 2, y: t.y, v: (/[-−–]/.test(m[1]!) ? -1 : 1) * szamErtek(m[2]!) }] : []; });
+  const pec = hs.filter((h) => h.forras === 'pecset' && !h.kulter);
+  if (!jelek.length || !pec.length) return [];
+  const ert = pec.map((h) => jelek.reduce((a, b) => (Math.hypot(b.x - h.x, b.y - h.y) < Math.hypot(a.x - h.x, a.y - h.y) ? b : a)).v).sort((a, b) => a - b);
+  const v = ert[ert.length >> 1]!;
+  if (Math.abs(v) <= 0.6) return ['F'];
+  if (v <= -1.5) return ['P'];
+  if (v >= 2.2 && v < 15) return [String(Math.max(1, Math.round(v / 3)))];
   return [];
 }
 
