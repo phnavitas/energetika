@@ -87,6 +87,8 @@ export function lapSzerep(lap: Lap, fajlnev = '', tobbLapos = false): { szerep: 
   // többlapos PDF: a fájlnév az egész dokumentumé (pl. „Tervdokumentáció”, „Alaprajzok”) – a lap saját címe és
   // tartalma dönt, a fájlnév csak utolsó tartalék
   const fNev = fajta(fajlnev.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ').normalize('NFC'));
+  // tetőfelülnézet (akár „Tetőfelülnézet alaprajz” címmel): a tető alaprajza, nem szint – a tetőformához
+  if (/tetőfelülnézet|tetofelulnezet|tető felülnézet/i.test(cim)) return { szerep: 'egyeb', cim };
   const f = fajta(cim) ?? (tobbLapos ? null : fNev);
   if (f) return { szerep: f, cim: cim || fajlnev.replace(/\.pdf$/i, '') };
   // helyszínrajz: nem alaprajz (a telek terület-feliratai miatt sem)
@@ -185,12 +187,16 @@ export async function pdfLapok(f: File, kepSzel = 2000, halad?: (kesz: number, o
     const c = document.createElement('canvas'); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
     const ctx = c.getContext('2d')!; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
     await page.render({ canvasContext: ctx, viewport: vp, canvas: c }).promise;
-    const { szerep, cim } = lapSzerep(lap, f.name, doc.numPages > 1);
+    const { szerep: szerep0, cim } = lapSzerep(lap, f.name, doc.numPages > 1);
+    // közös lap („ALAPRAJZ-METSZET”): helyiségpecsétekkel alaprajzként is, a metszet pedig ugyanerről a lapról
+    const kozos = szerep0 === 'metszet' && /alaprajz/i.test(cim) && /\d+[,.]\d{2}\s*m(²|2)/.test(lap.szovegek.map((t) => t.s).join(' \n '));
+    const szerep = kozos ? 'alaprajz' : szerep0;
     const tinta = szerep === 'alaprajz' ? await tintaRender(page) : undefined;
     const kep = c.toDataURL('image/jpeg', 0.82), szurke = szurkeKep(c, scale);
     const reszek = szerep === 'alaprajz' ? lapFeloszt(lap) : [];
     if (reszek.length) for (const r of reszek) ki.push({ fajl: f.name, oldal: n, szerep, cim: r.cim, lap: r.lap, kep, kepSzel: c.width, kepMag: c.height, szurke, ...(tinta ? { tinta } : {}) });
     else ki.push({ fajl: f.name, oldal: n, szerep, cim, lap, kep, kepSzel: c.width, kepMag: c.height, szurke, ...(tinta ? { tinta } : {}) });
+    if (kozos) ki.push({ fajl: f.name, oldal: n, szerep: 'metszet', cim, lap, kep, kepSzel: c.width, kepMag: c.height, szurke });
     page.cleanup();
     halad?.(n, ossz);
   }

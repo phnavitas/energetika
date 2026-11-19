@@ -72,7 +72,7 @@ export const tagoltKod = (t: string) => { const k = t.replace(/\s/g, ''); const 
 const LETSZAM = /^\d{1,4}\s*(?:fő|főre|személy|személyes|szem\.|férőhely|fh\.?|ágy|ágyas)$/iu;
 /** Szerkezeti elem neve (nem helyiség): korlát, mellvéd, üvegezett / üveg felület, attika, párkány. */
 const ELEM_NEV = /(?:^|[\s(/-])(?:üveg|fém|acél|falazott|tömör)?\s*(?:korlát|mellvéd|attika|párkány)(?=$|[\s,.;:()/-])|üvegezett\s+felület|üvegfelület/i;
-const BURKOLAT = /kerámia|keramia|parketta|parketa|laminált|lam\.|térkő|terko|beton|csempe|járólap|greslap|gres|pvc|linóleum|szőnyeg|padlószőnyeg|műgyanta|kő\b|kőlap|fa\s?burkolat|deszka|vinyl|vinil|esztrich|kavics|aszfalt|gumi|burkolat|kulé/i;
+const BURKOLAT = /hajópadló|hajopadlo|fa ?padló|svéd ?padló|szalagparketta|epoxi|kerámia|keramia|parketta|parketa|laminált|lam\.|térkő|terko|beton|csempe|járólap|greslap|gres|pvc|linóleum|szőnyeg|padlószőnyeg|műgyanta|kő\b|kőlap|fa\s?burkolat|deszka|vinyl|vinil|esztrich|kavics|aszfalt|gumi|burkolat|kulé/i;
 /** Kert, parkoló (szabadtéri) – a mélygarázs / garázs parkolója fűtetlen helyiség, nem kültér. */
 const KULTER2 = /(?:^|[\s(/-])(?:saját\s+|közös\s+|belső\s+)?kert(?:rész|terület)?(?=$|[\s,.;:()/-])|áttörés|beömlő\s+nyílás|légbeszívó|légakna|zöldfelület|zöld\s*felület|(?:^|[\s(/-])parkoló(?:hely|helyek|k)?(?=$|[\s,.;:()/-])|gépkocsi\s*beálló|gk\.?\s*beálló|fedett\s+(?:bejárat|bejáró|beálló|terasz|kiülő|tároló|lépcső|előtér|átjáró|járda|pihenő)|előtető|kiülő|szaletli|pergola|gépállás/i;
 const kulterE = (nev: string) => KULTER.test(nev) || (KULTER2.test(nev) && !/garázs|garazs|teremgarázs/i.test(nev));
@@ -85,8 +85,10 @@ const vizszintes = (t: Szoveg) => Math.abs(t.szog) < 2;
 
 /** Méretarány: „M=1:100”, „M 1:50”, vagy önálló „1:100” felirat. */
 export function meretaranyKeres(sz: Szoveg[]): number | null {
-  for (const t of sz) { const m = /M\s*=?\s*1\s*:\s*(\d{1,4})/i.exec(t.s); if (m) return Number(m[1]); }
-  for (const t of sz) { const m = /^1\s*:\s*(\d{1,4})$/.exec(t.s.trim()); if (m) return Number(m[1]); }
+  // (több arány egy feliratban – „M = 1:1, 1:100” –: az 1:20-nál kisebb léptékű a rajzé; az 1:1 / 1:5 részlet)
+  const rajzi = (s: string) => [...s.matchAll(/1\s*:\s*(\d{1,4})/g)].map((m) => Number(m[1])).filter((v) => v >= 20);
+  for (const t of sz) { if (!/M\s*=?\s*1\s*:\s*\d/i.test(t.s)) continue; const v = rajzi(t.s); if (v.length) return v[0]!; }
+  for (const t of sz) { const m = /^1\s*:\s*(\d{1,4})$/.exec(t.s.trim()); if (m && Number(m[1]) >= 20) return Number(m[1]); }
   return null;
 }
 
@@ -119,7 +121,7 @@ export function pecsetek(sz: Szoveg[]): TervHelyiseg[] {
     let koz = 0; // sortávolság: az első lépés rögzíti, a többi ehhez igazodik
     for (let k = 0; k < 6; k++) {
       // a név / kód sora nagyobb betűs is lehet (pl. 8 pt-os „NAPPALI” a 6 pt-os burkolat és terület fölött)
-      const jelolt = vsz.filter((t) => t !== akt && !sorok.includes(t) && t.meret > a.meret * 0.8 && t.meret < a.meret * 1.5
+      const jelolt = vsz.filter((t) => t !== akt && !sorok.includes(t) && t.meret > a.meret * 0.75 && t.meret < a.meret * 1.5
         && t.y < akt.y - a.meret * 0.6 && t.y > akt.y - Math.max(a.meret, t.meret) * 1.9 && Math.abs(kozep(t) - cx) < Math.max(a.szel, t.szel) * 0.75 + Math.max(a.meret, t.meret)
         && (!koz || Math.abs(akt.y - t.y - koz) < koz * 0.25 + Math.max(0, t.meret - a.meret) * 1.2))
         .sort((p, q) => (Math.abs(kozep(p) - cx) + (akt.y - p.y)) - (Math.abs(kozep(q) - cx) + (akt.y - q.y)));
@@ -657,7 +659,7 @@ export function szintekCimbol(cim: string): string[] {
     .replace(/(?<![a-záéíóöőúüű])(i{1,3}|iv|v|vi{1,3}|ix|x)\s*\.(?=\s*(?:[-–,]|és|emelet))/g, (_m, r: string) => `${ROMAI[r]}.`);
   if (/pince|alagsor|mélygarázs/.test(c)) return ['P'];
   if (/földszint|fszt|földsz/.test(c)) return ['F'];
-  if (/tetőtér|tetoter/.test(c)) return ['T'];
+  if (/tetőtér|tetoter|tetőszint|tetoszint|padlástér|padlaster|tetőemelet/.test(c)) return ['T'];
   const tart = /(\d+)\s*\.?\s*[-–]\s*(\d+)\s*\.?\s*emelet/.exec(c);
   if (tart) { const a = Number(tart[1]), b = Number(tart[2]); return Array.from({ length: Math.max(0, b - a) + 1 }, (_, i) => String(a + i)); }
   const tobb = [...c.matchAll(/(\d+)\s*\.(?=[^\d]*(?:és|,|emelet))/g)].map((m) => m[1]!);

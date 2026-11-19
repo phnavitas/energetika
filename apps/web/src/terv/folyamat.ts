@@ -117,6 +117,8 @@ export function alapKijeloles(al: AlaprajzFeldolgozas): Kijeloles {
   const kizartH = new Set(al.leiras ? [] : al.auto ? al.e.helyisegek.map((h, i) => (al.e.egysegek.length && h.egyseg ? -1 : i)).filter((i) => i >= 0) : vanPecset ? al.e.helyisegek.map((h, i) => (h.forras === 'jegyzek' ? i : -1)).filter((i) => i >= 0) : []);
   // a helyiségjegyzékből hiányzó, kód nélküli pecsét (pl. kívül álló tároló, hulladéktároló), ha a pecsétek nagy része (≥ 70 %) a jegyzékben szerepel
   for (const i of jegyzekenKivul(al.e.helyisegek)) kizartH.add(i);
+  // a meglévő (nem tervezett) épület helyiségei („Meglévő épület / Raktár”): szomszéd épület, alapból nem számít
+  al.e.helyisegek.forEach((h, i) => { if (/\bmegl[ée]v[őo]\s+(?:épület|epulet|ép\.)/i.test(h.nev)) kizartH.add(i); });
   // pecsét nélküli (automatikusan felismert) alaprajz: az épület szélén álló, ismeretlen túloldalú falak (a rajz körüli
   // sraffozás, színezés miatt nem ér el a külső tér) alapból külső falként számítanak – a Hőburok-ellenőrzésben kivehetők
   const ismKulso = new Set<string>();

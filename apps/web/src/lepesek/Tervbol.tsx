@@ -859,11 +859,16 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   }
 
   function osszesAtvesz() {
+    // (szint nélküli című lap – „ALAPRAJZ” – földszintként, ha egyértelmű: ez az egyetlen szint nélküli lap, és
+    // más lap nem földszint; több szint nélküli lapnál a szintet a felhasználó jelöli)
+    const szintNelkuli = alaprajzLapok.filter(({ i }) => !kimarad(i) && typeof elemzesek[i] === 'object' && !lapSzintek(i).length);
+    const vanF = alaprajzLapok.some(({ i }) => lapSzintek(i).includes('F'));
+    const lapSzintekE = (i: number) => (lapSzintek(i).length ? lapSzintek(i) : szintNelkuli.length === 1 && !vanF ? ['F'] : []);
     const sor = alaprajzLapok.filter(({ i }) => !kimarad(i) && typeof elemzesek[i] === 'object')
-      .sort((x, y) => SZINT_SOR.indexOf(lapSzintek(x.i)[0] ?? 'F') - SZINT_SOR.indexOf(lapSzintek(y.i)[0] ?? 'F'));
+      .sort((x, y) => SZINT_SOR.indexOf(lapSzintekE(x.i)[0] ?? 'F') - SZINT_SOR.indexOf(lapSzintekE(y.i)[0] ?? 'F'));
     if (!sor.length) return;
     setOsszesFut(true);
-    const futott = [...new Set(sor.flatMap(({ i }) => lapSzintek(i)).filter((x) => x !== 'P'))].sort((a, b) => SZINT_SOR.indexOf(a) - SZINT_SOR.indexOf(b));
+    const futott = [...new Set(sor.flatMap(({ i }) => lapSzintekE(i)).filter((x) => x !== 'P'))].sort((a, b) => SZINT_SOR.indexOf(a) - SZINT_SOR.indexOf(b));
     const uz: string[] = [];
     const szintA = new Map<string, number>();
     // laponként: a projektbe került helyiségek helye (szintenként azonos sorrendben) a szintek egymásra vetítéséhez
@@ -874,7 +879,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
         const a = elemzesek[i] as AlaprajzFeldolgozas;
         // a megnyitott lapnál a kézi kijelölés, a többinél az alapértelmezett
         const k = i === aIdx ? kj : kijeloles(i, a);
-        const sz = lapSzintek(i);
+        const sz = lapSzintekE(i);
         const elotteF = new Set(q.feluletek.map((f) => f.id));
         const u = egyAtvetel(q, a, k, { csere: n === 0 ? csere : false, padloAt: !!futott.length && sz.includes(futott[0]!), tetoAt: !!futott.length && sz.includes(futott.at(-1)!), eszak: eszakLap(i, a), szintek: sz, fajl: l.fajl });
         { const reszek = atvetelReszek(a, k); lapAdat.push({ a, sz, reszek, kezd: q.helyisegek.length - reszek.helyisegek.length * Math.max(1, sz.length), felIds: new Set(q.feluletek.filter((f) => !elotteF.has(f.id)).map((f) => f.id)) }); }

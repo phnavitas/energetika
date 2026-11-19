@@ -281,14 +281,20 @@ function nyitas(c: Int32Array, w: number, h: number, r: number): Uint8Array {
 /**
  * Raszter felépítése. `magok`: a helyiségpecsétek középpontjai (pt). A rács a magok köré, `margo` méterrel bővítve készül.
  */
+/** A felismerési rács legnagyobb cellaszáma (alapértelmezett pixelméretnél). */
+const MAX_CELLA = 9e6;
+
 export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: number; A?: number }[], b: RaszterBeallitas = {}, margo = 6): Raszter {
-  const px = b.px ?? 0.025, maxFal = b.maxFal ?? 0.9;
-  const ptPx = mPerPt / px; // 1 pt hány pixel
+  const maxFal = b.maxFal ?? 0.9;
   const kp = b.kulsoPontok ?? [];
   // a rács a pecsétek körül: legalább `margo`, nagy helyiségnél (a pecsét a terem közepén) a terület gyökével arányosan több
   const mg = (m: { A?: number }) => Math.min(40, Math.max(margo, Math.sqrt(m.A ?? 0) + 2)) / mPerPt;
   const pk = [...magok.map((m) => ({ x: m.x, y: m.y, d: mg(m) })), ...kp.map((m) => ({ x: m.x, y: m.y, d: margo / mPerPt }))];
   const x0 = Math.min(...pk.map((p) => p.x - p.d)), y0 = Math.min(...pk.map((p) => p.y - p.d)), x1 = Math.max(...pk.map((p) => p.x + p.d)), y1 = Math.max(...pk.map((p) => p.y + p.d));
+  // pixelméret: alapból 2,5 cm; nagy (sok helyiséges, nagy kiterjedésű) lapon a rács legfeljebb ~9 millió cella – a
+  // böngésző memóriája (a felismerés több rácsváltozatot épít) és a futásidő miatt; ilyenkor a cella arányosan nagyobb
+  const px = b.px ?? Math.max(0.025, 0.025 * Math.sqrt(((x1 - x0) * mPerPt / 0.025) * ((y1 - y0) * mPerPt / 0.025) / MAX_CELLA));
+  const ptPx = mPerPt / px; // 1 pt hány pixel
   const w = Math.ceil((x1 - x0) * ptPx), h = Math.ceil((y1 - y0) * ptPx);
   const tr = (x: number, y: number): [number, number] => [(x - x0) * ptPx, (y - y0) * ptPx];
   const fal = new Uint8Array(w * h);

@@ -17,6 +17,8 @@ export interface Lap { szel: number; mag: number; szovegek: Szoveg[]; utvonalak:
   zonak?: { nev: string; pontok: [number, number][] }[] }
 
 type M = [number, number, number, number, number, number];
+/** Egy részútvonalú útvonalak közös (csak olvasott) `zart` tömbjei – memória. */
+const ZART_I: boolean[] = [true], ZART_N: boolean[] = [false];
 const szoroz = (a: M, b: M): M => [a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1], a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3], a[0] * b[4] + a[2] * b[5] + a[4], a[1] * b[4] + a[3] * b[5] + a[5]];
 const alkalmaz = (m: M, x: number, y: number): [number, number] => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
 
@@ -89,7 +91,8 @@ export async function lapKinyer(pdfjs: any, page: any, oc?: { getGroup(id: strin
         let akt: number[] = []; let gorbe = false;
         let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
         const add = (x: number, y: number) => { const [px, py] = alkalmaz(ctm, x, y); akt.push(px, py); minx = Math.min(minx, px); maxx = Math.max(maxx, px); miny = Math.min(miny, py); maxy = Math.max(maxy, py); };
-        const lezar = (z: boolean) => { if (akt.length >= 4) { pontok.push(akt); zart.push(z); } akt = []; };
+        // (pontos méretű tömbök: a növekvő tömb tartalék kapacitása nagy lapon – több százezer útvonal – sok memória)
+        const lezar = (z: boolean) => { if (akt.length >= 4) { pontok.push(akt.slice()); zart.push(z); } akt = []; };
         for (let j = 0; j < buf.length;) {
           const op = buf[j++];
           if (op === 0) { lezar(false); add(buf[j]!, buf[j + 1]!); j += 2; }
@@ -103,7 +106,11 @@ export async function lapKinyer(pdfjs: any, page: any, oc?: { getGroup(id: strin
         const muvelet = rajz === O.stroke || rajz === O.closeStroke ? 'stroke' : rajz === O.fill || rajz === O.eoFill ? 'fill' : rajz === O.fillStroke || rajz === O.eoFillStroke || rajz === O.closeFillStroke || rajz === O.closeEOFillStroke ? 'fillStroke' : 'none';
         if (muvelet === 'none' || !pontok.length) break;
         const sk = Math.sqrt(Math.abs(ctm[0] * ctm[3] - ctm[1] * ctm[2]));
-        utvonalak.push({ pontok, zart, muvelet, vastagsag: lw * sk, vonalSzin: vs, toltoSzin: ts, bbox: [minx, miny, maxx, maxy], ...(minta && muvelet !== 'stroke' ? { minta: true } : {}), ...(reteg ? { reteg } : {}), ...(gorbe ? { gorbe: true } : {}) });
+        const u: Utvonal = { pontok: pontok.slice(), zart: zart.length === 1 ? (zart[0] ? ZART_I : ZART_N) : zart.slice(), muvelet, vastagsag: lw * sk, vonalSzin: vs, toltoSzin: ts, bbox: [minx, miny, maxx, maxy] };
+        if (minta && muvelet !== 'stroke') u.minta = true;
+        if (reteg) u.reteg = reteg;
+        if (gorbe) u.gorbe = true;
+        utvonalak.push(u);
         break;
       }
     }
