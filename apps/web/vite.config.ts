@@ -20,4 +20,6 @@ export default defineConfig({
   // Az egyfájlos előnézet (artifact) helyi módban fut: nincs adatbázis-kapcsolat.
   envDir: process.env.EGYFAJL ? './nincs-env' : '.',
   server: { host: true, port: 5173 },
+  // a munkaszálak egy fájlban (a PDF-olvasó munkaszál a pdf.js-t dinamikusan tölti be)
+  worker: { rollupOptions: { output: { inlineDynamicImports: true } } },
 });

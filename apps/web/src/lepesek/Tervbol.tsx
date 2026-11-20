@@ -110,7 +110,7 @@ const poligonTerulet = (q: [number, number][], mPerPt: number) => Math.abs(q.red
 
 const IRANY_SZIN: Record<number, string> = { 0: '#A16207', 90: '#2E6DB4', 180: '#15803D', 270: '#A21CAF' };
 const IRANY_NEV: Record<number, string> = { 0: 'lapon fent', 90: 'lapon jobbra', 180: 'lapon lent', 270: 'lapon balra' };
-import { alaprajzFeldolgozHatter } from '../terv/hatter';
+import { alaprajzFeldolgozHatter, pdfLapokHatter } from '../terv/hatter';
 import { AZ_TAJ, kulterRaszter, norm, futottRiK, pecsetPontok, kulsoKozelE, alapKijeloles, BEJARATI_H, burokNyilasok, eszakHomGy, homlokzatGy, nezetGy, homlokzatNezetTar, homlokzatRajzTar, burokAutoGy, burokAutoTar, nevFeliratok, vartTer, burok3dTar, burok3dCache, elemzesLap, burokFalGy, burokFalakAuto, ferdeModell, lapKategoriak, burokNyilasokPt, atvetelReszek, tervbolFuggo, homMagGy, type Kijeloles, type BurokFalAuto , tervFolyamat, SZINT_SOR, kerdesKulcs, nyilasMeretAlkalmaz, type ModellKezi } from '../terv/folyamat';
 export { tervbolFuggo } from '../terv/folyamat';
 
@@ -242,7 +242,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
       for (const [fi, f] of fl.entries()) {
         if (!/\.pdf$/i.test(f.name) && f.type !== 'application/pdf') { setHiba(`${f.name}: csak PDF tervlap olvasható be.`); continue; }
         setFolyamat(`${f.name} beolvasása…`);
-        const ll = await pdfLapok(f, 2000, (k, o) => setHalad({ arany: (fi + (o ? k / o : 0)) / fl.length, szoveg: `${fi + 1}. / ${fl.length} fájl beolvasása: ${f.name}${o > 1 ? ` (${k}/${o}. oldal)` : ''}` }));
+        const ll = await pdfLapokHatter(f, 2000, (k, o) => setHalad({ arany: (fi + (o ? k / o : 0)) / fl.length, szoveg: `${fi + 1}. / ${fl.length} fájl beolvasása: ${f.name}${o > 1 ? ` (${k}/${o}. oldal)` : ''}` }));
         // beépített mintalap: a színezés a pdf.js-ben színátmenetként jelenik meg – az előre elkészített, egyszínű árnyalatkép
         if (szurkeFelulir && alaprajzOldal !== undefined) for (const l of ll) if (l.oldal === alaprajzOldal) l.szurke = szurkeFelulir;
         uj.push(...ll);
@@ -1293,6 +1293,9 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                           {(() => { const el = md.nyilasok.filter((n) => n.pmAlaprajz !== undefined); const cm = (v: number) => (Math.round(v * 100) / 100).toFixed(2).replace('.', ',');
                             return el.length > 0 && <div role="status" style="font-size:13px;margin-top:6px;color:#B45309">A homlokzat szerint {el.length} ablak mellvédmagassága eltér az alaprajzi feliratétól – a modell a homlokzatét veszi: {(() => { const cs = new Map<string, number>(); for (const n of el) { const k = `${Math.round(n.szel * 100)}/${Math.round(n.mag * 100)} (${szintNev(n.szint)}): ${cm(n.pmAlaprajz!)} → ${cm(n.pm)} m`; cs.set(k, (cs.get(k) ?? 0) + 1); }
                               const l = [...cs].map(([k, db]) => (db > 1 ? `${db} × ${k}` : k)); return l.slice(0, 8).join('; ') + (l.length > 8 ? ' …' : ''); })()}.</div>; })()}
+                          {(() => { const el = md.nyilasok.filter((n) => n.homlokzat !== undefined); if (!el.length) return null; const cm = (v: number) => String(Math.round(v * 100));
+                            const cs = new Map<string, { db: number; n: (typeof el)[number] }>(); for (const n of el) { const h = n.homlokzat; const k = `${cm(n.szel)}/${cm(n.mag)} ${n.fajta === 'ablak' ? 'ablak' : 'erkélyajtó'} (${szintNev(n.szint)}): ${h ? `a homlokzaton ${cm(h.szel)}/${cm(h.mag)}` : 'a homlokzaton nincs a helyén keret'}`; const c = cs.get(k); if (c) c.db++; else cs.set(k, { db: 1, n }); }
+                            return <div role="status" style="font-size:13px;margin-top:6px;color:#B45309">A homlokzati rajz szerint {el.length} nyílászáró mérete vagy helye nem egyezik az alaprajzi feliratával – ellenőrizd (kattintásra kijelöli): {[...cs].slice(0, 10).map(([k, { db, n }], j) => <>{j > 0 && '; '}<a href="#" onClick={(e) => { e.preventDefault(); if (n.forras) { setKivNy({ lap: n.forras.lap, ny: n.forras.ny }); if (n.forras.lap !== aIdx && n.forras.lap >= 0) setAIdx(n.forras.lap); } }}>{db > 1 ? `${db} × ` : ''}{k}</a></>)}{cs.size > 10 ? ' …' : ''}.</div>; })()}
                           <div class="halkabb" style="font-size:13px;margin-top:6px">A körvonal (falak, födémek, tető alaprajza) a 2D nézetben a „Hőburok szerkesztése” gombbal javítható: pont húzása, beszúrása (kattintás az élre), törlése (dupla kattintás), él eltolása (a fehér négyzet húzása).</div>
                         </details>
                       );

@@ -49,6 +49,9 @@ export async function lapKinyer(pdfjs: any, page: any, oc?: { getGroup(id: strin
   let ctm: M = alap;
   const verem: { ctm: M; lw: number; vs: string; ts: string; minta: boolean }[] = [];
   let lw = 1, vs = '#000000', ts = '#000000', minta = false;
+  // a színszövegek közös példányai (nagy lapon útvonalanként új szöveg lenne – memória)
+  const szinek = new Map<string, string>();
+  const szinK = (a: unknown) => { const s = szin(a); const r = szinek.get(s); if (r !== undefined) return r; szinek.set(s, s); return s; };
   const formVerem: M[] = [];
   // rétegek (BDC /OC … EMC): a jelölt tartalom verme; az aktuális réteg a legbelső OC-jelölés
   const mcVerem: (string | null)[] = []; let reteg: string | undefined; const retegek = new Set<string>();
@@ -69,19 +72,19 @@ export async function lapKinyer(pdfjs: any, page: any, oc?: { getGroup(id: strin
       case O.paintFormXObjectBegin: formVerem.push(ctm); if (a?.[0]) ctm = szoroz(ctm, a[0] as M); break;
       case O.paintFormXObjectEnd: ctm = formVerem.pop() ?? ctm; break;
       case O.setLineWidth: lw = a[0]; break;
-      case O.setStrokeRGBColor: case O.setStrokeColor: vs = szin(a); break;
-      case O.setFillRGBColor: case O.setFillColor: ts = szin(a); minta = false; break;
-      case O.setStrokeGray: vs = szin([a[0], a[0], a[0]]); break;
-      case O.setFillGray: ts = szin([a[0], a[0], a[0]]); minta = false; break;
+      case O.setStrokeRGBColor: case O.setStrokeColor: vs = szinK(a); break;
+      case O.setFillRGBColor: case O.setFillColor: ts = szinK(a); minta = false; break;
+      case O.setStrokeGray: vs = szinK([a[0], a[0], a[0]]); break;
+      case O.setFillGray: ts = szinK([a[0], a[0], a[0]]); minta = false; break;
       // mintázattal (tiling pattern) kitöltött felület – jellemzően sraffozott falmetszet; a mintázat vonalszíne adja a színt
       case O.setFillColorN: {
         if (Array.isArray(a) && a[0] === 'TilingPattern') {
           const belso = a[2] as { fnArray?: number[]; argsArray?: unknown[] } | undefined;
           const k = belso?.fnArray?.findIndex((f) => f === O.setStrokeRGBColor || f === O.setStrokeColor || f === O.setFillRGBColor) ?? -1;
-          const c = k >= 0 ? szin(belso!.argsArray![k]) : '#808080';
+          const c = k >= 0 ? szinK(belso!.argsArray![k]) : '#808080';
           // a mintázat nem egybefüggő kitöltés: a nagyon világos vonalszín is „színes” falmetszetnek számít
           ts = /^#(f[0-9a-f]){3}$/i.test(c) ? '#d0d0d0' : c; minta = true;
-        } else { ts = szin(a); minta = false; }
+        } else { ts = szinK(a); minta = false; }
         break;
       }
       case O.constructPath: {
@@ -106,7 +109,8 @@ export async function lapKinyer(pdfjs: any, page: any, oc?: { getGroup(id: strin
         const muvelet = rajz === O.stroke || rajz === O.closeStroke ? 'stroke' : rajz === O.fill || rajz === O.eoFill ? 'fill' : rajz === O.fillStroke || rajz === O.eoFillStroke || rajz === O.closeFillStroke || rajz === O.closeEOFillStroke ? 'fillStroke' : 'none';
         if (muvelet === 'none' || !pontok.length) break;
         const sk = Math.sqrt(Math.abs(ctm[0] * ctm[3] - ctm[1] * ctm[2]));
-        const u: Utvonal = { pontok: pontok.slice(), zart: zart.length === 1 ? (zart[0] ? ZART_I : ZART_N) : zart.slice(), muvelet, vastagsag: lw * sk, vonalSzin: vs, toltoSzin: ts, bbox: [minx, miny, maxx, maxy] };
+        const vast = lw * sk;
+        const u: Utvonal = { pontok: pontok.slice(), zart: zart.length === 1 ? (zart[0] ? ZART_I : ZART_N) : zart.slice(), muvelet, vastagsag: vast, vonalSzin: vs, toltoSzin: ts, bbox: [minx, miny, maxx, maxy] };
         if (minta && muvelet !== 'stroke') u.minta = true;
         if (reteg) u.reteg = reteg;
         if (gorbe) u.gorbe = true;

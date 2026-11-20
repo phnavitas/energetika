@@ -116,6 +116,8 @@ export interface Nyilas {
   forras?: { lap: number; ny: number };
   /** A mellvédmagasság a homlokzat szerinti (LapBemenet.mellved); az alaprajzi felirat szerinti érték. */
   pmAlaprajz?: number;
+  /** A feliratos méret nem egyezik a homlokzattal (LapBemenet.homElteres): az ott álló keret mérete (m), null: nincs keret. */
+  homlokzat?: { szel: number; mag: number } | null;
 }
 
 export interface Fodem {
@@ -234,6 +236,8 @@ export interface LapBemenet {
   ismKulso?: ReadonlySet<string>;
   /** Az alaprajzitól eltérő, a homlokzat szerinti mellvédmagasság (m) nyílásonként (homlokzatMellvedek). */
   mellved?: ReadonlyMap<object, number>;
+  /** A homlokzattal nem egyező feliratos nyílások (homlokzatElteresek): a keret mérete, null: nincs keret. */
+  homElteres?: ReadonlyMap<object, { szel: number; mag: number } | null>;
   /** A fűtött terek hőburka (pt, a fal belső síkján) – ha megadott, a fűtött terek külső falai ennek éleiből (mért
    * falvastagsággal, a túloldal környezete szerint), a helyiségek raszteres szakaszai csak a belső falakhoz kellenek. */
   burokPol?: Poligon[];
@@ -480,7 +484,7 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
         const nMag = n.mag > 0 ? n.mag : (n.szel >= 1.6 ? 2.4 : 1.5);
         const pmH = L.mellved?.get(n);
         nyilasok.push({ id: `N${++nySzam}`, fal: leg.id, szint: sz0.id, t: sz(leg.t, 2), szel: n.szel, mag: nMag, pm: pmH ?? n.pm ?? (nMag >= 1.9 ? 0 : 0.9), fajta: n.fajta, burok: fal.burok !== null,
-          forras: { lap: L.lap, ny: nyi < nyN ? nyi : 20000 + nyi - nyN }, ...(pmH !== undefined && n.pm !== null ? { pmAlaprajz: n.pm } : {}) });
+          forras: { lap: L.lap, ny: nyi < nyN ? nyi : 20000 + nyi - nyN }, ...(pmH !== undefined && n.pm !== null ? { pmAlaprajz: n.pm } : {}), ...(L.homElteres?.has(n) ? { homlokzat: L.homElteres.get(n)! } : {}) });
       }
       // (teljes modell) a hosszának legalább 70 %-án nyílással áttört külső fal (pl. garázskapu sávja) vastagsága a
       // rajzon nem látszik – a kapukeret / küszöb vonala adja –: a végeihez csatlakozó külső falaké
@@ -1143,6 +1147,9 @@ function sarokZaras(falak: Fal[], nyilasok: Nyilas[]) {
         // (a metszéspont a fal végénél van, nem a közepén – a másik vége messzebb)
         const O1 = f1[e1 === 'a' ? 'b' : 'a'], O2 = f2[e2 === 'a' ? 'b' : 'a'];
         if (Math.hypot(O1[0] - X[0], O1[1] - X[1]) < d1 || Math.hypot(O2[0] - X[0], O2[1] - X[1]) < d2) continue;
+        // (mindkét fal jóval – a másik fal félvastagságánál sokkal – túlnyúlik a metszésponton: keresztező falak, nem sarok)
+        const tul = (V: P2, O: P2) => { const L = Math.hypot(X[0] - O[0], X[1] - O[1]); return L < 1e-6 ? 0 : ((V[0] - X[0]) * (X[0] - O[0]) + (V[1] - X[1]) * (X[1] - O[1])) / L; };
+        if (tul(P, O1) > 0.75 * f2.vastag && tul(Q, O2) > 0.75 * f1.vastag) continue;
         jel.push({ v1: { f: f1, veg: e1 }, v2: { f: f2, veg: e2 }, X, d: d1 + d2 });
       }
     }

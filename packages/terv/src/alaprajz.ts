@@ -300,6 +300,12 @@ export function mutatokKeres(lap: Lap, hs: TervHelyiseg[]): void {
     const w = u.bbox[2] - u.bbox[0], h = u.bbox[3] - u.bbox[1], n = u.pontok[0]!.length / 2;
     return Math.max(w, h) <= 6 && Math.min(w, h) >= 1 && (n >= 8 ? Math.abs(w - h) < 0.25 * Math.max(w, h) : n <= 4);
   });
+  // nagyobb kitöltött nyílhegy (háromszög, 6–14 pt): a mutatóvonal vége a háromszögön belül; a pont a csúcsa
+  const nyilhegyek = lap.utvonalak.filter((u) => {
+    if (u.muvelet === 'stroke' || u.pontok.length !== 1) return false;
+    const w = u.bbox[2] - u.bbox[0], h = u.bbox[3] - u.bbox[1], n = u.pontok[0]!.length / 2;
+    return n >= 3 && n <= 4 && Math.max(w, h) > 6 && Math.max(w, h) <= 14 && Math.min(w, h) >= 1.5;
+  });
   const vonalak = lap.utvonalak.filter((u) => u.muvelet === 'stroke' && u.pontok.length === 1 && u.pontok[0]!.length <= 6 && u.vastagsag < 0.6);
   // (rácsindex a vonalvégekre és a jelpontokra – nagy lapon a helyiségenkénti teljes bejárás lassú; a sorrend az eredeti)
   const G = 40, kulcs = (x: number, y: number) => `${Math.floor(x / G)}|${Math.floor(y / G)}`;
@@ -308,6 +314,22 @@ export function mutatokKeres(lap: Lap, hs: TervHelyiseg[]): void {
     for (const [x, y] of [[p[0]!, p[1]!], [p[2 * n - 2]!, p[2 * n - 1]!]] as const) { const k = kulcs(x, y); const l = vonalRacs.get(k); if (!l) vonalRacs.set(k, [vi]); else if (l[l.length - 1] !== vi) l.push(vi); } });
   const pontRacs = new Map<string, number[]>();
   pontok.forEach((u, pi) => { const k = kulcs((u.bbox[0] + u.bbox[2]) / 2, (u.bbox[1] + u.bbox[3]) / 2); const l = pontRacs.get(k); if (l) l.push(pi); else pontRacs.set(k, [pi]); });
+  const hegyRacs = new Map<string, number[]>();
+  nyilhegyek.forEach((u, hi) => { const k = kulcs((u.bbox[0] + u.bbox[2]) / 2, (u.bbox[1] + u.bbox[3]) / 2); const l = hegyRacs.get(k); if (l) l.push(hi); else hegyRacs.set(k, [hi]); });
+  // a vonalvég (mx, my) a nyílhegyen (befoglalója + 1,5 pt): a háromszög a vonaltól legtávolabbi csúcsa (a hegye), és
+  // onnan 5 pt-tal tovább (a hegy gyakran a helyiség falvonalán áll)
+  const hegyKeres = (ex: number, ey: number, mx: number, my: number): { x: number; y: number } | undefined => {
+    for (let gx = Math.floor((mx - 10) / G); gx <= Math.floor((mx + 10) / G); gx++) for (let gy = Math.floor((my - 10) / G); gy <= Math.floor((my + 10) / G); gy++)
+      for (const hi of hegyRacs.get(`${gx}|${gy}`) ?? []) {
+        const u = nyilhegyek[hi]!; const b = u.bbox;
+        if (mx < b[0] - 1.5 || mx > b[2] + 1.5 || my < b[1] - 1.5 || my > b[3] + 1.5) continue;
+        const p = u.pontok[0]!; let csx = mx, csy = my, dmax = -1;
+        for (let i = 0; i + 1 < p.length; i += 2) { const d = Math.hypot(p[i]! - ex, p[i + 1]! - ey); if (d > dmax) { dmax = d; csx = p[i]!; csy = p[i + 1]!; } }
+        const L = Math.hypot(mx - ex, my - ey); if (L < 1e-6) continue;
+        return { x: csx + (mx - ex) / L * 5, y: csy + (my - ey) / L * 5 };
+      }
+    return undefined;
+  };
   const pontKeres = (mx: number, my: number) => {
     let leg = -1;
     for (let gx = Math.floor((mx - 3.5) / G); gx <= Math.floor((mx + 3.5) / G); gx++) for (let gy = Math.floor((my - 3.5) / G); gy <= Math.floor((my + 3.5) / G); gy++)
@@ -319,6 +341,19 @@ export function mutatokKeres(lap: Lap, hs: TervHelyiseg[]): void {
   for (const h of hs) {
     if (!h.bbox) continue;
     const [bx0, by0, bx1, by1] = h.bbox; const t = 4;
+    // a pecsét keretének oldala: a feliratok befoglalójának szélén / azon kívül (≤ 15 pt-ra), a mutatóvonalra merőleges vonal, amely a
+    // kezdőpontján átmegy és a felirat szélességének (magasságának) legalább 60 %-át fedi
+    const keretOldalan = (x: number, y: number, mx: number, my: number) => {
+      const fugg = Math.abs(mx - x) < Math.abs(my - y);
+      if (fugg ? (my > y ? y < by1 - 4 || y > by1 + 15 : y > by0 + 4 || y < by0 - 15) : (mx > x ? x < bx1 - 4 || x > bx1 + 15 : x > bx0 + 4 || x < bx0 - 15)) return false;
+      // (a keret szemközti oldala is megvan: párhuzamos, közel azonos kiterjedésű vonal a felirat túloldalán)
+      const oldal = (b: number[]) => (fugg ? b[3] - b[1] < 0.3 && b[2] - b[0] >= 0.6 * (bx1 - bx0) : b[2] - b[0] < 0.3 && b[3] - b[1] >= 0.6 * (by1 - by0));
+      const e = vonalak.find((v) => { const b = v.bbox; return !(b[0] > x + 1 || b[2] < x - 1 || b[1] > y + 1 || b[3] < y - 1) && oldal(b); });
+      if (!e) return false;
+      const [lo, hi] = fugg ? (my > y ? [by0 - 15, by0 + 4] : [by1 - 4, by1 + 15]) : (mx > x ? [bx0 - 15, bx0 + 4] : [bx1 - 4, bx1 + 15]);
+      return vonalak.some((v) => { const b = v.bbox; if (v === e || !oldal(b)) return false; const c = fugg ? b[1] : b[0]; if (c < lo! || c > hi!) return false;
+        const a0 = fugg ? 0 : 1; return Math.abs(b[a0]! - e.bbox[a0]!) <= 2 && Math.abs(b[a0 + 2]! - e.bbox[a0 + 2]!) <= 2; });
+    };
     const benne = (x: number, y: number) => x > bx0 - t && x < bx1 + t && y > by0 - t && y < by1 + t;
     let legjobb: { x: number; y: number; d: number } | null = null;
     const jel = new Set<number>();
@@ -331,12 +366,14 @@ export function mutatokKeres(lap: Lap, hs: TervHelyiseg[]): void {
         const [ex, ey] = vegek[e]!, [mx, my] = vegek[m]!;
         if (!benne(ex, ey) || benne(mx, my)) continue;
         const hossz = Math.hypot(mx - ex, my - ey); if (hossz < 10) continue;
-        // a méretvonalak, falvonalak tengelyirányúak – a mutatóvonal jellemzően ferde
+        // a méretvonalak, falvonalak tengelyirányúak – a mutatóvonal jellemzően ferde; tengelyirányú csak nyílhegyben végződve
         const sz = Math.abs(Math.atan2(my - ey, mx - ex) * 180 / Math.PI) % 90;
-        if (sz < 8 || sz > 82) continue;
-        const pont = pontKeres(mx, my);
-        if (!pont) continue;
-        if (!legjobb || hossz > legjobb.d) legjobb = { x: (pont.bbox[0] + pont.bbox[2]) / 2, y: (pont.bbox[1] + pont.bbox[3]) / 2, d: hossz };
+        const ferde = sz >= 8 && sz <= 82;
+        const pont = ferde ? pontKeres(mx, my) : undefined;
+        // (nagy nyílhegyben végződő – ferde vagy tengelyirányú – mutatóvonal csak a pecsét keretének oldaláról indulva)
+        const hegy = pont || !keretOldalan(ex, ey, mx, my) ? undefined : hegyKeres(ex, ey, mx, my);
+        if (!pont && !hegy) continue;
+        if (!legjobb || hossz > legjobb.d) legjobb = pont ? { x: (pont.bbox[0] + pont.bbox[2]) / 2, y: (pont.bbox[1] + pont.bbox[3]) / 2, d: hossz } : { ...hegy!, d: hossz };
       }
     }
     if (legjobb) { h.mutato = { x: legjobb.x, y: legjobb.y }; continue; }
