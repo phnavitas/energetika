@@ -61,7 +61,7 @@ alkalmazás teljes modelljével.
 | `koszoruk[]` | szintenként: `szel × magas`, `zFelso`, `hossz`, `falak`; `fajta: 'attika'` a lapostetős részen | koszorú, attika |
 | `gerendak[]` | kiváltó / alulbordás: `a→b`, `szel`, `alsoSik`, `felsoSik`, `magas` | `MON_GERENDA` |
 | `alapozas[]` | `savalap` / `labazat` (zsalukő) / `pontalap` (szabad pillér alatt, `becsult`) / `lemezalap` (`terulet`): `szel × magas`, `hossz` | alapozás (sávalap, lemezalap) |
-| `magasteto` | `haromszogek` (a tetőfelület), `eresz`, `hajlas`, `kiallas` (+ `kiallasBecsult`), `zEresz`, `mod`, `fedett` (a tető alá vont fedett teraszok sávjai – szabad pillérsorig) | **közvetlenül** `ElbaBimGeometria.tetoBontas(magasteto.haromszogek, {})` – ugyanaz, mint IFC-nél |
+| `magasteto` | `haromszogek` (a tetőfelület), `eresz`, `hajlas`, `kiallas` (+ `kiallasBecsult`), `zEresz`, `mod`, `fedett` (a tető alá vont fedett teraszok sávjai – szabad pillérsorig), `lapos` (a legfelső szint lapostetős részei – a magastető ezeken kívül; itt a legfelső födém a tető), `felteto` (féltetős részek: alaprajz, hajlás, a lejtés lapiránya; a háromszögeik a `haromszogek` közt, az alsó él az eresz magasságában), `tovabbiEresz` (több magastetős darabnál a további darabok ereszvonala) | **közvetlenül** `ElbaBimGeometria.tetoBontas(magasteto.haromszogek, {})` – ugyanaz, mint IFC-nél |
 
 A tető körvonala a legfelső szint körvonala, kiegészítve a fedett teraszokkal (a körvonal egy élén kívül, vele párhuzamos
 sorban álló, legalább két szabad pillérig). Oromfal csak ott, ahol a homlokzaton a tető hajlásával futó háromszög alatt
@@ -138,6 +138,15 @@ tartó) – a hőszigetelés-burkolat, eresz, csatorna, járda, korlát nem.
 - Rajzpecsét és lapkeret: a feliratmező (≥ 3 jellegzetes mezőnév – tervező, építtető, rajzszám, méretarány, dátum,
   helyrajzi szám, engedélyezési… – egy csoportban, a táblázat vonalaival a lapszélig bővítve) és a lapkeret vonalai
   nem falak, nem helyiségek (`packages/terv/src/rajzpecset.ts`); a feliratok maradnak (méretarány, lapcím).
+- Lapostetős szárny magastetős épületen: a homlokzatok tetősziluettjén (a nézet fő vonalhálózatának felső éle) a
+  ≥ 2 m-es vízszintes plató, amely a csúcs alatt van és egyik végén sem lejt le a tető hajlásával; a homlokzatot a
+  nyílások szerint illesztjük az alaprajzhoz, két szemközti homlokzaton egybe kell vágnia. Csak ha a metszet
+  rétegrendjei közt lapostető is van (`packages/terv/src/tetoReszek.ts`). A sáv féltetős, ha a rá merőleges
+  homlokzatokon a nyílászárók teteje fölött a fő hajlástól eltérő (3–16°-os) ferde vonalak a mélysége ≥ 30 %-án,
+  ≥ 2 m-en futnak (a legszélesebb tartományt fedő hajlás); a magasabb végük felől lejt. Kézzel oldalanként állítható
+  (szélesség, lapos / féltető, hajlás, lejtés).
+- Mellvédmagasság: a feliratos ablaké az alaprajzi „pm”, de ha az illesztett homlokzaton a keret alja (a szintjelekből,
+  a feliratos ablakok mediánjával kiigazítva) 25 cm – 1 m-rel eltér (egyszintes épületen), a homlokzaté (`nyilasok[].pmAlaprajz` az eredeti).
 - ArchiCAD-zónák: az azonos nevű darabok összevonása láncolva sem köthet össze két, külön pecsétet tartalmazó zónát.
 - Pecsét két előtag nélküli területsorral („12,82 m²” fölött „15,85 m²”): a nagyobb a teljes (A), a kisebb a hasznos;
   a jegyzék „Terület | Teljes terület” oszlopai ugyanígy. Csak burkolatnevű pecsét („greslap” + „parketta”) helyiség,

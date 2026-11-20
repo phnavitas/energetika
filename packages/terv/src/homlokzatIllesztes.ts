@@ -41,6 +41,75 @@ export function homlokzatRajzok(lap: Lap, tartalekM?: number): HomlokzatRajz[] {
   return (f.ossz < a.ossz ? f : a).ki.filter((r) => r.keretek.length);
 }
 
+/**
+ * Egy homlokzati rajz illesztése az alaprajzhoz a nyílások szerint: a ±60°-on belüli lapirányok közül az, amelynél egy
+ * vízszintes eltolással (o: homlokzati x, m = s(nyílás) + o) a legtöbb nyílás szélessége és helyzete egyezik a keretekkel
+ * (legalább kettő). `kulso`: az alaprajz külső nyílásai (lapkoordináta).
+ */
+export function homlokzatEltolas(rz: HomlokzatRajz, kulso: TervNyilas[], mPerPt: number, eszakSzog: number): { ir: number; o: number; tam: number } | null {
+  const s = (n: TervNyilas) => { const t = n.irany! * Math.PI / 180; return (-Math.cos(t) * n.x - Math.sin(t) * n.y) * mPerPt; };
+  const e = (k: HomlokzatKeret) => (k.x0 + k.x1) / 2 * rz.mPerPt;
+  let leg: { ir: number; o: number; tam: number } | null = null;
+  for (const ir of [0, 90, 180, 270]) {
+    if (szogKul(ir - eszakSzog, rz.az) > 60) continue;
+    const sajat = kulso.filter((n) => n.kulso && n.irany === ir && n.fajta !== 'falfulke');
+    for (const n of sajat) for (const k of rz.keretek) {
+      if (Math.abs(k.szel - n.szel) > SZT) continue;
+      const c = e(k) - s(n);
+      const t = sajat.filter((m) => rz.keretek.some((q) => Math.abs(q.szel - m.szel) <= SZT && Math.abs(e(q) - s(m) - c) <= 0.25)).length;
+      if (!leg || t > leg.tam) leg = { ir, o: c, tam: t };
+    }
+  }
+  return leg && leg.tam >= 2 ? leg : null;
+}
+
+/**
+ * A homlokzat szerinti mellvédmagasság (m) azoknál a feliratos ablakoknál, amelyeknél eltér az alaprajzi „pm” értéktől
+ * (25 cm – 1 m; egyszintes épületen): a homlokzati rajz illesztése a nyílások szerint (homlokzatEltolas), a nyílás helyén álló azonos szélességű
+ * keret alsó éle a lap szintjeleiből (a kerethez legközelebbi szintjel-oszlop lineáris illesztése). A szintjel felirata
+ * és a szintvonal közti eltolást laponként a feliratos ablakok mellvédmagasságai (medián) igazítják ki – az eltérés így
+ * a többségtől eltérő ablak.
+ */
+export function homlokzatMellvedek(nyilasok: TervNyilas[], mPerPt: number, eszakSzog: number, lapok: Lap[], tartalekM?: number, szint = 0, szintDb = 1): Map<TervNyilas, number> {
+  const ki = new Map<TervNyilas, number>();
+  // (csak egyszintes épületen: több szintnél a keret szinthez rendelése és a szintjelek kiigazítása bizonytalan)
+  if (szintDb !== 1 || szint !== 0) return ki;
+  const kulso = nyilasok.filter((n) => n.kulso && n.irany !== null && n.fajta !== 'falfulke');
+  const s = (n: TervNyilas) => { const t = n.irany! * Math.PI / 180; return (-Math.cos(t) * n.x - Math.sin(t) * n.y) * mPerPt; };
+  for (const lap of lapok) {
+    const rajzok = homlokzatRajzok(lap, tartalekM); if (!rajzok.length) continue;
+    const jelek = lap.szovegek.flatMap((t) => { const m = /^([±+-])\s?(\d{1,2}),(\d{2})$/.exec(t.s.trim()); return m ? [{ x: t.x, y: t.y, v: (m[1] === '-' ? -1 : 1) * Number(`${m[2]}.${m[3]}`) }] : []; });
+    const oszlopok: (typeof jelek)[] = [];
+    for (const j of [...jelek].sort((a, b) => a.x - b.x)) { const o = oszlopok.find((c) => Math.abs(c[0]!.x - j.x) < 8); if (o) o.push(j); else oszlopok.push([j]); }
+    const jo = oszlopok.filter((o) => o.length >= 3);
+    const zFv = (cx: number, cy: number) => {
+      const o = jo.filter((c) => Math.min(...c.map((j) => j.y)) - 30 <= cy && Math.max(...c.map((j) => j.y)) + 30 >= cy).sort((a, b) => Math.abs(a[0]!.x - cx) - Math.abs(b[0]!.x - cx))[0];
+      if (!o) return null;
+      const n = o.length, sx = o.reduce((q, j) => q + j.y, 0), sy = o.reduce((q, j) => q + j.v, 0), sxx = o.reduce((q, j) => q + j.y * j.y, 0), sxy = o.reduce((q, j) => q + j.y * j.v, 0);
+      const b = (n * sxy - sx * sy) / (n * sxx - sx * sx); if (!(b < 0)) return null;
+      const a = (sy - b * sx) / n; return (y: number) => a + b * y;
+    };
+    const par: { n: TervNyilas; alja: number }[] = [];
+    for (const rz of rajzok) {
+      const il = homlokzatEltolas(rz, kulso, mPerPt, eszakSzog); if (!il) continue;
+      for (const n of kulso) {
+        if (n.irany !== il.ir || n.mert || n.pm === null || n.fajta !== 'ablak') continue;
+        const x = s(n) + il.o;
+        const jok = rz.keretek.filter((k) => Math.abs((k.x0 + k.x1) / 2 * rz.mPerPt - x) <= 0.25 && Math.abs(k.szel - n.szel) <= 0.1 && !k.takart).sort((a, b) => b.y1 - a.y1);
+        const k = jok.length === 1 ? jok[0] : undefined; if (!k) continue;
+        const z = zFv((k.x0 + k.x1) / 2, (k.y0 + k.y1) / 2); if (!z) continue;
+        par.push({ n, alja: z(k.y1) });
+      }
+    }
+    if (par.length < 3) continue;
+    const elt = par.map((p) => p.n.pm! - p.alja).sort((a, b) => a - b), d = elt[elt.length >> 1]!;
+    // (a kiigazítás csak akkor megbízható, ha a feliratos ablakok legalább fele ± 5 cm-en belül egyezik vele)
+    if (elt.filter((v) => Math.abs(v - d) <= 0.05).length < par.length / 2) continue;
+    for (const p of par) { const v = Math.round((p.alja + d) * 100) / 100, e = Math.abs(v - p.n.pm!); if (e >= 0.25 && e <= 1 && v >= 0 && v <= 2.2 && !ki.has(p.n)) ki.set(p.n, v); }
+  }
+  return ki;
+}
+
 export interface MertMagassag { mag: number; takart: boolean; /** homlokzat: helyzet szerint illesztett keret; szelesseg: azonos szélességű keretek leggyakoribb magassága; becsult: alapérték */ forras: 'homlokzat' | 'szelesseg' | 'becsult' }
 
 /**

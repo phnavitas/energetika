@@ -1362,12 +1362,46 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                                 <option value="">felismert</option><option value="konty">konty</option><option value="orom">oromfal</option>
                               </select></label>
                             ))}</span>}
+                            {(mt || MK.lapos) && (() => {
+                              // a lapostetős / féltetős sávok oldalanként: szélesség a legfelső födém körvonalától (a felismert /
+                              // érvényes érték), a sáv teteje (lapos vagy féltető – hajlás, lejtés iránya)
+                              const ft = md.fodemek.filter((f) => f.alatt === (mt?.szint ?? md.szintek[md.szintek.length - 1]?.id) && f.id.startsWith('FT')).flatMap((f) => f.poligonok.flat());
+                              const sav: Record<number, { w: number; f?: { hajlas: number; lejt: number } }> = {};
+                              if (mt?.laposSav && ft.length) {
+                                const x0 = Math.min(...ft.map((q) => q[0])), x1 = Math.max(...ft.map((q) => q[0])), y0 = Math.min(...ft.map((q) => q[1])), y1 = Math.max(...ft.map((q) => q[1]));
+                                for (const q of mt.laposSav) {
+                                  const f = q.felteto ? { hajlas: q.felteto.hajlas, lejt: q.felteto.lejt } : undefined;
+                                  if (q.tengely === 'x') { if (q.a <= x0 + 0.6) sav[270] = { w: q.b - x0, f }; else if (q.b >= x1 - 0.6) sav[90] = { w: x1 - q.a, f }; }
+                                  else if (q.a <= y0 + 0.6) sav[0] = { w: q.b - y0, f }; else if (q.b >= y1 - 0.6) sav[180] = { w: y1 - q.a, f };
+                                }
+                              }
+                              const tizes = (v: number) => String(Math.round(v * 10) / 10).replace('.', ',');
+                              return <div style="flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px">
+                                <span>Lapostetős / féltetős sáv (a rajzon, a födém szélétől):</span>
+                                {VEG.map(([ir, nev]) => {
+                                  const ervenyes = sav[ir], kezi = MK.felteto?.[ir], felt = kezi === undefined ? ervenyes?.f : kezi ?? undefined;
+                                  const lejtok: [number, string][] = ir === 90 || ir === 270 ? [[0, 'fel'], [180, 'le']] : [[90, 'jobbra'], [270, 'balra']];
+                                  const allitF = (v: { hajlas: number; lejt: number } | null | undefined) => allit((k) => { const o = { ...(k.felteto ?? {}) }; if (v === undefined) delete o[ir]; else o[ir] = v; if (Object.keys(o).length) k.felteto = o; else delete k.felteto; return k; });
+                                  return <span style="display:inline-flex;align-items:center;gap:4px">{nev}
+                                    <input type="number" step="0.1" min="0" max="100" style="width:64px" aria-label={`Lapostetős sáv szélessége, ${nev} (m)`} placeholder={ervenyes ? tizes(ervenyes.w) : '–'} value={MK.lapos?.[ir] ?? ''} onInput={(e) => { const v = szam((e.target as HTMLInputElement).value); allit((k) => { const o = { ...(k.lapos ?? {}) }; if (v === undefined) delete o[ir]; else o[ir] = Math.max(0, Math.min(100, v)); if (Object.keys(o).length) k.lapos = o; else delete k.lapos; return k; }); }} /> m
+                                    {(ervenyes || (MK.lapos?.[ir] ?? 0) > 0) && <select style="width:auto;display:inline-block" aria-label={`A sáv teteje, ${nev}`} value={kezi === undefined ? '' : kezi ? 'felteto' : 'lapos'} onChange={(e) => { const v = (e.target as HTMLSelectElement).value; allitF(v === '' ? undefined : v === 'lapos' ? null : { hajlas: felt?.hajlas ?? 10, lejt: felt?.lejt ?? lejtok[1]![0] }); }}>
+                                      <option value="">felismert ({ervenyes?.f ? `féltető ${tizes(ervenyes.f.hajlas)}°` : 'lapos'})</option><option value="lapos">lapostető</option><option value="felteto">féltető</option>
+                                    </select>}
+                                    {kezi && <><input type="number" step="1" min="1" max="45" style="width:56px" aria-label={`Féltető hajlása, ${nev} (fok)`} value={kezi.hajlas} onInput={(e) => { const v = szam((e.target as HTMLInputElement).value); if (v !== undefined && v > 0) allitF({ ...kezi, hajlas: Math.min(45, v) }); }} />° lejt
+                                      <select style="width:auto;display:inline-block" aria-label={`Féltető lejtése, ${nev}`} value={String(kezi.lejt)} onChange={(e) => allitF({ ...kezi, lejt: Number((e.target as HTMLSelectElement).value) })}>{lejtok.map(([l, n]) => <option value={String(l)}>{n}</option>)}</select></>}
+                                  </span>;
+                                })}
+                              </div>;
+                            })()}
                             {md.szintek.filter((sz) => sz.kod !== 'T' || !mt).map((sz) => (
                               <label>{szintNev(sz.id)} belmagassága: <input type="number" step="0.05" min="1.8" max="15" style={inp} aria-label={`${szintNev(sz.id)} belmagassága (m)`} placeholder={String(sz.belmag).replace('.', ',')} value={MK.belmag?.[sz.id] ?? ''} onInput={(e) => { const v = szam((e.target as HTMLInputElement).value); allit((k) => { const b = { ...(k.belmag ?? {}) }; if (v === undefined || v < 1.8) delete b[sz.id]; else b[sz.id] = Math.min(15, v); if (Object.keys(b).length) k.belmag = b; else delete k.belmag; return k; }); }} /> m</label>
                             ))}
                             {Object.keys(MK).length > 0 && <button class="gomb kis-gomb halk-gomb" onClick={() => setModellKezi({})}>vissza a felismertre</button>}
                           </div>
                           {mt?.oromElvetve && <div role="status" style="font-size:13px;margin-top:6px;color:#B45309">A kért oromfal ezen az alaprajzon nem állítható elő szabályos tetőfelülettel – kontyolt tetőt számoltam.</div>}
+                          {(() => { const el = md.nyilasok.filter((n) => n.pmAlaprajz !== undefined); const cm = (v: number) => (Math.round(v * 100) / 100).toFixed(2).replace('.', ',');
+                            return el.length > 0 && <div role="status" style="font-size:13px;margin-top:6px;color:#B45309">A homlokzat szerint {el.length} ablak mellvédmagassága eltér az alaprajzi feliratétól – a modell a homlokzatét veszi: {(() => { const cs = new Map<string, number>(); for (const n of el) { const k = `${Math.round(n.szel * 100)}/${Math.round(n.mag * 100)} (${szintNev(n.szint)}): ${cm(n.pmAlaprajz!)} → ${cm(n.pm)} m`; cs.set(k, (cs.get(k) ?? 0) + 1); }
+                              const l = [...cs].map(([k, db]) => (db > 1 ? `${db} × ${k}` : k)); return l.slice(0, 8).join('; ') + (l.length > 8 ? ' …' : ''); })()}.</div>; })()}
                           <div class="halkabb" style="font-size:13px;margin-top:6px">A körvonal (falak, födémek, tető alaprajza) a 2D nézetben a „Hőburok szerkesztése” gombbal javítható: pont húzása, beszúrása (kattintás az élre), törlése (dupla kattintás), él eltolása (a fehér négyzet húzása).</div>
                         </details>
                       );

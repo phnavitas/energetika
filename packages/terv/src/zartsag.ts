@@ -81,6 +81,8 @@ export function zartsagEllenoriz(M: EpuletModell): ZartsagHiba[] {
       const e = elek.get(k); if (e) e.db++; else elek.set(k, { db: 1, a, b });
     }
     const ereszen = (p: number[]) => Math.abs(p[2]! - mt.zEresz) < 0.05 || mt.eresz.some((q, i) => pontSzakasz([p[0]!, p[1]!], q, mt.eresz[(i + 1) % mt.eresz.length]!).d < 0.05);
+    // (a féltető széle – oromszegély, felső él a magasabb fal / tető mentén – nem hézag)
+    const feltetoSzelen = (p: number[]) => (mt.felteto ?? []).some((f) => f.pol.some((q, i) => pontSzakasz([p[0]!, p[1]!], q, f.pol[(i + 1) % f.pol.length]!).d < 0.05));
     // (egy élre több, kisebb háromszög éle is illeszkedhet – T-csomópont: az él akkor zárt, ha a középpontja egy másik háromszög élén van)
     const masElen = (p: number[], sajat: string) => [...elek.entries()].some(([k, e]) => k !== sajat && (() => {
       const q = pontSzakasz([p[0]!, p[1]!], [e.a[0]!, e.a[1]!], [e.b[0]!, e.b[1]!]); if (!(q.d < 0.02 && q.t > 0.01 && q.t < q.L - 0.01)) return false;
@@ -89,6 +91,7 @@ export function zartsagEllenoriz(M: EpuletModell): ZartsagHiba[] {
       if (e.db !== 1) continue;
       const L = Math.hypot(e.b[0]! - e.a[0]!, e.b[1]! - e.a[1]!, e.b[2]! - e.a[2]!); if (L < 0.2) continue;
       if (ereszen(e.a) && ereszen(e.b)) continue;
+      if (feltetoSzelen(e.a) && feltetoSzelen(e.b) && feltetoSzelen([(e.a[0]! + e.b[0]!) / 2, (e.a[1]! + e.b[1]!) / 2])) continue;
       const kozep = [(e.a[0]! + e.b[0]!) / 2, (e.a[1]! + e.b[1]!) / 2, (e.a[2]! + e.b[2]!) / 2];
       if (masElen(kozep, k)) continue;
       ki.push({ fajta: 'teto', szint: mt.szint, a: [e.a[0]!, e.a[1]!], b: [e.b[0]!, e.b[1]!], hely: [kozep[0]!, kozep[1]!], meret: kerek(L), leiras: `${szoveg(L)} m hosszú hézag a tetőfelületen (két tetősík nem találkozik) – a tetőforma felismerése bizonytalan` });
@@ -114,13 +117,13 @@ export function zartsagEllenoriz(M: EpuletModell): ZartsagHiba[] {
       if (resHossz >= 0.5 && db) ki.push({ fajta: 'orom', szint: mt.szint, a: f.a, b: f.b, hely: [kozep[0] / db, kozep[1] / db], meret: kerek(resHossz * maxRes / 2, 1),
         leiras: `a ${f.id} fal teteje és a tető közt legfeljebb ${szoveg(maxRes)} m-es rés (${szoveg(resHossz)} m hosszon) – hiányzik az oromfal / a fal magasítása, vagy a tetőhajlás, ill. a falmagasság hibás` });
     }
-    // 4. a tetővel fedett szint alaprajzának le nem fedett része
+    // 4. a tetővel fedett szint alaprajzának le nem fedett része (a lapostetős részek kivételével)
     for (const fd of M.fodemek) {
       if (fd.folott !== mt.szint) continue;
       for (const pol of fd.poligonok) {
         const xs = pol.map((p) => p[0]), ys = pol.map((p) => p[1]); let A = 0, sx = 0, sy = 0;
         for (let x = Math.min(...xs) + 0.25; x < Math.max(...xs); x += 0.5) for (let y = Math.min(...ys) + 0.25; y < Math.max(...ys); y += 0.5)
-          if (bennPol([x, y], pol) && tetoZ([x, y]) === null) { A += 0.25; sx += x; sy += y; }
+          if (bennPol([x, y], pol) && tetoZ([x, y]) === null && !(mt.lapos ?? []).some((q) => bennPol([x, y], q))) { A += 0.25; sx += x; sy += y; }
         if (A >= 1) ki.push({ fajta: 'fedes', szint: mt.szint, hely: [sx / (A / 0.25), sy / (A / 0.25)], meret: kerek(A, 1), leiras: `kb. ${szoveg(A)} m²-en a szint fölött nincs tető – a tető körvonala (ereszvonal) hiányos` });
       }
     }
