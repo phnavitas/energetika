@@ -341,6 +341,14 @@ export function mutatokKeres(lap: Lap, hs: TervHelyiseg[]): void {
   for (const h of hs) {
     if (!h.bbox) continue;
     const [bx0, by0, bx1, by1] = h.bbox; const t = 4;
+    // a pecsét keretének oldala: a feliratok befoglalójának szélén / azon kívül (≤ 15 pt-ra), a mutatóvonalra merőleges vonal, amely a
+    // kezdőpontján átmegy és a felirat szélességének (magasságának) legalább 60 %-át fedi
+    const keretOldalan = (x: number, y: number, mx: number, my: number) => {
+      const fugg = Math.abs(mx - x) < Math.abs(my - y);
+      if (fugg ? (my > y ? y < by1 - 4 || y > by1 + 15 : y > by0 + 4 || y < by0 - 15) : (mx > x ? x < bx1 - 4 || x > bx1 + 15 : x > bx0 + 4 || x < bx0 - 15)) return false;
+      return vonalak.some((v) => { const b = v.bbox; if (b[0] > x + 1 || b[2] < x - 1 || b[1] > y + 1 || b[3] < y - 1) return false;
+        return fugg ? b[3] - b[1] < 0.3 && b[2] - b[0] >= 0.6 * (bx1 - bx0) : b[2] - b[0] < 0.3 && b[3] - b[1] >= 0.6 * (by1 - by0); });
+    };
     const benne = (x: number, y: number) => x > bx0 - t && x < bx1 + t && y > by0 - t && y < by1 + t;
     let legjobb: { x: number; y: number; d: number } | null = null;
     const jel = new Set<number>();
@@ -357,7 +365,8 @@ export function mutatokKeres(lap: Lap, hs: TervHelyiseg[]): void {
         const sz = Math.abs(Math.atan2(my - ey, mx - ex) * 180 / Math.PI) % 90;
         const ferde = sz >= 8 && sz <= 82;
         const pont = ferde ? pontKeres(mx, my) : undefined;
-        const hegy = pont ? undefined : hegyKeres(ex, ey, mx, my);
+        // (tengelyirányú – nem ferde – mutatóvonal csak a pecsét keretének oldaláról indulva)
+        const hegy = pont || (!ferde && !keretOldalan(ex, ey, mx, my)) ? undefined : hegyKeres(ex, ey, mx, my);
         if (!pont && !hegy) continue;
         if (!legjobb || hossz > legjobb.d) legjobb = pont ? { x: (pont.bbox[0] + pont.bbox[2]) / 2, y: (pont.bbox[1] + pont.bbox[3]) / 2, d: hossz } : { ...hegy!, d: hossz };
       }
