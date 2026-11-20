@@ -19,8 +19,6 @@ export interface Lap { szel: number; mag: number; szovegek: Szoveg[]; utvonalak:
 type M = [number, number, number, number, number, number];
 /** Egy részútvonalú útvonalak közös (csak olvasott) `zart` tömbjei – memória. */
 const ZART_I: boolean[] = [true], ZART_N: boolean[] = [false];
-/** Ennél rövidebb (pt), egymáshoz csatlakozó, azonos stílusú kétpontos vonalakat egy törtvonallá fűzünk. */
-const LANC_MAX = 4;
 const szoroz = (a: M, b: M): M => [a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1], a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3], a[0] * b[4] + a[2] * b[5] + a[4], a[1] * b[4] + a[3] * b[5] + a[5]];
 const alkalmaz = (m: M, x: number, y: number): [number, number] => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
 
@@ -54,11 +52,6 @@ export async function lapKinyer(pdfjs: any, page: any, oc?: { getGroup(id: strin
   // a színszövegek közös példányai (nagy lapon útvonalanként új szöveg lenne – memória)
   const szinek = new Map<string, string>();
   const szinK = (a: unknown) => { const s = szin(a); const r = szinek.get(s); if (r !== undefined) return r; szinek.set(s, s); return s; };
-  // Összefüggő rövid szakaszok láncolása: az ívek, növényzet, berendezés sokszögközelítését sok PDF szakaszonként
-  // külön útvonalként írja (nagy lapon több százezer kétpontos útvonal) – egymás után következő, csatlakozó, azonos
-  // stílusú rövid szakaszokból egy törtvonal lesz (a geometria azonos, csak kevesebb objektum).
-  let lanc: Utvonal | null = null;
-  const lancZar = () => { if (lanc && lanc.pontok[0]!.length > 4) lanc.pontok[0] = lanc.pontok[0]!.slice(); lanc = null; };
   const formVerem: M[] = [];
   // rétegek (BDC /OC … EMC): a jelölt tartalom verme; az aktuális réteg a legbelső OC-jelölés
   const mcVerem: (string | null)[] = []; let reteg: string | undefined; const retegek = new Set<string>();
@@ -117,27 +110,14 @@ export async function lapKinyer(pdfjs: any, page: any, oc?: { getGroup(id: strin
         if (muvelet === 'none' || !pontok.length) break;
         const sk = Math.sqrt(Math.abs(ctm[0] * ctm[3] - ctm[1] * ctm[2]));
         const vast = lw * sk;
-        const p0 = pontok[0]!;
-        const rovid = rajz === O.stroke && !gorbe && pontok.length === 1 && !zart[0] && p0.length === 4 && Math.hypot(p0[2]! - p0[0]!, p0[3]! - p0[1]!) < LANC_MAX;
-        if (rovid && lanc && lanc.vastagsag === vast && lanc.vonalSzin === vs && lanc.toltoSzin === ts && lanc.reteg === reteg) {
-          const lp = lanc.pontok[0]!, n = lp.length;
-          if (Math.abs(lp[n - 2]! - p0[0]!) < 1e-6 && Math.abs(lp[n - 1]! - p0[1]!) < 1e-6) {
-            lp.push(p0[2]!, p0[3]!);
-            const b = lanc.bbox; b[0] = Math.min(b[0], minx); b[1] = Math.min(b[1], miny); b[2] = Math.max(b[2], maxx); b[3] = Math.max(b[3], maxy);
-            break;
-          }
-        }
-        lancZar();
         const u: Utvonal = { pontok: pontok.slice(), zart: zart.length === 1 ? (zart[0] ? ZART_I : ZART_N) : zart.slice(), muvelet, vastagsag: vast, vonalSzin: vs, toltoSzin: ts, bbox: [minx, miny, maxx, maxy] };
         if (minta && muvelet !== 'stroke') u.minta = true;
         if (reteg) u.reteg = reteg;
         if (gorbe) u.gorbe = true;
         utvonalak.push(u);
-        if (rovid) lanc = u;
         break;
       }
     }
   }
-  lancZar();
   return { szel: vp.width, mag: vp.height, szovegek, utvonalak, ...(retegek.size ? { retegek: [...retegek] } : {}) };
 }

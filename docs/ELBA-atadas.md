@@ -151,9 +151,6 @@ tartó) – a hőszigetelés-burkolat, eresz, csatorna, járda, korlát nem.
   erkélyajtó helyén (az illesztett homlokzaton, ≥ 3 és az irány nyílásainak legalább fele egyező nyílással) nincs keret
   (`null`), vagy az ott álló keretek egyike sem egyezik a felirattal (szélesség, nem takart keretnél magasság ± 20 cm):
   a legközelebbi keret mérete.
-- PDF-kinyerés: az egymás után következő, csatlakozó, azonos stílusú, 4 pt-nál rövidebb kétpontos vonalakat
-  (ívek, növényzet, berendezés sokszögközelítése) egy törtvonallá fűzzük (`packages/terv/src/kinyeres.ts`) – a geometria
-  azonos, nagy lapon a fele / harmada az útvonalak száma.
 - Sarokzárás (teljes modell): ha mindkét fal a másik fal félvastagságánál jóval (> 0,75 × vastagság) túlnyúlik a
   metszésponton, keresztező falak – nem zárjuk sarokként.
 - Ferde élek: a csatlakozások túlnyomó többsége derékszögű. A helyiség- és burok-körvonal tengelytől ≥ 3°-kal eltérő,
