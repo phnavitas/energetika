@@ -45,13 +45,30 @@ export async function pdfjsBetolt(): Promise<PdfJs> {
   return pdfjsBetoltve;
 }
 
+/** Vászon: a fő szálon <canvas>, munkaszálon (Web Worker) OffscreenCanvas. */
+type Vaszon = HTMLCanvasElement | OffscreenCanvas;
+const vaszon = (w: number, h: number): Vaszon => {
+  if (typeof document !== 'undefined') { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+  return new OffscreenCanvas(w, h);
+};
+const ctx2d = (c: Vaszon, o?: CanvasRenderingContext2DSettings) => c.getContext('2d', o) as CanvasRenderingContext2D;
+async function jpegUrl(c: Vaszon, q: number): Promise<string> {
+  if ('toDataURL' in c) return c.toDataURL('image/jpeg', q);
+  const b = await c.convertToBlob({ type: 'image/jpeg', quality: q });
+  return await new Promise<string>((ok, hiba) => { const r = new FileReader(); r.onload = () => ok(String(r.result)); r.onerror = () => hiba(r.error); r.readAsDataURL(b); });
+}
+/** Munkaszálon a pdf.js „dokumentuma”: betűkészletek a munkaszál FontFaceSet-jébe, vásznak OffscreenCanvas-ként. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const munkaszalDok = (): any => ({ fonts: (globalThis as unknown as { fonts?: unknown }).fonts, createElement: (t: string) => { if (t === 'canvas') return new OffscreenCanvas(1, 1); throw new Error(`createElement(${t}) munkaszálon`); } });
+const docBeall = () => (typeof document === 'undefined' ? { ownerDocument: munkaszalDok() } : {});
+
 /**
  * A vászon szürkeárnyalatos, kicsinyített (≈ 600 px széles) másolata blokkátlagolással és 3×3-as simítással – a
  * mintázattal (pontraszterrel) kitöltött színezés így egyenletes szürke lesz. ptPx: 1 pt hány képpont.
  */
-function szurkeKep(c: HTMLCanvasElement, scale: number): SzurkeKep | undefined {
+function szurkeKep(c: Vaszon, scale: number): SzurkeKep | undefined {
   try {
-    const W = c.width, H = c.height; const px = c.getContext('2d')!.getImageData(0, 0, W, H).data;
+    const W = c.width, H = c.height; const px = ctx2d(c).getImageData(0, 0, W, H).data;
     const B = Math.max(1, Math.ceil(W / 600));
     const w = Math.ceil(W / B), h = Math.ceil(H / B);
     const osszeg = new Float64Array(w * h), db = new Uint32Array(w * h);
@@ -159,8 +176,8 @@ async function tintaRender(page: any): Promise<TintaKep | undefined> {
     const vp0 = page.getViewport({ scale: 1 });
     const ts = Math.min(1.5, Math.sqrt(16e6 / (vp0.width * vp0.height)));
     const tv = page.getViewport({ scale: ts });
-    const tc = document.createElement('canvas'); tc.width = Math.round(tv.width); tc.height = Math.round(tv.height);
-    const tx = tc.getContext('2d', { willReadFrequently: true })!; tx.fillStyle = '#fff'; tx.fillRect(0, 0, tc.width, tc.height);
+    const tc = vaszon(Math.round(tv.width), Math.round(tv.height));
+    const tx = ctx2d(tc, { willReadFrequently: true }); tx.fillStyle = '#fff'; tx.fillRect(0, 0, tc.width, tc.height);
     await page.render({ canvasContext: tx, viewport: tv, canvas: tc }).promise;
     const px = tx.getImageData(0, 0, tc.width, tc.height).data; const adat = new Uint8Array(tc.width * tc.height);
     for (let i = 0; i < adat.length; i++) adat[i] = Math.round(0.299 * px[i * 4]! + 0.587 * px[i * 4 + 1]! + 0.114 * px[i * 4 + 2]!);
@@ -171,7 +188,7 @@ async function tintaRender(page: any): Promise<TintaKep | undefined> {
 /** Utólag alaprajznak jelölt lap (a felismerés nem annak vette) tinta-képe – a fájl adott oldaláról. */
 export async function lapTinta(f: File, oldal: number): Promise<TintaKep | undefined> {
   const pdfjs = await pdfjsBetolt();
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(await f.arrayBuffer()), verbosity: 0, isEvalSupported: false }).promise;
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(await f.arrayBuffer()), verbosity: 0, isEvalSupported: false, ...docBeall() }).promise;
   return tintaRender(await doc.getPage(oldal));
 }
 
@@ -180,7 +197,7 @@ export async function pdfLapok(f: File, kepSzel = 2000, halad?: (kesz: number, o
   const bajtok = new Uint8Array(await f.arrayBuffer());
   // ArchiCAD-zónák (helyiségkörvonalak) a lapszótárból – a pdf.js a bájtokat átviszi a workerbe, ezért előtte olvassuk
   const zonakNyers = await pdfZonakNyers(bajtok);
-  const doc = await pdfjs.getDocument({ data: bajtok, verbosity: 0, isEvalSupported: false }).promise;
+  const doc = await pdfjs.getDocument({ data: bajtok, verbosity: 0, isEvalSupported: false, ...docBeall() }).promise;
   const ki: TervLap[] = [];
   const ossz = Math.min(doc.numPages, 30);
   // PDF-rétegek (ArchiCAD-rétegek): a réteg neve a fal / hőszigetelés / helyiség felismeréséhez
@@ -193,15 +210,15 @@ export async function pdfLapok(f: File, kepSzel = 2000, halad?: (kesz: number, o
     const vp0 = page.getViewport({ scale: 1 });
     const scale = Math.min(3, kepSzel / vp0.width);
     const vp = page.getViewport({ scale });
-    const c = document.createElement('canvas'); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
-    const ctx = c.getContext('2d')!; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+    const c = vaszon(Math.round(vp.width), Math.round(vp.height));
+    const ctx = ctx2d(c); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
     await page.render({ canvasContext: ctx, viewport: vp, canvas: c }).promise;
     const { szerep: szerep0, cim } = lapSzerep(lap, f.name, doc.numPages > 1);
     // közös lap („ALAPRAJZ-METSZET”): helyiségpecsétekkel alaprajzként is, a metszet pedig ugyanerről a lapról
     const kozos = szerep0 === 'metszet' && /alaprajz/i.test(cim) && /\d+[,.]\d{2}\s*m(²|2)/.test(lap.szovegek.map((t) => t.s).join(' \n '));
     const szerep = kozos ? 'alaprajz' : szerep0;
     const tinta = szerep === 'alaprajz' ? await tintaRender(page) : undefined;
-    const kep = c.toDataURL('image/jpeg', 0.82), szurke = szurkeKep(c, scale);
+    const kep = await jpegUrl(c, 0.82), szurke = szurkeKep(c, scale);
     const reszek = szerep === 'alaprajz' ? lapFeloszt(lap) : [];
     if (reszek.length) for (const r of reszek) ki.push({ fajl: f.name, oldal: n, szerep, cim: r.cim, lap: r.lap, kep, kepSzel: c.width, kepMag: c.height, szurke, ...(tinta ? { tinta } : {}) });
     else ki.push({ fajl: f.name, oldal: n, szerep, cim, lap, kep, kepSzel: c.width, kepMag: c.height, szurke, ...(tinta ? { tinta } : {}) });

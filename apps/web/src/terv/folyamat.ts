@@ -14,7 +14,7 @@ import { egtaj, eszakjelKeres, jegyzekenKivul, pecsetBelmagassag, jegyzekSorok, 
 import { tervAtvesz, type AtvettNyilas, type AtvettHelyiseg } from './atvetel';
 import type { Raszter, FalSzakasz } from '@terv/raszter';
 import { homlokzatSziluettek, laposTetoSavok, magastetoLatszik, type HomlokzatSziluett, type TetoSav } from '@terv/tetoReszek';
-import { homlokzatMellvedek, homlokzatRajzok, mertMagassagok, eszakHomlokzatbol, tetoAblakokHomlokzatrol, oromSzelessegek, type HomlokzatRajz, type MertMagassag } from '@terv/homlokzatIllesztes';
+import { homlokzatMellvedek, homlokzatElteresek, homlokzatRajzok, mertMagassagok, eszakHomlokzatbol, tetoAblakokHomlokzatrol, oromSzelessegek, type HomlokzatRajz, type MertMagassag } from '@terv/homlokzatIllesztes';
 import { nezetOszlopok } from '@terv/homlokzatProfil';
 import { tetoFelulnezet, type TetoFelulnezet } from '@terv/tetoFelulnezet';
 import { metszetElemek, ferdeTetoHossz, ereszKiallasok, ereszKiallas, belmagassagSavok, type BelmagSavok } from '@terv/metszetGeom';
@@ -576,6 +576,16 @@ export function tervFolyamat(S: FolyamatAllapot) {
     try { v = homlokzatMellvedek(a.nyilasok, a.e.mPerPt, eszak, S.homlokzatLapok.map(({ l }) => l.lap), a.e.meretarany ?? undefined, Math.max(0, szintSor.indexOf(szk[0]!)), szintSor.length); } catch { v = undefined; }
     gy.set(kulcs, v); return v;
   };
+  // a teljes modellhez: a homlokzattal nem egyező feliratos ablakok / erkélyajtók (ellenőrzésre)
+  const homElteres3d = (i: number, a: AlaprajzFeldolgozas): Map<TervNyilas, { szel: number; mag: number } | null> | undefined => {
+    if (!a.e.mPerPt || !S.homlokzatLapok.length) return undefined;
+    const eszak = eszakLap(i, a), kulcs = `elteres|${eszak}|${S.homlokzatLapok.length}`;
+    let gy = homMagGy.get(a); if (!gy) { gy = new Map(); homMagGy.set(a, gy); }
+    if (gy.has(kulcs)) return gy.get(kulcs);
+    let v: Map<TervNyilas, { szel: number; mag: number } | null> | undefined;
+    try { v = homlokzatElteresek(a.nyilasok, a.e.mPerPt, eszak, S.homlokzatLapok.map(({ l }) => l.lap), a.e.meretarany ?? undefined); } catch { v = undefined; }
+    gy.set(kulcs, v); return v;
+  };
   const homMag3d = (i: number, a: AlaprajzFeldolgozas, szk: string[], eszak: number) => {
     const kulcs = `${szk.join(',')}|${eszak}|${S.bm}|${S.homlokzatLapok.length}|${(S.me?.szintek.padlo ?? []).join(',')}|${S.me?.tetoter?.belmagassag ?? ''}`;
     let m = homMagGy.get(a); if (!m) { m = new Map(); homMagGy.set(a, m); }
@@ -791,8 +801,8 @@ export function tervFolyamat(S: FolyamatAllapot) {
         const v = elMag(A, B, Math.sin((w.irany * Math.PI) / 180), -Math.cos((w.irany * Math.PI) / 180));
         return v === null ? null : { belsoMag: v, jelleg: v < 1.6 ? 'terdfal' : 'parkany' };
       };
-      const mellved = mellved3d(i, a);
-      return { lap: i, a, szintek, m, kategoria, adat, pecsetTerek, kizart, ...(mellved?.size ? { mellved } : {}), ...(S.lapok[i]?.lap ? { rajz: S.lapok[i]!.lap } : {}), ...(k.ismKulso ? { ismKulso: k.ismKulso } : {}), falMagassag, ...(tt && szk.includes('T') ? { tetoter: { ...tt, orom: oromok(eszakSz, a.e.meretarany ?? undefined) } } : {}),
+      const mellved = mellved3d(i, a), homElteres = homElteres3d(i, a);
+      return { lap: i, a, szintek, m, kategoria, adat, pecsetTerek, kizart, ...(mellved?.size ? { mellved } : {}), ...(homElteres?.size ? { homElteres } : {}), ...(S.lapok[i]?.lap ? { rajz: S.lapok[i]!.lap } : {}), ...(k.ismKulso ? { ismKulso: k.ismKulso } : {}), falMagassag, ...(tt && szk.includes('T') ? { tetoter: { ...tt, orom: oromok(eszakSz, a.e.meretarany ?? undefined) } } : {}),
         ...(burokPol ? { burokPol, burokR: k.burok ? r : a.r3d ?? r } : {}), ...(tomegPol ? { tomegPol } : {}) };
     });
     // födémek rétegrendje a metszetlapok vízszintes sávjaiból

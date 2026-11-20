@@ -19,6 +19,8 @@ export interface Lap { szel: number; mag: number; szovegek: Szoveg[]; utvonalak:
 type M = [number, number, number, number, number, number];
 /** Egy részútvonalú útvonalak közös (csak olvasott) `zart` tömbjei – memória. */
 const ZART_I: boolean[] = [true], ZART_N: boolean[] = [false];
+/** Ennél rövidebb (pt), egymáshoz csatlakozó, azonos stílusú kétpontos vonalakat egy törtvonallá fűzünk. */
+const LANC_MAX = 4;
 const szoroz = (a: M, b: M): M => [a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1], a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3], a[0] * b[4] + a[2] * b[5] + a[4], a[1] * b[4] + a[3] * b[5] + a[5]];
 const alkalmaz = (m: M, x: number, y: number): [number, number] => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
 
@@ -49,6 +51,14 @@ export async function lapKinyer(pdfjs: any, page: any, oc?: { getGroup(id: strin
   let ctm: M = alap;
   const verem: { ctm: M; lw: number; vs: string; ts: string; minta: boolean }[] = [];
   let lw = 1, vs = '#000000', ts = '#000000', minta = false;
+  // a színszövegek közös példányai (nagy lapon útvonalanként új szöveg lenne – memória)
+  const szinek = new Map<string, string>();
+  const szinK = (a: unknown) => { const s = szin(a); const r = szinek.get(s); if (r !== undefined) return r; szinek.set(s, s); return s; };
+  // Összefüggő rövid szakaszok láncolása: az ívek, növényzet, berendezés sokszögközelítését sok PDF szakaszonként
+  // külön útvonalként írja (nagy lapon több százezer kétpontos útvonal) – egymás után következő, csatlakozó, azonos
+  // stílusú rövid szakaszokból egy törtvonal lesz (a geometria azonos, csak kevesebb objektum).
+  let lanc: Utvonal | null = null;
+  const lancZar = () => { if (lanc && lanc.pontok[0]!.length > 4) lanc.pontok[0] = lanc.pontok[0]!.slice(); lanc = null; };
   const formVerem: M[] = [];
   // rétegek (BDC /OC … EMC): a jelölt tartalom verme; az aktuális réteg a legbelső OC-jelölés
   const mcVerem: (string | null)[] = []; let reteg: string | undefined; const retegek = new Set<string>();
@@ -69,19 +79,19 @@ export async function lapKinyer(pdfjs: any, page: any, oc?: { getGroup(id: strin
       case O.paintFormXObjectBegin: formVerem.push(ctm); if (a?.[0]) ctm = szoroz(ctm, a[0] as M); break;
       case O.paintFormXObjectEnd: ctm = formVerem.pop() ?? ctm; break;
       case O.setLineWidth: lw = a[0]; break;
-      case O.setStrokeRGBColor: case O.setStrokeColor: vs = szin(a); break;
-      case O.setFillRGBColor: case O.setFillColor: ts = szin(a); minta = false; break;
-      case O.setStrokeGray: vs = szin([a[0], a[0], a[0]]); break;
-      case O.setFillGray: ts = szin([a[0], a[0], a[0]]); minta = false; break;
+      case O.setStrokeRGBColor: case O.setStrokeColor: vs = szinK(a); break;
+      case O.setFillRGBColor: case O.setFillColor: ts = szinK(a); minta = false; break;
+      case O.setStrokeGray: vs = szinK([a[0], a[0], a[0]]); break;
+      case O.setFillGray: ts = szinK([a[0], a[0], a[0]]); minta = false; break;
       // mintázattal (tiling pattern) kitöltött felület – jellemzően sraffozott falmetszet; a mintázat vonalszíne adja a színt
       case O.setFillColorN: {
         if (Array.isArray(a) && a[0] === 'TilingPattern') {
           const belso = a[2] as { fnArray?: number[]; argsArray?: unknown[] } | undefined;
           const k = belso?.fnArray?.findIndex((f) => f === O.setStrokeRGBColor || f === O.setStrokeColor || f === O.setFillRGBColor) ?? -1;
-          const c = k >= 0 ? szin(belso!.argsArray![k]) : '#808080';
+          const c = k >= 0 ? szinK(belso!.argsArray![k]) : '#808080';
           // a mintázat nem egybefüggő kitöltés: a nagyon világos vonalszín is „színes” falmetszetnek számít
           ts = /^#(f[0-9a-f]){3}$/i.test(c) ? '#d0d0d0' : c; minta = true;
-        } else { ts = szin(a); minta = false; }
+        } else { ts = szinK(a); minta = false; }
         break;
       }
       case O.constructPath: {
@@ -106,14 +116,28 @@ export async function lapKinyer(pdfjs: any, page: any, oc?: { getGroup(id: strin
         const muvelet = rajz === O.stroke || rajz === O.closeStroke ? 'stroke' : rajz === O.fill || rajz === O.eoFill ? 'fill' : rajz === O.fillStroke || rajz === O.eoFillStroke || rajz === O.closeFillStroke || rajz === O.closeEOFillStroke ? 'fillStroke' : 'none';
         if (muvelet === 'none' || !pontok.length) break;
         const sk = Math.sqrt(Math.abs(ctm[0] * ctm[3] - ctm[1] * ctm[2]));
-        const u: Utvonal = { pontok: pontok.slice(), zart: zart.length === 1 ? (zart[0] ? ZART_I : ZART_N) : zart.slice(), muvelet, vastagsag: lw * sk, vonalSzin: vs, toltoSzin: ts, bbox: [minx, miny, maxx, maxy] };
+        const vast = lw * sk;
+        const p0 = pontok[0]!;
+        const rovid = rajz === O.stroke && !gorbe && pontok.length === 1 && !zart[0] && p0.length === 4 && Math.hypot(p0[2]! - p0[0]!, p0[3]! - p0[1]!) < LANC_MAX;
+        if (rovid && lanc && lanc.vastagsag === vast && lanc.vonalSzin === vs && lanc.toltoSzin === ts && lanc.reteg === reteg) {
+          const lp = lanc.pontok[0]!, n = lp.length;
+          if (Math.abs(lp[n - 2]! - p0[0]!) < 1e-6 && Math.abs(lp[n - 1]! - p0[1]!) < 1e-6) {
+            lp.push(p0[2]!, p0[3]!);
+            const b = lanc.bbox; b[0] = Math.min(b[0], minx); b[1] = Math.min(b[1], miny); b[2] = Math.max(b[2], maxx); b[3] = Math.max(b[3], maxy);
+            break;
+          }
+        }
+        lancZar();
+        const u: Utvonal = { pontok: pontok.slice(), zart: zart.length === 1 ? (zart[0] ? ZART_I : ZART_N) : zart.slice(), muvelet, vastagsag: vast, vonalSzin: vs, toltoSzin: ts, bbox: [minx, miny, maxx, maxy] };
         if (minta && muvelet !== 'stroke') u.minta = true;
         if (reteg) u.reteg = reteg;
         if (gorbe) u.gorbe = true;
         utvonalak.push(u);
+        if (rovid) lanc = u;
         break;
       }
     }
   }
+  lancZar();
   return { szel: vp.width, mag: vp.height, szovegek, utvonalak, ...(retegek.size ? { retegek: [...retegek] } : {}) };
 }
