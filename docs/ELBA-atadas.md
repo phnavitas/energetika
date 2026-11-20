@@ -150,7 +150,7 @@ tartó) – a hőszigetelés-burkolat, eresz, csatorna, járda, korlát nem.
 - Ferde élek: a csatlakozások túlnyomó többsége derékszögű. A helyiség- és burok-körvonal tengelytől ≥ 3°-kal eltérő,
   ≥ 1 m-es éle csak akkor marad, ha a hossza ≥ 85 %-án 0,25 m-en belül fal kíséri (a ferde fal rajzolata);
   különben a maszkhoz jobban illő derékszögű sarokkal helyettesítjük (elforgatott – főirány ≥ 3° – épületen nem).
-  A falszakasz illesztett egyenese csak akkor ferde, ha a pontjai valóban egy egyenesen vannak (szórás ≤ 12 cm);
+  A külső / ismeretlen túloldalú falszakasz illesztett egyenese csak akkor ferde, ha a pontjai valóban egy egyenesen vannak (szórás ≤ 12 cm);
   a szétszórt pontú, külső / ismeretlen túloldalú szakasz, amelynek pontjai a hossza 40 %-át sem kísérik
   folytonosan, nem fal (pillérek, szigetek határa).
 - Beharapás a hőburkon: a burok derékszögű bemélyedése (oldalt vagy sarkon), amelynek a határoló élei mentén nincs

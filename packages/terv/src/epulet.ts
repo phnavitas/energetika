@@ -287,7 +287,8 @@ function szakaszSik(s: FalSzakasz, m: (x: number, y: number) => P2): { p0: P2; p
   let c = e.c;
   // (ferde egyenes csak akkor, ha a pontok valóban egy egyenesen vannak – a ferde fal pixelei; a sarkon befordulóak,
   // szétszórt pontok – a lépcsős, L alakú pixelsor – illesztett egyenese ferde lenne, a csatlakozás valójában derékszögű)
-  const szorodas = Math.sqrt(pm.reduce((t, [x, y]) => t + ((x - e.c[0]) * -u[1] + (y - e.c[1]) * u[0]) ** 2, 0) / pm.length);
+  // (csak külső / ismeretlen túloldalnál – a helyiségek közti rövid ferde fal pixelei a csatlakozó falak miatt szórhatnak)
+  const szorodas = typeof s.tul === 'number' ? 0 : Math.sqrt(pm.reduce((t, [x, y]) => t + ((x - e.c[0]) * -u[1] + (y - e.c[1]) * u[0]) ** 2, 0) / pm.length);
   const kozel = Math.abs(((szog - tz + 3 * Math.PI) % (2 * Math.PI)) - Math.PI) < (12 * Math.PI) / 180;
   if (!kozel && szorodas > 0.12) {
     // (a szétszórt pontok többsége a szakasz irányú egyenesen sincs rajta – pl. a helyiség belsejében lévő kis
