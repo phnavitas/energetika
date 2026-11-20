@@ -349,7 +349,10 @@ function kepMaszk<K extends { w: number; h: number; ptPx: number; adat: Uint8Arr
 }
 /** Kézzel felvett helyiség (a rajzon pecsét nélküli, zárt terület – pl. lépcső): a kattintás helye (lapkoordináta) és neve. */
 export interface PluszHelyiseg { x: number; y: number; nev: string }
-export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: SzurkeKep, tinta0?: TintaKep, leirasJegyzek?: TervHelyiseg[], plusz?: PluszHelyiseg[]): AlaprajzFeldolgozas {
+export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: SzurkeKep, tinta0?: TintaKep, leirasJegyzek?: TervHelyiseg[], plusz?: PluszHelyiseg[],
+  /** haladás (a háttérszálon futó feldolgozás felirata) */
+  halad?: (szoveg: string) => void): AlaprajzFeldolgozas {
+  halad?.('rétegek, rajzpecsét, lépték, helyiségpecsétek');
   // rétegzett PDF: a bútor, környezet, burkolat, födém/tető, raszter rétegek vonalai nélkül; ilyenkor a lapkép
   // „tintája” (amely minden réteget – bútort, burkolatot – tartalmaz) nem kell: a falat a réteg adja
   const lap1 = retegSzures(lap0);
@@ -409,6 +412,7 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
     // kifolyik, vagy a zárt térként mért területének többszörösére nő (a rajz körüli méretlánc-zseb, keretmező),
     // nem helyiség – kihagyjuk, és újraépítjük a raszter nélküle (különben az egész lapot elárasztja).
     const opc = { px: 0.04, resZaras: 3.0, vastagVonalFal: 0.05, ...(szurke && !reteges ? { szinKep: szurke } : {})};
+    halad?.('zárt terek felismerése (pecsét nélküli lap)');
     r = raszterEpit(lap, e.mPerPt, magok, opc);
     for (let kor = 0; kor < 12; kor++) {
       const db = new Map<number, number>(); for (let k = 0; k < r.w * r.h; k++) { const c = r.cimke[k]!; if (c >= 2) db.set(c - 2, (db.get(c - 2) ?? 0) + 1); }
@@ -432,7 +436,9 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
     const valtozatok: RaszterBeallitas[] = [alap, { ...alap, ablaksor: false }, ...(tinta ? [{ ...alap, tinta }, { ...alap, tinta, ablaksor: false }] : [])];
     const vektoros: RaszterBeallitas[] = [{ ...alap, vektorFal: true }, ...(tinta ? [{ ...alap, tinta, vektorFal: true }] : [])];
     let leg: { r: Raszter; p: number } | null = null; let legBeall: RaszterBeallitas | null = null;
+    const vDb = valtozatok.length + vektoros.length; let vK = 0;
     for (const v of valtozatok) {
+      halad?.(`falak és helyiségek felismerése – ${++vK}. / ${vDb} változat`);
       const rv = raszterEpit(lap, e.mPerPt, magok, v);
       const p = pecsetEgyezes(rv, magHelyisegek);
       // az alapváltozattól csak egyértelmű javulásnál (≥ 3 százalékpont) térünk el – a hajszálnyi különbség zaj
@@ -443,6 +449,7 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
     // helyiségek kiterjedése vele egyértelműen (≥ 3 százalékpont) jobban illik a pecsétterülethez. A helyiségek és a
     // nyílászárók a fenti raszterből jönnek (ott a korábbi felismerés pontosabb).
     for (const v of vektoros) {
+      halad?.(`falak és helyiségek felismerése – ${++vK}. / ${vDb} változat (vektoros falak)`);
       const rv = raszterEpit(lap, e.mPerPt, magok, v);
       const p = pecsetEgyezes(rv, magHelyisegek);
       if (p > leg!.p + 0.03 && (!r3d || p > r3dP)) { r3d = rv; r3dP = p; }
@@ -455,6 +462,7 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
       r = raszterEpit(lap, e.mPerPt, magok, v);
     }
   }
+  halad?.('nyílászárók, határoló szerkezetek');
   kotaEllenoriz(r, lap.szovegek);
   talajOldal(lap, r, e.helyisegek.filter((h) => h.forras === 'pecset' && !h.kulter).map((h) => h.mutato ?? h));
   szomszedOldal(lap, r);

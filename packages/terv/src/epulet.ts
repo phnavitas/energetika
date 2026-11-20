@@ -285,12 +285,29 @@ function szakaszSik(s: FalSzakasz, m: (x: number, y: number) => P2): { p0: P2; p
   // az illesztett egyenest elfordíthatják; a hely ilyenkor a pontok normális menti mediánja (a kilógó pixelek nélkül)
   const szog = Math.atan2(n[1], n[0]), tz = Math.atan2(ir[1], ir[0]);
   let c = e.c;
-  if (Math.abs(((szog - tz + 3 * Math.PI) % (2 * Math.PI)) - Math.PI) < (12 * Math.PI) / 180) {
+  // (ferde egyenes csak akkor, ha a pontok valóban egy egyenesen vannak – a ferde fal pixelei; a sarkon befordulóak,
+  // szétszórt pontok – a lépcsős, L alakú pixelsor – illesztett egyenese ferde lenne, a csatlakozás valójában derékszögű)
+  const szorodas = Math.sqrt(pm.reduce((t, [x, y]) => t + ((x - e.c[0]) * -u[1] + (y - e.c[1]) * u[0]) ** 2, 0) / pm.length);
+  const kozel = Math.abs(((szog - tz + 3 * Math.PI) % (2 * Math.PI)) - Math.PI) < (12 * Math.PI) / 180;
+  if (!kozel && szorodas > 0.12) {
+    // (a szétszórt pontok többsége a szakasz irányú egyenesen sincs rajta – pl. a helyiség belsejében lévő kis
+    // szigetek, sraffozás határai –: nem fal)
+    const d = pm.map(([x, y]) => x * ir[0] + y * ir[1]).sort((a, b) => a - b), dm = d[Math.floor(d.length / 2)]!;
+    if (d.filter((v) => Math.abs(v - dm) <= 0.15).length < 0.6 * d.length) return null;
+  }
+  if (kozel || szorodas > 0.12) {
     n = ir; u = [-ir[1], ir[0]];
     const d = pm.map(([x, y]) => x * n[0] + y * n[1]).sort((a, b) => a - b), dm = d[Math.floor(d.length / 2)]!;
     const cd = e.c[0] * n[0] + e.c[1] * n[1]; c = [e.c[0] + n[0] * (dm - cd), e.c[1] + n[1] * (dm - cd)];
   }
   let t0 = Infinity, t1 = -Infinity; for (const [x, y] of pm) { const t = (x - c[0]) * u[0] + (y - c[1]) * u[1]; if (t < t0) t0 = t; if (t > t1) t1 = t; }
+  // (külső / ismeretlen túloldalnál: a hosszának legalább 40 %-át folytonosan – ≤ 0,3 m-es hézagokkal – kísérik a
+  // pontok; az egymástól távoli pillérek, szigetek határpixelei egy vonalban nem fal)
+  if (t1 - t0 > 2 && typeof s.tul !== 'number') {
+    const ts = pm.map(([x, y]) => (x - c[0]) * u[0] + (y - c[1]) * u[1]).sort((a, b) => a - b);
+    let fed = 0; for (let i = 1; i < ts.length; i++) { const g = ts[i]! - ts[i - 1]!; if (g <= 0.3) fed += g; }
+    if (fed < 0.4 * (t1 - t0)) return null;
+  }
   return { p0: [c[0] + u[0] * t0, c[1] + u[1] * t0], p1: [c[0] + u[0] * t1, c[1] + u[1] * t1], n };
 }
 

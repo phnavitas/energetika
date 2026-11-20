@@ -147,6 +147,15 @@ tartó) – a hőszigetelés-burkolat, eresz, csatorna, járda, korlát nem.
   (szélesség, lapos / féltető, hajlás, lejtés).
 - Mellvédmagasság: a feliratos ablaké az alaprajzi „pm”, de ha az illesztett homlokzaton a keret alja (a szintjelekből,
   a feliratos ablakok mediánjával kiigazítva) 25 cm – 1 m-rel eltér (egyszintes épületen), a homlokzaté (`nyilasok[].pmAlaprajz` az eredeti).
+- Ferde élek: a csatlakozások túlnyomó többsége derékszögű. A helyiség- és burok-körvonal tengelytől ≥ 3°-kal eltérő,
+  ≥ 0,5 m-es éle csak akkor marad, ha a hossza ≥ 85 %-án 0,25 m-en belül fal kíséri (a ferde fal rajzolata);
+  különben a maszkhoz jobban illő derékszögű sarokkal helyettesítjük (elforgatott – főirány ≥ 3° – épületen nem).
+  A falszakasz illesztett egyenese csak akkor ferde, ha a pontjai valóban egy egyenesen vannak (szórás ≤ 12 cm);
+  a szétszórt pontú, külső / ismeretlen túloldalú szakasz, amelynek pontjai a hossza 40 %-át sem kísérik
+  folytonosan, nem fal (pillérek, szigetek határa).
+- Beharapás a hőburkon: a burok derékszögű bemélyedése (oldalt vagy sarkon), amelynek a határoló élei mentén nincs
+  fal / nyílás (≥ 50 %), kitöltve; 30 m² fölött csak zárt torkolattal; más (burokon kívüli) helyiséget tartalmazó
+  bemélyedés valódi.
 - ArchiCAD-zónák: az azonos nevű darabok összevonása láncolva sem köthet össze két, külön pecsétet tartalmazó zónát.
 - Pecsét két előtag nélküli területsorral („12,82 m²” fölött „15,85 m²”): a nagyobb a teljes (A), a kisebb a hasznos;
   a jegyzék „Terület | Teljes terület” oszlopai ugyanígy. Csak burkolatnevű pecsét („greslap” + „parketta”) helyiség,

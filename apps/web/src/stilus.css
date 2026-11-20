@@ -435,3 +435,31 @@ details.osszecsukhato[open] > summary { margin-bottom: 4px; }
 .modal { background: var(--lap, #fff); color: inherit; border-radius: 8px; box-shadow: 0 12px 40px rgba(0, 0, 0, .25); max-width: 640px; width: 100%; max-height: 85vh; overflow: auto; padding: 18px 20px; }
 .modal h2 { margin: 0 0 8px; font-size: 18px; }
 .modal .gombsor { margin-top: 14px; justify-content: flex-end; }
+
+/* tömör rétegrend-kártya (Tervből): kis sorköz, alacsony mezők */
+.kartya.rr-tomor { padding: 8px 10px; }
+.rr-tomor .rr-fej { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-weight: 600; font-size: 14px; }
+.rr-tomor .rr-fej select { width: auto; max-width: 260px; min-height: 26px; padding: 1px 6px; font-size: 12.5px; font-weight: 400; }
+.rr-tomor .tabla { font-size: 12.5px; margin-top: 4px; }
+.rr-tomor .tabla td { padding: 1px 4px; line-height: 1.25; }
+.rr-tomor .tabla input, .rr-tomor .tabla select { min-height: 24px; padding: 1px 5px; font-size: 12.5px; }
+.rr-tomor .tabla select { max-width: 300px; width: 100%; }
+.rr-tomor .tabla input.szammezo { max-width: 7ch; }
+.rr-tomor .egyseg { gap: 3px; }
+.rr-tomor .egyseg input.szammezo { min-width: 44px; }
+.rr-tomor .egyseg em { font-size: 11.5px; }
+.rr-tomor .halkabb { font-size: 12px; }
+
+/* a 2D / 3D nézet görgetéskor fent marad */
+.nezo-rogzitett { position: sticky; top: 0; z-index: 30; background: var(--papir); padding-top: 6px; box-shadow: 0 8px 12px -10px rgba(0,0,0,.25); }
+
+/* Tervből: átvételi sáv a képernyő alján */
+.atvetel-sav { position: sticky; bottom: 0; z-index: 40; display: flex; gap: 16px; align-items: center; justify-content: flex-end; flex-wrap: wrap;
+  margin: 16px -4px 0; padding: 10px 14px; background: var(--lap); border: 1px solid var(--vonal); border-radius: var(--r) var(--r) 0 0; box-shadow: 0 -6px 16px rgba(0,0,0,.10); }
+.atvetel-sav > span { margin-right: auto; }
+.gomb.nagy { font-size: 16px; padding: 10px 22px; font-weight: 650; }
+
+/* oldalsáv: a projektlista külön, egyértelmű gombbal */
+.projektek-gomb { display: flex; gap: 8px; align-items: baseline; width: 100%; justify-content: flex-start; margin: 0 0 6px; font-weight: 600; }
+.projektek-gomb .halkabb { font-weight: 400; font-size: 12px; }
+.projektek-gomb.aktiv { background: var(--kijelolt); border-color: var(--fokusz); }

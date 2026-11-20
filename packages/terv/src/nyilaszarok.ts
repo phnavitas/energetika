@@ -985,8 +985,12 @@ export function tetoablakJelek(lap: Lap, r: Raszter): TetoablakJel[] {
     for (const f of [false, true]) {
       const sor = nyers.filter((q) => q.f === f).sort((p1, p2) => p1.k - p2.k || p1.a - p2.a);
       const cel = f ? fugg : vizsz; const nyitott: D[] = [];
+      // (a nyitott vonalak k szerint növekvő sorrendben jönnek létre: az eleje, amely kt-n túl van, már nem illeszkedhet)
+      let eleje = 0;
       for (const q of sor) {
-        const d = nyitott.find((x) => Math.abs(x.k - q.k) < kt && q.a - x.b < hez && q.a >= x.a - hez);
+        while (eleje < nyitott.length && !(Math.abs(nyitott[eleje]!.k - q.k) < kt)) eleje++;
+        let d: D | undefined;
+        for (let j = eleje; j < nyitott.length; j++) { const x = nyitott[j]!; if (Math.abs(x.k - q.k) < kt && q.a - x.b < hez && q.a >= x.a - hez) { d = x; break; } }
         if (d) { d.b = Math.max(d.b, q.b); d.db++; } else { const n = { k: q.k, a: q.a, b: q.b, db: 1 }; nyitott.push(n); cel.push(n); }
       }
     }

@@ -437,11 +437,17 @@ function App() {
             <p>Energetikai számítás · 9/2023 ÉKM, {p.meta.rendeltetes === 'egyeb' ? 'egyéb rendeltetés' : 'lakóépület'}</p>
           </div>
           {tavoli && (
-            <button class={`projekt-gomb${nezet === 'projektek' ? ' aktiv' : ''}`} onClick={() => setNezet('projektek')}>
-              <span class="halkabb">Megnyitott projekt</span>
-              <strong>{p.meta.nev || 'Névtelen projekt'}</strong>
-              <span class={`jel ${mentesOsztaly}`}>{mentesSzoveg}</span>
-            </button>
+            <>
+              {/* a projektlista egyértelmű, külön gombbal érhető el (a megnyitott projekt kártyája is oda visz) */}
+              <button class={`gomb projektek-gomb${nezet === 'projektek' ? ' aktiv' : ''}`} onClick={() => setNezet('projektek')}>
+                <span aria-hidden="true">☰</span> Összes projekt <span class="halkabb">– megnyitás, új projekt</span>
+              </button>
+              <button class={`projekt-gomb${nezet === 'projektek' ? ' aktiv' : ''}`} onClick={() => setNezet('projektek')} title="Váltás másik projektre: Összes projekt">
+                <span class="halkabb">Megnyitott projekt</span>
+                <strong>{p.meta.nev || 'Névtelen projekt'}</strong>
+                <span class={`jel ${mentesOsztaly}`}>{mentesSzoveg}</span>
+              </button>
+            </>
           )}
           <ol class="lepesek">
             {LEPESEK.map((l, n) => (

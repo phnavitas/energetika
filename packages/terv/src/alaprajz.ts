@@ -301,12 +301,30 @@ export function mutatokKeres(lap: Lap, hs: TervHelyiseg[]): void {
     return Math.max(w, h) <= 6 && Math.min(w, h) >= 1 && (n >= 8 ? Math.abs(w - h) < 0.25 * Math.max(w, h) : n <= 4);
   });
   const vonalak = lap.utvonalak.filter((u) => u.muvelet === 'stroke' && u.pontok.length === 1 && u.pontok[0]!.length <= 6 && u.vastagsag < 0.6);
+  // (rácsindex a vonalvégekre és a jelpontokra – nagy lapon a helyiségenkénti teljes bejárás lassú; a sorrend az eredeti)
+  const G = 40, kulcs = (x: number, y: number) => `${Math.floor(x / G)}|${Math.floor(y / G)}`;
+  const vonalRacs = new Map<string, number[]>();
+  vonalak.forEach((v, vi) => { const p = v.pontok[0]!; const n = p.length / 2;
+    for (const [x, y] of [[p[0]!, p[1]!], [p[2 * n - 2]!, p[2 * n - 1]!]] as const) { const k = kulcs(x, y); const l = vonalRacs.get(k); if (!l) vonalRacs.set(k, [vi]); else if (l[l.length - 1] !== vi) l.push(vi); } });
+  const pontRacs = new Map<string, number[]>();
+  pontok.forEach((u, pi) => { const k = kulcs((u.bbox[0] + u.bbox[2]) / 2, (u.bbox[1] + u.bbox[3]) / 2); const l = pontRacs.get(k); if (l) l.push(pi); else pontRacs.set(k, [pi]); });
+  const pontKeres = (mx: number, my: number) => {
+    let leg = -1;
+    for (let gx = Math.floor((mx - 3.5) / G); gx <= Math.floor((mx + 3.5) / G); gx++) for (let gy = Math.floor((my - 3.5) / G); gy <= Math.floor((my + 3.5) / G); gy++)
+      for (const pi of pontRacs.get(`${gx}|${gy}`) ?? []) { if (leg >= 0 && pi >= leg) continue; const u = pontok[pi]!; const cx = (u.bbox[0] + u.bbox[2]) / 2, cy = (u.bbox[1] + u.bbox[3]) / 2; if (Math.hypot(cx - mx, cy - my) < 3.5) leg = pi; }
+    return leg >= 0 ? pontok[leg] : undefined;
+  };
+  const rovid = lap.utvonalak.filter((u) => u.muvelet === 'stroke' && u.pontok.length === 1 && u.pontok[0]!.length === 4 && u.vastagsag < 0.3);
+  const jeloltek = [true, false].map((fugg) => rovid.filter((u) => { const p = u.pontok[0]!; const L = Math.hypot(p[2]! - p[0]!, p[3]! - p[1]!); if (L < 1 || L > 6) return false; return fugg ? Math.abs(p[0]! - p[2]!) < 0.2 : Math.abs(p[1]! - p[3]!) < 0.2; }));
   for (const h of hs) {
     if (!h.bbox) continue;
     const [bx0, by0, bx1, by1] = h.bbox; const t = 4;
     const benne = (x: number, y: number) => x > bx0 - t && x < bx1 + t && y > by0 - t && y < by1 + t;
     let legjobb: { x: number; y: number; d: number } | null = null;
-    for (const v of vonalak) {
+    const jel = new Set<number>();
+    for (let gx = Math.floor((bx0 - t) / G); gx <= Math.floor((bx1 + t) / G); gx++) for (let gy = Math.floor((by0 - t) / G); gy <= Math.floor((by1 + t) / G); gy++) for (const vi of vonalRacs.get(`${gx}|${gy}`) ?? []) jel.add(vi);
+    for (const vi of [...jel].sort((a, b) => a - b)) {
+      const v = vonalak[vi]!;
       const p = v.pontok[0]!; const n = p.length / 2;
       const vegek: [number, number][] = [[p[0]!, p[1]!], [p[2 * n - 2]!, p[2 * n - 1]!]];
       for (const [e, m] of [[0, 1], [1, 0]] as const) {
@@ -316,7 +334,7 @@ export function mutatokKeres(lap: Lap, hs: TervHelyiseg[]): void {
         // a méretvonalak, falvonalak tengelyirányúak – a mutatóvonal jellemzően ferde
         const sz = Math.abs(Math.atan2(my - ey, mx - ex) * 180 / Math.PI) % 90;
         if (sz < 8 || sz > 82) continue;
-        const pont = pontok.find((u) => { const cx = (u.bbox[0] + u.bbox[2]) / 2, cy = (u.bbox[1] + u.bbox[3]) / 2; return Math.hypot(cx - mx, cy - my) < 3.5; });
+        const pont = pontKeres(mx, my);
         if (!pont) continue;
         if (!legjobb || hossz > legjobb.d) legjobb = { x: (pont.bbox[0] + pont.bbox[2]) / 2, y: (pont.bbox[1] + pont.bbox[3]) / 2, d: hossz };
       }
@@ -324,12 +342,11 @@ export function mutatokKeres(lap: Lap, hs: TervHelyiseg[]): void {
     if (legjobb) { h.mutato = { x: legjobb.x, y: legjobb.y }; continue; }
     // szaggatott (rövid, egy vonalba eső szakaszokból álló) mutatóvonal végjel nélkül: a pecsét keretének egyik
     // oldalától merőlegesen indul, legalább 3 szakasz; a lánc vége a mutatott pont (kicsit tovább, a helyiségbe)
-    const rovid = lap.utvonalak.filter((u) => u.muvelet === 'stroke' && u.pontok.length === 1 && u.pontok[0]!.length === 4 && u.vastagsag < 0.3);
     let lanc: { x: number; y: number; d: number } | null = null;
     for (const [ir, x0, y0] of [[0, (bx0 + bx1) / 2, by1], [1, (bx0 + bx1) / 2, by0], [2, bx0, (by0 + by1) / 2], [3, bx1, (by0 + by1) / 2]] as const) {
       const fugg = ir < 2; const elojel = ir === 0 || ir === 3 ? 1 : -1;
       // a kerethez legközelebbi indulás: a keret oldalán belül (a teljes szélességben), merőleges szakasz
-      const jelolt = rovid.filter((u) => { const p = u.pontok[0]!; const L = Math.hypot(p[2]! - p[0]!, p[3]! - p[1]!); if (L < 1 || L > 6) return false; return fugg ? Math.abs(p[0]! - p[2]!) < 0.2 : Math.abs(p[1]! - p[3]!) < 0.2; });
+      const jelolt = jeloltek[fugg ? 0 : 1]!;
       const kezd = jelolt.find((u) => { const p = u.pontok[0]!; const k = fugg ? Math.min(p[1]!, p[3]!) * elojel : Math.min(p[0]!, p[2]!) * elojel; const kr = (fugg ? y0 : x0) * elojel; const a = fugg ? p[0]! : p[1]!; const ok = fugg ? a > bx0 && a < bx1 : a > by0 && a < by1; return ok && Math.abs((fugg ? (elojel > 0 ? Math.min(p[1]!, p[3]!) : Math.max(p[1]!, p[3]!)) : (elojel > 0 ? Math.min(p[0]!, p[2]!) : Math.max(p[0]!, p[2]!))) - (fugg ? y0 : x0)) < 3 && k >= kr - 3; });
       if (!kezd) continue;
       const tengely = fugg ? kezd.pontok[0]![0]! : kezd.pontok[0]![1]!;

@@ -180,12 +180,14 @@ function szivargoPotlas(cimke: Int32Array, gat: Uint8Array, magok: { x: number; 
   const kifut = new Set<number>();
   for (let x = 0; x < w; x++) for (const y of [0, h - 1]) if (cimke[y * w + x]! >= 2) kifut.add(cimke[y * w + x]!);
   for (let y = 0; y < h; y++) for (const x of [0, w - 1]) if (cimke[y * w + x]! >= 2) kifut.add(cimke[y * w + x]!);
+  // (a tágított gát R-enként egyszer – minden kifutó helyiségre ugyanaz)
+  const tgGy = new Map<number, Uint8Array>();
   for (const c of kifut) {
     const m = magok[c - 2]!; const A = m.A ?? 0; if (!(A >= 4)) continue;
     let [cx, cy] = tr(m.x, m.y); cx = Math.round(cx); cy = Math.round(cy);
     for (const Rm of [0.3, 0.6, 1.0]) {
       const R = Math.max(1, Math.round(Rm / px));
-      const tg = tagit(gat, w, h, R);
+      let tg = tgGy.get(R); if (!tg) { tg = tagit(gat, w, h, R); tgGy.set(R, tg); }
       // a mag (vagy a legközelebbi szabad cella)
       let s = -1;
       for (let r = 0; r < 4 * R && s < 0; r++) for (let dy = -r; dy <= r && s < 0; dy++) for (let dx = -r; dx <= r; dx++) {
@@ -198,7 +200,7 @@ function szivargoPotlas(cimke: Int32Array, gat: Uint8Array, magok: { x: number; 
       for (let k = 0; k < sor.length && !szel && sor.length < maxN; k++) {
         const q = sor[k]!, x = q % w, y = (q / w) | 0;
         if (x === 0 || y === 0 || x === w - 1 || y === h - 1) { szel = true; break; }
-        for (const n of [q - 1, q + 1, q - w, q + w]) if (!reg[n] && !tg[n] && (cimke[n] === 0 || kifut.has(cimke[n]!))) { reg[n] = 1; sor.push(n); }
+        for (let j = 0; j < 4; j++) { const n = j === 0 ? q - 1 : j === 1 ? q + 1 : j === 2 ? q - w : q + w; if (!reg[n] && !tg[n] && (cimke[n] === 0 || kifut.has(cimke[n]!))) { reg[n] = 1; sor.push(n); } }
       }
       if (szel || sor.length >= maxN) continue;
       // visszanövesztés legfeljebb R cellával, a gáton és más helyiségen át nem
@@ -931,7 +933,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
     const kint = new Uint8Array(w * h); const sor: number[] = [];
     for (let x = 0; x < w; x++) for (const y of [0, h - 1]) { const i = y * w + x; if (!D[i] && !kint[i]) { kint[i] = 1; sor.push(i); } }
     for (let y = 0; y < h; y++) for (const x of [0, w - 1]) { const i = y * w + x; if (!D[i] && !kint[i]) { kint[i] = 1; sor.push(i); } }
-    for (let k = 0; k < sor.length; k++) { const q = sor[k]!, x = q % w; for (const n of [x > 0 ? q - 1 : -1, x < w - 1 ? q + 1 : -1, q - w, q + w]) if (n >= 0 && n < w * h && !D[n] && !kint[n]) { kint[n] = 1; sor.push(n); } }
+    for (let k = 0; k < sor.length; k++) { const q = sor[k]!, x = q % w; for (let j = 0; j < 4; j++) { const n = j === 0 ? (x > 0 ? q - 1 : -1) : j === 1 ? (x < w - 1 ? q + 1 : -1) : j === 2 ? q - w : q + w; if (n >= 0 && n < w * h && !D[n] && !kint[n]) { kint[n] = 1; sor.push(n); } } }
     const K = tagit(kint, w, h, R); // a zárt alaprajzon kívüli rész
     for (let i = 0; i < w * h; i++) {
       if (K[i] || B[i]) continue; const x = i % w;
@@ -975,7 +977,16 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   if (b.zonaPoli?.some(Boolean)) {
     // zónás lap: a zónás helyiség pontosan a zóna (a fal belső síkjáig); a zónán belüli „fal” (bútor, burkolatvonal) nem fal
     const Z = new Int32Array(w * h); const t = new Uint8Array(w * h);
-    b.zonaPoli.forEach((pl, k) => { if (!pl) return; t.fill(0); poliRajzol(t, w, h, pl, tr); for (let i = 0; i < w * h; i++) if (t[i]) Z[i] = 2 + k; });
+    // (a zóna befoglalóján belül – nagy lapon a teljes rács zónánkénti bejárása lassú)
+    b.zonaPoli.forEach((pl, k) => {
+      if (!pl) return;
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const p of pl) for (let i = 0; i + 1 < p.length; i += 2) { const [x, y] = tr(p[i]!, p[i + 1]!); if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+      const bx0 = Math.max(0, Math.floor(x0) - 1), bx1 = Math.min(w - 1, Math.ceil(x1) + 1), by0 = Math.max(0, Math.floor(y0) - 1), by1 = Math.min(h - 1, Math.ceil(y1) + 1);
+      if (bx1 < bx0 || by1 < by0) return;
+      poliRajzol(t, w, h, pl, tr);
+      for (let y = by0; y <= by1; y++) for (let i = y * w + bx0, e = y * w + bx1; i <= e; i++) if (t[i]) { Z[i] = 2 + k; t[i] = 0; }
+    });
     const zonas = new Set<number>(); b.zonaPoli.forEach((pl, k) => { if (pl) zonas.add(2 + k); });
     // a zóna menti (≤ 0,6 m) sáv, ahol se fal, se nyílás nincs (a korábban a helyiséghez vagy a külső térhez sorolt rész):
     // a rajzon kitöltetlen falbelső (csak a fal síkjai vannak megrajzolva) – gát, a külső tér ne érjen a zóna széléig

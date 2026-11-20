@@ -110,6 +110,7 @@ const poligonTerulet = (q: [number, number][], mPerPt: number) => Math.abs(q.red
 
 const IRANY_SZIN: Record<number, string> = { 0: '#A16207', 90: '#2E6DB4', 180: '#15803D', 270: '#A21CAF' };
 const IRANY_NEV: Record<number, string> = { 0: 'lapon fent', 90: 'lapon jobbra', 180: 'lapon lent', 270: 'lapon balra' };
+import { alaprajzFeldolgozHatter } from '../terv/hatter';
 import { AZ_TAJ, kulterRaszter, norm, futottRiK, pecsetPontok, kulsoKozelE, alapKijeloles, BEJARATI_H, burokNyilasok, eszakHomGy, homlokzatGy, nezetGy, homlokzatNezetTar, homlokzatRajzTar, burokAutoGy, burokAutoTar, nevFeliratok, vartTer, burok3dTar, burok3dCache, elemzesLap, burokFalGy, burokFalakAuto, ferdeModell, lapKategoriak, burokNyilasokPt, atvetelReszek, tervbolFuggo, homMagGy, type Kijeloles, type BurokFalAuto , tervFolyamat, SZINT_SOR, kerdesKulcs, nyilasMeretAlkalmaz, type ModellKezi } from '../terv/folyamat';
 export { tervbolFuggo } from '../terv/folyamat';
 
@@ -174,6 +175,9 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   useEffect(() => setKivH(null), [aIdx]);
   /** Az alaprajz-ablak nézete: 2D (a rajz a felismert elemekkel) vagy 3D (a hőburok térben). */
   const [nezet3d, setNezet3d] = useState(false);
+  // a 2D / 3D nézet görgetéskor a képernyő tetején marad (a listák alatta görgethetők, a nyílás, fal rákattintással ellenőrizhető)
+  const [rogzit, setRogzit0] = useState(() => { try { return localStorage.getItem('ekm-nezo-rogzit') !== '0'; } catch { return true; } });
+  const setRogzit = (v: boolean) => { setRogzit0(v); try { localStorage.setItem('ekm-nezo-rogzit', v ? '1' : '0'); } catch { /* */ } };
   /** A 3D modell méretezése: belső (alap – a fal belső síkjai, belmagasság) vagy külső (a hőszigetelés külső síkja, szintmagasság). */
   // a 3D modellben / a listában / a 2D rajzon kijelölt nyílászáró (lap, al.nyilasok-index)
   const [kivNy, setKivNy] = useState<{ lap: number; ny: number } | null>(null);
@@ -272,16 +276,24 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   // háttérfeldolgozás: a feltöltött alaprajzok egymás után (a felület két lap között frissül)
   // a műszaki leírás(ok) helyiséglistája – a helyiségpecsét nélküli alaprajzhoz
   const leirasJegyzek = useMemo(() => lapok.filter((l) => l.szerep === 'leiras').flatMap((l) => jegyzekSorok(l.lap.szovegek)), [lapok]);
+  // (háttérszálon – a felület közben él, a haladás és az eltelt idő látszik)
+  const [elemzesHalad, setElemzesHalad] = useState<{ lap: number; szoveg: string; kezd: number } | null>(null);
+  const [, setOra] = useState(0);
+  useEffect(() => { if (!elemzesHalad) return; const t = window.setInterval(() => setOra((x) => x + 1), 1000); return () => window.clearInterval(t); }, [elemzesHalad?.lap]);
+  const futoElemzes = useRef<TervLap | null>(null);
+  const lapokRef = useRef(lapok); lapokRef.current = lapok;
   useEffect(() => {
     const kov = lapok.findIndex((l, i) => l.szerep === 'alaprajz' && elemzesek[i] === undefined);
-    if (kov < 0) return;
-    const t = window.setTimeout(() => {
-      let ered: AlaprajzFeldolgozas | string;
-      try { ered = alaprajzFeldolgoz(lapok[kov]!.lap, undefined, lapok[kov]!.szurke, lapok[kov]!.tinta, leirasJegyzek, kijelolesek[kov]?.plusz); } catch (e) { ered = (e as Error).message; }
-      if (typeof ered === 'object') elemzesLap.set(ered, lapok[kov]!.lap);
-      setElemzesek((x) => ({ ...x, [kov]: ered }));
-    }, 40);
-    return () => window.clearTimeout(t);
+    if (kov < 0) { setElemzesHalad(null); return; }
+    const l = lapok[kov]!;
+    if (futoElemzes.current === l) return; // (már fut – az újrarajzolás nem indítja újra)
+    futoElemzes.current = l;
+    setElemzesHalad({ lap: kov, szoveg: 'indul', kezd: Date.now() });
+    // (az eredmény csak akkor kerül be, ha a lap közben nem változott – törlés, csere)
+    const ervenyes = () => lapokRef.current[kov] === l;
+    alaprajzFeldolgozHatter([l.lap, undefined, l.szurke, l.tinta, leirasJegyzek, kijelolesek[kov]?.plusz], (szoveg) => setElemzesHalad((h) => (h && h.lap === kov ? { ...h, szoveg } : h)))
+      .then((ered) => { if (futoElemzes.current === l) futoElemzes.current = null; if (!ervenyes()) return; elemzesLap.set(ered, l.lap); setElemzesek((x) => ({ ...x, [kov]: ered })); },
+        (e: Error) => { if (futoElemzes.current === l) futoElemzes.current = null; if (!ervenyes()) return; setElemzesek((x) => ({ ...x, [kov]: e.message })); });
   }, [lapok, elemzesek]);
   const keszElemzes = aIdx >= 0 && typeof elemzesek[aIdx] === 'object' ? elemzesek[aIdx] as AlaprajzFeldolgozas : null;
   const kezi = useMemo(() => (aLap && meretarany ? alaprajzFeldolgoz(aLap.lap, meretarany, aLap.szurke, aLap.tinta, leirasJegyzek) : null), [aLap, meretarany, leirasJegyzek]);
@@ -1054,7 +1066,9 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
           {folyamat && !halad && <span class="halk" role="status">{folyamat}</span>}
         </div>
         {halad && <div class="halad" role="status"><progress value={halad.arany} max={1} /><span>{Math.round(halad.arany * 100)}% · {halad.szoveg}</span></div>}
-        {!halad && alaprajzLapok.some(({ i }) => elemzesek[i] === undefined) && (() => { const kesz = alaprajzLapok.filter(({ i }) => elemzesek[i] !== undefined).length; const kov = alaprajzLapok.find(({ i }) => elemzesek[i] === undefined)!; return <div class="halad" role="status"><progress value={kesz} max={alaprajzLapok.length} /><span>Alaprajzok feldolgozása: {kesz} / {alaprajzLapok.length} kész · most: {kov.l.cim || kov.l.fajl}</span></div>; })()}
+        {!halad && alaprajzLapok.some(({ i }) => elemzesek[i] === undefined) && (() => { const kesz = alaprajzLapok.filter(({ i }) => elemzesek[i] !== undefined).length; const kov = alaprajzLapok.find(({ i }) => elemzesek[i] === undefined)!;
+          const mp = elemzesHalad && elemzesHalad.lap === kov.i ? Math.round((Date.now() - elemzesHalad.kezd) / 1000) : 0;
+          return <div class="halad" role="status"><progress value={kesz} max={alaprajzLapok.length} /><span>Alaprajzok feldolgozása: {kesz} / {alaprajzLapok.length} kész · most: {kov.l.cim || kov.l.fajl}{elemzesHalad && elemzesHalad.lap === kov.i ? <> · {elemzesHalad.szoveg} · {mp} s{mp >= 30 ? ' (nagy, részletes lap – a feldolgozás tovább tarthat, a program nem fagyott le)' : ''}</> : null}</span></div>; })()}
         {hiba && <div class="hiba-doboz" style="margin-top:12px">{hiba}</div>}
         {lapok.length > 0 && (
           <div class="racs" style="margin-top:16px">
@@ -1202,109 +1216,6 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
               </div>
             );
           })()}
-          <h2>1. Helyiségek és tájolás</h2>
-          <p class="halk">A helyiségpecsétekből (kód, név, burkolat, terület) és a helyiségjegyzékből. A színes vonalak a felismert külső falszakaszok a helyiségek belső (nettó) síkján, homlokzati irány szerint; a jelölők a nyílászárók.</p>
-          {(lapFigy.get(aIdx) ?? al.e.figyelmeztetesek).filter((f) => !(al.e.eszak && eszakJavitas(al.e.eszak.alairas) !== 0 && /északjel irányát/.test(f)) && !(/Északjelet nem találtam/.test(f) && eszakHom(al) !== null)).map((f) => <div class="figyelmeztetes" style="margin-bottom:8px">{f}</div>)}
-          {(() => {
-            // bizonytalan helyzetek, amelyekről a felhasználó dönt
-            const cm = (v: number) => Math.round(v * 100);
-            const hNev = (h: number | null) => (h !== null ? al.magHelyisegek[h]?.nev ?? '' : '');
-            const gyanus = al.nyilasok.map((n, kk) => ({ n, kk })).filter(({ n, kk }) => n.helyiseg !== null && n.irany !== null && n.fajta !== 'falfulke' &&
-              (kj.kulsoNy?.has(kk) || (!n.kulso && (n.oldalBizonytalan || (n.pm !== null && n.pm >= 0.3)))));
-            const ab0 = al.r ? burokAutoTar(al.r, futottRiK(al, kj)) : [];
-            const atvett = new Set(burokNyilasok(al, kj).map(({ kk }) => kk));
-            const arvak = (al.arvaFeliratok ?? []).map((f, j) => ({ f, j })).filter(({ f, j }) => kj.arvaBe?.has(j) || (!atvett.has(10000 + j) && !!al.r && ab0.length > 0 &&
-              (!ab0.some((p) => bennE(p, f.x, f.y)) ? nyilasEl(al.r, ab0, f.x, f.y, 2.5) !== null : nyilasEl(al.r, ab0, f.x, f.y, 1.0) !== null)));
-            const terdE = !!al.tetoablakok?.length && (!me?.szintek.belmagassag.length || !!me?.tetoter) && !lapSzintek(aIdx).includes('T');
-            const taBecs = (al.tetoablakok ?? []).map((t, ti) => ({ t, ti })).filter(({ t }) => t.becsult);
-            if (!gyanus.length && !arvak.length && !terdE && !taBecs.length) return null;
-            const valt = (mezo: 'kulsoNy' | 'arvaBe', i: number, be: boolean) => kjMod((k) => { const x = new Set(k[mezo] ?? []); if (be) x.add(i); else x.delete(i); return { ...k, [mezo]: x }; });
-            return (
-              <div class="kartya" style="margin-bottom:12px;border-color:#F59E0B">
-                <h3 style="margin-top:0">Ellenőrizendő – döntsd el</h3>
-                <p class="halk" style="margin-top:0">A felismerés ezeknél nem egyértelmű; a választás azonnal érvényes (2D, 3D és átvétel).</p>
-                {gyanus.length > 0 && <>
-                  <strong>Belsőnek vett nyílások</strong> <span class="halkabb">– mellvédes (ablakszerű), vagy a túloldala nem azonosítható</span>
-                  <table class="tabla" style="max-width:640px;margin:4px 0 10px"><tbody>
-                    {gyanus.map(({ n, kk }) => { const kulso = !!kj.kulsoNy?.has(kk); return (
-                      <tr>
-                        <td>{cm(n.szel)}×{cm(n.mag)}{n.pm !== null ? <span class="halkabb"> · pm {String(n.pm).replace('.', ',')}</span> : null}</td>
-                        <td>{hNev(n.helyiseg)}</td>
-                        <td>{n.oldalBizonytalan ? <span class="halkabb">túloldal ismeretlen</span> : <span class="halkabb">belső ablak?</span>}</td>
-                        <td style="white-space:nowrap">
-                          <label class="jelolo" style="display:inline-flex;margin-right:14px"><input type="radio" name={`ny${kk}`} checked={!kulso} onChange={() => valt('kulsoNy', kk, false)} /> belső</label>
-                          <label class="jelolo" style="display:inline-flex"><input type="radio" name={`ny${kk}`} checked={kulso} onChange={() => valt('kulsoNy', kk, true)} /> külső (homlokzati)</label>
-                        </td>
-                      </tr>); })}
-                  </tbody></table>
-                </>}
-                {arvak.length > 0 && <>
-                  <strong>Falhoz nem köthető nyílásfeliratok</strong> <span class="halkabb">– a hőburok mentén</span>
-                  <table class="tabla" style="max-width:640px;margin:4px 0 10px"><tbody>
-                    {arvak.map(({ f, j }) => (
-                      <tr>
-                        <td>{cm(f.szel)}×{cm(f.mag)}{f.pm !== null ? <span class="halkabb"> · pm {String(f.pm).replace('.', ',')}</span> : null}</td>
-                        <td><label class="jelolo"><input type="checkbox" checked={!!kj.arvaBe?.has(j)} onChange={(e) => valt('arvaBe', j, (e.target as HTMLInputElement).checked)} /> külső nyílásként átveszem (a legközelebbi homlokzati falra)</label></td>
-                      </tr>))}
-                  </tbody></table>
-                </>}
-                {terdE && <div style="margin:4px 0 10px">
-                  <strong>Térdfal</strong> <span class="halkabb">– tetőablakos helyiség metszet nélkül: a lejtés felőli külső fal térdfal</span><br />
-                  <label>Térdfal magassága: <input type="number" step="0.01" min="0" max="3" aria-label="Térdfal magassága (m)" style="width:90px" placeholder="0,9" value={terdfalKezi ?? ''} onInput={(e) => { const t = (e.target as HTMLInputElement).value.trim(); const v = Number(t.replace(',', '.')); setTerdfalKezi(t && v >= 0 ? v : undefined); }} /> m</label>
-                  <span class="halkabb"> (üresen: a homlokzatról, ennek híján 0,9 m)</span>
-                </div>}
-                {taBecs.length > 0 && <>
-                  <strong>Tetősík ablakok méretfelirat nélkül</strong> <span class="halkabb">– a rajzolt keretből becsült méret; add meg a konszignáció szerint</span>
-                  <table class="tabla" style="max-width:640px;margin:4px 0 4px"><tbody>
-                    {taBecs.map(({ t, ti }) => { const km = kj.taMeret?.[ti]; const be = (i: 0 | 1, e: Event) => { const v = Number((e.target as HTMLInputElement).value.replace(',', '.')); kjMod((k) => { const m = { ...(k.taMeret ?? {}) }; const reg = m[ti] ?? [t.szel, t.mag]; const uj: [number, number] = [reg[0], reg[1]]; if (v > 0) uj[i] = v / 100; m[ti] = uj; return { ...k, taMeret: m }; }); }; return (
-                      <tr>
-                        <td>{hNev(t.helyiseg)}</td>
-                        <td style="white-space:nowrap"><input type="number" min="20" max="300" step="1" aria-label="Szélesség (cm)" style="width:70px" value={cm(km?.[0] ?? t.szel)} onChange={(e) => be(0, e)} /> × <input type="number" min="20" max="300" step="1" aria-label="Magasság (cm)" style="width:70px" value={cm(km?.[1] ?? t.mag)} onChange={(e) => be(1, e)} /> cm</td>
-                      </tr>); })}
-                  </tbody></table>
-                </>}
-              </div>
-            );
-          })()}
-          <div class="racs" style="margin-bottom:12px">
-            <label class="mezo"><span>Méretarány 1 :</span><Szam ertek={al.e.meretarany ?? undefined} valt={(v) => setMeretarany(v)} /></label>
-            <div class="mezo"><span>Észak iránya (a lap felfelé irányától, óramutató szerint)</span>
-              <div class="gombsor" style="gap:6px">
-                <Szam ertek={eszakSz} egyseg="°" valt={(v) => setEszak(norm(v))} />
-                <button class="gomb" title="Megfordítás" onClick={() => setEszak(norm(eszakSz + 180))}>180°</button>
-                <button class="gomb" onClick={() => setEszak(norm(eszakSz - 45))}>−45°</button>
-                <button class="gomb" onClick={() => setEszak(norm(eszakSz + 45))}>+45°</button>
-              </div>
-              <label class="halkabb" style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" checked={kulonE} onChange={(e) => { const be = (e.target as HTMLInputElement).checked; setEszakKulon((x) => { const y = { ...x }; if (be) y[aIdx] = eszakSz; else delete y[aIdx]; return y; }); }} /> Ennél a lapnál külön érték{!kulonE && eszakKozos !== null ? ' (most: közös, minden lapra érvényes)' : ''}</label>
-              <EszakOsszevetes kep={aLap?.kep} lapSzel={aLap?.lap.szel ?? 0} lapMag={aLap?.lap.mag ?? 0} jel={ej ?? null} szog={eszakSz} />
-              {(!ej || ej.bizonytalan) && eszakKozos === null && !kulonE && eszakHom(al) !== null && <small class="halkabb">{ej ? 'Az északjel alakja nem egyértelmű' : 'Északjel nincs a lapon'}: az irányt a homlokzati rajzokból becsültem (a címükben szereplő égtáj és a nyílások helyzete szerint){eszakHomSajat(al) === null ? ', egy másik alaprajzi lap illesztése alapján (ezen a lapon a homlokzatok nem illeszthetők)' : ''} – ellenőrizd.</small>}
-              {ej && eszakKozos === null && !kulonE && <small class="halkabb">{ej.forras === 'betu' ? 'Az „É” / „N” betűs északjelből.' : eszakJavitas(ej.alairas) !== 0 ? 'Ismert északjel: a korábban rögzített iránnyal. Ellenőrizd az előnézeten (piros nyíl).' : 'Az északjel alakjából – ellenőrizd az előnézeten (piros nyíl), a javítást a program ehhez a jelhez megjegyzi.'}</small>}
-            </div>
-            {al.e.egysegek.length > 1 && (
-              <div class="mezo szeles"><span>Lakások / egységek (a helyiségszámozás szerint)
-                  <span class="gombsor" style="display:inline-flex;gap:4px;margin-left:8px">
-                    <button class="gomb halk-gomb semleges" onClick={() => setEgysegek(new Set(al.e.egysegek))}>Mind</button>
-                    {[...new Set(al.e.egysegek.map((eg) => al.e.egysegInfo[eg]?.epulet).filter((x): x is string => !!x))].map((ep) => <button class="gomb halk-gomb semleges" onClick={() => setEgysegek(new Set(al.e.egysegek.filter((eg) => al.e.egysegInfo[eg]?.epulet === ep)))}>{ep} épület</button>)}
-                    <button class="gomb halk-gomb semleges" onClick={() => setEgysegek(new Set())}>Egyik sem</button>
-                  </span>
-                </span>
-                <table class="tabla" style="max-width:640px">
-                  <tbody>
-                    {al.e.egysegek.map((eg) => { const inf = al.e.egysegInfo[eg]!; return (
-                      <tr>
-                        <td style="width:28px"><input type="checkbox" aria-label={`${eg} átvétele`} checked={egysegek.has(eg)} onChange={(e) => { const s = new Set(egysegek); if ((e.target as HTMLInputElement).checked) s.add(eg); else s.delete(eg); setEgysegek(s); }} /></td>
-                        <td>{inf.epulet && <span class="halkabb">{inf.epulet} épület · </span>}<strong>{eg}</strong>{inf.nev && <span class="halk"> · {inf.nev}</span>}</td>
-                        <td class="szam">{inf.db} helyiség</td>
-                        <td class="szam">{sz(inf.A)} m²</td>
-                        <td><button class="gomb halk-gomb semleges" onClick={() => setEgysegek(new Set([eg]))}>Csak ez</button></td>
-                      </tr>
-                    ); })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
           {!nezet3d && <div class="gombsor" role="group" aria-label="Felismert elemek megjelenítése" style="margin:0 0 8px;gap:6px;flex-wrap:wrap;align-items:center">
             <strong style="font-size:13px;margin-right:4px">Felismert elemek a rajzon:</strong>
             {RETEGEK.map((rt) => (
@@ -1318,6 +1229,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             <button class="gomb halk-gomb semleges" onClick={() => setRetegek(new Set())}>Egyik sem</button>
           </div>}
           {!nezet3d && [...retegek].some((k) => k !== 'burok') && <div class="halkabb" style="font-size:12px;margin:-2px 0 8px">Falak: piros – fal, szürke – külső sraffozott felület (járda, térkő, kavics), nem fal. Helyiségek: a hőburokbeli szerepük színével (fűtött, fűtetlen, szomszéd épület, kültér – kattintással állítható); a felirat mellett zárójelben a rajzon felismert terület, ha eltér a pecséttől. Nyílások: szaggatott keret – méretfelirat nélkül mért, vagy falnyíláshoz nem köthető; áthúzott – nem kerül át.</div>}
+          <div class={rogzit ? 'nezo-rogzitett' : undefined}>
           <div style="position:relative;margin-bottom:8px">
             {/* 2D / 3D nézetváltó a bal felső sarokban */}
             <div role="group" aria-label="Nézet" style="position:absolute;left:10px;top:10px;z-index:3;display:flex;border:1px solid #D1D5DB;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)">
@@ -1336,7 +1248,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   const md = epMd;
                   if (!md || !md.falak.length) return <div class="kartya halkabb" style="padding:60px 16px 16px">{valto}A 3D modellhez a lap léptéke és a felismert falak kellenek (add meg a méretarányt).</div>;
                   const hibak = (() => { try { return zartsagEllenoriz(md); } catch { return []; } })();
-                  return <div class="kartya" style="padding:56px 0 0;overflow:hidden;position:relative">{valto}<Epulet3D modell={md} hibak={hibak} kivNy={kivNy} onNyilas={(f) => { setKivNy(f); if (f && f.lap !== aIdx && f.lap >= 0) setAIdx(f.lap); }} magassag={Math.round(Math.min(760, Math.max(420, (typeof window !== 'undefined' ? window.innerHeight : 800) * 0.7)))} />{kivNyAdat && <NyilasMeretSzerk adat={kivNyAdat} allit={(x) => nyMeretAllit(kivNy!.lap, kivNy!.ny, x)} bezar={() => setKivNy(null)} />}
+                  return <div class="kartya" style="padding:56px 0 0;overflow:hidden;position:relative">{valto}<Epulet3D modell={md} hibak={hibak} kivNy={kivNy} onNyilas={(f) => { setKivNy(f); if (f && f.lap !== aIdx && f.lap >= 0) setAIdx(f.lap); }} magassag={Math.round(Math.min(760, Math.max(rogzit ? 300 : 420, (typeof window !== 'undefined' ? window.innerHeight : 800) * (rogzit ? 0.5 : 0.7))))} />{kivNyAdat && <NyilasMeretSzerk adat={kivNyAdat} allit={(x) => nyMeretAllit(kivNy!.lap, kivNy!.ny, x)} bezar={() => setKivNy(null)} />}
                     {hibak.length > 0 && (
                       <div role="status" style="margin:0;padding:10px 14px;border-top:1px solid #FCA5A5;background:#FEF2F2">
                         <strong style="color:#B91C1C">A modell nem zárt – a beolvasás itt hiányos ({hibak.length} hely, a 3D-ben pirossal jelölve):</strong>
@@ -1410,10 +1322,10 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                 const szint3 = modellSzintek(meretMod);
                 if (!szint3) return <div class="kartya halkabb" style="padding:60px 16px 16px">A 3D nézethez a lap léptéke és a felismert falak kellenek (add meg a méretarányt).</div>;
                 const vanPol = szint3.some((x) => x.poligonok.length);
-                return <div class="kartya" style="padding:0;overflow:hidden;position:relative">{valto}{vanPol ? <Burok3D szintek={szint3} eszakSzog={eszakSz} meretMod={meretMod} onMeretMod={setMeretMod} magassag={Math.round(Math.min(760, Math.max(420, (typeof window !== 'undefined' ? window.innerHeight : 800) * 0.72)))} /> : <div class="halkabb" style="padding:60px 16px 16px">Még nincs hőburok-körvonal – a 2D nézetben a „Hőburok rajzolása” gombbal megrajzolhatod.</div>}</div>;
+                return <div class="kartya" style="padding:0;overflow:hidden;position:relative">{valto}{vanPol ? <Burok3D szintek={szint3} eszakSzog={eszakSz} meretMod={meretMod} onMeretMod={setMeretMod} magassag={Math.round(Math.min(760, Math.max(rogzit ? 300 : 420, (typeof window !== 'undefined' ? window.innerHeight : 800) * (rogzit ? 0.5 : 0.72))))} /> : <div class="halkabb" style="padding:60px 16px 16px">Még nincs hőburok-körvonal – a 2D nézetben a „Hőburok rajzolása” gombbal megrajzolhatod.</div>}</div>;
             })()
             ) : (
-            <div class="kartya" style="padding:0;overflow:auto;max-height:80vh;position:relative">
+            <div class="kartya" style={`padding:0;overflow:auto;max-height:${rogzit ? 52 : 80}vh;position:relative`}>
               {osszevon && (
                 <div role="alertdialog" aria-label="Pontok összevonása" style="position:sticky;top:8px;left:8px;z-index:6;display:inline-flex;gap:10px;align-items:center;margin:8px;background:#fff;border:1px solid #F97316;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.18);padding:8px 12px">
                   <strong>Két pont egymáson – összevonjam?</strong>
@@ -1695,7 +1607,9 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             </div>
             )}
           </div>
+          </div>
           <div class="gombsor" style="margin:8px 0 16px;gap:16px;flex-wrap:wrap">
+            <button class={`gomb halk-gomb${rogzit ? '' : ' semleges'}`} aria-pressed={rogzit} onClick={() => setRogzit(!rogzit)} title="A 2D / 3D nézet görgetéskor a képernyő tetején marad">{rogzit ? 'Nézet rögzítve fent' : 'Nézet rögzítése fent'}</button>
             <button class="gomb halk-gomb semleges" onClick={() => setNagyit(!nagyit)}>{nagyit ? 'Teljes lap' : 'Nagyítás az épületre'}</button>
             <span style="display:inline-flex;gap:4px;align-items:center" title="A hőburok síkja a rajzon és a számításban (a 3D nézet kapcsolójával együtt vált): belső méret – a fal belső síkja, külső méret – a fal / hőszigetelés külső síkja.">
               {(['belso', 'kulso'] as const).map((mm) => <button aria-pressed={meretMod === mm} onClick={() => setMeretMod(mm)} style={`padding:3px 10px;font:600 12px system-ui;border:1px solid #D1D5DB;border-radius:6px;cursor:pointer;${meretMod === mm ? 'background:#1F2937;color:#fff' : 'background:#fff;color:#374151'}`}>{mm === 'belso' ? 'Belső méret' : 'Külső méret'}</button>)}
@@ -1709,6 +1623,109 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             <span class="halkabb" title="A hőburok minden élénél a program megkeresi a valódi falsávot, és a fal belső síkján méri a hosszt (a sarkoknál a szomszédos belső síkok metszéspontjáig) és a falvastagságot. Zöld: a falsáv megvan; piros: az élnél nincs fal a rajzon (a hossz bizonytalan)."><span style="display:inline-block;width:18px;border-top:3px dashed #059669;vertical-align:middle;margin-right:4px" />mért falsík ({meretMod === 'kulso' ? 'külső' : 'belső'}): hossz · falvastagság (<span style="color:#DC2626">piros: nincs falsáv</span>)</span>
             {[0, 90, 180, 270].map((ir) => <span class="halkabb"><span style={`display:inline-block;width:10px;height:10px;border-radius:2px;background:${IRANY_SZIN[ir]};margin-right:4px`} />{IRANY_NEV[ir]} → {egtaj(ir, eszakSz)}</span>)}
           </div>
+          <h2>1. Helyiségek és tájolás</h2>
+          <p class="halk">A helyiségpecsétekből (kód, név, burkolat, terület) és a helyiségjegyzékből. A színes vonalak a felismert külső falszakaszok a helyiségek belső (nettó) síkján, homlokzati irány szerint; a jelölők a nyílászárók.</p>
+          {(lapFigy.get(aIdx) ?? al.e.figyelmeztetesek).filter((f) => !(al.e.eszak && eszakJavitas(al.e.eszak.alairas) !== 0 && /északjel irányát/.test(f)) && !(/Északjelet nem találtam/.test(f) && eszakHom(al) !== null)).map((f) => <div class="figyelmeztetes" style="margin-bottom:8px">{f}</div>)}
+          {(() => {
+            // bizonytalan helyzetek, amelyekről a felhasználó dönt
+            const cm = (v: number) => Math.round(v * 100);
+            const hNev = (h: number | null) => (h !== null ? al.magHelyisegek[h]?.nev ?? '' : '');
+            const gyanus = al.nyilasok.map((n, kk) => ({ n, kk })).filter(({ n, kk }) => n.helyiseg !== null && n.irany !== null && n.fajta !== 'falfulke' &&
+              (kj.kulsoNy?.has(kk) || (!n.kulso && (n.oldalBizonytalan || (n.pm !== null && n.pm >= 0.3)))));
+            const ab0 = al.r ? burokAutoTar(al.r, futottRiK(al, kj)) : [];
+            const atvett = new Set(burokNyilasok(al, kj).map(({ kk }) => kk));
+            const arvak = (al.arvaFeliratok ?? []).map((f, j) => ({ f, j })).filter(({ f, j }) => kj.arvaBe?.has(j) || (!atvett.has(10000 + j) && !!al.r && ab0.length > 0 &&
+              (!ab0.some((p) => bennE(p, f.x, f.y)) ? nyilasEl(al.r, ab0, f.x, f.y, 2.5) !== null : nyilasEl(al.r, ab0, f.x, f.y, 1.0) !== null)));
+            const terdE = !!al.tetoablakok?.length && (!me?.szintek.belmagassag.length || !!me?.tetoter) && !lapSzintek(aIdx).includes('T');
+            const taBecs = (al.tetoablakok ?? []).map((t, ti) => ({ t, ti })).filter(({ t }) => t.becsult);
+            if (!gyanus.length && !arvak.length && !terdE && !taBecs.length) return null;
+            const valt = (mezo: 'kulsoNy' | 'arvaBe', i: number, be: boolean) => kjMod((k) => { const x = new Set(k[mezo] ?? []); if (be) x.add(i); else x.delete(i); return { ...k, [mezo]: x }; });
+            return (
+              <div class="kartya" style="margin-bottom:12px;border-color:#F59E0B">
+                <h3 style="margin-top:0">Ellenőrizendő – döntsd el</h3>
+                <p class="halk" style="margin-top:0">A felismerés ezeknél nem egyértelmű; a választás azonnal érvényes (2D, 3D és átvétel).</p>
+                {gyanus.length > 0 && <>
+                  <strong>Belsőnek vett nyílások</strong> <span class="halkabb">– mellvédes (ablakszerű), vagy a túloldala nem azonosítható</span>
+                  <table class="tabla" style="max-width:640px;margin:4px 0 10px"><tbody>
+                    {gyanus.map(({ n, kk }) => { const kulso = !!kj.kulsoNy?.has(kk); return (
+                      <tr>
+                        <td>{cm(n.szel)}×{cm(n.mag)}{n.pm !== null ? <span class="halkabb"> · pm {String(n.pm).replace('.', ',')}</span> : null}</td>
+                        <td>{hNev(n.helyiseg)}</td>
+                        <td>{n.oldalBizonytalan ? <span class="halkabb">túloldal ismeretlen</span> : <span class="halkabb">belső ablak?</span>}</td>
+                        <td style="white-space:nowrap">
+                          <label class="jelolo" style="display:inline-flex;margin-right:14px"><input type="radio" name={`ny${kk}`} checked={!kulso} onChange={() => valt('kulsoNy', kk, false)} /> belső</label>
+                          <label class="jelolo" style="display:inline-flex"><input type="radio" name={`ny${kk}`} checked={kulso} onChange={() => valt('kulsoNy', kk, true)} /> külső (homlokzati)</label>
+                        </td>
+                      </tr>); })}
+                  </tbody></table>
+                </>}
+                {arvak.length > 0 && <>
+                  <strong>Falhoz nem köthető nyílásfeliratok</strong> <span class="halkabb">– a hőburok mentén</span>
+                  <table class="tabla" style="max-width:640px;margin:4px 0 10px"><tbody>
+                    {arvak.map(({ f, j }) => (
+                      <tr>
+                        <td>{cm(f.szel)}×{cm(f.mag)}{f.pm !== null ? <span class="halkabb"> · pm {String(f.pm).replace('.', ',')}</span> : null}</td>
+                        <td><label class="jelolo"><input type="checkbox" checked={!!kj.arvaBe?.has(j)} onChange={(e) => valt('arvaBe', j, (e.target as HTMLInputElement).checked)} /> külső nyílásként átveszem (a legközelebbi homlokzati falra)</label></td>
+                      </tr>))}
+                  </tbody></table>
+                </>}
+                {terdE && <div style="margin:4px 0 10px">
+                  <strong>Térdfal</strong> <span class="halkabb">– tetőablakos helyiség metszet nélkül: a lejtés felőli külső fal térdfal</span><br />
+                  <label>Térdfal magassága: <input type="number" step="0.01" min="0" max="3" aria-label="Térdfal magassága (m)" style="width:90px" placeholder="0,9" value={terdfalKezi ?? ''} onInput={(e) => { const t = (e.target as HTMLInputElement).value.trim(); const v = Number(t.replace(',', '.')); setTerdfalKezi(t && v >= 0 ? v : undefined); }} /> m</label>
+                  <span class="halkabb"> (üresen: a homlokzatról, ennek híján 0,9 m)</span>
+                </div>}
+                {taBecs.length > 0 && <>
+                  <strong>Tetősík ablakok méretfelirat nélkül</strong> <span class="halkabb">– a rajzolt keretből becsült méret; add meg a konszignáció szerint</span>
+                  <table class="tabla" style="max-width:640px;margin:4px 0 4px"><tbody>
+                    {taBecs.map(({ t, ti }) => { const km = kj.taMeret?.[ti]; const be = (i: 0 | 1, e: Event) => { const v = Number((e.target as HTMLInputElement).value.replace(',', '.')); kjMod((k) => { const m = { ...(k.taMeret ?? {}) }; const reg = m[ti] ?? [t.szel, t.mag]; const uj: [number, number] = [reg[0], reg[1]]; if (v > 0) uj[i] = v / 100; m[ti] = uj; return { ...k, taMeret: m }; }); }; return (
+                      <tr>
+                        <td>{hNev(t.helyiseg)}</td>
+                        <td style="white-space:nowrap"><input type="number" min="20" max="300" step="1" aria-label="Szélesség (cm)" style="width:70px" value={cm(km?.[0] ?? t.szel)} onChange={(e) => be(0, e)} /> × <input type="number" min="20" max="300" step="1" aria-label="Magasság (cm)" style="width:70px" value={cm(km?.[1] ?? t.mag)} onChange={(e) => be(1, e)} /> cm</td>
+                      </tr>); })}
+                  </tbody></table>
+                </>}
+              </div>
+            );
+          })()}
+          <div class="racs" style="margin-bottom:12px">
+            <label class="mezo"><span>Méretarány 1 :</span><Szam ertek={al.e.meretarany ?? undefined} valt={(v) => setMeretarany(v)} /></label>
+            <div class="mezo"><span>Észak iránya (a lap felfelé irányától, óramutató szerint)</span>
+              <div class="gombsor" style="gap:6px">
+                <Szam ertek={eszakSz} egyseg="°" valt={(v) => setEszak(norm(v))} />
+                <button class="gomb" title="Megfordítás" onClick={() => setEszak(norm(eszakSz + 180))}>180°</button>
+                <button class="gomb" onClick={() => setEszak(norm(eszakSz - 45))}>−45°</button>
+                <button class="gomb" onClick={() => setEszak(norm(eszakSz + 45))}>+45°</button>
+              </div>
+              <label class="halkabb" style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" checked={kulonE} onChange={(e) => { const be = (e.target as HTMLInputElement).checked; setEszakKulon((x) => { const y = { ...x }; if (be) y[aIdx] = eszakSz; else delete y[aIdx]; return y; }); }} /> Ennél a lapnál külön érték{!kulonE && eszakKozos !== null ? ' (most: közös, minden lapra érvényes)' : ''}</label>
+              <EszakOsszevetes kep={aLap?.kep} lapSzel={aLap?.lap.szel ?? 0} lapMag={aLap?.lap.mag ?? 0} jel={ej ?? null} szog={eszakSz} />
+              {(!ej || ej.bizonytalan) && eszakKozos === null && !kulonE && eszakHom(al) !== null && <small class="halkabb">{ej ? 'Az északjel alakja nem egyértelmű' : 'Északjel nincs a lapon'}: az irányt a homlokzati rajzokból becsültem (a címükben szereplő égtáj és a nyílások helyzete szerint){eszakHomSajat(al) === null ? ', egy másik alaprajzi lap illesztése alapján (ezen a lapon a homlokzatok nem illeszthetők)' : ''} – ellenőrizd.</small>}
+              {ej && eszakKozos === null && !kulonE && <small class="halkabb">{ej.forras === 'betu' ? 'Az „É” / „N” betűs északjelből.' : eszakJavitas(ej.alairas) !== 0 ? 'Ismert északjel: a korábban rögzített iránnyal. Ellenőrizd az előnézeten (piros nyíl).' : 'Az északjel alakjából – ellenőrizd az előnézeten (piros nyíl), a javítást a program ehhez a jelhez megjegyzi.'}</small>}
+            </div>
+            {al.e.egysegek.length > 1 && (
+              <div class="mezo szeles"><span>Lakások / egységek (a helyiségszámozás szerint)
+                  <span class="gombsor" style="display:inline-flex;gap:4px;margin-left:8px">
+                    <button class="gomb halk-gomb semleges" onClick={() => setEgysegek(new Set(al.e.egysegek))}>Mind</button>
+                    {[...new Set(al.e.egysegek.map((eg) => al.e.egysegInfo[eg]?.epulet).filter((x): x is string => !!x))].map((ep) => <button class="gomb halk-gomb semleges" onClick={() => setEgysegek(new Set(al.e.egysegek.filter((eg) => al.e.egysegInfo[eg]?.epulet === ep)))}>{ep} épület</button>)}
+                    <button class="gomb halk-gomb semleges" onClick={() => setEgysegek(new Set())}>Egyik sem</button>
+                  </span>
+                </span>
+                <table class="tabla" style="max-width:640px">
+                  <tbody>
+                    {al.e.egysegek.map((eg) => { const inf = al.e.egysegInfo[eg]!; return (
+                      <tr>
+                        <td style="width:28px"><input type="checkbox" aria-label={`${eg} átvétele`} checked={egysegek.has(eg)} onChange={(e) => { const s = new Set(egysegek); if ((e.target as HTMLInputElement).checked) s.add(eg); else s.delete(eg); setEgysegek(s); }} /></td>
+                        <td>{inf.epulet && <span class="halkabb">{inf.epulet} épület · </span>}<strong>{eg}</strong>{inf.nev && <span class="halk"> · {inf.nev}</span>}</td>
+                        <td class="szam">{inf.db} helyiség</td>
+                        <td class="szam">{sz(inf.A)} m²</td>
+                        <td><button class="gomb halk-gomb semleges" onClick={() => setEgysegek(new Set([eg]))}>Csak ez</button></td>
+                      </tr>
+                    ); })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
           {problemak.length > 0 && (
             <details class="kartya" open style="margin-bottom:16px">
               <summary style="cursor:pointer"><strong>Hőburok-ellenőrzés</strong> <span class="jel figy">{problemak.length} bizonytalan hely</span> <span class="halkabb">– a rajzon jelölve: <span style="color:#DC2626">■</span> ismeretlen túloldal, <span style="color:#F59E0B">■</span> ki nem jelölt szomszéd, <span style="color:#DC2626">◌</span> nyitott / <span style="color:#F97316">◌</span> részlegesen felismert körvonal</span></summary>
@@ -1786,20 +1803,20 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
           </div>
           {(() => { const v = me.blokkok; return v.length > 1 && <div style="margin-bottom:8px"><MindJelolo db={v.filter((b) => rrKi[b.rr.kod]).length} ossz={v.length} szoveg="mind átvételre / egyik sem" valt={(be) => { const k = { ...rrKi }; for (const b of v) k[b.rr.kod] = be; setRrKi(k); }} /></div>; })()}
           {me.blokkok.map((b) => (
-            <div class="kartya" style="margin-bottom:10px">
-              <label style="display:flex;gap:8px;align-items:baseline;font-weight:600">
-                <input type="checkbox" checked={!!rrKi[b.rr.kod]} onChange={(e) => { const be = (e.target as HTMLInputElement).checked; setRrKi({ ...rrKi, [b.rr.kod]: be }); if (be && !b.becsles.szerep && !rrSzerep[b.rr.kod]) setRrSzerep({ ...rrSzerep, [b.rr.kod]: 'belso' }); }} />
-                {b.rr.kod} {b.rr.cim}
-              </label>
-              <div style="margin:4px 0 0 24px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <div class="kartya rr-tomor" style="margin-bottom:6px">
+              <div class="rr-fej">
+                <label style="display:flex;gap:8px;align-items:baseline">
+                  <input type="checkbox" checked={!!rrKi[b.rr.kod]} onChange={(e) => { const be = (e.target as HTMLInputElement).checked; setRrKi({ ...rrKi, [b.rr.kod]: be }); if (be && !b.becsles.szerep && !rrSzerep[b.rr.kod]) setRrSzerep({ ...rrSzerep, [b.rr.kod]: 'belso' }); }} />
+                  {b.rr.kod} {b.rr.cim}
+                </label>
                 <select aria-label={`${b.rr.kod} szerepe`} value={rrSzerep[b.rr.kod] ?? b.becsles.szerep ?? ''} onChange={(e) => { const v = (e.target as HTMLSelectElement).value as RrSzerep | ''; const u = { ...rrSzerep }; if (v) u[b.rr.kod] = v; else delete u[b.rr.kod]; setRrSzerep(u); if (v) setRrKi({ ...rrKi, [b.rr.kod]: true }); }} style="font-size:13px">
                   {!b.becsles.szerep && <option value="">nem hőburok – válassz szerepet a beolvasáshoz</option>}
                   {(Object.entries({ fal: 'külső fal', padlas: 'padlásfödém', teto: 'tető', pincefodem: 'pincefödém', padlo: 'talajon fekvő padló', belso: 'belső szerkezet' }) as [RrSzerep, string][]).map(([k2, n]) => <option value={k2}>{n}{b.becsles.szerep === k2 && !rrSzerep[b.rr.kod] ? ' (felismert)' : ''}</option>)}
                 </select>
                 {rrSzerep[b.rr.kod] && rrSzerep[b.rr.kod] !== b.becsles.szerep && <span class="jel">kézzel megadva</span>}
               </div>
-              {b.becsles.kihagy && !rrSzerep[b.rr.kod] && <p class="halkabb" style="margin:4px 0 0 24px">{b.becsles.kihagy}{rrKi[b.rr.kod] ? ' – bepipálva: rétegrendként beolvasva (a felületekhez nem rendeli; szerepet választva igen).' : ''}</p>}
-              <table class="tabla" style="margin-top:6px">
+              {b.becsles.kihagy && !rrSzerep[b.rr.kod] && <p class="halkabb" style="margin:2px 0 0 24px">{b.becsles.kihagy}{rrKi[b.rr.kod] ? ' – bepipálva: rétegrendként beolvasva (a felületekhez nem rendeli; szerepet választva igen).' : ''}</p>}
+              <table class="tabla">
                 <tbody>
                   {b.retegek.map((r0, j) => {
                     // a felismert réteg a kézi javítással: a kimaradó réteg visszapipálható, az anyag legördülőből
@@ -1807,10 +1824,10 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                     const r = retegKezivel(b.rr.kod, j, r0), kezi = !!rrRetegKezi[b.rr.kod]?.[j];
                     return (
                     <tr style={r.kimarad ? 'opacity:.6' : ''}>
-                      <td style="width:22px"><input type="checkbox" aria-label={`${r.forras} – réteg átvétele`} checked={!r.kimarad} onChange={(e) => retegKeziAllit(b.rr.kod, j, { be: (e.target as HTMLInputElement).checked })} /></td>
-                      <td style="width:40%">{r.forras}</td>
+                      <td style="width:20px"><input type="checkbox" aria-label={`${r.forras} – réteg átvétele`} checked={!r.kimarad} onChange={(e) => retegKeziAllit(b.rr.kod, j, { be: (e.target as HTMLInputElement).checked })} /></td>
+                      <td style="width:45%">{r.forras}</td>
                       <td>{r.kimarad ? <span class="halkabb">kimarad – {r.kimarad}</span>
-                        : <select aria-label={`${r.forras} – anyag`} style={`width:100%;max-width:420px;font-size:13px;${!r.anyagId && !r.legreteg ? 'border-color:var(--figyel)' : ''}`} value={r.legreteg ? '_leg' : r.anyagId ?? ''} onChange={(e) => { const v = (e.target as HTMLSelectElement).value; if (v === '_leg') retegKeziAllit(b.rr.kod, j, { leg: true, anyagId: undefined }); else if (v) retegKeziAllit(b.rr.kod, j, { anyagId: v, leg: false }); }}>
+                        : <select aria-label={`${r.forras} – anyag`} style={!r.anyagId && !r.legreteg ? 'border-color:var(--figyel)' : ''} value={r.legreteg ? '_leg' : r.anyagId ?? ''} onChange={(e) => { const v = (e.target as HTMLSelectElement).value; if (v === '_leg') retegKeziAllit(b.rr.kod, j, { leg: true, anyagId: undefined }); else if (v) retegKeziAllit(b.rr.kod, j, { anyagId: v, leg: false }); }}>
                           {!r.anyagId && !r.legreteg && <option value="">nincs a katalógusban – válassz anyagot</option>}
                           {r.legreteg && r.legreteg !== 'zart' && <option value="_leg">légréteg (átszellőztetett)</option>}
                           {anyagKategoriak.map((k) => <optgroup label={k}>{anyagLista().filter((a) => a.kategoria === k).map((a) => <option value={a.id}>{a.nev}</option>)}</optgroup>)}
@@ -1818,7 +1835,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                         </select>}
                         {kezi && <span class="jel" style="margin-left:6px">kézzel</span>}
                         {r.megjegyzes && <small class="halkabb" style="display:block">{r.megjegyzes}</small>}</td>
-                      <td class="szam" style="width:110px">{r.kimarad ? '' : <Szam ertek={r.dCm} egyseg="cm" valt={(v) => retegKeziAllit(b.rr.kod, j, { dCm: v ?? 0 })} />}</td>
+                      <td class="szam" style="width:84px">{r.kimarad ? '' : <Szam ertek={r.dCm} egyseg="cm" valt={(v) => retegKeziAllit(b.rr.kod, j, { dCm: v ?? 0 })} />}</td>
                     </tr>); })}
                 </tbody>
               </table>
@@ -1888,7 +1905,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
 
       {al && (
         <section class="szakasz">
-          <h2>Átvétel</h2>
+          <h2 id="tervbol-atvetel">Átvétel</h2>
           <p class="halk">Létrejönnek a helyiségek (a hőszükséglethez helyiségenkénti külső falhosszal), a kijelölt rétegrendek, a homlokzati falak tájolás szerint, a talajon fekvő padló, a padlásfödém, a nyílászáró-típusok és -felületek. Az ablaktípus az építési év szerinti kortipikus műanyag ablak – a Nyílászárók lépésben pontosítható.</p>
           <fieldset style="border:1px solid var(--vonal);border-radius:8px;padding:10px 12px;margin:0 0 12px;display:flex;flex-direction:column;gap:6px">
             <legend class="halkabb" style="padding:0 6px">A projekt meglévő adatai ({p.helyisegek.length} helyiség, {p.feluletek.length} határoló felület, {p.nyilaszarok.length} nyílászáró-típus)</legend>
@@ -1907,6 +1924,20 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
         </section>
       )}
       {homlokzatLapok.length > 0 && <HomlokzatEllenorzes p={p} lapok={homlokzatLapok} />}
+      {/* átvételi sáv: görgetéskor is a képernyő alján – a fő művelet mindig kéznél */}
+      {al && aLap && (() => {
+        const fut = alaprajzLapok.some(({ i }) => elemzesek[i] === undefined);
+        const db = alaprajzLapok.filter(({ i }) => !kimarad(i)).length;
+        const tobb = alaprajzLapok.length > 1;
+        return (
+          <div class="atvetel-sav" role="region" aria-label="Átvétel">
+            <span class="halk">{fut ? `Feldolgozás folyamatban (${alaprajzLapok.filter(({ i }) => elemzesek[i] !== undefined).length} / ${alaprajzLapok.length})…` : tobb ? `${db} kijelölt alaprajz átvételre kész` : `Az alaprajz átvételre kész`}{atvett.size ? ` · ${atvett.size} lap már átvéve` : ''}</span>
+            <a href="#tervbol-atvetel" class="halkabb" onClick={(e) => { e.preventDefault(); document.getElementById('tervbol-atvetel')?.scrollIntoView({ behavior: 'smooth' }); }}>beállítások (felülírás / hozzáadás)</a>
+            {tobb ? <button class="gomb fo nagy" disabled={osszesFut || fut} onClick={() => kerdezveAtvesz('osszes')}>Átvétel a projektbe ({db} lap)</button>
+              : <button class="gomb fo nagy" disabled={!valasztott.some(Boolean)} onClick={() => kerdezveAtvesz('egy')}>Átvétel a projektbe</button>}
+          </div>
+        );
+      })()}
     </>
   );
 }
