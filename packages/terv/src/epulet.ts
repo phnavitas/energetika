@@ -547,6 +547,8 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
     for (const f of [...falak, ...pillerek]) { const d = elt.get(f.szint); if (d) f.z0 = Math.round((f.z0 + d) * 100) / 100; }
     for (const p of pillerek) { const s0 = szintek.find((q) => q.id === p.szint); if (s0) p.h = s0.h; }
   }
+  falVastagJavit(falak, nyilasok);
+  sarokZaras(falak, nyilasok);
   if (opt.kulsoFalRetegrend?.length) kulsoFalRetegek(falak, fodemek, nyilasok, opt.kulsoFalRetegrend);
   const koszoruk = opt.metszetElemek?.length ? koszoruKeres(szintek, falak, fodemek, opt.metszetElemek) : [];
   for (const fd of fodemek) if (fd.lapos) fd.lapos.attika = sz(koszoruk.filter((k) => k.fajta === 'attika' && k.szint === fd.alatt).reduce((t, k) => t + k.hossz, 0), 2);
@@ -1070,6 +1072,93 @@ function magastetoEpit(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], 
     ...(fedett.length ? { fedett } : {}), ...(oromElvetve ? { oromElvetve } : {}), ...(lapos.length ? { lapos: lapos.map(kerP), laposSav: sav.map((q) => ({ tengely: q.tengely, a: sz(q.a), b: sz(q.b), ...(q.felteto ? { felteto: { ...q.felteto, c0: sz(q.felteto.c0), c1: sz(q.felteto.c1) } } : {}) })) } : {}), ...(tobbi.length ? { tovabbiEresz: tobbi.map((q) => kerP(q.eresz)) } : {}), ...(feltetok.length ? { felteto: feltetok.map((f) => ({ ...f, pol: kerP(f.pol) })) } : {}),
     // (µm-re kerekítve: a tetőbontás az élek egyezéséből dolgozik – a mm-es kerekítés a T-csatlakozású élpontokat leviszi az élről)
     haromszogek: reszek.flatMap((q) => q.haromszogek).map((h) => h.map(([x, y, z]) => [sz(x, 6), sz(y, 6), sz(z, 6)] as [number, number, number])) };
+}
+
+/** A fal tengelyének egyik végét a tengely mentén új helyre teszi (a nyílások a-tól mért helye és a hossz követi). */
+function falVegAllit(f: Fal, veg: 'a' | 'b', P: P2, nyilasok: Nyilas[]) {
+  const L0 = Math.hypot(f.b[0] - f.a[0], f.b[1] - f.a[1]); if (L0 < 1e-6) return;
+  const u: P2 = [(f.b[0] - f.a[0]) / L0, (f.b[1] - f.a[1]) / L0];
+  if (veg === 'a') { const d = (P[0] - f.a[0]) * u[0] + (P[1] - f.a[1]) * u[1]; for (const n of nyilasok) if (n.fal === f.id) n.t = sz(n.t - d, 2); f.a = [sz(P[0], 3), sz(P[1], 3)]; }
+  else f.b = [sz(P[0], 3), sz(P[1], 3)];
+  const L = Math.hypot(f.b[0] - f.a[0], f.b[1] - f.a[1]); f.sikHossz = sz(Math.max(0, f.sikHossz + (L - f.hossz)), 2); f.hossz = sz(L, 2);
+}
+
+/**
+ * Valószínűtlenül vastag fal (a rajzon a fal mellé simuló sraffozás – térkő, kavics, terep –, a vizes helyiség
+ * berendezése a falvastagságba számít): a szint azonos fajtájú (külső / belső) falainak jellemző vastagságára (medián,
+ * ≥ 3 fal), ha 0,6 m-nél vastagabb és a jellemzőnek legalább 1,6-szorosa (belső falnál 1,8-szorosa), rétegrend nélkül.
+ * Külső falnál a tér felőli (belső) sík marad, belső falnál a tengely.
+ */
+function falVastagJavit(falak: Fal[], nyilasok: Nyilas[]) {
+  void nyilasok;
+  for (const szint of new Set(falak.map((f) => f.szint))) {
+    // (csak belső falnál: a külső fal síkjához igazodik a födém / tömeg körvonala is – annak vastagsága így marad)
+    for (const kulso of [false]) {
+      const kf = falak.filter((f) => f.szint === szint && f.kulso === kulso && !f.profil);
+      const jo = kf.filter((f) => f.vastag >= (kulso ? 0.15 : 0.05) && f.vastag <= 0.6 && f.hossz >= 1).map((f) => f.vastag).sort((a, b) => a - b);
+      if (jo.length < 3) continue;
+      const med = jo[jo.length >> 1]!;
+      for (const f of kf) {
+        if (!(f.vastag > 0.6 && f.vastag >= (kulso ? 1.6 : 1.8) * med) || f.retegek?.length) continue;
+        if (kulso) {
+          const L = Math.hypot(f.b[0] - f.a[0], f.b[1] - f.a[1]); if (L < 1e-6) continue;
+          const u: P2 = [(f.b[0] - f.a[0]) / L, (f.b[1] - f.a[1]) / L], balN: P2 = [u[1], -u[0]];
+          const terBal = f.bal.fajta === 'ter', terJobb = f.jobb.fajta === 'ter'; if (terBal === terJobb) continue;
+          // a tengely a tér felé tolódik (a belső sík helyben marad)
+          const d = ((f.vastag - med) / 2) * (terBal ? 1 : -1);
+          f.a = [sz(f.a[0] + balN[0] * d, 3), sz(f.a[1] + balN[1] * d, 3)]; f.b = [sz(f.b[0] + balN[0] * d, 3), sz(f.b[1] + balN[1] * d, 3)];
+        }
+        f.vastag = med;
+      }
+    }
+  }
+}
+
+/**
+ * Sarokzárás: két, közel derékszögben (75–105°) találkozó fal, amelyek végpontjai a tengelyeik metszéspontjától
+ * legfeljebb a másik fal vastagságának megfelelő (≥ 0,8 m) távolságra vannak, a metszésponton túl a másik fal
+ * vastagságának felével ér véget – a külső síkok a sarokban pontosan találkoznak (nincs rés, nincs kilógó falvég).
+ */
+function sarokZaras(falak: Fal[], nyilasok: Nyilas[]) {
+  for (const szint of new Set(falak.map((f) => f.szint))) {
+    const ff = falak.filter((f) => f.szint === szint && f.hossz >= 0.3 && !f.profil);
+    type Veg = { f: Fal; veg: 'a' | 'b' };
+    const jel: { v1: Veg; v2: Veg; X: P2; d: number }[] = [];
+    const ir = (f: Fal): P2 => { const L = Math.hypot(f.b[0] - f.a[0], f.b[1] - f.a[1]); return [(f.b[0] - f.a[0]) / L, (f.b[1] - f.a[1]) / L]; };
+    // (a végpontnál egyenesen folytatódó fal – a falat csak a csatlakozó belső fal vágta ketté –: nem sarok)
+    const folytatodik = (f: Fal, P: P2) => { const u = ir(f); return ff.some((g) => { if (g === f) return false; const v = ir(g); if (Math.abs(u[0] * v[1] - u[1] * v[0]) > 0.17) return false;
+      const dv = Math.abs((P[0] - g.a[0]) * v[1] - (P[1] - g.a[1]) * v[0]); if (dv > 0.15) return false;
+      return Math.min(Math.hypot(P[0] - g.a[0], P[1] - g.a[1]), Math.hypot(P[0] - g.b[0], P[1] - g.b[1])) <= Math.max(0.5, f.vastag); }); };
+    for (let i = 0; i < ff.length; i++) for (let j = i + 1; j < ff.length; j++) {
+      const f1 = ff[i]!, f2 = ff[j]!, u1 = ir(f1), u2 = ir(f2);
+      const cos = Math.abs(u1[0] * u2[0] + u1[1] * u2[1]); if (cos > Math.cos((75 * Math.PI) / 180)) continue;
+      const det = u1[0] * u2[1] - u1[1] * u2[0]; if (Math.abs(det) < 1e-9) continue;
+      const t = ((f2.a[0] - f1.a[0]) * u2[1] - (f2.a[1] - f1.a[1]) * u2[0]) / det;
+      const X: P2 = [f1.a[0] + u1[0] * t, f1.a[1] + u1[1] * t];
+      for (const e1 of ['a', 'b'] as const) for (const e2 of ['a', 'b'] as const) {
+        const P = f1[e1], Q = f2[e2];
+        if (folytatodik(f1, P) || folytatodik(f2, Q)) continue;
+        const d1 = Math.hypot(P[0] - X[0], P[1] - X[1]), d2 = Math.hypot(Q[0] - X[0], Q[1] - X[1]);
+        if (d1 > Math.max(0.8, f2.vastag) || d2 > Math.max(0.8, f1.vastag)) continue;
+        // (a metszéspont a fal végénél van, nem a közepén – a másik vége messzebb)
+        const O1 = f1[e1 === 'a' ? 'b' : 'a'], O2 = f2[e2 === 'a' ? 'b' : 'a'];
+        if (Math.hypot(O1[0] - X[0], O1[1] - X[1]) < d1 || Math.hypot(O2[0] - X[0], O2[1] - X[1]) < d2) continue;
+        jel.push({ v1: { f: f1, veg: e1 }, v2: { f: f2, veg: e2 }, X, d: d1 + d2 });
+      }
+    }
+    // végpontonként a legközelebbi pár
+    jel.sort((p, q) => p.d - q.d);
+    const foglalt = new Set<string>();
+    for (const { v1, v2, X } of jel) {
+      const k1 = `${v1.f.id}${v1.veg}`, k2 = `${v2.f.id}${v2.veg}`; if (foglalt.has(k1) || foglalt.has(k2)) continue;
+      foglalt.add(k1); foglalt.add(k2);
+      for (const [v, masik] of [[v1, v2.f], [v2, v1.f]] as const) {
+        const O = v.f[v.veg === 'a' ? 'b' : 'a'], L = Math.hypot(X[0] - O[0], X[1] - O[1]); if (L < 1e-6) continue;
+        const u: P2 = [(X[0] - O[0]) / L, (X[1] - O[1]) / L];
+        falVegAllit(v.f, v.veg, [X[0] + u[0] * (masik.vastag / 2), X[1] + u[1] * (masik.vastag / 2)], nyilasok);
+      }
+    }
+  }
 }
 
 /**
