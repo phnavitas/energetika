@@ -529,7 +529,7 @@ export function helyisegKorvonal(r: Raszter, ri: number): Poligon[] {
 
 /**
  * Ferde élek ellenőrzése (a csatlakozások túlnyomó többsége derékszögű – a rácskörvonal egyszerűsítése a lépcsős
- * sarkot, a beharapást ferde éllel vágja le): a tengelytől ≥ 3°-kal eltérő, legalább 0,5 m-es él csak akkor marad,
+ * sarkot, a beharapást ferde éllel vágja le): a tengelytől ≥ 3°-kal eltérő, legalább 1 m-es él csak akkor marad,
  * ha a rajzon fal kíséri – a hossza legalább 85 %-án 0,25 m-en belül falcella (a ferde fal rajzolata). Különben a két
  * derékszögű változat (a két sarokpont) közül az, amelyik a maszkhoz (a helyiség / burok celláihoz) jobban illik.
  */
@@ -567,7 +567,7 @@ function ferdeEllenoriz(p: Poligon, r: Raszter, m: Uint8Array): Poligon {
     const a = p[i]!, b = p[(i + 1) % n]!; ki.push(a);
     const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy);
     const sz = (Math.abs(Math.atan2(dy, dx)) * 180) / Math.PI % 90;
-    if (L * r.px < 0.5 || sz < 3 || sz > 87) continue;
+    if (L * r.px < 1.0 || sz < 3 || sz > 87) continue;
     const N = Math.max(4, Math.ceil(L)); let tam = 0, db = 0;
     for (let k = 1; k < N; k++) { const t = k / N; if (t < 0.1 || t > 0.9) continue; db++; if (falKozel(a[0] + dx * t, a[1] + dy * t)) tam++; }
     if (db && tam >= 0.85 * db) continue;
