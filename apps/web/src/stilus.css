@@ -451,7 +451,7 @@ details.osszecsukhato[open] > summary { margin-bottom: 4px; }
 .rr-tomor .halkabb { font-size: 12px; }
 
 /* a 2D / 3D nézet görgetéskor fent marad */
-.nezo-rogzitett { position: sticky; top: 0; z-index: 30; background: var(--papir); padding-top: 6px; box-shadow: 0 8px 12px -10px rgba(0,0,0,.25); }
+.nezo-rogzitett { position: sticky; top: var(--fejlec-mag, 0px); z-index: 4; max-height: calc(66vh - var(--fejlec-mag, 0px)); overflow-y: auto; background: var(--papir); padding-top: 6px; box-shadow: 0 8px 12px -10px rgba(0,0,0,.25); }
 
 /* Tervből: átvételi sáv a képernyő alján */
 .atvetel-sav { position: sticky; bottom: 0; z-index: 40; display: flex; gap: 16px; align-items: center; justify-content: flex-end; flex-wrap: wrap;

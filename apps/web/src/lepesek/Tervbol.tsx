@@ -177,6 +177,14 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const [nezet3d, setNezet3d] = useState(false);
   // a 2D / 3D nézet görgetéskor a képernyő tetején marad (a listák alatta görgethetők, a nyílás, fal rákattintással ellenőrizhető)
   const [rogzit, setRogzit0] = useState(() => { try { return localStorage.getItem('ekm-nezo-rogzit') !== '0'; } catch { return true; } });
+  // (keskenyebb képernyőn az eredménysáv a lap tetején ragad: a rögzített nézet alatta)
+  useEffect(() => {
+    const allit = () => { const e = document.querySelector('.eredmenysav') as HTMLElement | null; const cs = e ? getComputedStyle(e) : null;
+      const m = e && cs && cs.position === 'sticky' && cs.flexDirection === 'row' ? e.getBoundingClientRect().height : 0;
+      document.documentElement.style.setProperty('--fejlec-mag', `${Math.round(m)}px`); };
+    allit(); window.addEventListener('resize', allit); const t = window.setInterval(allit, 2000);
+    return () => { window.removeEventListener('resize', allit); window.clearInterval(t); };
+  }, []);
   const setRogzit = (v: boolean) => { setRogzit0(v); try { localStorage.setItem('ekm-nezo-rogzit', v ? '1' : '0'); } catch { /* */ } };
   /** A 3D modell méretezése: belső (alap – a fal belső síkjai, belmagasság) vagy külső (a hőszigetelés külső síkja, szintmagasság). */
   // a 3D modellben / a listában / a 2D rajzon kijelölt nyílászáró (lap, al.nyilasok-index)
@@ -1200,35 +1208,6 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
       {mintaFajta && <MintaLakasok fajta={mintaFajta} modosit={modosit} ugrik={ugrik} />}
 
       {al && aLap && (
-        <section class="szakasz">
-          {alaprajzLapok.length > 1 && (() => {
-            const j = alaprajzLapok.findIndex(({ i }) => i === aIdx);
-            return (
-              <div class="lapozo" role="navigation" aria-label="Alaprajzok lapozása">
-                <button class="gomb" onClick={() => lapoz(-1)} title="Előző alaprajz (←)">‹</button>
-                <strong>{j + 1} / {alaprajzLapok.length}</strong>
-                <span>{aLap.cim || aLap.fajl}</span>
-                <span class="halkabb">{lapSzintek(aIdx).map(szintNev).join(', ')}{atvett.has(aIdx) ? ' · átvéve' : ''}</span>
-                <button class="gomb" onClick={() => lapoz(1)} title="Következő alaprajz (→)">›</button>
-                <label class="jelolo" style="margin-left:auto" title="Az összes lap minden helyisége fűtött (a soronként átállított besorolás megmarad)">
-                  <input type="checkbox" checked={mindFutott} onChange={(e) => setMindFutott((e.target as HTMLInputElement).checked)} /> Minden helyiség fűtött
-                </label>
-              </div>
-            );
-          })()}
-          {!nezet3d && <div class="gombsor" role="group" aria-label="Felismert elemek megjelenítése" style="margin:0 0 8px;gap:6px;flex-wrap:wrap;align-items:center">
-            <strong style="font-size:13px;margin-right:4px">Felismert elemek a rajzon:</strong>
-            {RETEGEK.map((rt) => (
-              <button class={`gomb halk-gomb${retegek.has(rt.k) ? '' : ' semleges'}`} aria-pressed={retegek.has(rt.k)} onClick={() => retegValt(rt.k)} title={retegDb[rt.k]}>
-                <span style={`display:inline-block;width:12px;height:12px;border:2px solid ${rt.szin};background:${rt.szin}33;border-radius:2px;vertical-align:-2px;margin-right:5px`} />
-                {rt.nev} <span class="halkabb" style="font-weight:400">· {retegDb[rt.k]}</span>
-              </button>
-            ))}
-            <button class="gomb halk-gomb semleges" onClick={() => setRetegek(new Set(RETEGEK.map((x) => x.k)))}>Mind</button>
-            {retegek.has('helyiseg') && <span class="halkabb" style="font-size:12px;display:inline-flex;gap:10px;flex-wrap:wrap;margin-left:6px" aria-label="Helyiségek színe">{SZEREPEK.map((o) => <span><span style={`display:inline-block;width:10px;height:10px;border-radius:2px;background:${o.szin};vertical-align:-1px;margin-right:4px`} />{o.nev}</span>)} · kattints egy helyiségre a besoroláshoz</span>}
-            <button class="gomb halk-gomb semleges" onClick={() => setRetegek(new Set())}>Egyik sem</button>
-          </div>}
-          {!nezet3d && [...retegek].some((k) => k !== 'burok') && <div class="halkabb" style="font-size:12px;margin:-2px 0 8px">Falak: piros – fal, szürke – külső sraffozott felület (járda, térkő, kavics), nem fal. Helyiségek: a hőburokbeli szerepük színével (fűtött, fűtetlen, szomszéd épület, kültér – kattintással állítható); a felirat mellett zárójelben a rajzon felismert terület, ha eltér a pecséttől. Nyílások: szaggatott keret – méretfelirat nélkül mért, vagy falnyíláshoz nem köthető; áthúzott – nem kerül át.</div>}
           <div class={rogzit ? 'nezo-rogzitett' : undefined}>
           <div style="position:relative;margin-bottom:8px">
             {/* 2D / 3D nézetváltó a bal felső sarokban */}
@@ -1608,6 +1587,37 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             )}
           </div>
           </div>
+      )}
+      {al && aLap && (
+        <section class="szakasz">
+          {alaprajzLapok.length > 1 && (() => {
+            const j = alaprajzLapok.findIndex(({ i }) => i === aIdx);
+            return (
+              <div class="lapozo" role="navigation" aria-label="Alaprajzok lapozása">
+                <button class="gomb" onClick={() => lapoz(-1)} title="Előző alaprajz (←)">‹</button>
+                <strong>{j + 1} / {alaprajzLapok.length}</strong>
+                <span>{aLap.cim || aLap.fajl}</span>
+                <span class="halkabb">{lapSzintek(aIdx).map(szintNev).join(', ')}{atvett.has(aIdx) ? ' · átvéve' : ''}</span>
+                <button class="gomb" onClick={() => lapoz(1)} title="Következő alaprajz (→)">›</button>
+                <label class="jelolo" style="margin-left:auto" title="Az összes lap minden helyisége fűtött (a soronként átállított besorolás megmarad)">
+                  <input type="checkbox" checked={mindFutott} onChange={(e) => setMindFutott((e.target as HTMLInputElement).checked)} /> Minden helyiség fűtött
+                </label>
+              </div>
+            );
+          })()}
+          {!nezet3d && <div class="gombsor" role="group" aria-label="Felismert elemek megjelenítése" style="margin:0 0 8px;gap:6px;flex-wrap:wrap;align-items:center">
+            <strong style="font-size:13px;margin-right:4px">Felismert elemek a rajzon:</strong>
+            {RETEGEK.map((rt) => (
+              <button class={`gomb halk-gomb${retegek.has(rt.k) ? '' : ' semleges'}`} aria-pressed={retegek.has(rt.k)} onClick={() => retegValt(rt.k)} title={retegDb[rt.k]}>
+                <span style={`display:inline-block;width:12px;height:12px;border:2px solid ${rt.szin};background:${rt.szin}33;border-radius:2px;vertical-align:-2px;margin-right:5px`} />
+                {rt.nev} <span class="halkabb" style="font-weight:400">· {retegDb[rt.k]}</span>
+              </button>
+            ))}
+            <button class="gomb halk-gomb semleges" onClick={() => setRetegek(new Set(RETEGEK.map((x) => x.k)))}>Mind</button>
+            {retegek.has('helyiseg') && <span class="halkabb" style="font-size:12px;display:inline-flex;gap:10px;flex-wrap:wrap;margin-left:6px" aria-label="Helyiségek színe">{SZEREPEK.map((o) => <span><span style={`display:inline-block;width:10px;height:10px;border-radius:2px;background:${o.szin};vertical-align:-1px;margin-right:4px`} />{o.nev}</span>)} · kattints egy helyiségre a besoroláshoz</span>}
+            <button class="gomb halk-gomb semleges" onClick={() => setRetegek(new Set())}>Egyik sem</button>
+          </div>}
+          {!nezet3d && [...retegek].some((k) => k !== 'burok') && <div class="halkabb" style="font-size:12px;margin:-2px 0 8px">Falak: piros – fal, szürke – külső sraffozott felület (járda, térkő, kavics), nem fal. Helyiségek: a hőburokbeli szerepük színével (fűtött, fűtetlen, szomszéd épület, kültér – kattintással állítható); a felirat mellett zárójelben a rajzon felismert terület, ha eltér a pecséttől. Nyílások: szaggatott keret – méretfelirat nélkül mért, vagy falnyíláshoz nem köthető; áthúzott – nem kerül át.</div>}
           <div class="gombsor" style="margin:8px 0 16px;gap:16px;flex-wrap:wrap">
             <button class={`gomb halk-gomb${rogzit ? '' : ' semleges'}`} aria-pressed={rogzit} onClick={() => setRogzit(!rogzit)} title="A 2D / 3D nézet görgetéskor a képernyő tetején marad">{rogzit ? 'Nézet rögzítve fent' : 'Nézet rögzítése fent'}</button>
             <button class="gomb halk-gomb semleges" onClick={() => setNagyit(!nagyit)}>{nagyit ? 'Teljes lap' : 'Nagyítás az épületre'}</button>
