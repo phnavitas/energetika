@@ -5,6 +5,10 @@
  * (Az ELBA korábbi PDF-értelmezőjének jelmagyarázat-olvasója alapján.)
  */
 import type { Lap, Utvonal } from './kinyeres';
+import { szovegJavit } from './alaprajz';
+
+/** Ligatúrás betűkészlet jelei (ti, tt, tf …) visszaírva. */
+const javit = (s: string) => szovegJavit(s.replace(/ƞ/g, 'tf'));
 
 export interface JelmagyarazatTetel {
   nev: string;
@@ -48,7 +52,7 @@ export function jelmagyarazat(lap: Lap): JelmagyarazatTetel[] {
       const sz = reteg.find((u) => u.minta) ?? reteg.find((u) => !feher(u.toltoSzin));
       if (!sz) continue;
       leg = { u: sz, d: leg.d };
-      const nev = t.s.trim().replace(/\s+/g, ' ');
+      const nev = javit(t.s);
       const k = `${nev}|${leg.u.toltoSzin}`; if (latott.has(k)) continue; latott.add(k);
       ki.push({ nev, szin: leg.u.toltoSzin, minta: !!leg.u.minta, ...(leg.u.reteg ? { reteg: leg.u.reteg } : {}), x: t.x, y: t.y });
     }
@@ -62,4 +66,46 @@ export function jelmagyarazatNev(tetelek: JelmagyarazatTetel[], q: { szin: strin
   const sz = tetelek.filter((t) => t.szin.toLowerCase() === q.szin.toLowerCase() && (q.minta === undefined || t.minta === q.minta));
   const nevek = [...new Set(sz.map((t) => t.nev))];
   return nevek.length === 1 ? nevek[0] : undefined;
+}
+
+export interface HomlokzatiAnyag {
+  /** A tétel száma (a rajzon erre hivatkozik a jelölés). */
+  szam: number;
+  /** Az anyag (és ha a sorban áll, a szín / termék) – a sorok egyben, ahogy a terven állnak. */
+  anyag: string;
+  /** A tétel helye (pt). */
+  x: number; y: number;
+}
+
+/**
+ * A homlokzati lap számozott anyaglistája („Homlokzati anyagok” / „Anyaghasználat” cím alatt: „1. Homlokzati
+ * nemesvakolat  törtfehér, Baumit Life 0019”). A tétel folytatása a következő sor(ok)ban, ugyanabban az oszlopban.
+ * (Az ELBA korábbi PDF-értelmezőjének homlokzatianyag-olvasója alapján.)
+ */
+export function homlokzatiAnyagok(lap: Lap): HomlokzatiAnyag[] {
+  const sz = lap.szovegek.filter((t) => Math.abs(t.szog) < 1 && t.s.trim());
+  const cim = sz.find((t) => /^(homlokzati anyagok|anyaghaszn[áa]lat|fel[üu]letk[ée]pz[ée]s|anyagjel[öo]l[ée]sek)/i.test(t.s.trim()));
+  if (!cim) return [];
+  const alatt = sz.filter((t) => t.y > cim.y - 1 && t.y < cim.y + 400 && Math.abs(t.x - cim.x) < 250);
+  // sorok (azonos alapvonal ± 0,35 betűméret)
+  const rend = [...alatt].sort((a, b) => a.y - b.y || a.x - b.x);
+  const sorok: { y: number; t: typeof rend }[] = [];
+  for (const t of rend) { const s = sorok[sorok.length - 1]; if (s && Math.abs(t.y - s.y) <= Math.max(1.2, 0.35 * t.meret)) s.t.push(t); else sorok.push({ y: t.y, t: [t] }); }
+  for (const s of sorok) s.t.sort((a, b) => a.x - b.x);
+  const szoveg = (s: (typeof sorok)[number]) => s.t.map((t) => t.s.trim()).join(' ').replace(/\s+/g, ' ');
+  const ki: HomlokzatiAnyag[] = [];
+  for (let i = 0; i < sorok.length; i++) {
+    const s = sorok[i]!, m = /^(\d{1,2})\.\s*(.+)$/.exec(szoveg(s)); if (!m) continue;
+    const bal = s.t[0]!.x, resz = [m[2]!];
+    let elozo = s;
+    for (let j = i + 1; j < sorok.length; j++) {
+      const s2 = sorok[j]!, k = szoveg(s2);
+      if (/^\d{1,2}\./.test(k) || s2.y - elozo.y > 2.2 * (s2.t[0]!.meret || 3) || Math.abs(s2.t[0]!.x - bal) > 40) break;
+      if (/^[+\-±]?\d+[,.]\d/.test(k)) break; // szintkóta
+      resz.push(k); elozo = s2;
+    }
+    ki.push({ szam: Number(m[1]), anyag: javit(resz.join(' ')), x: bal, y: s.y });
+  }
+  const latott = new Set<number>();
+  return ki.filter((x) => !latott.has(x.szam) && latott.add(x.szam)).sort((a, b) => a.szam - b.szam);
 }

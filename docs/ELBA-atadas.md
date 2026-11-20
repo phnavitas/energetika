@@ -115,6 +115,9 @@ A régi ELBA PDF-rendszer a saját primitívjeire visszamutatva jelölt ki; az �
   a fal kitöltése egyezik → `falak[].anyag.nev` (pl. „zsalukő faltest”), `anyag.anyagId` (katalógus); többrétegű falnál
   rétegenként (`falak[].retegek[].nev / anyagId`). `modell.anyagok`: a használt katalógusanyagok (anyagId → λ, μ, R …).
   Csak egyértelmű egyezésnél (egy névhez egy szín / réteg); a vonalakkal sraffozott (kitöltés nélküli) minta még nem.
+- `jelmagyarazat[]` (az eredményben): a lapok jelmagyarázat-tételei (`nev`, `szin`, `minta`, `reteg`, `lap`, hely).
+- `homlokzatiAnyagok[]` (az eredményben): a homlokzati lapok számozott anyaglistája (`szam`, `anyag` – anyag, szín,
+  termék egyben, ahogy a terven áll –, `lap`, hely), a régi `elba-pdf-ertelmezo.js` `homlokzatiAnyagok`-ja szerint.
 
 ## Javasolt ELBA-oldali lépések
 

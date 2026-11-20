@@ -33,7 +33,9 @@ function falDarabok(f: Fal, ny: { t: number; szel: number; mag: number; pm: numb
 }
 
 export type NyilasForras = { lap: number; ny: number };
-export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, hibak }: { modell: EpuletModell; magassag?: number;
+export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, onElem, hibak }: { modell: EpuletModell; magassag?: number;
+  /** Kattintással kijelölt elem (fal, nyílás, tér) azonosítója – a 2D rajzon kiemeléshez. */
+  onElem?: (id: string | null) => void;
   /** A zártság-ellenőrzés hibái: piros jelölés a modellben (hiányzó fal, rés, tetőhézag, fedetlen rész). */
   hibak?: ZartsagHiba[];
   /** A kijelölt nyílászáró (forrása: lap és nyílásindex) – kiemelve; kattintásra onNyilas. */
@@ -204,6 +206,7 @@ export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, hibak }: { m
       const rr = renderer.domElement.getBoundingClientRect();
       ray.setFromCamera(new THREE.Vector2(((e.clientX - rr.left) / rr.width) * 2 - 1, -((e.clientY - rr.top) / rr.height) * 2 + 1), cam);
       const hit = ray.intersectObjects(kattinthato)[0]; setKijelolt(hit ? (hit.object.userData.id as string) : null);
+      onElem?.(hit ? (hit.object.userData.id as string) : null);
       onNyilas?.((hit?.object.userData.ny as NyilasForras | undefined) ?? null);
     };
     renderer.domElement.addEventListener('pointerdown', down); renderer.domElement.addEventListener('pointerup', up);
