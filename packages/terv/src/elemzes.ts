@@ -447,8 +447,7 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
   else {
     // önellenőrzés: több felismerési változat (vektoros fal / + lapkép-„tinta”, ablaksor-szabállyal / nélküle) közül az,
     // amelyben a helyiségek kiterjedése a pecsétben írt területhez a legjobban illik (területtel súlyozott egyezés)
-    // (méterben írt kapuméretű feliratpár, vagy cm-ben írt ≥ 2,5 m széles, ≥ 2,8 m magas nyílás – ipari kapu; az erkélyajtó, teraszajtó legfeljebb ≈ 2,7 m magas)
-    const kapuk = nyilasFeliratok(lap.szovegek, lap.utvonalak).filter((f) => (f.kapuJelolt || (f.mag >= 2.8 && f.pm === null)) && f.szel >= 2.5).map((f) => ({ x: f.x, y: f.y, szel: f.szel, fal: f.fal }));
+    const kapuk = nyilasFeliratok(lap.szovegek, lap.utvonalak).filter((f) => f.kapuJelolt && f.szel >= 2.5).map((f) => ({ x: f.x, y: f.y, szel: f.szel, fal: f.fal }));
     const zonaPoli = zonaPoliMap.size ? magHelyisegek.map((h) => zonaPoliMap.get(h)?.map((p) => p.flat())) : undefined;
     const alap = { ...(kulsoPontok.length ? { kulsoPontok } : {}), ...(kapuk.length ? { kapuk } : {}), ...(zonaPoli?.some(Boolean) ? { zonaPoli } : {}) };
     const valtozatok: RaszterBeallitas[] = [alap, { ...alap, ablaksor: false }, ...(tinta ? [{ ...alap, tinta }, { ...alap, tinta, ablaksor: false }] : [])];

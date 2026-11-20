@@ -918,14 +918,8 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
     }
     // a falvastagság: egymást követő, azonos résű sorok (≤ 0,8 m)
     if (!sorok.length || sorok.length > Math.round(0.8 / px) * 3) continue;
-    // (a leghosszabb, egymást követő, azonos résű sorfolyam – nem feltétlenül a legelső soré: a rés környezetében
-    // más, hasonló szélességű sorok is lehetnek)
-    let egy: typeof sorok = [], fut: typeof sorok = [];
-    for (const x of [...sorok].sort((p, q) => p.s - q.s)) {
-      const u = fut[fut.length - 1];
-      if (u && x.s === u.s + 1 && Math.abs(x.a - fut[0]!.a) <= 3 && Math.abs(x.e - fut[0]!.e) <= 3) fut.push(x); else fut = [x];
-      if (fut.length > egy.length) egy = [...fut];
-    }
+    const t0 = sorok[0]!;
+    const egy = sorok.filter((x) => Math.abs(x.a - t0.a) <= 3 && Math.abs(x.e - t0.e) <= 3);
     if (egy.length < 2 || egy.length > Math.round(0.8 / px)) continue;
     for (const x of egy) for (let q = x.a; q <= x.e; q++) { const i = vizsz ? x.s * w + q : q * w + x.s; if (!fal[i]) nyilas[i] = 1; }
   }
