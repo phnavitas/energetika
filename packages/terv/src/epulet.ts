@@ -9,6 +9,8 @@ import { tetoHaromszogek } from './tetoModell';
 import { pillerKeres } from './pillerek';
 import { poligonKulonbseg } from './poligonKulonbseg';
 import type { Lap } from './kinyeres';
+import { jelmagyarazat, jelmagyarazatNev, type JelmagyarazatTetel } from './jelmagyarazat';
+import { anyagKepez } from './metszet';
 import type { FodemSav, MetszetElem } from './metszetGeom';
 import type { AlaprajzFeldolgozas } from './elemzes';
 import type { FalSzakasz, Raszter } from './raszter';
@@ -76,10 +78,12 @@ export interface Fal {
    * (t: 0…1 a belső sík hosszán, z: magasság a szint padlójától, m). */
   profil?: { t: number; z: number }[];
   /** A fal anyaga a rajz szerint: a kitöltés színe, sraffozott-e, a PDF-réteg (ArchiCAD) – azonos jellemzőjű falak egy típus. */
-  anyag?: { stilus: number; szin: string; sraff: boolean; reteg?: string };
+  anyag?: { stilus: number; szin: string; sraff: boolean; reteg?: string;
+    /** Az anyag neve a lap jelmagyarázata szerint (a kitöltés színe / mintázata alapján), és a katalógusbeli anyag. */
+    nev?: string; anyagId?: string };
   /** Rétegrend a rajz szerint (a bal oldaltól a jobb felé): a fal keresztmetszetében egymást követő kitöltések
    * (stílus: szín, sraffozás, PDF-réteg) és vastagságuk (m) – pl. falazat + homlokzati hőszigetelés. */
-  retegek?: { stilus: number; szin: string; sraff: boolean; reteg?: string; vastag: number }[];
+  retegek?: { stilus: number; szin: string; sraff: boolean; reteg?: string; vastag: number; nev?: string; anyagId?: string }[];
   /** A rétegek a metszet e rétegrendjéből (kód), nem a rajzból. */
   retegForras?: string;
   /** A fal magjának (szerkezeti rétegének) vastagsága (m): a rétegrendből a nem-réteg (hőszigetelés, vakolat,
@@ -215,7 +219,45 @@ export interface Koszoru { id: string; szint: string; szel: number; magas: numbe
   /** 'attika': a koszorúra ülő vasbeton sáv a lapostetős részen (a fölötte lévő szint körvonalán kívüli teherhordó falakon). */
   fajta?: 'koszoru' | 'attika' }
 
-export interface EpuletModell { szintek: Szint[]; terek: Ter[]; falak: Fal[]; nyilasok: Nyilas[]; fodemek: Fodem[]; vizszintes: VizszintesBurok[]; tetok: TetoGeom[]; lefedes?: FalLefedes[]; pillerek?: Piller[]; koszoruk?: Koszoru[]; gerendak?: Gerenda[]; alapozas?: Alapozas[]; magasteto?: Magasteto }
+export interface EpuletModell { szintek: Szint[]; terek: Ter[]; falak: Fal[]; nyilasok: Nyilas[]; fodemek: Fodem[]; vizszintes: VizszintesBurok[]; tetok: TetoGeom[]; lefedes?: FalLefedes[]; pillerek?: Piller[]; koszoruk?: Koszoru[]; gerendak?: Gerenda[]; alapozas?: Alapozas[]; magasteto?: Magasteto;
+  /** Az alaprajzi lapok és a modell kapcsolata (visszakeresés a rajzon): a lap sorszáma, a rá eső szintek, és a
+   *  modell → lap leképezés: pt = (x / mPerPt + o[0], y / mPerPt + o[1]) (lapkoordináta, bal felső origó, y lefelé). */
+  lapok?: LapKapcsolat[];
+  /** A metszet(ek) rétegrendjei anyagokkal (BIM): a szerkezet szerepe, a rétegek (kívülről / felülről befelé a terv
+   *  sorrendjében) anyaga a katalógusból, hőtechnikai jellemzőkkel; a falak `retegForras`-a erre hivatkozik (kód). */
+  retegrendek?: ModellRetegrend[];
+  /** A falakon (jelmagyarázat szerint) azonosított katalógusanyagok hőtechnikai jellemzőkkel (anyagId → adatok). */
+  anyagok?: Record<string, NonNullable<ModellReteg['anyag']>> }
+
+export interface ModellReteg {
+  /** A terv szövege (pl. „30 cm Porotherm 30 N+F falazat”). */
+  leiras: string;
+  /** Vastagság (m). */
+  vastag: number;
+  /** Katalógusbeli anyag (azonosító és jellemzők); hiányzik, ha a szövegből nem azonosítható. */
+  anyag?: { id: string; nev: string; kategoria: string; sraffozas: string; lambda?: number; mu?: number; R?: { R: number; d: number } };
+  /** Légréteg (zárt / intenzíven szellőző). */
+  legreteg?: 'zart' | 'intenziv';
+  /** Bordás (inhomogén) réteg: borda szélessége, tengelytávolsága (cm), anyaga. */
+  borda?: { szelCm: number; tavCm: number; anyagId?: string };
+  /** A hőtechnikai számításból kimarad (pl. a burkolat külső, átszellőző része) – az oka. */
+  kimarad?: string;
+}
+
+export interface ModellRetegrend {
+  kod: string; cim: string;
+  /** fal / padlo / fodem / teto stb. (null: nem azonosítható); `hoburok`: a hőburok része-e (különben az ok). */
+  szerep: string | null; hoburok: true | string;
+  kovetelmeny?: string;
+  hoaramIrany: 'vizszintes' | 'felfele' | 'lefele'; kulsoOldal: 'kulso' | 'futetlen' | 'belso';
+  retegek: ModellReteg[];
+  /** Hőátbocsátási tényező (W/m²K), ha minden réteg hővezetése ismert. */
+  U?: number;
+  /** A forrás: a metszetlap sorszáma és a rétegrend-felirat helye (pt). */
+  forras?: { lap: number; x: number; y: number };
+}
+
+export interface LapKapcsolat { lap: number; szintek: string[]; mPerPt: number; o: P2 }
 
 /** A metszet egy külsőfal-rétegrendje (kód, rétegek: leírás, vastagság m, hőszigetelés-e). */
 export interface KulsoFalRetegrend { kod: string; retegek: { leiras: string; vastag: number; szigeteles: boolean }[] }
@@ -560,7 +602,12 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
   const magasteto = opt.teto ? magastetoEpit(szintek, fodemek, koszoruk, opt.teto, pillerek) : null;
   if (magasteto) oromFalak(falak, szintek, magasteto);
   const alapozas = opt.metszetElemek?.length ? alapozasKeres(szintek, falak, opt.metszetElemek, pillerek, opt.fodemSavok ?? [], fodemek) : [];
-  return { szintek, terek, falak, nyilasok, fodemek, vizszintes: vizszintesBurok(szintek, terek, lapok, fodemek), tetok, lefedes, ...(pillerek.length ? { pillerek } : {}), ...(koszoruk.length ? { koszoruk } : {}), ...(gerendak.length ? { gerendak } : {}), ...(alapozas.length ? { alapozas } : {}), ...(magasteto ? { magasteto } : {}) };
+  // a lapok és a modell kapcsolata (az m = (pt − o) · mPerPt leképezés megfordítva)
+  // (csak eltolás és nagyítás – elforgatott leképezésnél nincs kapcsolat)
+  const lapKapcs: LapKapcsolat[] = lapok.flatMap((L) => { const p0 = L.m(0, 0), p1 = L.m(1, 0), p2 = L.m(0, 1), mpp = p1[0] - p0[0];
+    if (!(mpp > 0) || Math.abs(p1[1] - p0[1]) > 1e-9 * mpp || Math.abs(p2[0] - p0[0]) > 1e-9 * mpp || Math.abs(p2[1] - p0[1] - mpp) > 1e-9 * mpp) return [];
+    return [{ lap: L.lap, szintek: L.szintek.map((x) => x.id), mPerPt: mpp, o: [-p0[0] / mpp, -p0[1] / mpp] as P2 }]; });
+  return { szintek, terek, falak, nyilasok, fodemek, vizszintes: vizszintesBurok(szintek, terek, lapok, fodemek), tetok, lefedes, ...(lapKapcs.length ? { lapok: lapKapcs } : {}), ...(pillerek.length ? { pillerek } : {}), ...(koszoruk.length ? { koszoruk } : {}), ...(gerendak.length ? { gerendak } : {}), ...(alapozas.length ? { alapozas } : {}), ...(magasteto ? { magasteto } : {}) };
 }
 
 
@@ -841,7 +888,8 @@ function falRetegek(L: LapBemenet, f: FalNyers): Fal['retegek'] | undefined {
   const ossz = egyesit(legjobb), tars = jeloltek.filter((j) => kulcs(j) === kulcs(legjobb)).map(egyesit).filter((j) => j.length === ossz.length);
   ossz.forEach((x, k) => { const v = tars.map((j) => j[k]!.n).sort((a, b) => a - b); if (v.length) x.n = v[Math.floor(v.length / 2)]!; });
   return ossz.map((x) => { const info = INFO[x.st - 1]!; const reteg = Object.entries(info.retegek).sort((p, q) => q[1] - p[1])[0]?.[0];
-    return { stilus: x.st, szin: info.szin, sraff: info.sraff, ...(reteg ? { reteg } : {}), vastag: Math.round(x.n * r.px * 100) / 100 }; });
+    const vastag = Math.round(x.n * r.px * 100) / 100;
+    return { stilus: x.st, szin: info.szin, sraff: info.sraff, ...(reteg ? { reteg } : {}), vastag, ...jmAnyag(L, info.szin, reteg, vastag) }; });
 }
 
 const RETEG_JEL = /h[őo]szigetel|szigetel[ée]s|l[áa]bazat|[üu]veg|f[ée]m|bur?kolat|vakolat|^r[ée]teg/i;
@@ -1524,7 +1572,18 @@ function falAnyag(L: LapBemenet, f: FalNyers): Fal['anyag'] | undefined {
   const best = [...db.entries()].sort((p, q) => q[1] - p[1])[0]; if (!best) return undefined;
   const info = INFO?.[best[0] - 1]; if (!info) return undefined;
   const reteg = Object.entries(info.retegek).sort((p, q) => q[1] - p[1])[0]?.[0];
-  return { stilus: best[0], szin: info.szin, sraff: info.sraff, ...(reteg ? { reteg } : {}) };
+  return { stilus: best[0], szin: info.szin, sraff: info.sraff, ...(reteg ? { reteg } : {}), ...jmAnyag(L, info.szin, reteg, f.vastag) };
+}
+/** A lap jelmagyarázata (laponként egyszer). */
+const jmTar = new WeakMap<Lap, JelmagyarazatTetel[]>();
+/** A kitöltés jelmagyarázat szerinti neve és katalógusanyaga. */
+function jmAnyag(L: LapBemenet, szin: string, reteg: string | undefined, vastag: number): { nev?: string; anyagId?: string } {
+  if (!L.rajz) return {};
+  let t = jmTar.get(L.rajz); if (!t) { try { t = jelmagyarazat(L.rajz); } catch { t = []; } jmTar.set(L.rajz, t); }
+  if (!t.length) return {};
+  const nev = jelmagyarazatNev(t, { szin, ...(reteg ? { reteg } : {}) }); if (!nev) return {};
+  const a = anyagKepez(nev, Math.round(vastag * 100), 'fal').anyagId;
+  return { nev, ...(a ? { anyagId: a } : {}) };
 }
 function falSzerkezet(v: number, anyag?: Fal['anyag']): Fal['szerkezet'] {
   const r = anyag?.reteg?.toLowerCase() ?? '';

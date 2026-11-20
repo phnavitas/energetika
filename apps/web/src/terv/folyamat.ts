@@ -2,7 +2,7 @@
  * A tervlapokból az épületmodellig vezető folyamat UI-független része (a Tervből lépés és az ELBA közös kódja).
  * A Tervbol.tsx-ből kiemelve; a felhasználói döntések (kijelölés, szintek, északjel) bemenetként érkeznek.
  */
-import { ujId as ujIdT, type Projekt, type HelyisegKategoria, type Szerep as RrSzerep, SZEREP_ALAP } from '../modell';
+import { ujId as ujIdT, retegrendSzamitas, type Projekt, type HelyisegKategoria, type Szerep as RrSzerep, SZEREP_ALAP } from '../modell';
 import { anyag } from '../katalogus';
 import { pecsetKinyer, type PecsetAdat } from '@terv/pecset';
 import type { SzurkeKep } from '@terv/autohelyiseg';
@@ -19,7 +19,7 @@ import { nezetOszlopok } from '@terv/homlokzatProfil';
 import { tetoFelulnezet, type TetoFelulnezet } from '@terv/tetoFelulnezet';
 import { metszetElemek, ferdeTetoHossz, ereszKiallasok, ereszKiallas, belmagassagSavok, type BelmagSavok } from '@terv/metszetGeom';
 import { helyisegMagassagok, type HelyisegMagassag } from '@terv/magassag';
-import { epuletModell, type EpuletModell, type LapBemenet, type Szint as EpSzint, type TerKategoria } from '@terv/epulet';
+import { epuletModell, type EpuletModell, type ModellReteg, type ModellRetegrend, type LapBemenet, type Szint as EpSzint, type TerKategoria } from '@terv/epulet';
 import { falMagassagModell, type HomlokzatNezetAdat } from '@terv/homlokzatModell';
 import { vonalIndex, keretek, homlokzatIrany, homlokzatCimek } from '@terv/homlokzat';
 import type { Lap } from '@terv/kinyeres';
@@ -586,6 +586,24 @@ export function tervFolyamat(S: FolyamatAllapot) {
     try { v = homlokzatElteresek(a.nyilasok, a.e.mPerPt, eszak, S.homlokzatLapok.map(({ l }) => l.lap), a.e.meretarany ?? undefined, szintDb); } catch { v = undefined; }
     gy.set(kulcs, v); return v;
   };
+  // a metszet(ek) rétegrendjei anyagokkal, hőtechnikai jellemzőkkel (BIM / ELBA)
+  const modellRetegrendek = (): ModellRetegrend[] => {
+    const mLi = S.lapok.findIndex((l) => l.szerep === 'metszet');
+    return (S.me?.blokkok ?? []).map((b) => {
+      const retegek: ModellReteg[] = b.retegek.filter((r) => r.dCm > 0).map((r) => {
+        const a = anyag(r.anyagId);
+        return { leiras: r.forras, vastag: Math.round(r.dCm * 10) / 1000,
+          ...(a ? { anyag: { id: a.id, nev: a.nev, kategoria: a.kategoria, sraffozas: a.sraffozas, ...(r.lambda ?? a.lambda ? { lambda: r.lambda ?? a.lambda } : {}), ...(a.mu !== undefined ? { mu: a.mu } : {}), ...(a.R ? { R: a.R } : {}) } } : {}),
+          ...(r.legreteg ? { legreteg: r.legreteg } : {}), ...(r.borda ? { borda: { szelCm: r.borda.szelCm, tavCm: r.borda.tavCm, ...(r.borda.anyagId ? { anyagId: r.borda.anyagId } : {}) } } : {}),
+          ...(r.kimarad ? { kimarad: r.kimarad } : {}) };
+      });
+      let U: number | undefined;
+      try { const sz = b.becsles.szerep; if (sz) U = Math.round(retegrendSzamitas({ id: b.rr.kod, nev: b.rr.cim, szerep: sz as RrSzerep, kovetelmenyKod: b.becsles.kovetelmenyKod, hoaramIrany: b.becsles.hoaramIrany, kulsoOldal: b.becsles.kulsoOldal, retegek: b.retegek.filter((r) => !r.kimarad) }).U * 1000) / 1000; } catch { U = undefined; }
+      return { kod: b.rr.kod, cim: b.rr.cim, szerep: b.becsles.szerep, hoburok: b.becsles.kihagy ?? true, ...(b.becsles.kovetelmenyKod ? { kovetelmeny: b.becsles.kovetelmenyKod } : {}),
+        hoaramIrany: b.becsles.hoaramIrany, kulsoOldal: b.becsles.kulsoOldal, retegek, ...(U !== undefined && Number.isFinite(U) ? { U } : {}),
+        ...(mLi >= 0 ? { forras: { lap: mLi, x: b.rr.x, y: b.rr.y } } : {}) };
+    });
+  };
   const homMag3d = (i: number, a: AlaprajzFeldolgozas, szk: string[], eszak: number) => {
     const kulcs = `${szk.join(',')}|${eszak}|${S.bm}|${S.homlokzatLapok.length}|${(S.me?.szintek.padlo ?? []).join(',')}|${S.me?.tetoter?.belmagassag ?? ''}`;
     let m = homMagGy.get(a); if (!m) { m = new Map(); homMagGy.set(a, m); }
@@ -868,7 +886,15 @@ export function tervFolyamat(S: FolyamatAllapot) {
     const kulsoFalRetegrend = (me?.blokkok ?? []).filter((b) => b.becsles.szerep === 'fal' && !b.becsles.kihagy).map((b) => ({ kod: b.rr.kod,
       retegek: b.retegek.filter((r) => !r.kimarad && r.dCm > 0).map((r) => ({ leiras: r.forras, vastag: r.dCm / 100, szigeteles: /hőszigetel/i.test(anyag(r.anyagId)?.kategoria ?? '') || /hőszigetel|\beps\b|\bxps\b|kőzetgyapot|üveggyapot/i.test(r.forras) })) }))
       .filter((x) => x.retegek.length >= 2);
-    return epuletModell(be, { fodemSavok: fodemSav, metszetElemek: mE.flatMap(({ li, e }) => e.kisElemek.map((q) => ({ ...q, lap: li }))), ...(teto ? { teto } : {}), ...(kulsoFalRetegrend.length ? { kulsoFalRetegrend } : {}) });
+    const md = epuletModell(be, { fodemSavok: fodemSav, metszetElemek: mE.flatMap(({ li, e }) => e.kisElemek.map((q) => ({ ...q, lap: li }))), ...(teto ? { teto } : {}), ...(kulsoFalRetegrend.length ? { kulsoFalRetegrend } : {}) });
+    const rr = modellRetegrendek();
+    // a falak (jelmagyarázat szerinti) katalógusanyagai
+    const anyagok: Record<string, NonNullable<ModellReteg['anyag']>> = {};
+    for (const f of md.falak) for (const id of [f.anyag?.anyagId, ...(f.retegek ?? []).map((x) => x.anyagId)]) {
+      const a = id && !anyagok[id] ? anyag(id) : undefined;
+      if (a) anyagok[a.id] = { id: a.id, nev: a.nev, kategoria: a.kategoria, sraffozas: a.sraffozas, ...(a.lambda !== undefined ? { lambda: a.lambda } : {}), ...(a.mu !== undefined ? { mu: a.mu } : {}), ...(a.R ? { R: a.R } : {}) };
+    }
+    return { ...md, ...(rr.length ? { retegrendek: rr } : {}), ...(Object.keys(anyagok).length ? { anyagok } : {}) };
   };
   return { reszKizar, masSzintKizar, kjVeg, lapSzintek, kimarad, eszakHomSajat, eszakHom, eszakFelismert, eszakLap, mert3d, homMag3d, elMagFv, oromok, homMagModell, szobaMagassag, epuletModell: epuletModellApp };
 }

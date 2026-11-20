@@ -85,6 +85,37 @@ kódja). Így az épület külső mérete is a rétegrend szerinti.
 A tető `mod`-ja: `derekszogu` (pontos), `konvex`, `vaz` (egyenes váz, ferde alaprajz), `kozelito` (csak elfajuló
 esetben – ezt jelezni kell). Oromfalat csak a derékszögű ág kezel.
 
+## Kijelölés a rajzon és a 3D-ben (2D ⇄ 3D)  (2026-11-21)
+
+A régi ELBA PDF-rendszer a saját primitívjeire visszamutatva jelölt ki; az új csomag ugyanezt a modellelemekre adja:
+
+- `elemAlakok[]` (a `pdfbolEpulet` eredményében): minden fal, nyílás, tér (helyiség), födém, pillér, gerenda alakja a
+  forrás-tervlapon – `{ id, tipus, lap, szint, poligonok }`; `lap` a visszaadott `lapok` sorrendje, a sokszögek
+  lapkoordinátában (pt, bal felső origó, y lefelé – ugyanaz, mint a régi `elba-pdf-olvaso.js` koordinátái).
+  Az `id` a modell elemének azonosítója (`falak[].id`, `nyilasok[].id`, `terek[].id` …) – a 3D kijelölés ezzel párosít.
+- `lapKepek[]`: a lapok előnézeti képe (JPEG dataURL) – `kepSzel × kepMag` képpont, `szel × mag` pont; a sokszög a
+  képre: `px = pt × kepSzel / szel`. Saját PDF-megjelenítés nélkül is rárajzolható a kijelölés.
+- `elemekPontban(elemAlakok, lap, x, y)` (a csomag exportja): a lapon kattintott ponthoz tartozó elemek, a legkisebb
+  (legbelső) elöl – a rajzi kattintás → 3D kijelölés.
+- `modell.lapok[]` (`LapKapcsolat`): `{ lap, szintek, mPerPt, o }` – a modell → lap leképezés:
+  `pt = (x / mPerPt + o[0], y / mPerPt + o[1])` (bármely modellpontra, pl. a 3D-ben kattintott helyre).
+- Javaslat az ELBA-oldalon: a BIM-nézet (3D) mellett a lapkép, rajta az `elemAlakok`; kattintás bármelyiken →
+  ugyanaz az `id` mindkettőn kiemelve, és a párosítófában / listában is (mint az IFC-nél az elem GUID-ja).
+
+## Anyagok, rétegrendek (BIM)  (2026-11-21)
+
+- `modell.retegrendek[]` (`ModellRetegrend`): a metszet(ek) összes rétegrendje – `kod`, `cim`, `szerep` (fal / padló /
+  födém / tető …), `hoburok` (`true`, vagy az ok, amiért nem – válaszfal, terasz), `hoaramIrany`, `kulsoOldal`,
+  `retegek[]` (`leiras` a terv szövege, `vastag` m, `anyag` a katalógusból: `id`, `nev`, `kategoria`, `sraffozas`,
+  `lambda` W/mK, `mu`, `R` – termék-ellenállás adott vastagságnál; `legreteg`, `borda` – szarufa / váz a rétegben,
+  `kimarad` – a hőtechnikai számításból kimaradó réteg és oka), `U` (W/m²K, ha minden réteg hővezetése ismert),
+  `forras` (metszetlap, a rétegrend-felirat helye – kijelöléshez). A falak `retegForras`-a erre a kódra hivatkozik.
+- Falak anyaga a **jelmagyarázatból** (`packages/terv/src/jelmagyarazat.ts`, a régi ELBA-értelmező jelmagyarázat-olvasója
+  alapján): a lap „Jelmagyarázat / Jelkulcs / Anyagjelölések” tételeinek mintája (kitöltőszín, mintázat, PDF-réteg) és
+  a fal kitöltése egyezik → `falak[].anyag.nev` (pl. „zsalukő faltest”), `anyag.anyagId` (katalógus); többrétegű falnál
+  rétegenként (`falak[].retegek[].nev / anyagId`). `modell.anyagok`: a használt katalógusanyagok (anyagId → λ, μ, R …).
+  Csak egyértelmű egyezésnél (egy névhez egy szín / réteg); a vonalakkal sraffozott (kitöltés nélküli) minta még nem.
+
 ## Javasolt ELBA-oldali lépések
 
 1. **Betöltés:** a BIM varázslóban „PDF-tervlapokból” lehetőség az IFC mellett; a csomag lusta betöltése; a lapok
