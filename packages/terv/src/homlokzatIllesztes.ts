@@ -116,15 +116,18 @@ export function homlokzatMellvedek(nyilasok: TervNyilas[], mPerPt: number, eszak
  * keretek egyike sem egyezik a felirattal (szélesség ± 20 cm, a nem takart keret magassága ± 20 cm) – `hom`: a
  * legközelebbi keret mérete (m). Több szint keretei egymás felett: bármelyik szint egyező kerete elég.
  */
-export function homlokzatElteresek(nyilasok: TervNyilas[], mPerPt: number, eszakSzog: number, lapok: Lap[], tartalekM?: number): Map<TervNyilas, { szel: number; mag: number } | null> {
+export function homlokzatElteresek(nyilasok: TervNyilas[], mPerPt: number, eszakSzog: number, lapok: Lap[], tartalekM?: number, szintDb = 1): Map<TervNyilas, { szel: number; mag: number } | null> {
   const ki = new Map<TervNyilas, { szel: number; mag: number } | null>(), egyezik = new Set<TervNyilas>();
+  // (csak egyszintes épületen: több szintnél a keretek szinthez rendelése bizonytalan)
+  if (szintDb !== 1) return ki;
   const kulso = nyilasok.filter((n) => n.kulso && n.irany !== null && n.fajta !== 'falfulke');
   const s = (n: TervNyilas) => { const t = n.irany! * Math.PI / 180; return (-Math.cos(t) * n.x - Math.sin(t) * n.y) * mPerPt; };
   for (const lap of lapok) {
     for (const rz of homlokzatRajzok(lap, tartalekM)) {
       const il = homlokzatEltolas(rz, kulso, mPerPt, eszakSzog); if (!il) continue;
       const sajat = kulso.filter((n) => n.irany === il.ir);
-      if (il.tam < 3 || il.tam < sajat.length / 2) continue;
+      // (megbízható illesztés: az irány nyílásainak legalább 60 %-a egyezik egy kerettel)
+      if (il.tam < 3 || il.tam < 0.6 * sajat.length) continue;
       const e = (k: HomlokzatKeret) => (k.x0 + k.x1) / 2 * rz.mPerPt;
       // (a rajz kiterjedésén kívül eső nyílás – másik szárny, takart rész – nem eltérés)
       const x0 = Math.min(...rz.keretek.map((k) => k.x0 * rz.mPerPt)) - 0.5, x1 = Math.max(...rz.keretek.map((k) => k.x1 * rz.mPerPt)) + 0.5;

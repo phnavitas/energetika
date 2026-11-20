@@ -148,7 +148,7 @@ tartó) – a hőszigetelés-burkolat, eresz, csatorna, járda, korlát nem.
 - Mellvédmagasság: a feliratos ablaké az alaprajzi „pm”, de ha az illesztett homlokzaton a keret alja (a szintjelekből,
   a feliratos ablakok mediánjával kiigazítva) 25 cm – 1 m-rel eltér (egyszintes épületen), a homlokzaté (`nyilasok[].pmAlaprajz` az eredeti).
 - Homlokzati eltérés (ellenőrzésre, a modell méretét nem módosítja): `nyilasok[].homlokzat` – a feliratos ablak /
-  erkélyajtó helyén (az illesztett homlokzaton, ≥ 3 és az irány nyílásainak legalább fele egyező nyílással) nincs keret
+  erkélyajtó helyén (egyszintes épületen, az illesztett homlokzaton – ≥ 3 és az irány nyílásainak ≥ 60 %-a egyező nyílással –) nincs keret
   (`null`), vagy az ott álló keretek egyike sem egyezik a felirattal (szélesség, nem takart keretnél magasság ± 20 cm):
   a legközelebbi keret mérete.
 - Sarokzárás (teljes modell): ha mindkét fal a másik fal félvastagságánál jóval (> 0,75 × vastagság) túlnyúlik a

@@ -579,11 +579,11 @@ export function tervFolyamat(S: FolyamatAllapot) {
   // a teljes modellhez: a homlokzattal nem egyező feliratos ablakok / erkélyajtók (ellenőrzésre)
   const homElteres3d = (i: number, a: AlaprajzFeldolgozas): Map<TervNyilas, { szel: number; mag: number } | null> | undefined => {
     if (!a.e.mPerPt || !S.homlokzatLapok.length) return undefined;
-    const eszak = eszakLap(i, a), kulcs = `elteres|${eszak}|${S.homlokzatLapok.length}`;
+    const eszak = eszakLap(i, a), szintDb = new Set(alaprajzLapok().flatMap(({ i: j }) => lapSzintek(j))).size || 1, kulcs = `elteres|${eszak}|${S.homlokzatLapok.length}|${szintDb}`;
     let gy = homMagGy.get(a); if (!gy) { gy = new Map(); homMagGy.set(a, gy); }
     if (gy.has(kulcs)) return gy.get(kulcs);
     let v: Map<TervNyilas, { szel: number; mag: number } | null> | undefined;
-    try { v = homlokzatElteresek(a.nyilasok, a.e.mPerPt, eszak, S.homlokzatLapok.map(({ l }) => l.lap), a.e.meretarany ?? undefined); } catch { v = undefined; }
+    try { v = homlokzatElteresek(a.nyilasok, a.e.mPerPt, eszak, S.homlokzatLapok.map(({ l }) => l.lap), a.e.meretarany ?? undefined, szintDb); } catch { v = undefined; }
     gy.set(kulcs, v); return v;
   };
   const homMag3d = (i: number, a: AlaprajzFeldolgozas, szk: string[], eszak: number) => {
