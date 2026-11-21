@@ -25,6 +25,8 @@ import { vonalIndex, keretek, homlokzatIrany, homlokzatCimek } from '@terv/homlo
 import type { Lap } from '@terv/kinyeres';
 import { kategoriaJavaslat } from './kategoria';
 import { tetoGeo } from '@terv/teto';
+import { homlokzatiKapuk, type HomlokzatiKapu } from '@terv/homlokzatKapu';
+const homKapuGy = new WeakMap<object, HomlokzatiKapu[]>();
 
 export const AZ_TAJ: Record<string, number> = { 'É': 0, 'ÉK': 45, 'K': 90, 'DK': 135, 'D': 180, 'DNy': 225, 'Ny': 270, 'ÉNy': 315 };
 export function kulterRaszter(al: AlaprajzFeldolgozas, k: Kijeloles): Set<number> {
@@ -533,8 +535,12 @@ export function tervFolyamat(S: FolyamatAllapot) {
     const gk = a.e.helyisegek.map((h, j) => (h.gepkocsi && !k.kulterH?.has(j) && k.kat[j] === undefined ? j : -1)).filter((j) => j >= 0);
     if (!gk.length || !S.homlokzatLapok.length) return [];
     const mm = mert3d(i, a);
+    // a homlokzati rajzokon a kapu (szekcionált / lamellás panelsor) – a kapunyíláshoz illő (± 0,6 m) szélességgel
+    const homKapuk = S.homlokzatLapok.flatMap(({ l }) => { let v = homKapuGy.get(l.lap); if (!v) { const M = meretaranyKeres(l.lap.szovegek) ?? a.e.meretarany ?? 100; try { v = homlokzatiKapuk(l.lap, (25.4 / 72) / 1000 * M); } catch { v = []; } homKapuGy.set(l.lap, v); } return v; });
     return gk.filter((j) => { const ri = a.magHelyisegek.indexOf(a.e.helyisegek[j]!); const kapu = a.nyilasok.find((n) => n.helyiseg === ri && n.fajta === 'garazskapu' && n.mert);
-      return !kapu || mm?.get(kapu)?.forras !== 'homlokzat'; });
+      if (!kapu) return true;
+      if (mm?.get(kapu)?.forras === 'homlokzat') return false;
+      return !homKapuk.some((q) => Math.abs(q.szel - kapu.szel) <= 0.6 && q.mag >= 1.8 && q.mag <= 3.2); });
   };
   // (a címben szint nélküli alaprajz – „UTCASZINTI ALAPRAJZ” – szintje a helyiségek szintjeleiből)
   const lapSzintek0 = (i: number) => {
