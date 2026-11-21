@@ -504,11 +504,22 @@ export function tervFolyamat(S: FolyamatAllapot) {
     return { ...k, kat, kizartH: kiz.length ? new Set([...k.kizartH, ...kiz]) : k.kizartH, mindFutott: S.mindFutott, ...(rk.length ? { reszKizart: new Set(rk) } : {}), ...(mszR.length ? { masJegyzek: new Set(mszR) } : {}) };
   };
   // (a címben szint nélküli alaprajz – „UTCASZINTI ALAPRAJZ” – szintje a helyiségek szintjeleiből)
-  const lapSzintek = (i: number) => {
-    if (S.szintKi[i]) return S.szintKi[i]!;
+  const lapSzintek0 = (i: number) => {
     const c = szintekCimbol(S.lapok[i]?.cim ?? ''); if (c.length) return c;
     const a = S.elemzesek[i], l = S.lapok[i];
     return typeof a === 'object' && l?.szerep === 'alaprajz' && l.lap ? szintJelekbol(l.lap.szovegek, a.e.helyisegek) : [];
+  };
+  // a metszeten a tető a földszinti padlóig fut (A alakú ház, a tető alatt nincs szintmagas külső fal): az egyetlen
+  // terepszint feletti alaprajzi szint tetőtér (a lapon kézzel átállítható)
+  const padloigT = (i: number) => {
+    if (!S.me?.padloigTeto || S.lapok[i]?.szerep !== 'alaprajz') return false;
+    const sz = lapSzintek0(i); if (sz.length > 1 || (sz.length === 1 && sz[0] !== 'F')) return false;
+    const felso = new Set(alaprajzLapok().flatMap(({ i: j }) => (typeof S.elemzesek[j] === 'object' ? lapSzintek0(j) : [])).filter((x) => x !== 'P'));
+    return [...felso].every((x) => x === 'F');
+  };
+  const lapSzintek = (i: number) => {
+    if (S.szintKi[i]) return S.szintKi[i]!;
+    return padloigT(i) ? ['T'] : lapSzintek0(i);
   };
   /** Kimarad-e a lap az „Összes átvétele” műveletből (alapból a pince). */
   /** A pinceszint alapból kimarad – kivéve, ha van fűtött helyisége (pl. pincei lépcsőház, előtér, gépészet). */

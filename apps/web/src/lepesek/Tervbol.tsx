@@ -742,6 +742,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     // tetőtéri alaprajz (a legfelső szint tetőtér): a metszet tetőhajlása és térdfala szerint ferde tető + térdfal
     const tetoterLap = o.szintek.includes('T') && o.tetoAt && me?.szintek.belmagassag.length ? true : false;
     const extraUz: string[] = [];
+    if (tetoterLap && me?.padloigTeto) extraUz.push(`A metszeten a tető a padlóig fut le (A alakú ház, a tető alatt nincs szintmagas külső fal): a szintet tetőtérként vettem – ${sz(me.tetoter?.hajlas ?? 0, 0)}° hajlás, térdfal ${sz(me.tetoter?.terdfal ?? 0, 2)} m, a tér a ${sz(me.padloigTeto.gerinc, 2)} m-es belső gerincig nyitott. Az alapterületbe az 1,9 m-nél magasabb rész számít. Ha a szint nem tetőtér, a lap szintjét állítsd át.`);
     // (tetőtéren a falon el nem férő ablakfelirat a tetősík ablaké: nem falnyílás)
     if (tetoterLap) { const tfa = tetoterFeliratAblakok(a); if (tfa.length) { k = { ...k, kizartNy: new Set([...k.kizartNy, ...tfa]) }; extraUz.push(`Tetőtér: ${tfa.length} ablakfelirat a homlokzaton látszó tetősík ablakokkal azonos szélességű és a térdfal fölé nyúlik – a tetősík ablak méreteként vettem, nem falnyílásként.`); } }
     // a kézzel megadott szerep felülírja a becslést (és a „nem hőburok” kihagyást)

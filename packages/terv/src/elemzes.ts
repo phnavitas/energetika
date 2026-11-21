@@ -11,7 +11,7 @@ import { raszterEpit, type Raszter, type RaszterBeallitas } from './raszter';
 import { kotaEllenoriz } from './kota';
 import type { TintaKep } from './tinta';
 import { meretaranyKotabol, automatikusHelyisegek, lakasCsoportok, arnyalatHatarok, type SzurkeKep } from './autohelyiseg';
-import { terdfalGeometria, tetoHajlasRajzbol } from './metszetGeom';
+import { terdfalGeometria, tetoHajlasRajzbol, padloigEroTeto, type PadloigTeto } from './metszetGeom';
 import { fuggonyfalak, szarnyFeliratE, jeloletlenNyilasok, lancNyilasok, tetoablakJelek, type TetoablakJel, nyilasFeliratok, nyilasokHozzarendel, falfulkeE, type TervNyilas, type NyilasFelirat } from './nyilaszarok';
 import { talajOldal } from './talaj';
 import { retegrendBlokkok, szerepBecsles, retegekEpit, szintekKeres, tetoterKeres, type TetoterAdat, type TervRetegrend, type SzerepBecsles, type TervRetegUI, type SzintEredmeny } from './metszet';
@@ -660,6 +660,8 @@ export interface MetszetFeldolgozas {
   tetoter: TetoterAdat | null;
   /** A magastető hajlásszöge felirat nélkül, a metszet ferde tetővonalaiból (csak az épületmodellhez). */
   tetoHajlas?: number;
+  /** A tető a földszinti padlóig fut le (A alakú ház, a tető alatt nincs szintmagas külső fal): a szint tetőtér. */
+  padloigTeto?: PadloigTeto;
 }
 
 /**
@@ -676,12 +678,22 @@ export function metszetFeldolgoz(lap: Lap): MetszetFeldolgozas {
   const b = retegrendBlokkok(lap.szovegek).map(padlasBontas);
   const tt = tetoterKeres(lap.szovegek, szintekKeres(lap.szovegek));
   // térdfal a metszet rajzolatából (a födémre ráálló, a tetőbe futó falkitöltés); felirat csak ennek híján
-  if (tt) { const M = meretaranyKeres(lap.szovegek); const g = M ? terdfalGeometria(lap, (25.4 / 72) / 1000 * M) : null; if (g !== null) { tt.terdfal = g; tt.terdfalForras = 'rajz'; } else if (tt.terdfal !== null) tt.terdfalForras = 'felirat'; }
+  const M = meretaranyKeres(lap.szovegek), mpp = M ? (25.4 / 72) / 1000 * M : undefined;
+  if (tt) { const g = mpp ? terdfalGeometria(lap, mpp) : null; if (g !== null) { tt.terdfal = g; tt.terdfalForras = 'rajz'; } else if (tt.terdfal !== null) tt.terdfalForras = 'felirat'; }
+  const tetoHajlas = !tt ? tetoHajlasRajzbol(lap, mpp) : null;
+  // a földszinti padlóig lefutó tető (A alakú ház): a szint tetőtér – a térdfal a tetősík belső alsó éle, a
+  // „padlásfödém” a belső gerinc (a tér a gerincig nyitott); a térdfal-felirat elsőbbséget kap
+  const hj = tt?.hajlas ?? tetoHajlas;
+  const pt = hj ? padloigEroTeto(lap, hj, mpp) : null;
+  const tt2: TetoterAdat | null = pt
+    ? { ...(tt ?? { terdfalTipp: null }), hajlas: hj!, terdfal: tt?.terdfalForras === 'felirat' ? tt.terdfal : pt.terdfal, terdfalForras: tt?.terdfalForras === 'felirat' ? 'felirat' : 'rajz', belmagassag: pt.gerinc, padlo: 0 }
+    : tt;
   return {
     blokkok: b.map((rr) => { const becsles = szerepBecsles(rr, b); return { rr, becsles, retegek: retegekEpit(rr, becsles, ujId) }; }),
     szintek: szintekKeres(lap.szovegek),
-    tetoter: tt,
-    ...(!tt ? (() => { const M = meretaranyKeres(lap.szovegek); const h = tetoHajlasRajzbol(lap, M ? (25.4 / 72) / 1000 * M : undefined); return h ? { tetoHajlas: h } : {}; })() : {}),
+    tetoter: tt2,
+    ...(tetoHajlas ? { tetoHajlas } : {}),
+    ...(pt ? { padloigTeto: pt } : {}),
   };
 }
 
