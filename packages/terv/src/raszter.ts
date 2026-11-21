@@ -37,6 +37,9 @@ export interface RaszterBeallitas {
   kapuk?: { x: number; y: number; szel: number; fal: 'v' | 'f' }[];
   /** Az ablaksor-szabály (egymás mellé sorolt ablakmodulok falnyílásként) – kikapcsolható változat az önellenőrzéshez. */
   ablaksor?: boolean;
+  /** Berajzolt gépkocsik helye (pt) pecsét nélküli térben: ha a kocsit három oldalról fal veszi körül, a nyitott oldalon
+   *  a két oldalfal vége közti rés kapunyílásként zárul (a tér így helyiség – garázs –, a rés a kapu). */
+  garazsok?: { x: number; y: number }[];
 }
 
 export interface FalSzakasz {
@@ -90,6 +93,9 @@ export interface Raszter {
    *  síkjában futó párhuzamos vonalakkal (üvegezés, tok) kitöltött rés. Lapkoordináta (pt), hossz méterben. */
   uvegfalak: { x0: number; y0: number; x1: number; y1: number; hossz: number; fuggo: boolean; /** különálló ablakmodulok sora (a modulok feliratosak lehetnek) */ modulok?: boolean }[];
   helyisegek: { A: number; szivarog: boolean; szakaszok: FalSzakasz[] }[];
+  /** A berajzolt gépkocsik terének lezárt nyitott oldala (RaszterBeallitas.garazsok sorrendjében; null: nem zárt be –
+   *  nincs három oldalán fal): a rés a lapon (pt), szélessége (m) és a kifelé mutató lapirány. */
+  garazsKapuk?: ({ x0: number; y0: number; x1: number; y1: number; szel: number; irany: number } | null)[];
 }
 
 const feher = (s: string) => /^#(f[0-9a-f]){3}$/i.test(s);
@@ -923,6 +929,57 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
     if (egy.length < 2 || egy.length > Math.round(0.8 / px)) continue;
     for (const x of egy) for (let q = x.a; q <= x.e; q++) { const i = vizsz ? x.s * w + q : q * w + x.s; if (!fal[i]) nyilas[i] = 1; }
   }
+  // berajzolt gépkocsi pecsét nélküli térben (garázs): a kocsi helyéről a négy főirányban az első falig; ha három irányban
+  // 9 m-en belül fal van, a negyedikben 12 m-en belül nincs, a nyitott oldalon a két oldalfal közül a rövidebbik végénél a
+  // két fal közti rés kapunyílás (áthidalva) – a tér így zárt helyiség
+  const garazsKapuk: NonNullable<Raszter['garazsKapuk']> = [];
+  /** a garázs téglalapja (raszter): az oldalfalak, a kapu és a hátsó fal között – az elsőbbségi elárasztás határa */
+  const garazsTeglalap: ([number, number, number, number] | null)[] = [];
+  for (const g of b.garazsok ?? []) {
+    garazsTeglalap.push(null);
+    const [gx, gy] = tr(g.x, g.y); const cx = Math.round(gx), cy = Math.round(gy);
+    const falE = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h && !!(fal[y * w + x] || nyilas[y * w + x]);
+    const iranyok: [number, number, number][] = [[1, 0, 90], [-1, 0, 270], [0, 1, 180], [0, -1, 0]];
+    const tav = iranyok.map(([dx, dy]) => { for (let k = 1; k <= Math.round(12 / px); k++) { const x = cx + dx * k, y = cy + dy * k; if (x < 0 || y < 0 || x >= w || y >= h) return Infinity; if (falE(x, y)) return k; } return Infinity; });
+    const nyitott = tav.map((t, i) => (t === Infinity ? i : -1)).filter((i) => i >= 0);
+    if (nyitott.length !== 1 || tav.some((t) => t !== Infinity && t * px > 9)) { garazsKapuk.push(null); continue; }
+    const o = nyitott[0]!, [dx, dy, irany] = iranyok[o]!;
+    // a két oldalfal (az nyitott irányra merőleges két irányban talált fal) mentén a nyitott irányba a fal végéig
+    const oldalak = iranyok.map((ir, i) => ({ ir, t: tav[i]! })).filter(({ ir }) => ir[0] === 0 ? dx !== 0 : dy !== 0);
+    if (oldalak.length !== 2) { garazsKapuk.push(null); continue; }
+    // (a fal belső síkja nem pontosan egy sorban fut: lépésenként a falra merőleges, 0,25 m-es sávban keresünk falat,
+    // és legfeljebb 0,3 m-es hézagot – pl. rajzi rést – átlépünk)
+    const savban = (x: number, y: number, ir: [number, number, number]) => { for (let j = -2; j <= Math.round(0.25 / px); j++) if (falE(x + ir[0] * j, y + ir[1] * j)) return true; return false; };
+    const vegek = oldalak.map(({ ir, t }) => { const sx = cx + ir[0] * t, sy = cy + ir[1] * t; let k = 0, utolso = 0; const hez = Math.round(0.3 / px);
+      while (k < Math.round(12 / px)) { k++; if (savban(sx + dx * k, sy + dy * k, ir)) utolso = k; else if (k - utolso > hez) break; }
+      return { sx, sy, k: utolso }; });
+    const k0 = Math.min(...vegek.map((v) => v.k)); if (k0 < 1) { garazsKapuk.push(null); continue; }
+    // a kapu sávja: a rövidebb oldalfal vége előtti 0,2 m (falvastagságnyi), a két oldalfal között
+    const vast = Math.max(2, Math.round(0.2 / px));
+    const [a, c] = vegek;
+    let db = 0;
+    for (let s0 = 0; s0 < vast; s0++) {
+      const off = k0 - s0; // a gépkocsitól a nyitott irányba (a két fal vonalán)
+      if (dx !== 0) { const x = cx + dx * off; for (let y = Math.min(a!.sy, c!.sy) + 1; y < Math.max(a!.sy, c!.sy); y++) { const i = y * w + x; if (x >= 0 && x < w && y >= 0 && y < h && !fal[i]) { nyilas[i] = 1; db++; } } }
+      else { const y = cy + dy * off; for (let x = Math.min(a!.sx, c!.sx) + 1; x < Math.max(a!.sx, c!.sx); x++) { const i = y * w + x; if (x >= 0 && x < w && y >= 0 && y < h && !fal[i]) { nyilas[i] = 1; db++; } } }
+    }
+    if (!db) { garazsKapuk.push(null); continue; }
+    const lap = (x: number, y: number) => [x0 + x / ptPx, y0 + y / ptPx] as const;
+    const off = k0;
+    const p0 = dx !== 0 ? lap(cx + dx * off, Math.min(a!.sy, c!.sy) + 1) : lap(Math.min(a!.sx, c!.sx) + 1, cy + dy * off);
+    const p1 = dx !== 0 ? lap(cx + dx * off + 1, Math.max(a!.sy, c!.sy)) : lap(Math.max(a!.sx, c!.sx), cy + dy * off + 1);
+    const szel = (dx !== 0 ? Math.abs(a!.sy - c!.sy) - 1 : Math.abs(a!.sx - c!.sx) - 1) * px;
+    garazsKapuk.push({ x0: Math.min(p0[0], p1[0]), y0: Math.min(p0[1], p1[1]), x1: Math.max(p0[0], p1[0]), y1: Math.max(p0[1], p1[1]), szel: Math.round(szel * 100) / 100, irany });
+    // a hátsó fal: a kapuval párhuzamos, a két oldalfal közti sugarak (20–80 %) közül a legközelebbi fal
+    { const lo = dx !== 0 ? Math.min(a!.sy, c!.sy) : Math.min(a!.sx, c!.sx), hi = dx !== 0 ? Math.max(a!.sy, c!.sy) : Math.max(a!.sx, c!.sx);
+      let hat = Infinity;
+      for (const f of [0.2, 0.35, 0.5, 0.65, 0.8]) { const m = Math.round(lo + (hi - lo) * f);
+        for (let k = vast + 1; k <= Math.round(14 / px); k++) { const x = dx !== 0 ? cx + dx * off - dx * k : m, y = dx !== 0 ? m : cy + dy * off - dy * k; if (x < 0 || y < 0 || x >= w || y >= h) break; if (falE(x, y)) { hat = Math.min(hat, k); break; } } }
+      if (hat !== Infinity) {
+        const g0 = dx !== 0 ? cx + dx * off : cy + dy * off, g1 = g0 - (dx !== 0 ? dx : dy) * hat;
+        garazsTeglalap[garazsTeglalap.length - 1] = dx !== 0 ? [Math.min(g0, g1), lo, Math.max(g0, g1), hi] : [lo, Math.min(g0, g1), hi, Math.max(g0, g1)];
+      } }
+  }
   // rétegzett lap (a falat és a hőszigetelést a réteg adja): a burok résein (külső ajtó, tok nélküli nyílás, ≤ 2 m) a
   // külső tér ne folyjon be – az alaprajz körvonalát 1 m-es morfológiai zárással lezárjuk, és a zárt körvonal mentén
   // a fal nélküli cellák nyílásnak számítanak (a szélesebb behúzás, kapu, garázsnyílás nyitva marad)
@@ -970,7 +1027,43 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       const i = y * w + x; if (szabadKicsi[i] && !helyCimke[i]) { helyCimke[i] = kpCimke; kesz = true; break; }
     }
   });
+  // a berajzolt gépkocsi tere (garázs) elsőbbséget kap: a kocsi helyéről a 0,95 m-rel szűkített szabad térben (az ajtón,
+  // keskeny nyíláson át nem jut tovább) elárasztott, majd visszatágított terület eleve a garázsé – a szomszéd helyiség
+  // nem folyik be a nyitott ajtaján át
+  const garazsHatar: { c: number; tl: [number, number, number, number] }[] = [];
+  if (b.garazsok?.length) {
+    const Rg = Math.max(1, Math.round(0.95 / px));
+    const tiltott = tagit(szabadKicsi.map((v) => 1 - v) as Uint8Array, w, h, Rg);
+    b.garazsok.forEach((g, gi) => {
+      const k = magok.findIndex((m) => Math.abs(m.x - g.x) < 1e-6 && Math.abs(m.y - g.y) < 1e-6); if (k < 0) return;
+      const tl = garazsTeglalap[gi]; if (!tl) return;
+      const [gx, gy] = tr(g.x, g.y).map(Math.round) as [number, number];
+      let i0 = -1; for (let r = 0; r < Math.round(2 / px) && i0 < 0; r++) for (let dy = -r; dy <= r && i0 < 0; dy++) for (let dx = -r; dx <= r; dx++) { if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue; const x = gx + dx, y = gy + dy; if (x < 0 || y < 0 || x >= w || y >= h) continue; if (!tiltott[y * w + x]) { i0 = y * w + x; break; } }
+      if (i0 < 0) return;
+      const mag = new Uint8Array(w * h), sor = [i0]; mag[i0] = 1; let szel = false;
+      for (let q = 0; q < sor.length; q++) { const i = sor[q]!, x = i % w, y = (i / w) | 0; if (x === 0 || y === 0 || x === w - 1 || y === h - 1) { szel = true; break; }
+        for (const n of [i - 1, i + 1, i - w, i + w]) if (!mag[n] && !tiltott[n]) { mag[n] = 1; sor.push(n); } }
+      if (szel) return;
+      // (visszatágítva, a garázs téglalapján belül – a szomszéd ajtaján túlra nem)
+      const tg = tagit(mag, w, h, Rg);
+      for (let y = Math.max(0, tl[1]); y <= Math.min(h - 1, tl[3]); y++) for (let x = Math.max(0, tl[0]); x <= Math.min(w - 1, tl[2]); x++) { const i = y * w + x; if (tg[i] && szabadKicsi[i] && !helyCimke[i]) helyCimke[i] = 2 + k; }
+      garazsHatar.push({ c: 2 + k, tl });
+    });
+  }
   araszt(helyCimke, szabadKicsi, w, h);
+  // (a garázs az elárasztásban sem nyúlhat a téglalapján túl – a szomszéd helyiség nyitott ajtaján át –: a téglalapon
+  // kívüli része a többi helyiség elárasztásáé)
+  if (garazsHatar.length) {
+    const gm = new Map(garazsHatar.map((x) => [x.c, x.tl]));
+    const tilt = new Uint8Array(w * h); let volt = false;
+    for (let i = 0; i < w * h; i++) { const tl = gm.get(helyCimke[i]!); if (!tl) continue; const x = i % w, y = (i / w) | 0;
+      if (x < tl[0] || x > tl[2] || y < tl[1] || y > tl[3]) { helyCimke[i] = 0; volt = true; } else tilt[i] = helyCimke[i]!; }
+    if (volt) {
+      const sz2 = szabadKicsi.slice(); for (let i = 0; i < w * h; i++) if (tilt[i]) { sz2[i] = 0; helyCimke[i] = 0; }
+      araszt(helyCimke, sz2, w, h);
+      for (let i = 0; i < w * h; i++) if (tilt[i]) helyCimke[i] = tilt[i]!;
+    }
+  }
   const kpTer = new Uint8Array(w * h);
   for (let i = 0; i < w * h; i++) if (helyCimke[i] === kpCimke) { helyCimke[i] = 0; kpTer[i] = 1; }
   szivargoPotlas(helyCimke, gat, magok, w, h, px, tr);
@@ -1166,7 +1259,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   const zonaSz = b.zonaPoli?.some(Boolean) ? b.zonaPoli.map((pl, k) => (pl ? zonaSzakaszok(pl, k + 2, helyCimke, gat, fal, nyilas, w, h, px, mPerPt, tr, maxLep * px) : undefined)) : undefined;
   return {
     w, h, px, x0, y0, mPerPt, fal, cimke: helyCimke, stilus, stilusInfo, anyagStilus, anyagInfo, ...(falVonal ? { falVonal } : {}), ...(retegesFal ? { reteges: true } : {}),
-    nyilas, uvegfalak,
+    nyilas, uvegfalak, ...(garazsKapuk.length ? { garazsKapuk } : {}),
     helyisegek: helyisegek.map((H, k) => ({
       A: H.A, szivarog: szivarog[k]!,
       szakaszok: zonaSz?.[k] ?? [...H.szak.entries()].map(([k, s]) => { const [ir, t] = k.split('|'); return { irany: Number(ir), tul: t === 'kulso' ? 'kulso' : t === 'ismeretlen' ? 'ismeretlen' : Number(t), hossz: falsikHossz(s.mely, px), nyilasHossz: s.ny.size * px, vastagsag: s.v / s.n, pontok: s.pontok } as FalSzakasz; })

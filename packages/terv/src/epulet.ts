@@ -96,6 +96,9 @@ export interface Fal {
   szerkezet?: 'teherhordo' | 'valaszfal' | 'egyeb' | 'hatar';
   /** Térdfal / oromfal / alacsonyabb párkány jelölés. */
   jelleg?: 'terdfal' | 'oromfal' | 'parkany' | 'ferde';
+  /** Az egy vonalban egymáshoz csatlakozó, minden jellemzőjükben azonos falszakaszokból összefűzött fal: a szakaszok
+   * eredeti azonosítói (a fal azonosítója a leghosszabbé). */
+  osszefuzott?: string[];
 }
 
 /** Falmagasság-megadás a hőburokfalakhoz (a hívó a homlokzat / metszet / tetőablakok alapján). */
@@ -207,6 +210,8 @@ export interface Magasteto { szint: string; hajlas: number; kiallas: number; kia
  *  lapostetős sávok (modellkoordináta, m: 'x' – az x ∈ [a, b] sáv, 'y' – az y ∈ [a, b] sáv; a homlokzatokról –
  *  tetoReszek.laposTetoSavok –, ill. kézzel): ezeken a szint körvonalának része lapostetős, a többi kap magastetőt. */
 export interface MagastetoBe { hajlas: number; orom?: Record<number, number>; kiallas?: number;
+  /** Az eresz (tetőszél) magassága a szintjelek szerint (m) – ennek híján a koszorú teteje, ill. a szint teteje. */
+  zEresz?: number;
   /** (felteto: a sáv c0–c1 része – a sávra merőleges tengelyen – féltető a hajlással, lejt irányába lejtve) */
   lapos?: { tengely: 'x' | 'y'; a: number; b: number; felteto?: { c0: number; c1: number; hajlas: number; lejt: number } }[];
   /** Lapostetős sáv a szint (födém) körvonalának oldalairól (lapirány: 0 fent, 90 jobbra, 180 lent, 270 balra): szélesség, m. */
@@ -596,6 +601,7 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
   // (csak a teljes épületmodellben – kizart megadva –; a hőburok-átvétel falhosszai a korábbiak)
   if (lapok.some((L) => L.kizart)) { falVastagJavit(falak, nyilasok); sarokZaras(falak, nyilasok); }
   if (opt.kulsoFalRetegrend?.length) kulsoFalRetegek(falak, fodemek, nyilasok, opt.kulsoFalRetegrend);
+  if (lapok.some((L) => L.kizart)) falOsszefuz(falak, nyilasok, pillerek);
   const koszoruk = opt.metszetElemek?.length ? koszoruKeres(szintek, falak, fodemek, opt.metszetElemek) : [];
   for (const fd of fodemek) if (fd.lapos) fd.lapos.attika = sz(koszoruk.filter((k) => k.fajta === 'attika' && k.szint === fd.alatt).reduce((t, k) => t + k.hossz, 0), 2);
   const gerendak = gerendaKeres(lapok, falak, fodemek, koszoruk);
@@ -1041,7 +1047,9 @@ function oromFalak(falak: Fal[], szintek: Szint[], mt: Magasteto): void {
     let res = 0;
     for (let k = 0; k <= n; k++) {
       const t = k / n, z = tetoZ(f.a[0] + (f.b[0] - f.a[0]) * t, f.a[1] + (f.b[1] - f.a[1]) * t);
-      const zr = z === null ? teto0 : Math.max(teto0, z - sz0.z0); res = Math.max(res, zr - teto0);
+      // (a fal a tető alsó síkjáig ér: magasabb tetőnél felfelé – oromzat, féltető –, alacsonyabb tetőnél – a tetőszél a
+      // fal síkjában a fal teteje alatt – lefelé, legfeljebb a szint belmagasságáig: a fal nem metszi át a tetőt)
+      const zr = z === null ? teto0 : Math.max(Math.min(teto0, sz0.belmag), z - sz0.z0); res = Math.max(res, Math.abs(zr - teto0));
       pr.push({ t: sz(t, 4), z: sz(zr, 3) });
     }
     if (res < 0.15) continue;
@@ -1050,7 +1058,7 @@ function oromFalak(falak: Fal[], szintek: Szint[], mt: Magasteto): void {
     for (let i = 1; i < pr.length - 1; i++) { const p = ki[ki.length - 1]!, q = pr[i]!, r = pr[i + 1]!; const zv = p.z + ((r.z - p.z) * (q.t - p.t)) / (r.t - p.t || 1); if (Math.abs(zv - q.z) > 0.01) ki.push(q); }
     ki.push(pr[pr.length - 1]!);
     // (a fal magassága a profil legmagasabb pontjáig – a profil a szint padlójától mért)
-    f.profil = ki; f.jelleg = f.jelleg ?? 'oromfal'; f.h = sz(Math.max(...ki.map((q) => q.z)) + sz0.z0 - f.z0, 3);
+    f.profil = ki; f.jelleg = f.jelleg ?? (Math.max(...ki.map((q) => q.z)) > teto0 + 0.15 ? 'oromfal' : 'parkany'); f.h = sz(Math.max(...ki.map((q) => q.z)) + sz0.z0 - f.z0, 3);
   }
 }
 
@@ -1062,7 +1070,7 @@ function magastetoEpit(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], 
   const kiallas = t.kiallas ?? 0.5;
   const pol = kisLepcsoNelkul(sekelyFulkeNelkul(kisLepcsoNelkul(pol1), Math.max(kiallas, 0.6)));
   const k = koszoruk.find((q) => q.szint === fel.id && q.fajta !== 'attika');
-  const zEresz = sz(k ? k.zFelso : fel.z0 + fel.h, 2);
+  const zEresz = sz(t.zEresz ?? (k ? k.zFelso : fel.z0 + fel.h), 2);
   // lapostetős sávok: a körvonal ezekbe eső része lapostető, a maradék darabjai kapnak magastetőt (legalább 2 m széles,
   // 8 m²-es darabok; ha a sávok a körvonal 85 %-át fedik, nincs magastető)
   let darabok: P2[][] = [pol], lapos: P2[][] = [];
@@ -1171,6 +1179,62 @@ function falVastagJavit(falak: Fal[], nyilasok: Nyilas[]) {
  * legfeljebb a másik fal vastagságának megfelelő (≥ 0,8 m) távolságra vannak, a metszésponton túl a másik fal
  * vastagságának felével ér véget – a külső síkok a sarokban pontosan találkoznak (nincs rés, nincs kilógó falvég).
  */
+/**
+ * Az egy vonalban (± 0,5°, ± 1 cm), egymáshoz csatlakozó (≤ 2 cm rés) falszakaszok, amelyek anyaga, rétegei, vastagsága,
+ * magassága, szerkezete, hőburok-szerepe és oldalainak fajtája pontosan azonos, egy fallá fűzve (a töredékek – pl. a
+ * csatlakozó belső falak, a raszter tagolása miatt – egy elemként kezelhetők). A nyílások helye, a pillérek falhivatkozása
+ * átszámítva; a fal oldalainak tere a leghosszabb szakaszé.
+ */
+export function falOsszefuz(falak: Fal[], nyilasok: Nyilas[], pillerek: Piller[]) {
+  const J = (v: unknown) => JSON.stringify(v ?? null);
+  const fordit = (f: Fal): Fal => ({ ...f, a: f.b, b: f.a, bal: f.jobb, jobb: f.bal, ...(f.futottOldal ? { futottOldal: f.futottOldal === 'bal' ? 'jobb' as const : 'bal' as const } : {}), ...(f.retegek ? { retegek: [...f.retegek].reverse() } : {}) });
+  const azonos = (p: Fal, q: Fal) => p.szint === q.szint && Math.abs(p.vastag - q.vastag) <= 0.005 && Math.abs(p.z0 - q.z0) <= 0.005 && Math.abs(p.h - q.h) <= 0.005
+    && (p.belsoMag ?? null) === (q.belsoMag ?? null) && !p.profil && !q.profil && p.jelleg === q.jelleg && p.kulso === q.kulso && p.burok === q.burok
+    && p.futottOldal === q.futottOldal && p.szerkezet === q.szerkezet && p.szerkezet !== 'hatar' && (p.mag ?? null) === (q.mag ?? null) && J(p.anyag) === J(q.anyag)
+    && J(p.retegek) === J(q.retegek) && p.retegForras === q.retegForras && p.bal.fajta === q.bal.fajta && p.jobb.fajta === q.jobb.fajta;
+  for (let volt = true; volt;) {
+    volt = false;
+    for (let i = 0; i < falak.length && !volt; i++) for (let j = 0; j < falak.length && !volt; j++) {
+      if (i === j) continue;
+      const p = falak[i]!; let q = falak[j]!;
+      const L = Math.hypot(p.b[0] - p.a[0], p.b[1] - p.a[1]); if (L < 1e-6) continue;
+      const u: P2 = [(p.b[0] - p.a[0]) / L, (p.b[1] - p.a[1]) / L];
+      const Lq = Math.hypot(q.b[0] - q.a[0], q.b[1] - q.a[1]); if (Lq < 1e-6) continue;
+      const dot = (u[0] * (q.b[0] - q.a[0]) + u[1] * (q.b[1] - q.a[1])) / Lq;
+      if (Math.abs(dot) < Math.cos(0.5 * Math.PI / 180)) continue;
+      if (dot < 0) q = fordit(q);
+      const tav = (P: P2) => Math.abs(-u[1] * (P[0] - p.a[0]) + u[0] * (P[1] - p.a[1]));
+      if (tav(q.a) > 0.01 || tav(q.b) > 0.01) continue;
+      const t = (P: P2) => u[0] * (P[0] - p.a[0]) + u[1] * (P[1] - p.a[1]);
+      const qa = t(q.a), qb = t(q.b);
+      if (qa > L + 0.02 || qb < -0.02) continue;          // nem érnek össze
+      if (!azonos(p, q)) continue;
+      // a leghosszabb szakasz adja az azonosítót és az oldalak terét
+      const fo = L >= Lq ? p : q, t0 = Math.min(0, qa), t1 = Math.max(L, qb);
+      const a: P2 = [p.a[0] + u[0] * t0, p.a[1] + u[1] * t0], b: P2 = [p.a[0] + u[0] * t1, p.a[1] + u[1] * t1];
+      const atfed = Math.max(0, Math.min(L, qb) - Math.max(0, qa));
+      const uj: Fal = { ...fo, a: [sz(a[0], 3), sz(a[1], 3)], b: [sz(b[0], 3), sz(b[1], 3)], hossz: sz(t1 - t0, 3),
+        sikHossz: sz(p.sikHossz + q.sikHossz - atfed + Math.max(0, qa - L, -qb), 3),
+        ...((p.csatlakozas ?? 0) + (q.csatlakozas ?? 0) > 0 ? { csatlakozas: sz((p.csatlakozas ?? 0) + (q.csatlakozas ?? 0), 3) } : {}),
+        osszefuzott: [...(p.osszefuzott ?? [p.id]), ...(q.osszefuzott ?? [q.id])] };
+      if (p.forras?.pt && q.forras?.pt && p.forras.lap === q.forras.lap) {
+        // (a belső sík végpontjai a lapon: a két szakasz egymástól legtávolabbi végpontjai)
+        const pts = [...p.forras.pt, ...q.forras.pt]; let leg: [P2, P2] = p.forras.pt, d0 = -1;
+        for (const x of pts) for (const y of pts) { const d = Math.hypot(x[0] - y[0], x[1] - y[1]); if (d > d0) { d0 = d; leg = [x, y]; } }
+        uj.forras = { ...fo.forras!, pt: leg };
+      }
+      // nyílások: a hely az új tengelyen (a régi szakasz pontjából vetítve)
+      for (const n of nyilasok) { const f = n.fal === p.id ? p : n.fal === falak[j]!.id ? falak[j]! : null; if (!f) continue;
+        const Lf = Math.hypot(f.b[0] - f.a[0], f.b[1] - f.a[1]) || 1, P: P2 = [f.a[0] + (f.b[0] - f.a[0]) / Lf * n.t, f.a[1] + (f.b[1] - f.a[1]) / Lf * n.t];
+        n.fal = uj.id; n.t = sz(u[0] * (P[0] - a[0]) + u[1] * (P[1] - a[1]), 2);
+      }
+      const regi = new Set([p.id, falak[j]!.id]);
+      for (const pl of pillerek) { if (pl.falId && regi.has(pl.falId)) pl.falId = uj.id; if (pl.falak) pl.falak = [...new Set(pl.falak.map((x) => (regi.has(x) ? uj.id : x)))]; }
+      falak[i] = uj; falak.splice(j, 1); volt = true;
+    }
+  }
+}
+
 function sarokZaras(falak: Fal[], nyilasok: Nyilas[]) {
   for (const szint of new Set(falak.map((f) => f.szint))) {
     const ff = falak.filter((f) => f.szint === szint && f.hossz >= 0.3 && !f.profil);

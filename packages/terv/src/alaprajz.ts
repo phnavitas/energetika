@@ -22,6 +22,9 @@ export interface TervHelyiseg {
   forras: 'pecset' | 'jegyzek';
   /** Kézzel, a rajzon kattintva felvett helyiség (pecsét nélküli zárt terület, pl. lépcső). */
   kezi?: boolean;
+  /** Berajzolt gépkocsi pecsét nélküli, háromoldalt falazott terében felvett helyiség (garázs – a homlokzat szerint
+   *  kapu nélkül kültéri beálló). */
+  gepkocsi?: boolean;
   /** A helyiségjegyzékben szereplő terület (ha van és eltér, figyelmeztetünk). */
   jegyzekA?: number;
   /** Külső tér (terasz, erkély, kocsibeálló…) – alapból nem kerül a fűtött helyiségek közé. */

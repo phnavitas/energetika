@@ -360,3 +360,31 @@ export function padloigEroTeto(lap: Lap, hajlas: number, mPerPt?: number): Padlo
   }
   return leg;
 }
+
+/**
+ * Az eresz és a gerinc magassága a szintjelekből (metszet, homlokzat): a lapokon legalább kétszer kiírt jelek közül az a
+ * pár, amely a tető hajlásával és a tetőtest szélességével (W, a gerincre merőlegesen) összefér: gerinc − eresz =
+ * (W / 2 + kiállás) · tg(hajlás), 0,2–1,2 m-es kiállással (a kiírt kiállás, ill. 0,5 m körül a legjobb). Az eresz a jel
+ * szerinti tetőszél (csatorna) magassága. Egyértelmű pár híján null.
+ */
+export function ereszGerincJelekbol(lapok: { lap: Lap; homlokzat: boolean }[], hajlas: number, W: number, zMin: number, kiallas?: number): { zEresz: number; gerinc: number; kiallas: number } | null {
+  const db = new Map<number, number>(), hom = new Set<number>();
+  for (const { lap: l, homlokzat } of lapok) { const egy = new Set<number>(); for (const t of l.szovegek) { if (Math.abs(t.szog) > 2) continue; const m = SZINTJEL.exec(t.s.replace(/\s+/g, ' ').trim()); if (!m || /[\-−–]/.test(m[1]!)) continue; egy.add(Number(m[2]!.replace(',', '.'))); } for (const v of egy) { db.set(v, (db.get(v) ?? 0) + 1); if (homlokzat) hom.add(v); } }
+  // (az eresz a homlokzaton is látszik: ha van homlokzati lap, csak az ott is kiírt jel lehet eresz)
+  const vanHom = lapok.some((l) => l.homlokzat);
+  const jel = [...db.entries()].filter(([, n]) => n >= 2).map(([v]) => v);
+  const tg = Math.tan((hajlas * Math.PI) / 180); if (!(tg > 0) || !(W > 2)) return null;
+  const jo: { e: number; g: number; k: number; d: number }[] = [];
+  for (const e of jel) { if (e < zMin || (vanHom && !hom.has(e))) continue; for (const g of jel) { if (g < e + 1) continue;
+    const k = (g - e) / tg - W / 2; if (k < 0.2 || k > 1.2) continue;
+    jo.push({ e, g, k, d: Math.abs(k - (kiallas ?? 0.5)) }); } }
+  if (!jo.length) return null;
+  jo.sort((a, b) => a.d - b.d);
+  // (a legjobbhoz közeli – 0,15 m-en belüli kiállású – párok közül a több lapon kiírt jelpár; egyenlőségnél nem egyértelmű)
+  const kozel = jo.filter((x) => x.d - jo[0]!.d < 0.15);
+  const n = (x: typeof jo[number]) => (db.get(x.e) ?? 0) * 100 + (db.get(x.g) ?? 0);
+  kozel.sort((a, b) => n(b) - n(a) || a.d - b.d);
+  if (kozel.length > 1 && n(kozel[0]!) === n(kozel[1]!) && (kozel[0]!.e !== kozel[1]!.e || kozel[0]!.g !== kozel[1]!.g)) return null;
+  const r2 = (v: number) => Math.round(v * 100) / 100;
+  return { zEresz: r2(kozel[0]!.e), gerinc: r2(kozel[0]!.g), kiallas: r2(kozel[0]!.k) };
+}
