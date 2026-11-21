@@ -1011,7 +1011,7 @@ function kulsoFalRetegek(falak: Fal[], fodemek: Fodem[], nyilasokRef: Nyilas[], 
       f.hossz = sz(f.hossz + ea + eb, 3);
       f.vastag = sz(v.T, 3); if (f.mag !== undefined) f.mag = Math.max(f.mag, sz(v.T, 3));
     }
-    f.retegek = v.x.retegek.map((q) => ({ stilus: 0, szin: '', sraff: !q.szigeteles, reteg: q.leiras, vastag: sz(q.vastag, 3) }));
+    f.retegek = v.x.retegek.map((q) => { const a = anyagKepez(q.leiras, Math.round(q.vastag * 100), 'fal').anyagId; return { stilus: 0, szin: '', sraff: !q.szigeteles, reteg: q.leiras, vastag: sz(q.vastag, 3), ...(a ? { anyagId: a } : {}) }; });
     f.retegForras = v.x.kod;
   }
 }
