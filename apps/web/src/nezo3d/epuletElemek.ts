@@ -294,7 +294,7 @@ export function epuletElemek(modell: EpuletModell, opc: EpuletElemOpc = {}): Ele
     const ft = modell.fodemek.find((f) => f.alatt === modell.magasteto!.szint);
     if (ft) (modell.magasteto.lapos ?? []).forEach((p, i) => {
       if (p.length < 3) return;
-      const g2 = new THREE.ExtrudeGeometry(new THREE.Shape(befele(p, 0.1).map(([x, y]) => new THREE.Vector2(x, y))), { depth: ft.vastag, bevelEnabled: false }); g2.rotateX(Math.PI / 2); g2.translate(0, ft.z, 0);
+      const g2 = new THREE.ExtrudeGeometry(new THREE.Shape(befele(p, 0.1).map(([x, y]) => new THREE.Vector2(x, y))), { depth: ft.vastag, bevelEnabled: false }); g2.rotateX(Math.PI / 2); g2.translate(0, ft.z + 0.015, 0); // (a padlásfödém fölött – ne villódzzon vele)
       ki.push({ id: `LAPOS-${i + 1}`, tipus: 'teto', szint: modell.magasteto!.szint, geo: g2, adat: { fajta: 'lapos', id: `LAPOS-${i + 1}`, fodem: ft.id } satisfies EpuletForras });
     });
   }
