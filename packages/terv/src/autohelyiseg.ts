@@ -65,6 +65,26 @@ function meretaranyJelekbol(sz: Szoveg[], utvonalak: Lap['utvonalak']): number |
       jelek.push([(p[i]! + p[i + 2]!) / 2, (p[i + 1]! + p[i + 3]!) / 2]);
     }
   }
+  // a jel a méretvonalon ül: a közepén át tengelyirányú (vízszintes / függőleges) hosszabb vonal fut – a ferde
+  // sraffozás (pl. hőszigetelés X-mintája) rövid vonalai nem ilyenek
+  {
+    const vizsz = new Map<number, [number, number, number][]>(), fugg = new Map<number, [number, number, number][]>();
+    for (const u of utvonalak) {
+      if (u.muvelet === 'fill') continue;
+      for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) {
+        const ax = p[i]!, ay = p[i + 1]!, bx = p[i + 2]!, by = p[i + 3]!;
+        if (Math.abs(ay - by) < 0.2 && Math.abs(bx - ax) >= 6) { const k = Math.round(ay); (vizsz.get(k) ?? vizsz.set(k, []).get(k)!).push([Math.min(ax, bx), Math.max(ax, bx), (ay + by) / 2]); }
+        else if (Math.abs(ax - bx) < 0.2 && Math.abs(by - ay) >= 6) { const k = Math.round(ax); (fugg.get(k) ?? fugg.set(k, []).get(k)!).push([Math.min(ay, by), Math.max(ay, by), (ax + bx) / 2]); }
+      }
+    }
+    const rajta = (m: Map<number, [number, number, number][]>, c: number, t: number) => {
+      for (let k = Math.round(c) - 1; k <= Math.round(c) + 1; k++) for (const [a, b, cc] of m.get(k) ?? []) if (Math.abs(cc - c) <= 0.6 && t >= a - 0.5 && t <= b + 0.5) return true;
+      return false;
+    };
+    const vonalon = jelek.filter(([x, y]) => rajta(vizsz, y, x) || rajta(fugg, x, y));
+    // (csak ha a jelek zöme ilyen – régebbi rajzoknál a méretvonal a jelnél megszakadhat)
+    if (vonalon.length >= 6) jelek.splice(0, jelek.length, ...vonalon);
+  }
   if (jelek.length < 6) return null;
   const aranyok: number[] = [];
   for (const t of sz) {

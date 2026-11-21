@@ -932,7 +932,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   // sraffozott falaknál a nyílások (ablak, ajtó) rajzeleme nem kitöltés – a falsávban lévő réseket zárjuk (≤ 2,7 m)
   const resM = b.resZaras ?? (vekAktiv ? 0 : sraffMod || tintaDb * px * px > 2 ? 2.7 : 0);
   // (sraffozott falnál a nyílások közti falpillér gyakran különálló folt – ott nem kell azonos falhálózat)
-  if (resM) resZar(fal, nyilas, w, h, Math.round(resM / px), Math.round(0.6 / px), sraffMod && !b.resZaras ? new Int32Array(w * h).fill(1) : falKomponensek(fal, w, h), Math.max(2, Math.round(0.25 / px)), Math.round(0.18 / px), Math.round(1.2 / px));
+  if (resM) resZar(fal, nyilas, w, h, Math.round(resM / px), Math.round(0.6 / px), sraffMod && !b.resZaras ? new Int32Array(w * h).fill(1) : falKomponensek(fal, w, h), Math.max(2, Math.round(0.25 / px)), Math.round(0.18 / px), Math.round(1.2 / px), Math.round(1.4 / px), Math.round(0.5 / px));
   // feliratos széles nyílások (kapuk): a felirat 2,5 m-es környezetében az a falirányú rés, amelynek hossza a felirat
   // szélességével egyezik (±25 %) és mindkét végén fal van – a rés falvastagságnyi sávja áthidalódik
   for (const k of b.kapuk ?? []) {
@@ -1347,7 +1347,7 @@ function falKomponensek(fal: Uint8Array, w: number, h: number): Int32Array {
   return komp;
 }
 
-function resZar(fal: Uint8Array, nyilas: Uint8Array, w: number, h: number, maxRes: number, maxSav: number, komp: Int32Array, minFut = 5, fokMin = Infinity, fokRes = 0) {
+function resZar(fal: Uint8Array, nyilas: Uint8Array, w: number, h: number, maxRes: number, maxSav: number, komp: Int32Array, minFut = 5, fokMin = Infinity, fokRes = 0, fesztavMin = Infinity, keresztMin = 1) {
   for (const fuggo of [false, true]) {
     const W = fuggo ? h : w, H = fuggo ? w : h;
     const idx = (a: number, b: number) => (fuggo ? a * w + b : b * w + a);
@@ -1390,7 +1390,20 @@ function resZar(fal: Uint8Array, nyilas: Uint8Array, w: number, h: number, maxRe
         if (db >= 3 && savok[m]![1] - savok[k]![0] >= fokRes) for (let q = k; q <= m; q++) lepcso.add(q);
         k = m;
       }
-      savok.forEach(([b0, b1], k) => { if (!lepcso.has(k)) for (let b = b0; b <= b1; b++) for (let a = k0; a < k1; a++) nyilas[idx(a, b)] = 1; });
+      // helyiség teljes fesztávja: a sáv mellett MINDKÉT oldalon a szabad tér ugyanott kezdődik és végződik, mint a rés
+      // (a sáv csak a szoba egy szelete, amit egy rajzi töréspont – bútor-, szaggatott vonal – határolt el a szomszéd
+      // oszlopoktól), és a rés hosszabb egy átjárónál. Valódi nyílásnál legalább az egyik oldalon a szomszéd helyiség
+      // hossza más (a falon túl), vagy fal van ott (a nyíláskáva).
+      const tol = Math.max(2, Math.round(keresztMin * 0.4));
+      const azonos = (b: number) => {
+        const m = (k0 + k1) >> 1; if (b < 0 || b >= H || fal[idx(m, b)]) return false;
+        let s0 = m; while (s0 > 0 && !fal[idx(s0 - 1, b)]) s0--;
+        let s1 = m; while (s1 < W - 1 && !fal[idx(s1 + 1, b)]) s1++;
+        return Math.abs(s0 - k0) <= tol && Math.abs(s1 + 1 - k1) <= tol;
+      };
+      const oldal = (b: number, irany: number) => { let db = 0; for (let d = 1; d <= keresztMin; d++) if (azonos(b + irany * d)) db++; return db >= 0.6 * keresztMin; };
+      const fesztav = (b0: number, b1: number) => k1 - k0 > fesztavMin && oldal(b0, -1) && oldal(b1, 1);
+      savok.forEach(([b0, b1], k) => { if (!lepcso.has(k) && !fesztav(b0, b1)) for (let b = b0; b <= b1; b++) for (let a = k0; a < k1; a++) nyilas[idx(a, b)] = 1; });
     }
   }
 }

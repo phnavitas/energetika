@@ -616,7 +616,9 @@ export function nyilasokHozzarendel(feliratok0: NyilasFelirat[], r: Raszter, nev
     // átnézve két különböző helyiség – belső ajtó
     // (a felirat a helyiségben áll: a saját helyiségén és a falon túl, legfeljebb 1,6 m-en belül a legközelebbi másik
     // helyiség; előbb a felirattal párhuzamos irányban – a vízszintes felirat függőleges fal ajtaja mellett áll)
-    if (!p && f.vegyesAjto && fx >= 0 && fy >= 0 && fx < r.w && fy < r.h && r.cimke[fy * r.w + fx]! >= 2) {
+    // (ugyanígy a nyílásfolthoz nem köthető ajtófelirat, ha a közelben van nyílásfolt – különben helyiség nélküli belső
+    // ajtó lenne: pl. a lépcsőpihenőről falkáva nélkül nyíló ajtó)
+    if (!p && (f.vegyesAjto || (jeloltek.length && f.pm === null && f.mag >= 1.9)) && fx >= 0 && fy >= 0 && fx < r.w && fy < r.h && r.cimke[fy * r.w + fx]! >= 2) {
       const sajat = r.cimke[fy * r.w + fx]!, maxL2 = Math.round(1.6 / r.px);
       const tengelyek = f.fal === 'f' ? [[[1, 0, 90], [-1, 0, 270]], [[0, -1, 0], [0, 1, 180]]] : [[[0, -1, 0], [0, 1, 180]], [[1, 0, 90], [-1, 0, 270]]];
       for (const iranyok of tengelyek) {

@@ -111,6 +111,18 @@ export function tetoFelulnezet(lap: Lap): TetoFelulnezet | null {
   const csopId = new Map<number, number>(); const csoportok: TetoFelulnezet['csoportok'] = [];
   elemek.forEach((e, i) => { const r = gy(i); let c = csopId.get(r); if (c === undefined) { c = csoportok.length; csopId.set(r, c); csoportok.push({ x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity }); }
     const b = csoportok[c]!; b.x0 = Math.min(b.x0, e.x0, e.x1); b.y0 = Math.min(b.y0, e.y0, e.y1); b.x1 = Math.max(b.x1, e.x0, e.x1); b.y1 = Math.max(b.y1, e.y0, e.y1); });
+  // (a vápák nincsenek a gerinc/élgerinc-hálóban: egy L / T alakú tető két tömege két csoport lenne – a fedésben
+  // átfedő csoportok egy tető; két külön tető élgerinc-befoglalói nem fedik egymást)
+  const cs0 = csoportok.splice(0); const uj = cs0.map((_, i) => i);
+  for (let valt = true; valt;) { valt = false;
+    for (let i = 0; i < cs0.length; i++) for (let j = i + 1; j < cs0.length; j++) {
+      if (uj[i] === uj[j]) continue; const a = cs0[i]!, b = cs0[j]!;
+      if (a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1) { const t = uj[j]!, f = uj[i]!; for (let k = 0; k < uj.length; k++) if (uj[k] === t) uj[k] = f; valt = true; }
+    } }
+  const ujId = new Map<number, number>();
+  cs0.forEach((b, i) => { let c = ujId.get(uj[i]!); if (c === undefined) { c = csoportok.length; ujId.set(uj[i]!, c); csoportok.push({ ...b }); }
+    const t = csoportok[c]!; t.x0 = Math.min(t.x0, b.x0); t.y0 = Math.min(t.y0, b.y0); t.x1 = Math.max(t.x1, b.x1); t.y1 = Math.max(t.y1, b.y1); });
+  for (const [r, c] of csopId) csopId.set(r, ujId.get(uj[c]!)!);
   for (const v of vegek) { const i = elemek.findIndex((e) => Math.hypot(e.x0 - v.hely[0], e.y0 - v.hely[1]) <= tol || Math.hypot(e.x1 - v.hely[0], e.y1 - v.hely[1]) <= tol); v.csoport = i >= 0 ? csopId.get(gy(i))! : -1; }
   const ki = (s: Sz) => [s.x0, s.y0, s.x1, s.y1] as [number, number, number, number];
   const eredm: TetoFelulnezet = { tengely, konty, orom, vegek, csoportok, gerincek: [...gerincek].map(ki), elgerincek: [...elgerincek].map(ki) };
