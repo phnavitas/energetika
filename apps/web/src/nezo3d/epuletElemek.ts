@@ -251,10 +251,20 @@ export function epuletElemek(modell: EpuletModell, opc: EpuletElemOpc = {}): Ele
   for (const k of modell.koszoruk ?? []) for (const id of k.falak) {
     const f = falIx.get(id); if (!f) continue;
     const dx = f.b[0] - f.a[0], dy = f.b[1] - f.a[1], L = Math.hypot(dx, dy); if (L < 0.05) continue;
-    const lyuk = (nyFal.get(id) ?? []).map((n) => ({ t0: n.t - n.szel / 2, t1: n.t + n.szel / 2, z0: f.z0 + n.pm, z1: f.z0 + n.pm + n.mag }));
+    const nyk = nyFal.get(id) ?? [];
+    const lyuk = nyk.map((n) => ({ t0: n.t - n.szel / 2, t1: n.t + n.szel / 2, z0: f.z0 + n.pm, z1: f.z0 + n.pm + n.mag, n }));
     const sav = savDarabok(L, k.zFelso - k.magas, k.zFelso, lyuk);
-    // monolit áthidaló: a nyílás fölött a koszorú a nyílás felső síkjáig jön le (két oldalt 25 cm felfekvéssel)
-    if (k.athidaloMonolit) for (const q of lyuk) { const kz0 = k.zFelso - k.magas; if (q.z1 < kz0 - 0.02 && kz0 - q.z1 < 0.9) sav.push({ t0: Math.max(0, q.t0 - 0.25), t1: Math.min(L, q.t1 + 0.25), z0: q.z1, z1: kz0 }); }
+    // áthidaló: monolitnál a koszorú a nyílás felső síkjáig jön le, előregyártottnál kiváltó a nyílás fölött (két oldalt
+    // 25 cm felfekvéssel) – a nyílás része (rákattintva a nyílás jelölődik ki, ott váltható)
+    const kz0 = k.zFelso - k.magas, w = Math.min(k.szel, f.vastag - 0.04), rot = -Math.atan2(dy, dx);
+    for (const q of lyuk) {
+      if (k.fajta === 'attika' || !(q.z1 < kz0 - 0.02 && kz0 - q.z1 < 0.9)) continue;
+      const t0 = Math.max(0, q.t0 - 0.25), t1 = Math.min(L, q.t1 + 0.25), tm = (t0 + t1) / 2;
+      if (q.n.athidalo === 'monolit') sav.push({ t0, t1, z0: q.z1, z1: kz0 });
+      else if (q.n.athidalo === 'eloregyartott') { const hk = Math.min(0.24, kz0 - q.z1);
+        ki.push({ id: q.n.id, tipus: 'piller', szint: k.szint, szulo: f.id, geo: beeget(new THREE.BoxGeometry(t1 - t0, hk, w), f.a[0] + (dx / L) * tm, q.z1 + hk / 2, f.a[1] + (dy / L) * tm, rot),
+          adat: { fajta: 'nyilas', id: q.n.id, fal: f, ...(q.n.forras ? { forras: q.n.forras } : {}) } satisfies EpuletForras }); }
+    }
     for (const d of sav) {
       const tm = (d.t0 + d.t1) / 2;
       ki.push({ id: k.id, tipus: 'piller', szint: k.szint, geo: beeget(new THREE.BoxGeometry(d.t1 - d.t0, d.z1 - d.z0, Math.min(k.szel, f.vastag - 0.04)),  /* (a falon belül: a homlokzaton ne látsszon vonalként) */ f.a[0] + (dx / L) * tm, (d.z0 + d.z1) / 2, f.a[1] + (dy / L) * tm, -Math.atan2(dy, dx)),

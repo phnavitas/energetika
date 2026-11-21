@@ -56,7 +56,7 @@ export interface Kijeloles { egysegek: Set<string>; kizartH: Set<number>; kat: R
   taMeret?: Record<number, [number, number]>;
   /** Nyílászárók kézzel átírt mérete (al.nyilasok indexe, 10000–19999: al.arvaFeliratok, ≥ 20000: al.modellAjtok – a 3D modellben kijelölve, a listában
    *  átírva): szélesség, magasság, mellvéd (m). */
-  nyMeret?: Record<number, { szel: number; mag: number; pm: number | null }>;
+  nyMeret?: Record<number, { szel: number; mag: number; pm: number | null; athidalo?: 'monolit' | 'eloregyartott' }>;
   /** Kézzel felvett helyiségek (pecsét nélküli zárt terület, pl. lépcső) – a lap újrafelismerésekor magként. */
   plusz?: { x: number; y: number; nev: string }[] }
 
@@ -65,9 +65,11 @@ const nyMeretGy = new WeakMap<AlaprajzFeldolgozas, { kulcs: string; a: AlaprajzF
 export function nyilasMeretAlkalmaz(a: AlaprajzFeldolgozas, m?: Kijeloles['nyMeret']): AlaprajzFeldolgozas {
   if (!m || !Object.keys(m).length) return a;
   const kulcs = JSON.stringify(m), c = nyMeretGy.get(a); if (c?.kulcs === kulcs) return c.a;
-  const ir = (n: TervNyilas, x: { szel: number; mag: number; pm: number | null }): TervNyilas => {
+  const ir = (n: TervNyilas, x: { szel: number; mag: number; pm: number | null; athidalo?: 'monolit' | 'eloregyartott' }): TervNyilas => {
+    // (csak az áthidaló választása: a méret marad a felismert)
+    if (x.szel === n.szel && x.mag === n.mag && x.pm === n.pm && x.athidalo) return { ...n, athidalo: x.athidalo };
     const { mert: _m, ...u } = n; void _m;
-    return { ...u, szel: x.szel, mag: x.mag, pm: x.pm, kezi: true } as TervNyilas;
+    return { ...u, szel: x.szel, mag: x.mag, pm: x.pm, kezi: true, ...(x.athidalo ? { athidalo: x.athidalo } : {}) } as TervNyilas;
   };
   const b: AlaprajzFeldolgozas = { ...a, nyilasok: a.nyilasok.map((n, i) => (m[i] ? ir(n, m[i]!) : n)),
     ...(a.modellAjtok ? { modellAjtok: a.modellAjtok.map((n, j) => (m[20000 + j] ? ir(n, m[20000 + j]!) : n)) } : {}),

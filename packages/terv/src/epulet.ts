@@ -127,6 +127,9 @@ export interface Nyilas {
   pmAlaprajz?: number;
   /** A feliratos méret nem egyezik a homlokzattal (LapBemenet.homElteres): az ott álló keret mérete (m), null: nincs keret. */
   homlokzat?: { szel: number; mag: number } | null;
+  /** Áthidaló a teherhordó falban (koszorús szinten): monolit – a koszorú a nyílás felső síkjáig lejön –, vagy előregyártott
+   *  kiváltó. Alapból a metszet szerint (Koszoru.athidaloMonolit), a felhasználó nyílásonként átírhatja (athidaloKezi). */
+  athidalo?: 'monolit' | 'eloregyartott'; athidaloKezi?: true;
 }
 
 export interface Fodem {
@@ -537,7 +540,7 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
         const nMag = n.mag > 0 ? n.mag : (n.szel >= 1.6 ? 2.4 : 1.5);
         const pmH = L.mellved?.get(n);
         nyilasok.push({ id: `N${++nySzam}`, fal: leg.id, szint: sz0.id, t: sz(leg.t, 2), szel: n.szel, mag: nMag, pm: pmH ?? n.pm ?? (nMag >= 1.9 ? 0 : 0.9), fajta: n.fajta, burok: fal.burok !== null,
-          forras: { lap: L.lap, ny: nyi < nyN ? nyi : 20000 + nyi - nyN }, ...(pmH !== undefined && n.pm !== null ? { pmAlaprajz: n.pm } : {}), ...(L.homElteres?.has(n) ? { homlokzat: L.homElteres.get(n)! } : {}) });
+          forras: { lap: L.lap, ny: nyi < nyN ? nyi : 20000 + nyi - nyN }, ...(n.athidalo ? { athidalo: n.athidalo, athidaloKezi: true as const } : {}), ...(pmH !== undefined && n.pm !== null ? { pmAlaprajz: n.pm } : {}), ...(L.homElteres?.has(n) ? { homlokzat: L.homElteres.get(n)! } : {}) });
       }
       // (teljes modell) a hosszának legalább 70 %-án nyílással áttört külső fal (pl. garázskapu sávja) vastagsága a
       // rajzon nem látszik – a kapukeret / küszöb vonala adja –: a végeihez csatlakozó külső falaké
@@ -609,6 +612,16 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
   if (opt.kulsoFalRetegrend?.length) kulsoFalRetegek(falak, fodemek, nyilasok, opt.kulsoFalRetegrend);
   if (lapok.some((L) => L.kizart)) falOsszefuz(falak, nyilasok, pillerek);
   const koszoruk = opt.metszetElemek?.length ? koszoruKeres(szintek, falak, fodemek, opt.metszetElemek) : [];
+  // áthidalók (Balázs, 2026-11-21: „Koszorú csak akkor jön le ablakig, ha monolit, amúgy elöregyártott kiváltók lesznek …
+  // ablakra kattintva darabonként változtatható”): a koszorús szint teherhordó falainak nyílásai
+  for (const k of koszoruk) {
+    if (k.fajta === 'attika') continue;
+    const fIx = new Map(falak.filter((f) => k.falak.includes(f.id)).map((f) => [f.id, f])), kz0 = k.zFelso - k.magas;
+    for (const n of nyilasok) { const f = fIx.get(n.fal); if (!f || n.fajta === 'falfulke') continue;
+      if (n.athidaloKezi) continue;
+      const top = f.z0 + n.pm + n.mag;
+      n.athidalo = k.athidaloMonolit && kz0 - top > 0.02 && kz0 - top < 0.9 ? 'monolit' : 'eloregyartott'; }
+  }
   for (const fd of fodemek) if (fd.lapos) fd.lapos.attika = sz(koszoruk.filter((k) => k.fajta === 'attika' && k.szint === fd.alatt).reduce((t, k) => t + k.hossz, 0), 2);
   const gerendak = gerendaKeres(lapok, falak, fodemek, koszoruk);
   const magasteto = opt.teto ? magastetoEpit(szintek, fodemek, koszoruk, opt.teto, pillerek) : null;

@@ -37,6 +37,9 @@ export interface TervNyilas {
   csakModell?: boolean;
   /** A méretet a felhasználó írta át (Kijeloles.nyMeret). */
   kezi?: boolean;
+  /** Az áthidaló kézzel választva (a 3D-ben a nyílásra kattintva): monolit (a koszorú a nyílás felső síkjáig lejön) vagy
+   *  előregyártott kiváltó. */
+  athidalo?: 'monolit' | 'eloregyartott';
 }
 
 /** Nyílásméret cm-ben; a „+30” toldás (redőnytok, tokszélesítés) a magasság mellett – a nyílásméret az első szám. */

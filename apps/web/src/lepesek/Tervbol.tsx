@@ -190,6 +190,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   /** A 3D modell méretezése: belső (alap – a fal belső síkjai, belmagasság) vagy külső (a hőszigetelés külső síkja, szintmagasság). */
   // a 3D modellben / a listában / a 2D rajzon kijelölt nyílászáró (lap, al.nyilasok-index)
   const [kivNy, setKivNy] = useState<{ lap: number; ny: number } | null>(null);
+  /** a teljes 3D modell (a kijelölt nyílás áthidalójához – a modell a nézet felett épül) */
+  const epMdRef = useRef<EpuletModell | null>(null);
   const [meretMod, setMeretMod] = useState<'belso' | 'kulso'>(() => { try { return localStorage.getItem('ekm-meretmod') === 'kulso' ? 'kulso' : 'belso'; } catch { return 'belso'; } });
   useEffect(() => { try { localStorage.setItem('ekm-meretmod', meretMod); } catch { /* */ } }, [meretMod]);
   const retegValt = (k: RetegKulcs) => setRetegek((x) => { const y = new Set(x); if (y.has(k)) y.delete(k); else y.add(k); return y; });
@@ -326,7 +328,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const kjMod = (fn: (k: Kijeloles) => Kijeloles) => { if (!al) return; const a = al, i = aIdx; setKijelolesek((m) => ({ ...m, [i]: fn(m[i] ?? alapKijeloles(a)) })); };
   const kjModLap = (i: number, fn: (k: Kijeloles) => Kijeloles) => { const a = elemzesekNyers[i]; if (!a || typeof a === 'string') return; setKijelolesek((m) => ({ ...m, [i]: fn(m[i] ?? alapKijeloles(a)) })); };
   /** Nyílásméret kézi átírása (m); null: vissza a felismertre. */
-  const nyMeretAllit = (lap: number, ny: number, x: { szel: number; mag: number; pm: number | null } | null) => kjModLap(lap, (k) => {
+  const nyMeretAllit = (lap: number, ny: number, x: { szel: number; mag: number; pm: number | null; athidalo?: 'monolit' | 'eloregyartott' } | null) => kjModLap(lap, (k) => {
     const m = { ...(k.nyMeret ?? {}) }; if (x) m[ny] = x; else delete m[ny]; return { ...k, nyMeret: m };
   });
   /** A kijelölt nyílás (az átírt mérettel) és a felismert eredetije. */
@@ -334,7 +336,9 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     if (!kivNy) return null; const a = elemzesek[kivNy.lap], a0 = elemzesekNyers[kivNy.lap]; if (!a || typeof a === 'string' || !a0 || typeof a0 === 'string') return null;
     const vesz = (x: AlaprajzFeldolgozas): TervNyilas | undefined => (kivNy.ny >= 20000 ? x.modellAjtok?.[kivNy.ny - 20000] : kivNy.ny >= 10000 ? x.arvaFeliratok?.[kivNy.ny - 10000] as TervNyilas | undefined : x.nyilasok[kivNy.ny]);
     const n = vesz(a), n0 = vesz(a0);
-    return n && n0 ? { n, n0, kezi: !!kijelolesek[kivNy.lap]?.nyMeret?.[kivNy.ny] } : null;
+    // (az áthidaló a teljes modell szerint – csak a koszorús szint teherhordó falában)
+    const mn = epMdRef.current?.nyilasok.find((q) => q.forras?.lap === kivNy.lap && q.forras?.ny === kivNy.ny);
+    return n && n0 ? { n, n0, kezi: !!kijelolesek[kivNy.lap]?.nyMeret?.[kivNy.ny], ...(mn?.athidalo ? { athidalo: mn.athidalo } : {}) } : null;
   })();
   const setEgysegek = (v: Set<string>) => kjMod((k) => ({ ...k, egysegek: v }));
   const setKizartH = (v: Set<number> | ((e: Set<number>) => Set<number>)) => kjMod((k) => ({ ...k, kizartH: typeof v === 'function' ? v(k.kizartH) : v }));
@@ -610,6 +614,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   // a 3D-ben kijelölt elem (fal, nyílás, tér) – a 2D rajzon kiemelve (alakja a forráslapon)
   const [kivElem, setKivElem] = useState<string | null>(null);
   const epMd = useMemo(() => { if (!nezet3d || modell3d !== 'teljes') return null; try { return epuletModellApp(); } catch { return null; } }, [nezet3d, modell3d, elemzesek, kijelolesek, bm, lapok, modellKezi]); // eslint-disable-line react-hooks/exhaustive-deps
+  epMdRef.current = epMd;
   try { (globalThis as any).__burok3d = () => ({ belso: modellSzintek('belso'), kulso: modellSzintek('kulso') }); } catch { /* */ }
   try { (globalThis as any).__modell3d = () => ({ belso: (() => { const x = modellSzintek('belso'); return x ? modellOsszesites(x, eszakSz) : null; })(), kulso: (() => { const x = modellSzintek('kulso'); return x ? modellOsszesites(x, eszakSz) : null; })() }); } catch { /* */ }
   // az átvételkor ténylegesen használt tetőablakok (homlokzatról azonosítva, ennek híján az alaprajzi feliratokból)
@@ -1976,13 +1981,13 @@ function pecsetAtvesz(q: Projekt, d: PecsetAdat) {
 }
 
 /** A kijelölt nyílászáró méretének kézi átírása (cm-ben): szélesség, magasság, mellvéd – a 3D modell, a 2D rajz és az átvétel is ezt használja. */
-function NyilasMeretSzerk({ adat, allit, bezar, beagyazott }: { adat: { n: TervNyilas; n0: TervNyilas; kezi: boolean }; allit: (x: { szel: number; mag: number; pm: number | null } | null) => void; bezar: () => void; beagyazott?: boolean }) {
+function NyilasMeretSzerk({ adat, allit, bezar, beagyazott }: { adat: { n: TervNyilas; n0: TervNyilas; kezi: boolean; athidalo?: 'monolit' | 'eloregyartott' }; allit: (x: { szel: number; mag: number; pm: number | null; athidalo?: 'monolit' | 'eloregyartott' } | null) => void; bezar: () => void; beagyazott?: boolean }) {
   const { n, n0, kezi } = adat;
   const cm = (v: number) => Math.round(v * 100);
   const mag0 = n.mag > 0 ? n.mag : n.szel >= 1.6 ? 2.4 : 1.5, pm0 = n.pm ?? (mag0 >= 1.9 ? 0 : 0.9);
   const ir = (mezo: 'szel' | 'mag' | 'pm', v: string) => {
     const x = Number(v.replace(',', '.')); if (!Number.isFinite(x) || x < 0 || x > 1200) return;
-    const u = { szel: n.szel, mag: mag0, pm: pm0 as number | null, [mezo]: x / 100 };
+    const u = { szel: n.szel, mag: mag0, pm: pm0 as number | null, ...(n.athidalo ? { athidalo: n.athidalo } : {}), [mezo]: x / 100 };
     if (u.szel < 0.1 || u.mag < 0.1) return;
     allit(u);
   };
@@ -1995,6 +2000,10 @@ function NyilasMeretSzerk({ adat, allit, bezar, beagyazott }: { adat: { n: TervN
       <strong style="font-size:13px">Kijelölt nyílászáró</strong>
       {mezo('Szélesség', n.szel, 'szel')}{mezo('Magasság', mag0, 'mag')}{mezo('Mellvéd', pm0, 'pm')}
       <span class="halkabb" style="font-size:12px">felismert: {cm(n0.szel)} × {n0.mag > 0 ? cm(n0.mag) : '?'} cm{n0.pm !== null ? `, mellvéd ${cm(n0.pm)} cm` : ''}{n0.mert ? ' (felirat nélkül mért)' : ''}</span>
+      {adat.athidalo && <label style="display:inline-flex;gap:4px;align-items:center;font-size:13px" title="Monolit: a koszorú a nyílás felső síkjáig lejön; előregyártott: kiváltó áthidaló (az ELBA ezt hozza létre)">Áthidaló
+        <select value={n.athidalo ?? adat.athidalo} onChange={(e) => allit({ szel: n.szel, mag: n.mag, pm: n.pm, athidalo: (e.target as HTMLSelectElement).value as 'monolit' | 'eloregyartott' })}>
+          <option value="eloregyartott">előregyártott kiváltó</option><option value="monolit">monolit (koszorúval)</option>
+        </select>{!n.athidalo && <span class="halkabb" style="font-size:12px">(a metszet szerint)</span>}</label>}
       {kezi && <button class="gomb halk-gomb semleges" onClick={() => allit(null)}>Vissza a felismertre</button>}
       <button class="gomb halk-gomb semleges" onClick={bezar}>Kijelölés vége</button>
     </div>
