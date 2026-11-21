@@ -351,12 +351,8 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   for (const u of lap.utvonalak) {
     if (u.bbox[2] < x0 || u.bbox[0] > x1 || u.bbox[3] < y0 || u.bbox[1] > y1) continue;
     if (!falKitoltes(u, mPerPt, maxFal) || terepburkolat(u)) continue;
-    // (rétegzett lapon a fal- / válaszfal-fólia fehér kitöltése maga a falmetszet – a falazat mintázat nélkül, fehérrel
-    // kitöltve, fekete körvonallal: Tata-Nyárfa –, nem bútor)
-    if (feher(u.toltoSzin) && !(u.reteg && falFoliaNev(u.reteg))) { feherJeloltek.push(u); continue; }
+    if (feher(u.toltoSzin)) { feherJeloltek.push(u); if (u.reteg && falFoliaNev(u.reteg)) feherFal.push(u); continue; }
     poliRajzol(fal, w, h, u.pontok, tr); stilusRajzol(u, false);
-    // (a fal-fólia fehér falmetszete rétegzett fal: a nyílások közti rövid, sarok menti L alakú darab sem bútor)
-    if (feher(u.toltoSzin)) feherFal.push(u);
     darabok.push(u.bbox);
   }
   if (b.vastagVonalFal) {
@@ -506,7 +502,6 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   const reteg = new Uint8Array(w * h);
   // a sraffozott falréteg rétegzett fal: a nyílások közti rövid falpillér sem „bútor”
   // (anyagStilus: a sraffmező PDF-rétegenként külön anyag – „POROTHERM FAL 30” mag, mintázattal rajzolt hőszigetelés)
-  for (const u of feherFal) poliRajzol(reteg, w, h, u.pontok, tr);
   if (sraffMaszk) { const sid = anyagAzon('sraff', true); const lid = new Map<number, number>();
     for (let i = 0; i < w * h; i++) if (sraffMaszk[i]) { reteg[i] = 1; if (anyagStilus[i]) continue;
       const lb = sraffLab?.lab[i] ?? 0; let id = sid;
@@ -582,6 +577,15 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
     poliRajzol(fal, w, h, u.pontok, tr); stilusRajzol(u, false);
     if (vanSzines) poliRajzol(reteg, w, h, u.pontok, tr);
     darabok.push(u.bbox);
+  }
+  // rétegzett lapon a fal- / válaszfal-fólia fehér kitöltése maga a falmetszet (a falazat mintázat nélkül, fehérrel
+  // kitöltve, fekete körvonallal – Tata-Nyárfa), ha a fenti szabályok ennek zömét nem vették falnak: ilyenkor mind fal,
+  // rétegzett falként (a nyílások közti rövid, sarok menti L alakú darab sem bútor)
+  if (feherFal.length) {
+    const kozepFal = (u: Utvonal) => { const [cx, cy] = tr((u.bbox[0] + u.bbox[2]) / 2, (u.bbox[1] + u.bbox[3]) / 2); const xi = Math.floor(cx), yi = Math.floor(cy); return xi >= 0 && yi >= 0 && xi < w && yi < h && !!fal[yi * w + xi]; };
+    const T = (u: Utvonal) => u.pontok.reduce((t, p) => t + poliTerulet(p), 0);
+    const ossz = feherFal.reduce((t, u) => t + T(u), 0), fal0 = feherFal.filter(kozepFal).reduce((t, u) => t + T(u), 0);
+    if (fal0 < 0.5 * ossz) for (const u of feherFal) { if (kozepFal(u)) continue; poliRajzol(fal, w, h, u.pontok, tr); stilusRajzol(u, false); poliRajzol(reteg, w, h, u.pontok, tr); darabok.push(u.bbox); }
   }
   // apró, elszigetelt kitöltések (bútor, oszlopjel) nem falak: csak a falhálózat nagy összefüggő részei maradnak
   {

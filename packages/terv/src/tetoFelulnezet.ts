@@ -54,7 +54,7 @@ export function tetoFelulnezet(lap: Lap): TetoFelulnezet | null {
       const p = kozos(s, t, tol); if (p) csucsok.push({ p, a: s, b: t });
     }
   }
-  if (!csucsok.length) return null;
+  if (!csucsok.length) return nyeregteto(sz);
   // a főirány: a V-párok szögfelezője (mod 90) – a leggyakoribb
   const hist = new Map<number, number>();
   for (const c of csucsok) { const t = Math.round((((c.a.a + 45) % 90) + 90) % 90); hist.set(t % 90, (hist.get(t % 90) ?? 0) + Math.min(c.a.L, c.b.L)); }
@@ -98,7 +98,7 @@ export function tetoFelulnezet(lap: Lap): TetoFelulnezet | null {
     const hossz = sz.filter(tengelyMenti).reduce((t, x) => t + x.L, 0);
     if (konty && (!leg || hossz > leg.hossz)) leg = { tengely, konty, orom, gerincek, elgerincek, hossz, vegek };
   }
-  if (!leg) return null;
+  if (!leg) return nyeregteto(sz);
   const { tengely, konty, orom, gerincek, elgerincek, vegek } = leg;
   // összefüggő tetők: a gerincek és élgerincek közös végpontjai szerint (union–find)
   const elemek = [...gerincek, ...elgerincek], apa = elemek.map((_, i) => i);
@@ -113,5 +113,64 @@ export function tetoFelulnezet(lap: Lap): TetoFelulnezet | null {
     const b = csoportok[c]!; b.x0 = Math.min(b.x0, e.x0, e.x1); b.y0 = Math.min(b.y0, e.y0, e.y1); b.x1 = Math.max(b.x1, e.x0, e.x1); b.y1 = Math.max(b.y1, e.y0, e.y1); });
   for (const v of vegek) { const i = elemek.findIndex((e) => Math.hypot(e.x0 - v.hely[0], e.y0 - v.hely[1]) <= tol || Math.hypot(e.x1 - v.hely[0], e.y1 - v.hely[1]) <= tol); v.csoport = i >= 0 ? csopId.get(gy(i))! : -1; }
   const ki = (s: Sz) => [s.x0, s.y0, s.x1, s.y1] as [number, number, number, number];
-  return { tengely, konty, orom, vegek, csoportok, gerincek: [...gerincek].map(ki), elgerincek: [...elgerincek].map(ki) };
+  const eredm: TetoFelulnezet = { tengely, konty, orom, vegek, csoportok, gerincek: [...gerincek].map(ki), elgerincek: [...elgerincek].map(ki) };
+  // (a kontyos tetők mellett a lapon lévő nyeregtetők is – a kontyos csoportokkal nem átfedők)
+  const ny = nyeregteto(sz);
+  if (ny) for (const [k, b] of ny.csoportok.entries()) {
+    if (csoportok.some((c) => c.x0 < b.x1 && b.x0 < c.x1 && c.y0 < b.y1 && b.y0 < c.y1)) continue;
+    const id = eredm.csoportok.length; eredm.csoportok.push(b);
+    for (const v of ny.vegek) if (v.csoport === k) { eredm.vegek.push({ ...v, csoport: id }); eredm.orom++; }
+    eredm.gerincek.push(...ny.gerincek.filter((g) => Math.min(g[0], g[2]) >= b.x0 - 1 && Math.max(g[0], g[2]) <= b.x1 + 1 && Math.min(g[1], g[3]) >= b.y0 - 1 && Math.max(g[1], g[3]) <= b.y1 + 1));
+  }
+  return eredm;
+}
+
+/**
+ * Nyeregtető a felülnézetben (élgerinc nélkül): a gerinc két, vele párhuzamos, azonos hosszú ereszvonal között, tőlük
+ * egyenlő (± 6 %) távolságra fut, és a két vége a gerincre merőleges oromszegélyen van – a két ereszvonal végeit is ez
+ * köti össze (zárt téglalap a gerinccel kettéosztva). A gerinc két vége oromzat. (Tata-Nyárfa: a helyszínrajzon a
+ * tetősíkok sraffozásával, élgerinc nélkül.) Párhuzamos társnak a gerinc teljes hosszát (≥ 90 %) kísérő, legkülső
+ * vonal számít – a cserépsorok (a gerinccel párhuzamos sraffozás) a kettő között vannak.
+ */
+function nyeregteto(sz: Sz[]): TetoFelulnezet | null {
+  const tol = 2;
+  const jel = sz.filter((s) => s.L >= 30);
+  const talalt: { g: Sz; b: { x0: number; y0: number; x1: number; y1: number }; a: number }[] = [];
+  for (const g of jel) {
+    const ux = (g.x1 - g.x0) / g.L, uy = (g.y1 - g.y0) / g.L, nx = -uy, ny = ux;
+    const dPk: number[] = [], dNk: number[] = [];
+    for (const q of jel) {
+      if (q === g || Math.abs(((q.a - g.a) % 180 + 180 + 90) % 180 - 90) > 2) continue;
+      const t0 = (q.x0 - g.x0) * ux + (q.y0 - g.y0) * uy, t1 = (q.x1 - g.x0) * ux + (q.y1 - g.y0) * uy;
+      const lo = Math.min(t0, t1), hi = Math.max(t0, t1);
+      if (Math.abs(lo) > 0.06 * g.L || Math.abs(hi - g.L) > 0.06 * g.L) continue;
+      const d = ((q.x0 + q.x1) / 2 - g.x0) * nx + ((q.y0 + q.y1) / 2 - g.y0) * ny;
+      if (d > 5) dPk.push(d); else if (d < -5) dNk.push(-d);
+    }
+    // (a két oldal egyenlő távolságú párjai közül a legkülső – az eresz; a kerítés, telekhatár egyik oldalon sem tükrös)
+    let dP = 0, dN = 0;
+    for (const p of dPk) for (const q of dNk) if (Math.abs(p - q) <= 0.06 * Math.max(p, q) && Math.min(p, q) > Math.min(dP, dN)) { dP = p; dN = q; }
+    if (!(dP > 5 && dN > 5)) continue;
+    const W = dP + dN; if (g.L < 0.3 * W || g.L > 5 * W) continue;
+    // a gerinc két végén merőleges oromszegély, a két ereszvonalig
+    // (az oromszegély a gerincnél két darabban is lehet: a darabok uniója fedje az eresztől ereszig tartó szakaszt)
+    const veg = (px: number, py: number) => {
+      const iv = sz.filter((q) => Math.abs(((q.a - g.a) % 180 + 180) % 180 - 90) <= 2 && Math.abs((px - q.x0) * (q.y1 - q.y0) - (py - q.y0) * (q.x1 - q.x0)) / q.L <= tol)
+        .map((q) => { const t0 = (q.x0 - px) * nx + (q.y0 - py) * ny, t1 = (q.x1 - px) * nx + (q.y1 - py) * ny; return [Math.min(t0, t1), Math.max(t0, t1)] as [number, number]; }).sort((p, q) => p[0] - q[0]);
+      let v = -dN + 0.1 * W; for (const [lo, hi] of iv) { if (lo > v + tol) break; v = Math.max(v, hi); }
+      return v >= dP - 0.1 * W && iv.some(([lo]) => lo <= -dN + 0.1 * W); };
+    if (!veg(g.x0, g.y0) || !veg(g.x1, g.y1)) continue;
+    const P = [[g.x0 + nx * dP, g.y0 + ny * dP], [g.x1 + nx * dP, g.y1 + ny * dP], [g.x0 - nx * dN, g.y0 - ny * dN], [g.x1 - nx * dN, g.y1 - ny * dN]];
+    const b = { x0: Math.min(...P.map((q) => q[0]!)), y0: Math.min(...P.map((q) => q[1]!)), x1: Math.max(...P.map((q) => q[0]!)), y1: Math.max(...P.map((q) => q[1]!)) };
+    // (ugyanaz a tető – más gerincjelölttel – csak egyszer)
+    if (talalt.some((t) => Math.abs(t.b.x0 - b.x0) < 3 && Math.abs(t.b.y0 - b.y0) < 3 && Math.abs(t.b.x1 - b.x1) < 3 && Math.abs(t.b.y1 - b.y1) < 3)) continue;
+    talalt.push({ g, b, a: g.a });
+  }
+  if (!talalt.length) return null;
+  const vegek: TetoFelulnezet['vegek'] = [];
+  talalt.forEach(({ g }, i) => {
+    const ir = ((Math.atan2(g.y1 - g.y0, g.x1 - g.x0) * 180) / Math.PI + 360) % 360;
+    vegek.push({ hely: [g.x1, g.y1], irany: ir, fajta: 'orom', csoport: i }, { hely: [g.x0, g.y0], irany: (ir + 180) % 360, fajta: 'orom', csoport: i });
+  });
+  return { tengely: Math.round(((talalt[0]!.a % 90) + 90) % 90), konty: 0, orom: vegek.length, vegek, csoportok: talalt.map((t) => t.b), gerincek: talalt.map(({ g }) => [g.x0, g.y0, g.x1, g.y1] as [number, number, number, number]), elgerincek: [] };
 }
