@@ -187,3 +187,81 @@ function nyeregteto(sz: Sz[]): TetoFelulnezet | null {
   });
   return { tengely: Math.round(((talalt[0]!.a % 90) + 90) % 90), konty: 0, orom: vegek.length, vegek, csoportok: talalt.map((t) => t.b), gerincek: talalt.map(({ g }) => [g.x0, g.y0, g.x1, g.y1] as [number, number, number, number]), elgerincek: [] };
 }
+
+
+/**
+ * A tető ereszvonala (alaprajzi körvonala) a felülnézetből, lapkoordinátában (pt): a tetőfelület a felülnézeten sűrűn
+ * vonalazott (héjazat-sraffozás, gerinc, élgerinc, vápa) – a csoport befoglalója (+2 m) körüli vonalakat rácsra rajzolva
+ * (5 cm-es cella, a tető főirányába forgatva) és morfológiai zárással (r = 0,5 m) tömbbé olvasztva a tetőváz pontjait
+ * tartalmazó összefüggő tömb a tető; a belső lyukak kitöltve, a 0,3 m-nél kisebb lépcsők elhagyva. Null, ha a tömb a
+ * rács széléig ér, vagy a befoglaló 1,6-szorosánál nagyobb.
+ */
+export function tetoKontur(lap: Lap, b: { x0: number; y0: number; x1: number; y1: number }, vaz: [number, number, number, number][], mPt: number, tengely: number, zarM = 0.5): [number, number][] | null {
+  if (!vaz.length) return null;
+  const mg = 2 / mPt, cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
+  const t = (-tengely * Math.PI) / 180, c = Math.cos(t), s = Math.sin(t);
+  const forgat = (x: number, y: number): [number, number] => [(x - cx) * c - (y - cy) * s, (x - cx) * s + (y - cy) * c];
+  const R = Math.hypot(b.x1 - b.x0, b.y1 - b.y0) / 2 + mg;
+  const px = 0.05 / mPt, w = Math.ceil((2 * R) / px), h = w;
+  if (w > 4000) return null;
+  const vonal = new Uint8Array(w * h);
+  const rajz = (ax: number, ay: number, bx: number, by: number) => { const [x0, y0] = forgat(ax, ay), [x1, y1] = forgat(bx, by); const n = Math.max(1, Math.ceil((Math.hypot(x1 - x0, y1 - y0) / px) * 2));
+    for (let k = 0; k <= n; k++) { const x = Math.floor((x0 + ((x1 - x0) * k) / n + R) / px), y = Math.floor((y0 + ((y1 - y0) * k) / n + R) / px); if (x >= 0 && y >= 0 && x < w && y < h) vonal[y * w + x] = 1; } };
+  for (const u of lap.utvonalak) {
+    if (u.muvelet === 'none' || u.bbox[2] < cx - R || u.bbox[0] > cx + R || u.bbox[3] < cy - R || u.bbox[1] > cy + R) continue;
+    u.pontok.forEach((p, j) => { const n = p.length / 2; for (let i = 0; i + 1 < n; i++) rajz(p[2 * i]!, p[2 * i + 1]!, p[2 * i + 2]!, p[2 * i + 3]!);
+      if ((u.zart[j] || u.muvelet !== 'stroke') && n >= 3) rajz(p[2 * n - 2]!, p[2 * n - 1]!, p[0]!, p[1]!); });
+  }
+  // zárás: tágítás, majd szűkítés r-rel (sorok, oszlopok mentén – négyzetes elem)
+  const r = Math.max(1, Math.round(zarM / 0.05));
+  const tagit1 = (m: Uint8Array, vizsz: boolean, ertek: number) => { const o = new Uint8Array(w * h);
+    for (let a = 0; a < (vizsz ? h : w); a++) { let utolso = -1e9; for (let q = 0; q < (vizsz ? w : h); q++) { const i = vizsz ? a * w + q : q * w + a; if (m[i] === ertek) utolso = q; if (q - utolso <= r) o[i] = 1; }
+      utolso = 1e9; for (let q = (vizsz ? w : h) - 1; q >= 0; q--) { const i = vizsz ? a * w + q : q * w + a; if (m[i] === ertek) utolso = q; if (utolso - q <= r) o[i] = 1; } } return o; };
+  const tag = tagit1(tagit1(vonal, true, 1), false, 1);
+  // szűkítés = a komplemens tágítása
+  const kom = tagit1(tagit1(tag, true, 0), false, 1);
+  const tomb = new Uint8Array(w * h); for (let i = 0; i < w * h; i++) tomb[i] = tag[i] && !kom[i] ? 1 : 0;
+  // a tetőváz pontjait tartalmazó tömb(ök)
+  const be = new Uint8Array(w * h); const sor: number[] = [];
+  for (const [a, b2, c2, d] of vaz) { const [x0, y0] = forgat(a, b2), [x1, y1] = forgat(c2, d);
+    for (let k = 0; k <= 20; k++) { const x = Math.floor((x0 + ((x1 - x0) * k) / 20 + R) / px), y = Math.floor((y0 + ((y1 - y0) * k) / 20 + R) / px); if (x < 0 || y < 0 || x >= w || y >= h) continue; const i = y * w + x; if (tomb[i] && !be[i]) { be[i] = 1; sor.push(i); } } }
+  let szel = false;
+  for (let k = 0; k < sor.length; k++) { const i = sor[k]!, x = i % w; if (x === 0 || x === w - 1 || i < w || i >= w * (h - 1)) { szel = true; break; }
+    for (const j of [i - 1, i + 1, i - w, i + w]) if (tomb[j] && !be[j]) { be[j] = 1; sor.push(j); } }
+  if ((globalThis as any).TKDBG) { const buf = new Uint8Array(w * h * 3).fill(255); for (let i = 0; i < w * h; i++) { if (tomb[i]) { buf[i * 3] = 200; buf[i * 3 + 1] = 220; buf[i * 3 + 2] = 255; } if (be[i]) { buf[i * 3] = 250; buf[i * 3 + 1] = 200; buf[i * 3 + 2] = 150; } if (vonal[i]) { buf[i * 3] = 0; buf[i * 3 + 1] = 0; buf[i * 3 + 2] = 0; } } (globalThis as any).TKDBG(w, h, buf); }
+  if (szel) return null;
+  if (sor.length > 1.6 * ((b.x1 - b.x0 + 2 / mPt) * (b.y1 - b.y0 + 2 / mPt)) / (px * px)) return null;
+  // lyukak kitöltése: a kívülről el nem érhető nem-tető cellák is a tető
+  const kint = new Uint8Array(w * h); const s2: number[] = [];
+  for (let x = 0; x < w; x++) for (const y of [0, h - 1]) { const i = y * w + x; if (!be[i] && !kint[i]) { kint[i] = 1; s2.push(i); } }
+  for (let y = 0; y < h; y++) for (const x of [0, w - 1]) { const i = y * w + x; if (!be[i] && !kint[i]) { kint[i] = 1; s2.push(i); } }
+  for (let k = 0; k < s2.length; k++) { const i = s2[k]!, x = i % w; for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i - w, i + w]) if (j >= 0 && j < w * h && !be[j] && !kint[j]) { kint[j] = 1; s2.push(j); } }
+  for (let i = 0; i < w * h; i++) be[i] = kint[i] ? 0 : 1;
+  if ((globalThis as any).TKDBG) { const buf = new Uint8Array(w * h * 3).fill(255); for (let i = 0; i < w * h; i++) { if (be[i]) { buf[i * 3] = 250; buf[i * 3 + 1] = 200; buf[i * 3 + 2] = 150; } if (vonal[i]) { buf[i * 3] = 0; buf[i * 3 + 1] = 0; buf[i * 3 + 2] = 0; } } (globalThis as any).TKDBG(w, h, buf); }
+  // körvonal: a cellahatárok élei hurokba fűzve – a leghosszabb hurok
+  const el = new Map<string, [number, number]>();
+  const B = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h && !!be[y * w + x];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { if (!be[y * w + x]) continue;
+    if (!B(x, y - 1)) el.set(`${x},${y}`, [x + 1, y]); if (!B(x + 1, y)) el.set(`${x + 1},${y}`, [x + 1, y + 1]);
+    if (!B(x, y + 1)) el.set(`${x + 1},${y + 1}`, [x, y + 1]); if (!B(x - 1, y)) el.set(`${x},${y + 1}`, [x, y]); }
+  let leg: [number, number][] = []; const latott = new Set<string>();
+  for (const k of el.keys()) { if (latott.has(k)) continue; const hurok: [number, number][] = []; let p = k;
+    while (!latott.has(p)) { latott.add(p); const [x, y] = p.split(',').map(Number) as [number, number]; hurok.push([x, y]); const q = el.get(p); if (!q) break; p = `${q[0]},${q[1]}`; }
+    if (hurok.length > leg.length) leg = hurok; }
+  if (leg.length < 4) return null;
+  const egyenes = (q: [number, number][]) => q.filter((p, i) => { const a = q[(i + q.length - 1) % q.length]!, d = q[(i + 1) % q.length]!; return Math.abs((p[0] - a[0]) * (d[1] - p[1]) - (p[1] - a[1]) * (d[0] - p[0])) > 1e-9; });
+  let pts = egyenes(leg.map(([x, y]) => [x * px - R, y * px - R] as [number, number]));
+  const min = 0.3 / mPt;
+  for (let kor = 0; kor < 400 && pts.length > 4; kor++) {
+    const n = pts.length; let i = -1;
+    for (let k = 0; k < n; k++) { const a = pts[k]!, d = pts[(k + 1) % n]!; if (Math.hypot(d[0] - a[0], d[1] - a[1]) < min) { i = k; break; } }
+    if (i < 0) break;
+    const a = pts[(i + n - 1) % n]!, p = pts[i]!, q = pts[(i + 1) % n]!, d = pts[(i + 2) % n]!;
+    const vizsz = Math.abs(q[1] - p[1]) < 1e-9, la = Math.hypot(p[0] - a[0], p[1] - a[1]), ld = Math.hypot(d[0] - q[0], d[1] - q[1]);
+    if (vizsz) { const x = la >= ld ? p[0] : q[0]; if (la >= ld) d[0] = x; else a[0] = x; p[0] = x; q[0] = x; }
+    else { const y = la >= ld ? p[1] : q[1]; if (la >= ld) d[1] = y; else a[1] = y; p[1] = y; q[1] = y; }
+    pts = egyenes(pts.filter((rr, k) => { const e = pts[(k + n - 1) % n]!; return Math.hypot(rr[0] - e[0], rr[1] - e[1]) > 1e-9; }));
+  }
+  const vissza = ([x, y]: [number, number]): [number, number] => [cx + x * c + y * s, cy - x * s + y * c];
+  return pts.map(vissza);
+}
