@@ -99,6 +99,10 @@ A régi ELBA PDF-rendszer a saját primitívjeire visszamutatva jelölt ki; az �
   (legbelső) elöl – a rajzi kattintás → 3D kijelölés.
 - `modell.lapok[]` (`LapKapcsolat`): `{ lap, szintek, mPerPt, o }` – a modell → lap leképezés:
   `pt = (x / mPerPt + o[0], y / mPerPt + o[1])` (bármely modellpontra, pl. a 3D-ben kattintott helyre).
+- **Kész lapnézet:** `lapNezo(hely, eredmeny, { onKijeloles(id, alak) {…} })` (a csomag exportja,
+  `apps/web/src/terv/elbaNezo.ts`): a lap képe az elemek alakjával (fal piros, nyílás kék, helyiség zöld), lapválasztó,
+  görgős nagyítás, húzás, dupla kattintás = teljes lap; kattintásra kijelöl (`onKijeloles` → a 3D / lista felé), és
+  `nezo.kijelol(id)`-vel kívülről kiemel (a lapjára ugrik). Függőség nélküli DOM + SVG.
 - Javaslat az ELBA-oldalon: a BIM-nézet (3D) mellett a lapkép, rajta az `elemAlakok`; kattintás bármelyiken →
   ugyanaz az `id` mindkettőn kiemelve, és a párosítófában / listában is (mint az IFC-nél az elem GUID-ja).
 

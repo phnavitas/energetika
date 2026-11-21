@@ -18,6 +18,7 @@ export type { EpuletModell } from '@terv/epulet';
 export type { ZartsagHiba } from '@terv/zartsag';
 export type { ElemAlak } from '@terv/forrasAlak';
 export { elemekPontban } from '@terv/forrasAlak';
+export { lapNezo, type LapNezo, type LapNezoBemenet } from './elbaNezo';
 
 export interface PdfbolEpuletEredmeny {
   modell: EpuletModell | null;
