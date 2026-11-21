@@ -5,6 +5,10 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { falFelulet, type EpuletModell, type Fal, type BurokSzerep } from '@terv/epulet';
 import { tetoGeo } from '@terv/teto';
 import type { ZartsagHiba } from '@terv/zartsag';
@@ -20,6 +24,15 @@ const ANYAG = {
   ter: 0xdcd5c6, terFutetlen: 0xd3d6d9, terKulter: 0xd6dccb, beton: 0xbcc0c5, keret: 0x30343a, uveg: 0x22262b, kij: 0xf97316,
 };
 const EL_SZIN = 0x3c3c3c;
+/** Típusonként állítható megjelenés (szín, átlátszóság) – a böngészőben megjegyezve. */
+const TIPUSOK = [
+  ['fal', 'Fal', ANYAG.fal], ['teto', 'Tető', ANYAG.teto], ['nyilaszaro', 'Nyílászáró keret', ANYAG.keret], ['uveg', 'Üveg / ajtólap', ANYAG.uveg],
+  ['fodem', 'Födém', ANYAG.fodem], ['padlo', 'Talajon fekvő lemez', ANYAG.padlo], ['alapozas', 'Alapozás', ANYAG.alapozas], ['piller', 'Pillér, koszorú', ANYAG.beton], ['ter', 'Helyiség padlója', ANYAG.ter],
+] as const;
+type Tipus = typeof TIPUSOK[number][0];
+type TipusBeall = Partial<Record<Tipus, { szin?: number; atl?: number }>>;
+const BEALL_KULCS = 'ekm-3d-tipus-v1';
+const beallOlvas = (): TipusBeall => { try { return JSON.parse(localStorage.getItem(BEALL_KULCS) ?? '{}') as TipusBeall; } catch { return {}; } };
 const burokSzin = (b: BurokSzerep) => (b === 'kulso' ? SZIN.burok : b === 'futetlen' ? SZIN.futetlen : b === 'szomszed' ? SZIN.szomszed : b === 'talaj' ? SZIN.talaj : null);
 
 /** Fal hasábjai a nyílások kivágásával (a fal hossza mentén szakaszokra bontva). */
@@ -49,7 +62,7 @@ export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, onElem, hiba
   kivNy?: NyilasForras | null; onNyilas?: (f: NyilasForras | null) => void }) {
   const hely = useRef<HTMLDivElement>(null);
   // a nézőpont megmarad az újrarajzoláskor (kijelölés, méretmódosítás)
-  const nezo = useRef<{ p: THREE.Vector3; t: THREE.Vector3 } | null>(null);
+  const nezo = useRef<{ p: THREE.Vector3; t: THREE.Vector3; z?: number } | null>(null);
   const [csakBurok, setCsakBurok] = useState(false);
   const [szintLathato, setSzintLathato] = useState<Record<string, boolean>>({});
   const [kijelolt, setKijelolt] = useState<string | null>(null);
@@ -58,6 +71,13 @@ export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, onElem, hiba
   const [rontgen, setRontgen] = useState(false);
   const [atl, setAtl] = useState(0.18);
   const [csakKij, setCsakKij] = useState(false);
+  /** Vízszintes metszés (a vágósík magassága, m; null: nincs), környezeti árnyékolás, párhuzamos vetítés, típusonkénti megjelenés. */
+  const [metsz, setMetsz] = useState<number | null>(null);
+  const [ao, setAo] = useState(true);
+  const [orto, setOrto] = useState(false);
+  const [tipusB, setTipusB] = useState<TipusBeall>(() => beallOlvas());
+  const tipusAllit = (t: Tipus, v: { szin?: number; atl?: number } | null) => setTipusB((x) => { const u = { ...x }; if (v === null) delete u[t]; else u[t] = { ...u[t], ...v }; try { localStorage.setItem(BEALL_KULCS, JSON.stringify(u)); } catch { /* */ } return u; });
+  const zTart = useMemo(() => { const z0 = Math.min(...modell.szintek.map((q) => q.z0)), z1 = Math.max(...modell.szintek.map((q) => q.z0 + q.h)); return [z0 - 1, z1 + 4] as const; }, [modell]);
   const lathato = (sz: string) => szintLathato[sz] !== false;
 
   // összesítés: falfelületek hőburok-szerep szerint, terek kategóriánként
@@ -84,17 +104,25 @@ export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, onElem, hiba
     const grp = new THREE.Group(); scene.add(grp);
     const nyFal = new Map<string, typeof modell.nyilasok>(); for (const n of modell.nyilasok) nyFal.set(n.fal, [...(nyFal.get(n.fal) ?? []), n]);
     const anyagSz = szinezes === 'anyag';
+    const alapSz = Object.fromEntries(TIPUSOK.map(([k, , c]) => [k, c])) as Record<Tipus, number>;
+    /** a típus színe és átlátszósága (anyag szerinti színezésnél a beállítás szerint) */
+    const tsz = (t: Tipus) => tipusB[t]?.szin ?? alapSz[t];
+    const tat = (t: Tipus, alap = 1) => (anyagSz ? tipusB[t]?.atl ?? alap : alap);
+    // globális vágósík: az árnyékolás (GTAO) saját mélység/normál anyagaira is hat
+    const vag: THREE.Plane[] = [];
+    const vagottAlatt = (x: THREE.Intersection) => metsz === null || x.point.y <= metsz + 1e-3; // a levágott rész nem kattintható
+    renderer.clippingPlanes = metsz !== null ? [new THREE.Plane(new THREE.Vector3(0, -1, 0), metsz)] : [];
     const anyag = new Map<string, THREE.Material>();
     // (röntgenben minden áttetsző – a fokot a csúszka adja –, a kijelölt tömör és mindenen átlátszik)
     const mat = (c: number, atl0 = 1, kij = false) => {
       const o = kij ? 1 : rontgen ? Math.min(atl0, atl) : anyagSz ? (atl0 < 1 ? atl0 : 1) : atl0;
       const k = `${c}|${o.toFixed(2)}|${kij ? 1 : 0}`; let m = anyag.get(k) as THREE.MeshLambertMaterial | undefined;
-      if (!m) { m = new THREE.MeshLambertMaterial({ color: c, transparent: o < 1, opacity: o, side: THREE.DoubleSide, depthWrite: o >= 1,
+      if (!m) { m = new THREE.MeshLambertMaterial({ color: c, transparent: o < 1, opacity: o, side: THREE.DoubleSide, depthWrite: o >= 1, clippingPlanes: vag,
         polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1, ...(kij && rontgen ? { depthTest: false } : {}) }); anyag.set(k, m); }
       return m;
     };
-    const elMat = new THREE.LineBasicMaterial({ color: EL_SZIN, transparent: true, opacity: rontgen ? 0.22 : 0.5 });
-    const elMatKij = new THREE.LineBasicMaterial({ color: 0xc2410c, transparent: true, opacity: 0.95, depthTest: !rontgen });
+    const elMat = new THREE.LineBasicMaterial({ color: EL_SZIN, transparent: true, opacity: rontgen ? 0.22 : 0.5, clippingPlanes: vag });
+    const elMatKij = new THREE.LineBasicMaterial({ color: 0xc2410c, transparent: true, opacity: 0.95, depthTest: !rontgen, clippingPlanes: vag });
     /** él-kontúr a testre (a szomszédos elemek határa látszik) */
     const elek = (m: THREE.Mesh, kij = false) => { const e = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry, 25), kij ? elMatKij : elMat); if (kij) e.renderOrder = 11; m.add(e); if (kij && rontgen) m.renderOrder = 10; return m; };
     /** csak a kijelölt elem (és a hozzá tartozó nyílások) látszik */
@@ -107,7 +135,7 @@ export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, onElem, hiba
       if (csakBurok && bsz === null) continue;
       const dx = f.b[0] - f.a[0], dy = f.b[1] - f.a[1], L = Math.hypot(dx, dy); if (L < 0.05) continue;
       const fk = kijelolt === f.id;
-      const szin = fk ? ANYAG.kij : anyagSz ? (f.kulso ? ANYAG.falKulso : ANYAG.fal) : bsz ?? (f.kulso ? SZIN.falKulso : SZIN.fal);
+      const szin = fk ? ANYAG.kij : anyagSz ? tsz('fal') : bsz ?? (f.kulso ? SZIN.falKulso : SZIN.fal), falAtl = fk ? 1 : tat('fal');
       const ny = (nyFal.get(f.id) ?? []);
       const falRejt = rejt(f.id) && !ny.some((n) => n.id === kijelolt);
       if (f.profil && f.profil.length >= 2) {
@@ -116,13 +144,13 @@ export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, onElem, hiba
         const sh = new THREE.Shape([new THREE.Vector2(0, 0), new THREE.Vector2(L, 0), ...f.profil.slice().reverse().map((q) => new THREE.Vector2(q.t * L, q.z + off))]);
         for (const n of ny) { const t0 = Math.max(0.01, n.t - n.szel / 2), t1 = Math.min(L - 0.01, n.t + n.szel / 2), z0 = Math.max(0.01, n.pm), z1 = n.pm + n.mag; if (t1 > t0 + 0.05 && z1 > z0 + 0.05) sh.holes.push(new THREE.Path([new THREE.Vector2(t0, z0), new THREE.Vector2(t1, z0), new THREE.Vector2(t1, z1), new THREE.Vector2(t0, z1)])); }
         const g = new THREE.ExtrudeGeometry(sh, { depth: f.vastag, bevelEnabled: false }); g.translate(0, 0, -f.vastag / 2);
-        if (!falRejt) { const m = new THREE.Mesh(g, mat(szin, 1, fk));
+        if (!falRejt) { const m = new THREE.Mesh(g, mat(szin, falAtl, fk));
         m.position.set(f.a[0], f.z0, f.a[1]); m.rotation.y = -Math.atan2(dy, dx);
         m.userData = { id: f.id }; grp.add(elek(m, fk)); kattinthato.push(m); }
       } else if (!falRejt)
       for (const d of falDarabok(f, ny)) {
         const g = new THREE.BoxGeometry(d.t1 - d.t0, d.z1 - d.z0, f.vastag);
-        const m = new THREE.Mesh(g, mat(szin, 1, fk));
+        const m = new THREE.Mesh(g, mat(szin, falAtl, fk));
         const tm = (d.t0 + d.t1) / 2;
         m.position.set(f.a[0] + (dx / L) * tm, f.z0 + (d.z0 + d.z1) / 2, f.a[1] + (dy / L) * tm);
         m.rotation.y = -Math.atan2(dy, dx);
@@ -135,10 +163,10 @@ export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, onElem, hiba
         const ny0 = new THREE.Group(); ny0.position.set(f.a[0] + (dx / L) * n.t, f.z0 + n.pm + n.mag / 2, f.a[1] + (dy / L) * n.t); ny0.rotation.y = -Math.atan2(dy, dx);
         const tok = Math.min(0.07, n.szel / 6, n.mag / 6), mely = Math.max(0.06, Math.min(0.12, f.vastag * 0.4));
         const resz = (sx: number, sy: number, sz0: number, x: number, y: number, c: number, o = 1) => { const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz0), mat(kiv ? ANYAG.kij : c, o, kiv)); m.position.set(x, y, 0); m.userData = { id: n.id, ny: n.forras }; ny0.add(elek(m, kiv)); kattinthato.push(m); };
-        const kc = anyagSz ? ANYAG.keret : SZIN.nyilas;
-        resz(n.szel, tok, mely, 0, n.mag / 2 - tok / 2, kc); resz(n.szel, tok, mely, 0, -n.mag / 2 + tok / 2, kc);
-        resz(tok, n.mag - 2 * tok, mely, -n.szel / 2 + tok / 2, 0, kc); resz(tok, n.mag - 2 * tok, mely, n.szel / 2 - tok / 2, 0, kc);
-        resz(n.szel - 2 * tok, n.mag - 2 * tok, 0.03, 0, 0, anyagSz ? ANYAG.uveg : SZIN.nyilas, anyagSz ? 0.92 : 0.55);
+        const kc = anyagSz ? tsz('nyilaszaro') : SZIN.nyilas, ko = tat('nyilaszaro');
+        resz(n.szel, tok, mely, 0, n.mag / 2 - tok / 2, kc, ko); resz(n.szel, tok, mely, 0, -n.mag / 2 + tok / 2, kc, ko);
+        resz(tok, n.mag - 2 * tok, mely, -n.szel / 2 + tok / 2, 0, kc, ko); resz(tok, n.mag - 2 * tok, mely, n.szel / 2 - tok / 2, 0, kc, ko);
+        resz(n.szel - 2 * tok, n.mag - 2 * tok, 0.03, 0, 0, anyagSz ? tsz('uveg') : SZIN.nyilas, anyagSz ? tat('uveg', 0.92) : 0.55);
         grp.add(ny0);
       }
     }
@@ -151,7 +179,7 @@ export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, onElem, hiba
         const sh = new THREE.Shape(p.map(([x, y]) => new THREE.Vector2(x, y)));
         const g = new THREE.ShapeGeometry(sh); g.rotateX(Math.PI / 2);
         const tk = kijelolt === t.id; if (rejt(t.id)) continue;
-        const m = new THREE.Mesh(g, mat(tk ? ANYAG.kij : anyagSz ? (t.kategoria === 'futott' ? ANYAG.ter : t.kategoria === 'futetlen' ? ANYAG.terFutetlen : ANYAG.terKulter) : t.kategoria === 'futott' ? SZIN.padloFutott : t.kategoria === 'futetlen' ? SZIN.padloFutetlen : SZIN.padloKulter, 1, tk));
+        const m = new THREE.Mesh(g, mat(tk ? ANYAG.kij : anyagSz ? (t.kategoria === 'futott' ? tsz('ter') : t.kategoria === 'futetlen' ? ANYAG.terFutetlen : ANYAG.terKulter) : t.kategoria === 'futott' ? SZIN.padloFutott : t.kategoria === 'futetlen' ? SZIN.padloFutetlen : SZIN.padloKulter, tk ? 1 : tat('ter'), tk));
         m.position.y = sz0.z0 + 0.02; m.userData = { id: t.id }; grp.add(m); kattinthato.push(m);
       }
     }
@@ -174,14 +202,14 @@ export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, onElem, hiba
         }
         const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.computeVertexNormals();
         if (csakKij && kijelolt) continue;
-        const m = new THREE.Mesh(geo, mat(anyagSz ? ANYAG.teto : SZIN.teto, anyagSz ? 1 : 0.45)); grp.add(m);
+        const m = new THREE.Mesh(geo, mat(anyagSz ? tsz('teto') : SZIN.teto, anyagSz ? tat('teto') : 0.45)); grp.add(m);
       }
     }
     // koszorúk (a falak tengelyén) és gerendák
     const rud = (a: [number, number], b: [number, number], szel: number, z0: number, z1: number, szin: number) => {
       const l = Math.hypot(b[0] - a[0], b[1] - a[1]); if (l < 0.05 || z1 <= z0) return;
       if (csakKij && kijelolt) return;
-      const m = new THREE.Mesh(new THREE.BoxGeometry(l, z1 - z0, szel), mat(anyagSz ? (szin === -1 ? ANYAG.alapozas : ANYAG.beton) : szin === -1 ? 0x9aa0a6 : szin, anyagSz ? 1 : 0.9));
+      const m = new THREE.Mesh(new THREE.BoxGeometry(l, z1 - z0, szel), mat(anyagSz ? (szin === -1 ? tsz('alapozas') : tsz('piller')) : szin === -1 ? 0x9aa0a6 : szin, anyagSz ? tat(szin === -1 ? 'alapozas' : 'piller') : 0.9));
       m.position.set((a[0] + b[0]) / 2, (z0 + z1) / 2, (a[1] + b[1]) / 2); m.rotation.y = -Math.atan2(b[1] - a[1], b[0] - a[0]); grp.add(elek(m));
     };
     const falIx = new Map(modell.falak.map((f) => [f.id, f]));
@@ -199,21 +227,21 @@ export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, onElem, hiba
     if (modell.magasteto && lathato(modell.magasteto.szint)) {
       const pos: number[] = []; for (const h of modell.magasteto.haromszogek) for (const [x, y, z] of h) pos.push(x!, z!, y!);
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals();
-      if (!(csakKij && kijelolt)) { const m = new THREE.Mesh(g, mat(anyagSz ? ANYAG.teto : SZIN.teto, anyagSz ? 1 : 0.85)); (m.material as THREE.Material).side = THREE.DoubleSide; grp.add(elek(m)); }
+      if (!(csakKij && kijelolt)) { const m = new THREE.Mesh(g, mat(anyagSz ? tsz('teto') : SZIN.teto, anyagSz ? tat('teto') : 0.85)); (m.material as THREE.Material).side = THREE.DoubleSide; grp.add(elek(m)); }
       // a magastető nélküli részek lapostetője (felülről nyitott belső tér nincs): a legfelső szint födémjének síkjában
       const ft = modell.fodemek.find((f) => f.alatt === modell.magasteto!.szint);
       if (ft && !(csakKij && kijelolt)) for (const p of modell.magasteto.lapos ?? []) {
         if (p.length < 3) continue;
         const sh = new THREE.Shape(p.map(([x, y]) => new THREE.Vector2(x, y)));
         const g2 = new THREE.ExtrudeGeometry(sh, { depth: ft.vastag, bevelEnabled: false }); g2.rotateX(Math.PI / 2);
-        const m2 = new THREE.Mesh(g2, mat(anyagSz ? ANYAG.lapos : SZIN.teto, anyagSz ? 1 : 0.6)); m2.position.y = ft.z; grp.add(elek(m2));
+        const m2 = new THREE.Mesh(g2, mat(anyagSz ? tsz('teto') : SZIN.teto, anyagSz ? tat('teto') : 0.6)); m2.position.y = ft.z; grp.add(elek(m2));
       }
     }
     // pillérek
     for (const p of modell.pillerek ?? []) {
       if (!lathato(p.szint)) continue;
       if (csakKij && kijelolt) continue;
-      const g = new THREE.BoxGeometry(p.a, p.h, p.b); const m = new THREE.Mesh(g, mat(anyagSz ? ANYAG.beton : SZIN.piller, anyagSz ? 1 : 0.95));
+      const g = new THREE.BoxGeometry(p.a, p.h, p.b); const m = new THREE.Mesh(g, mat(anyagSz ? tsz('piller') : SZIN.piller, anyagSz ? tat('piller') : 0.95));
       m.position.set(p.kozep[0], p.z0 + p.h / 2, p.kozep[1]); grp.add(elek(m));
     }
     // födémek (tető / legalsó padló) körvonallal, áttetszően
@@ -227,8 +255,9 @@ export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, onElem, hiba
         const sh = new THREE.Shape(p.map(([x, y]) => new THREE.Vector2(x, y)));
         const g = new THREE.ExtrudeGeometry(sh, { depth: fd.vastag, bevelEnabled: false }); g.rotateX(Math.PI / 2);
         if (csakKij && kijelolt) continue;
-        const c = anyagSz ? (fd.burok === 'teto' ? ANYAG.lapos : fd.alatt === null ? ANYAG.padlo : ANYAG.fodem) : fd.burok === 'teto' ? SZIN.teto : SZIN.fodem;
-        const m = new THREE.Mesh(g, mat(c, anyagSz ? 1 : fd.burok === 'teto' ? 0.35 : 0.5));
+        const ft0: Tipus = fd.burok === 'teto' ? 'teto' : fd.alatt === null ? 'padlo' : 'fodem';
+        const c = anyagSz ? tsz(ft0) : fd.burok === 'teto' ? SZIN.teto : SZIN.fodem;
+        const m = new THREE.Mesh(g, mat(c, anyagSz ? tat(ft0) : fd.burok === 'teto' ? 0.35 : 0.5));
         m.position.y = fd.z; grp.add(elek(m)); // (z a födém teteje, lefelé vastag)
       }
     }
@@ -247,13 +276,39 @@ export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, onElem, hiba
     }
     // kamera a modell befoglalójához
     const bb = new THREE.Box3().setFromObject(grp); const c = bb.getCenter(new THREE.Vector3()); const R = Math.max(5, bb.getSize(new THREE.Vector3()).length() / 2);
-    const cam = new THREE.PerspectiveCamera(40, w / h, 0.1, R * 20);
+    // kamera: perspektivikus vagy párhuzamos (axonometrikus) vetítés
+    const cam: THREE.PerspectiveCamera | THREE.OrthographicCamera = orto
+      ? new THREE.OrthographicCamera(-R * 1.1 * (w / h), R * 1.1 * (w / h), R * 1.1, -R * 1.1, -R * 20, R * 40)
+      : new THREE.PerspectiveCamera(40, w / h, 0.1, R * 20);
+    const alapNezet = () => { cam.position.set(c.x - R * 1.2, c.y + R * 1.0, c.z + R * 1.6); ctl.target.copy(c); if (cam instanceof THREE.OrthographicCamera) { cam.zoom = 1; cam.updateProjectionMatrix(); } ctl.update(); };
     cam.position.set(c.x - R * 1.2, c.y + R * 1.0, c.z + R * 1.6); cam.lookAt(c);
     const ctl = new OrbitControls(cam, renderer.domElement); ctl.target.copy(c);
-    if (nezo.current) { cam.position.copy(nezo.current.p); ctl.target.copy(nezo.current.t); }
+    if (nezo.current) { cam.position.copy(nezo.current.p); ctl.target.copy(nezo.current.t); if (cam instanceof THREE.OrthographicCamera && nezo.current.z) { cam.zoom = nezo.current.z; cam.updateProjectionMatrix(); } }
     ctl.update();
-    renderer.domElement.addEventListener('dblclick', () => { nezo.current = null; cam.position.set(c.x - R * 1.2, c.y + R * 1.0, c.z + R * 1.6); ctl.target.copy(c); ctl.update(); });
-    let fut = true; const loop = () => { if (!fut) return; renderer.render(scene, cam); requestAnimationFrame(loop); }; loop();
+    // dupla kattintás: ráközelítés az elemre (üres helyen: alapnézet)
+    const ray0 = new THREE.Raycaster();
+    renderer.domElement.addEventListener('dblclick', (e) => {
+      const rr = renderer.domElement.getBoundingClientRect();
+      ray0.setFromCamera(new THREE.Vector2(((e.clientX - rr.left) / rr.width) * 2 - 1, -((e.clientY - rr.top) / rr.height) * 2 + 1), cam);
+      const hit = ray0.intersectObjects(kattinthato).find(vagottAlatt);
+      if (!hit) { nezo.current = null; alapNezet(); return; }
+      const bb2 = new THREE.Box3().setFromObject(hit.object); const c2 = bb2.getCenter(new THREE.Vector3()); const r2 = Math.max(1.5, bb2.getSize(new THREE.Vector3()).length() * 1.2);
+      const ir = cam.position.clone().sub(ctl.target).normalize();
+      ctl.target.copy(c2); cam.position.copy(c2.clone().add(ir.multiplyScalar(r2 * 1.6)));
+      if (cam instanceof THREE.OrthographicCamera) { cam.zoom = Math.max(1, R / r2); cam.updateProjectionMatrix(); }
+      ctl.update();
+    });
+    // környezeti árnyékolás (GTAO): a sarkok, csatlakozások finoman sötétednek – röntgenben nem
+    let composer: EffectComposer | null = null;
+    if (ao && !rontgen) {
+      try {
+        composer = new EffectComposer(renderer); composer.setSize(w, h);
+        composer.addPass(new RenderPass(scene, cam));
+        const g = new GTAOPass(scene, cam, w, h); g.blendIntensity = 0.85; g.updateGtaoMaterial({ radius: Math.max(0.6, R * 0.04), distanceExponent: 1, thickness: 1, scale: 1, samples: 12 }); composer.addPass(g);
+        composer.addPass(new OutputPass());
+      } catch { composer = null; }
+    }
+    let fut = true; const loop = () => { if (!fut) return; if (composer) composer.render(); else renderer.render(scene, cam); requestAnimationFrame(loop); }; loop();
     // kattintás: elem kijelölése
     const ray = new THREE.Raycaster(); let le: [number, number] | null = null;
     const down = (e: PointerEvent) => { le = [e.clientX, e.clientY]; };
@@ -261,14 +316,14 @@ export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, onElem, hiba
       if (!le || Math.hypot(e.clientX - le[0], e.clientY - le[1]) > 4) return;
       const rr = renderer.domElement.getBoundingClientRect();
       ray.setFromCamera(new THREE.Vector2(((e.clientX - rr.left) / rr.width) * 2 - 1, -((e.clientY - rr.top) / rr.height) * 2 + 1), cam);
-      const hit = ray.intersectObjects(kattinthato)[0]; setKijelolt(hit ? (hit.object.userData.id as string) : null);
+      const hit = ray.intersectObjects(kattinthato).find(vagottAlatt); setKijelolt(hit ? (hit.object.userData.id as string) : null);
       onElem?.(hit ? (hit.object.userData.id as string) : null);
       onNyilas?.((hit?.object.userData.ny as NyilasForras | undefined) ?? null);
     };
     renderer.domElement.addEventListener('pointerdown', down); renderer.domElement.addEventListener('pointerup', up);
     (globalThis as { __epulet3dKep?: () => string }).__epulet3dKep = () => renderer.domElement.toDataURL('image/png');
-    return () => { nezo.current = { p: cam.position.clone(), t: ctl.target.clone() }; fut = false; ctl.dispose(); renderer.domElement.removeEventListener('pointerdown', down); renderer.domElement.removeEventListener('pointerup', up); renderer.dispose(); grp.traverse((o) => { if ((o as THREE.Mesh).geometry) (o as THREE.Mesh).geometry.dispose(); }); };
-  }, [modell, csakBurok, szintLathato, kijelolt, magassag, kivNy?.lap, kivNy?.ny, hibak, szinezes, rontgen, atl, csakKij]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { nezo.current = { p: cam.position.clone(), t: ctl.target.clone(), ...(cam instanceof THREE.OrthographicCamera ? { z: cam.zoom } : {}) }; fut = false; composer?.dispose(); ctl.dispose(); renderer.domElement.removeEventListener('pointerdown', down); renderer.domElement.removeEventListener('pointerup', up); renderer.dispose(); grp.traverse((o) => { if ((o as THREE.Mesh).geometry) (o as THREE.Mesh).geometry.dispose(); }); };
+  }, [modell, csakBurok, szintLathato, kijelolt, magassag, kivNy?.lap, kivNy?.ny, hibak, szinezes, rontgen, atl, csakKij, metsz, ao, orto, tipusB]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const info = (() => {
     if (!kijelolt) return null;
@@ -300,6 +355,17 @@ export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, onElem, hiba
           onInput={(e) => setAtl(Number((e.target as HTMLInputElement).value))} />
         <label class="jelolo" title="Csak a kijelölt elem látszik (kattints egy elemre)"><input type="checkbox" checked={csakKij} onChange={(e) => setCsakKij((e.target as HTMLInputElement).checked)} /> csak a kijelölt</label>
         <label class="jelolo"><input type="checkbox" checked={csakBurok} onChange={(e) => setCsakBurok((e.target as HTMLInputElement).checked)} /> csak a hőburok elemei</label>
+        <label class="jelolo" title="Vízszintes vágósík: a sík fölötti rész nem látszik (3D alaprajz)"><input type="checkbox" checked={metsz !== null}
+          onChange={(e) => setMetsz((e.target as HTMLInputElement).checked ? Math.min(...modell.szintek.map((q) => q.z0)) + 1.2 : null)} /> metszés</label>
+        {metsz !== null && <>
+          <select aria-label="Metszés a szinten" value="" onChange={(e) => { const v = (e.target as HTMLSelectElement).value; const sz0 = modell.szintek.find((q) => q.id === v); if (sz0) setMetsz(Math.round((sz0.z0 + 1.2) * 100) / 100); }} style="width:auto">
+            <option value="">szint…</option>{modell.szintek.map((q) => <option value={q.id}>{q.nev} (+1,2 m)</option>)}
+          </select>
+          <input type="range" min={zTart[0]} max={zTart[1]} step="0.05" value={metsz} aria-label="A vágósík magassága" style="width:110px" onInput={(e) => setMetsz(Number((e.target as HTMLInputElement).value))} />
+          <span class="halkabb" style="font-size:12px">{metsz.toFixed(2).replace('.', ',')} m</span>
+        </>}
+        <label class="jelolo" title="Környezeti árnyékolás: a sarkok, csatlakozások finoman sötétednek"><input type="checkbox" checked={ao} onChange={(e) => setAo((e.target as HTMLInputElement).checked)} /> árnyékolás</label>
+        <label class="jelolo" title="Párhuzamos (axonometrikus) vetítés"><input type="checkbox" checked={orto} onChange={(e) => setOrto((e.target as HTMLInputElement).checked)} /> párhuzamos vetítés</label>
         {modell.szintek.map((s) => <label class="jelolo"><input type="checkbox" checked={lathato(s.id)} onChange={(e) => setSzintLathato((x) => ({ ...x, [s.id]: (e.target as HTMLInputElement).checked }))} /> {s.nev}</label>)}
         <span class="halkabb" style="font-size:12px">
           {(szinezes === 'anyag'
@@ -308,9 +374,19 @@ export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, onElem, hiba
             <><span style={`display:inline-block;width:10px;height:10px;background:${c};border:1px solid #9ca3af;margin:0 4px 0 8px`} />{t}</>))}
         </span>
       </div>
+      {szinezes === 'anyag' && <details style="padding:0 10px 6px;font-size:12px">
+        <summary class="halkabb">Megjelenés típusonként (szín, átlátszóság – ebben a böngészőben megjegyezve)</summary>
+        <table class="tabla" style="width:auto;margin-top:4px"><tbody>
+          {TIPUSOK.map(([k, nev, alap]) => { const b = tipusB[k]; const hex = '#' + (b?.szin ?? alap).toString(16).padStart(6, '0'); return (
+            <tr><td>{nev}</td>
+              <td><input type="color" value={hex} aria-label={`${nev} színe`} onInput={(e) => tipusAllit(k, { szin: parseInt((e.target as HTMLInputElement).value.slice(1), 16) })} /></td>
+              <td><input type="range" min="0.1" max="1" step="0.05" value={b?.atl ?? (k === 'uveg' ? 0.92 : 1)} aria-label={`${nev} átlátszatlansága`} style="width:100px" onInput={(e) => tipusAllit(k, { atl: Number((e.target as HTMLInputElement).value) })} /></td>
+              <td>{b && <button class="gomb kis-gomb halk-gomb" onClick={() => tipusAllit(k, null)}>alap</button>}</td></tr>); })}
+        </tbody></table>
+      </details>}
       <div ref={hely} style={`width:100%;height:${magassag}px`} />
       <div class="halkabb" style="font-size:12px;padding:6px 10px">
-        {info ?? 'Kattints egy falra, nyílászáróra vagy helyiségre a részletekért (dupla kattintás: alapnézet).'}<br />
+        {info ?? 'Kattints egy falra, nyílászáróra vagy helyiségre a részletekért (dupla kattintás egy elemen: ráközelít, üres helyen: alapnézet).'}<br />
         {modell.szintek.length} szint · {modell.terek.length} tér · {modell.falak.length} fal · {modell.nyilasok.length} nyílászáró ·
         hőburok-fal (belső sík × belmagasság): külső {fm(osszeg.kulso?.A ?? 0)} m² (nyílás {fm(osszeg.kulso?.ny ?? 0)}), fűtetlen felé {fm(osszeg.futetlen?.A ?? 0)} m², szomszéd felé {fm(osszeg.szomszed?.A ?? 0)} m²
         {padloA > 0 && <> · alsó födém (külső méret) {fm(padloA)} m²</>}{tetoA > 0 && <> · magastető {fm(tetoA)} m² ({String(Math.round((modell.magasteto?.hajlas ?? 0) * 10) / 10).replace('.', ',')}°)</>}{laposA > 0 && <> · lapostető {fm(laposA)} m²</>}
