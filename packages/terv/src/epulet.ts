@@ -219,7 +219,9 @@ export interface MagastetoBe { hajlas: number; orom?: Record<number, number>; ki
    *  jelpárból (ereszGerincJelekbol) – az eresz magassága és (kiírt kiállás híján) a kiállás. */
   szintJelek?: SzintJelDb[];
   /** (felteto: a sáv c0–c1 része – a sávra merőleges tengelyen – féltető a hajlással, lejt irányába lejtve) */
-  lapos?: { tengely: 'x' | 'y'; a: number; b: number; felteto?: { c0: number; c1: number; hajlas: number; lejt: number } }[];
+  lapos?: { tengely: 'x' | 'y'; a: number; b: number; felteto?: { c0: number; c1: number; hajlas: number; lejt: number };
+    /** a fő (magas)tető eddig nyúlik be a sávba (a sáv tengelyén, m) – a homlokzat gerince szerint */
+    foTeto?: number }[];
   /** Lapostetős sáv a szint (födém) körvonalának oldalairól (lapirány: 0 fent, 90 jobbra, 180 lent, 270 balra): szélesség, m. */
   laposOldal?: Record<number, number>;
   /** Az oldalhoz érő sáv teteje kézzel: féltető (hajlás, a lejtés lapiránya – a teljes sávon), null: lapostető. */
@@ -1227,12 +1229,21 @@ function magastetoEpit(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], 
     const xs = pol.map((q) => q[0]), ys = pol.map((q) => q[1]);
     const x0 = Math.min(...xs) - 1, x1 = Math.max(...xs) + 1, y0 = Math.min(...ys) - 1, y1 = Math.max(...ys) + 1;
     const savok = sav.map((q): P2[] => (q.tengely === 'x' ? [[q.a, y0], [q.b, y0], [q.b, y1], [q.a, y1]] : [[x0, q.a], [x1, q.a], [x1, q.b], [x0, q.b]]));
+    // a fő tető a sávba is benyúlik (a homlokzat gerince szerint): a magastető darabjához a sávnak ez a része is hozzátartozik
+    // (a lapos / féltetős rész alatta – a felső burkoló dönti el, mi látszik; Balázs, 2026-11-21: „a sátortető nagyobb”)
+    const foSav = sav.map((q): P2[] => { const [ca, cb] = q.foTeto === undefined ? [q.a, q.b] : q.b < (q.tengely === 'x' ? x1 : y1) - 2 ? [q.a, q.foTeto] : [q.foTeto, q.b];
+      return q.tengely === 'x' ? [[ca, y0], [cb, y0], [cb, y1], [ca, y1]] : [[x0, ca], [x1, ca], [x1, cb], [x0, cb]]; });
+    const foMar = sav.some((q) => q.foTeto !== undefined) ? poligonKulonbseg([pol], foSav) : null;
     const mar = poligonKulonbseg([pol], savok);
     const T = Math.abs(teruletP(pol));
     const jo = mar.poligonok.filter((p) => Math.abs(teruletP(p)) >= 8);
     if (mar.terulet < 0.15 * T || !jo.length) return null;
     if (mar.terulet < 0.98 * T) {
-      darabok = jo; lapos = poligonKulonbseg([pol], jo).poligonok.filter((p) => Math.abs(teruletP(p)) >= 2);
+      lapos = poligonKulonbseg([pol], jo).poligonok.filter((p) => Math.abs(teruletP(p)) >= 2);
+      darabok = foMar ? foMar.poligonok.filter((p) => Math.abs(teruletP(p)) >= 8) : jo;
+      if (!darabok.length) darabok = jo;
+      // (a fő tető alá eső lapos rész nem lapostető)
+      if (darabok !== jo) lapos = poligonKulonbseg(lapos, darabok).poligonok.filter((p) => Math.abs(teruletP(p)) >= 2);
       // féltetős részek: a sáv és a féltető-tartomány metszete (a lapostetős részből kivonva)
       for (const q of sav) {
         const f = q.felteto; if (!f || !(f.hajlas > 0)) continue;

@@ -919,7 +919,8 @@ export function tervFolyamat(S: FolyamatAllapot) {
       lapos = v.map((q) => {
         const [a0, b0] = q.tengely === 'x' ? [mx(q.a), mx(q.b)] : [my(q.a), my(q.b)];
         const f = q.felteto, [c0, c1] = f ? (q.tengely === 'x' ? [my(f.c0), my(f.c1)] : [mx(f.c0), mx(f.c1)]) : [0, 0];
-        return { tengely: q.tengely, a: Math.min(a0, b0), b: Math.max(a0, b0), ...(f ? { felteto: { ...f, c0: Math.min(c0, c1), c1: Math.max(c0, c1) } } : {}) };
+        return { tengely: q.tengely, a: Math.min(a0, b0), b: Math.max(a0, b0), ...(f ? { felteto: { ...f, c0: Math.min(c0, c1), c1: Math.max(c0, c1) } } : {}),
+          ...(q.foTeto !== undefined ? { foTeto: q.tengely === 'x' ? mx(q.foTeto) : my(q.foTeto) } : {}) };
       });
     }
     if (hajlas && fel && felPol) {

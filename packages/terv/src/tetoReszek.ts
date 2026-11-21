@@ -137,6 +137,31 @@ export interface TetoSav {
   /** A sáv féltetős része (a sávra merőleges tengely c0–c1 tartománya, lapkoordináta): hajlás (fok) és a lejtés iránya
    *  (lapirány: 0 fel, 90 jobbra, 180 le, 270 balra). */
   felteto?: { c0: number; c1: number; hajlas: number; lejt: number };
+  /** A fő (magas)tető a sávba is benyúlik (lapkoordináta a sáv tengelyén): a homlokzaton látszó gerincéből – kontyolt
+   *  tetőnél a gerinc vége és a tető fél mélysége szerint. A sáv lapos / féltetős része alatt a fő tető folytatódik (a
+   *  felső burkoló dönti el, mi látszik). */
+  foTeto?: number;
+}
+
+/** A sziluett gerince (m, a nézet x-koordinátájában): a legmagasabb, legalább 1 m-es vízszintes szakasz, amelynek mindkét
+ *  végén a tető a hajlással lejt. */
+export function gerincSzakasz(s: HomlokzatSziluett, hajlasok: number[]): [number, number] | null {
+  const { h, dx } = s; const n = h.length;
+  const tgMin = Math.tan((Math.min(...hajlasok) * Math.PI) / 180) * 0.6, tgMax = Math.tan((Math.max(...hajlasok) * Math.PI) / 180) * 1.6;
+  const L = Math.round(0.6 / dx);
+  const lejt = (i: number, ir: number) => { const h0 = h[i]!; let db = 0;
+    for (let k = 1; k <= L; k++) { const q = h[i + ir * k]; if (q === undefined || Number.isNaN(q)) return false; const tg = (h0 - q) / (k * dx); if (tg >= tgMin && tg <= tgMax) db++; }
+    return db >= L * 0.6; };
+  let leg: [number, number, number] | null = null; // [i, j, magasság]
+  let i = 0;
+  while (i < n) {
+    if (Number.isNaN(h[i]!)) { i++; continue; }
+    let j = i; const ref = h[i]!;
+    while (j + 1 < n && !Number.isNaN(h[j + 1]!) && Math.abs(h[j + 1]! - ref) <= 0.06) j++;
+    if ((j - i + 1) * dx >= 1 && lejt(i, -1) && lejt(j, 1) && (!leg || ref > leg[2] + 0.06 || (Math.abs(ref - leg[2]) <= 0.06 && j - i > leg[1] - leg[0]))) leg = [i, j, ref];
+    i = j + 1;
+  }
+  return leg ? [s.x0 + leg[0] * dx, s.x0 + (leg[1] + 1) * dx] : null;
 }
 
 export function laposTetoSavok(sziluettek: HomlokzatSziluett[], korvonal: P2[], mPerPt: number, eszakSzog: number, hajlasok: number[], nyilasok: TervNyilas[] = []): TetoSav[] {
@@ -145,6 +170,7 @@ export function laposTetoSavok(sziluettek: HomlokzatSziluett[], korvonal: P2[], 
   const vet = (ir: number, [x, y]: P2) => { const t = (ir * Math.PI) / 180; return (-Math.cos(t) * x - Math.sin(t) * y) * mPerPt; };
   const savok = new Map<number, [number, number][]>();
   const illesztett: { sz: HomlokzatSziluett; ir: number; o: number }[] = [];
+  const gerincek = new Map<number, [number, number][]>();
   for (const sz of sziluettek) {
     const ill = homlokzatEltolas(sz.rajz, nyilasok, mPerPt, eszakSzog);
     let ir: number, o: number;
@@ -170,6 +196,7 @@ export function laposTetoSavok(sziluettek: HomlokzatSziluett[], korvonal: P2[], 
       if (p1 - p0 >= 2) lista.push([p0, p1]);
     }
     savok.set(ir, lista);
+    const g = gerincSzakasz(sz, hajlasok); if (g) gerincek.set(ir, [...(gerincek.get(ir) ?? []), [Math.max(smin, g[0] - o), Math.min(smax, g[1] - o)]]);
   }
   // tengelyenként: a két szemközti homlokzat sávjai (s → lapkoordináta)
   const ki: TetoSav[] = [];
@@ -189,6 +216,18 @@ export function laposTetoSavok(sziluettek: HomlokzatSziluett[], korvonal: P2[], 
     for (const [a, b] of jel) {
       const sav: TetoSav = { tengely: t, a: illeszt(t, a), b: illeszt(t, b) };
       const f = feltetoKeres(sav); if (f) sav.felteto = f;
+      // a fő tető a sávba nyúlik: a gerince (a két szemközti homlokzaton látszó, a sávon kívül álló gerinc) végétől a
+      // körvonal fél mélységére van a kontyolt vég ereszvonala (Balázs, 2026-11-21: „a sátortető nagyobb”)
+      { const mely = korvonal.map(([x, y]) => (t === 'x' ? y : x)), D = Math.max(...mely) - Math.min(...mely);
+        const gs = [...(gerincek.get(ira) ?? []).map((q) => lapra(ira, q)), ...(gerincek.get(irb) ?? []).map((q) => lapra(irb, q))]
+          .filter(([g0, g1]) => g1 - g0 >= 1 / mPerPt && (g0 >= sav.b - 0.5 / mPerPt || g1 <= sav.a + 0.5 / mPerPt));
+        const c = koord(t), cmin = Math.min(...c), cmax = Math.max(...c);
+        if (gs.length) {
+          const jobbra = sav.b < cmax - 1 / mPerPt; // a fő tömeg a sáv nagyobb koordinátájú oldalán
+          const veg = jobbra ? Math.min(...gs.map((q) => q[0])) - D / 2 : Math.max(...gs.map((q) => q[1])) + D / 2;
+          if (jobbra ? veg > sav.a + 2 / mPerPt && veg < sav.b - 0.5 / mPerPt : veg < sav.b - 2 / mPerPt && veg > sav.a + 0.5 / mPerPt) sav.foTeto = veg;
+          void cmin;
+        } }
       ki.push(sav);
     }
   }
