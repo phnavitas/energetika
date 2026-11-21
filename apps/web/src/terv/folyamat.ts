@@ -449,6 +449,9 @@ export interface ModellKezi {
   hajlas?: number;
   /** Ereszkiállás (m). */
   kiallas?: number;
+  /** Ereszkiállás oldalanként (lapirány: 0 fel, 90 jobbra, 180 le, 270 balra; m) – a nagyobb érték a tetőt az oldal fölé
+   *  (fedett terasz, bejárat) is kiterjeszti. */
+  kiallasOldal?: Record<number, number>;
   /** Végenként (lapirány: 0 fel, 90 jobbra, 180 le, 270 balra): true = oromfal, false = konty. */
   orom?: Record<number, boolean>;
   /** Szintenkénti belmagasság (m), szintkód szerint. */
@@ -981,7 +984,7 @@ export function tervFolyamat(S: FolyamatAllapot) {
     // körvonalával (kézi kiállásnál nem)
     const szintJelek = hajlas && MK.kiallas === undefined ? szintJelekLapokrol(S.lapok.filter((l) => l.szerep === 'metszet' || l.szerep === 'homlokzat').map((l) => ({ lap: l.lap, homlokzat: l.szerep === 'homlokzat' }))) : [];
     const felul = hajlas ? tetoFelulAdat(eszakSz) : null;
-    const teto = hajlas ? { hajlas, orom: oromK, ...(felul ? { felul: felul.sz } : {}), ...(kiall ? { kiallas: kiall } : {}), ...(szintJelek.length ? { szintJelek } : {}), ...(lapos.length ? { lapos } : {}), ...(laposOldal ? { laposOldal } : {}), ...(MK.felteto ? { feltetoOldal: MK.felteto } : {}) } : undefined;
+    const teto = hajlas ? { hajlas, orom: oromK, ...(felul ? { felul: felul.sz } : {}), ...(MK.kiallasOldal && Object.keys(MK.kiallasOldal).length ? { kiallasOldal: MK.kiallasOldal } : {}), ...(kiall ? { kiallas: kiall } : {}), ...(szintJelek.length ? { szintJelek } : {}), ...(lapos.length ? { lapos } : {}), ...(laposOldal ? { laposOldal } : {}), ...(MK.felteto ? { feltetoOldal: MK.felteto } : {}) } : undefined;
     // a metszet külsőfal-rétegrendjei (a fal hőszigetelése, ha az alaprajzon nem falként rajzolt)
     const kulsoFalRetegrend = (me?.blokkok ?? []).filter((b) => b.becsles.szerep === 'fal' && !b.becsles.kihagy).map((b) => ({ kod: b.rr.kod,
       retegek: b.retegek.filter((r) => !r.kimarad && r.dCm > 0).map((r) => ({ leiras: r.forras, vastag: r.dCm / 100, szigeteles: /hőszigetel/i.test(anyag(r.anyagId)?.kategoria ?? '') || /hőszigetel|\beps\b|\bxps\b|kőzetgyapot|üveggyapot/i.test(r.forras) })) }))

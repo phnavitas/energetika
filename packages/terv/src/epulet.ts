@@ -228,7 +228,10 @@ export interface MagastetoBe { hajlas: number; orom?: Record<number, number>; ki
   feltetoOldal?: Record<number, { hajlas: number; lejt: number } | null>;
   /** A felülnézet (helyszínrajz, tetőfelülnézet) illeszkedő tetőcsoportjának vonalszakaszai a modell lapirányában (m), a
    *  csoport közepe körül – az eltolás a födém körvonalához illesztve (ereszFelulnezetbol). */
-  felul?: [number, number, number, number][] }
+  felul?: [number, number, number, number][];
+  /** Ereszkiállás oldalanként kézzel (lapirány: 0 fent, 90 jobbra, 180 lent, 270 balra; m): az oldal falsíkjától az
+   *  ereszig – a nagyobb érték a tetőt az oldal fölé (fedett terasz, bejárat) is kiterjeszti. */
+  kiallasOldal?: Record<number, number> }
 
 /** Koszorú szintenként: a teherhordó falak tetején (a metszet szerinti keresztmetszettel), a hossza a falaké. */
 export interface Koszoru { id: string; szint: string; szel: number; magas: number; zFelso: number; reteg: string; falak: string[]; hossz: number;
@@ -1217,6 +1220,7 @@ function magastetoEpit(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], 
   // a felülnézet ereszvonala (Balázs, 2026-11-21: „a tetőformánál a helyszínrajz/tetőfelülnézet geometriából kell
   // kiindulni”): oldalanként a kiállás, és ahol az eresz jóval messzebb fut (fedett terasz, bejárat), ott a tető kiterjed
   let felulKiallas: number | undefined;
+  const kiallasKezi = t.kiallasOldal && Object.keys(t.kiallasOldal).length ? t.kiallasOldal : undefined;
   if (t.felul?.length) {
     const ef = ereszFelulnezetbol(pol, t.felul, kiallas);
     if (ef) {
@@ -1226,6 +1230,8 @@ function magastetoEpit(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], 
       if ((globalThis as { OROMDBG?: unknown }).OROMDBG) console.log('OROMDBG felul', JSON.stringify(ef.oldalak), ef.kiallas, ef.kiterjesztes.length);
     }
   }
+  // kézi, oldalankénti kiállás: az oldal éleit a falsíktól (érték − kiállás)-sal kifelé (ill. befelé) toljuk
+  if (kiallasKezi) pol = oldalKiallas(pol, kiallasKezi, kiallas);
   const k = koszoruk.find((q) => q.szint === fel.id && q.fajta !== 'attika');
   const zEresz = sz(eg?.zEresz ?? (k ? k.zFelso : fel.z0 + fel.h), 2);
   // lapostetős sávok: a körvonal ezekbe eső része lapostető, a maradék darabjai kapnak magastetőt (legalább 2 m széles,
@@ -1535,6 +1541,26 @@ function feltetoHaromszogek(p: P2[], hajlas: number, lejt: number, zE: number): 
     }
   }
   return ki;
+}
+
+/**
+ * Oldalankénti kiállás: a (derékszögű) körvonal azon éleit, amelyek kifelé mutató normálisa az adott lapirányba néz
+ * (± 10°), a normális mentén (érték − kiállás)-sal eltoljuk – a szomszéd (merőleges) élek ennyivel hosszabbodnak.
+ */
+export function oldalKiallas(pol: P2[], ki: Record<number, number>, kiallas: number): P2[] {
+  const n = pol.length; const A2 = pol.reduce((t, [x, y], i) => { const [x2, y2] = pol[(i + 1) % n]!; return t + x * y2 - x2 * y; }, 0), el = Math.sign(A2) || 1;
+  const uj = pol.map(([x, y]) => [x, y] as P2);
+  for (let i = 0; i < n; i++) {
+    const a = pol[i]!, b = pol[(i + 1) % n]!, L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < 1e-6) continue;
+    const nx = el * (b[1] - a[1]) / L, ny = -el * (b[0] - a[0]) / L;
+    // (lapirány: 0 fel – −y –, 90 jobbra, 180 le, 270 balra)
+    const ang = ((((Math.atan2(nx, -ny) * 180) / Math.PI) % 360) + 360) % 360, ir = (Math.round(ang / 90) * 90) % 360;
+    const elt = Math.abs(ang - ir); if (Math.min(elt, 360 - elt) > 10) continue;
+    const v = ki[ir]; if (v === undefined) continue;
+    const d = Math.max(-kiallas + 0.05, v - kiallas); if (Math.abs(d) < 0.005) continue;
+    uj[i] = [uj[i]![0] + nx * d, uj[i]![1] + ny * d]; const j = (i + 1) % n; uj[j] = [uj[j]![0] + nx * d, uj[j]![1] + ny * d];
+  }
+  return uj;
 }
 
 /**
