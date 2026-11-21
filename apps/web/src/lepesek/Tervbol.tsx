@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { zipPdfek } from '../terv/zipPdf';
 import { ujId as ujIdT, type Projekt, type HelyisegKategoria, type Szerep as RrSzerep, SZEREP_ALAP } from '../modell';
 const sz2 = (x: number) => x.toLocaleString('hu-HU', { maximumFractionDigits: 1 });
 import { Szam, Valaszto, sz, MindJelolo } from '../ui';
@@ -241,7 +242,15 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     setHiba(null); setKesz(null);
     const uj: TervLap[] = [];
     try {
-      const fl = Array.from(fajlok);
+      // (ZIP-ben érkező tervlapok: a .pdf bejegyzések kibontva)
+      const fl: File[] = [];
+      for (const f of Array.from(fajlok)) {
+        if (/\.zip$/i.test(f.name) || f.type === 'application/zip' || f.type === 'application/x-zip-compressed') {
+          setFolyamat(`${f.name} kibontása…`);
+          try { const pp = await zipPdfek(f); if (!pp.length) setHiba(`${f.name}: a ZIP-ben nincs PDF.`); fl.push(...pp); }
+          catch (e) { setHiba(`${f.name}: a ZIP nem bontható ki (${(e as Error)?.message ?? e}).`); }
+        } else fl.push(f);
+      }
       for (const [fi, f] of fl.entries()) {
         if (!/\.pdf$/i.test(f.name) && f.type !== 'application/pdf') { setHiba(`${f.name}: csak PDF tervlap olvasható be.`); continue; }
         setFolyamat(`${f.name} beolvasása…`);
@@ -1088,7 +1097,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
         <div class="gombsor">
           <button class={`gomb${mintaFajta === 'panel' ? ' aktiv-gomb' : ''}`} onClick={() => mintalap('panel')}>Panel típusalaprajzok</button>
           <button class={`gomb${mintaFajta === 'blokkos' ? ' aktiv-gomb' : ''}`} onClick={() => mintalap('blokkos')}>Blokkos típusalaprajzok</button>
-          <label class="gomb fo" style="cursor:pointer">PDF tervlapok kiválasztása<input type="file" accept="application/pdf,.pdf" multiple style="display:none" onChange={(e) => { const t = e.target as HTMLInputElement; setMintaFajta(null); void betolt(t.files).then(() => { t.value = ''; }); }} /></label>
+          <label class="gomb fo" style="cursor:pointer">PDF tervlapok (vagy ZIP) kiválasztása<input type="file" accept="application/pdf,.pdf,.zip,application/zip" multiple style="display:none" onChange={(e) => { const t = e.target as HTMLInputElement; setMintaFajta(null); void betolt(t.files).then(() => { t.value = ''; }); }} /></label>
           {lapok.length > 0 && <button class="gomb halk-gomb semleges" onClick={() => { setLapok([]); setAIdx(-1); setMIdx(-1); setKesz(null); setElemzesek({}); setKijelolesek({}); setAtvett(new Set()); setEszakKozos(null); setEszakKulon({}); }}>Lapok törlése</button>}
           {folyamat && !halad && <span class="halk" role="status">{folyamat}</span>}
         </div>
