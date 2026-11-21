@@ -642,7 +642,9 @@ export function alaprajzElemez(lap: Lap): AlaprajzEredmeny {
   const jKodok = new Set(jegy.map((j) => kodN(j.kod)).filter((k) => k));
   const kodSzovegek = lap.szovegek.filter((t) => jKodok.has(kodN(szovegJavit(t.s).trim())));
   // (a táblázat cellái azonos betűméretűek – a rajzon a pecsétszám mellett álló lépcsőfok-számozás nem táblázat)
-  const tablaban = (t: { x: number; y: number; meret: number }) => kodSzovegek.some((u) => u !== t && Math.abs(u.meret - t.meret) < 0.3 * t.meret && Math.hypot(u.x - t.x, u.y - t.y) < 3 * t.meret);
+  // (… és a jegyzék sorainak befoglalójában – a rajzon egymás alá írt helyiségszámok – „1”, „2”, „3” – nem táblázat; Pákozd)
+  const jbb = jegy.length ? [Math.min(...jegy.map((j) => j.x)) - 60, Math.min(...jegy.map((j) => j.y)) - 30, Math.max(...jegy.map((j) => j.x)) + 200, Math.max(...jegy.map((j) => j.y)) + 30] : null;
+  const tablaban = (t: { x: number; y: number; meret: number }) => (!jbb || (t.x >= jbb[0]! && t.x <= jbb[2]! && t.y >= jbb[1]! && t.y <= jbb[3]!)) && kodSzovegek.some((u) => u !== t && Math.abs(u.meret - t.meret) < 0.3 * t.meret && Math.hypot(u.x - t.x, u.y - t.y) < 3 * t.meret);
   for (const j of jegy) {
     const p = parja(j);
     if (p) { p.jegyzekA = j.A; if (Math.abs(p.A - j.A) > 0.011) figy.push(`${p.kod ?? p.nev}: a pecsét ${p.A.toFixed(2)} m², a jegyzék ${j.A.toFixed(2)} m² – ellenőrizd.`); if (!p.burkolat && j.burkolat) p.burkolat = j.burkolat; continue; }

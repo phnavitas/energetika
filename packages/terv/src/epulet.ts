@@ -1553,8 +1553,21 @@ function sarokTerasz(pol0: P2[], szabad: Piller[]): { pol: P2[]; fedett: P2[][] 
       if (t < 0.5 || t > 7 || s0 < 0.5 || s0 > 7) continue;
       // a pillér külső sarka (a körvonal közeli koordinátáira illesztve); a téglalap két oldala a csúcs két élén
       const K0: P2 = [c[0] - ux * (t + f) + wx * (s0 + f), c[1] - uy * (t + f) + wy * (s0 + f)];
-      const K: P2 = [illeszt(K0[0], xs), illeszt(K0[1], ys)];
-      const T = -((K[0] - c[0]) * ux + (K[1] - c[1]) * uy), S = (K[0] - c[0]) * wx + (K[1] - c[1]) * wy;
+      let K: P2 = [illeszt(K0[0], xs), illeszt(K0[1], ys)];
+      let T = -((K[0] - c[0]) * ux + (K[1] - c[1]) * uy), S = (K[0] - c[0]) * wx + (K[1] - c[1]) * wy;
+      // (a pillér mögött ≤ 2 m-re a bemélyedés szemközti fala: a fedés odáig tart – keskeny rés nem marad a tető alatt;
+      // Tarján: a bejárati fedés a garázs faláig)
+      const tulFal = (ax: [number, number], bx: [number, number], H: number, Mx: number) => {
+        let leg = H;
+        for (let k = 0; k < n; k++) { const p0 = pol[k]!, p1 = pol[(k + 1) % n]!;
+          const e0 = (p0[0] - c[0]) * ax[0] + (p0[1] - c[1]) * ax[1], e1 = (p1[0] - c[0]) * ax[0] + (p1[1] - c[1]) * ax[1];
+          if (Math.abs(e0 - e1) > 0.03 || e0 <= H + 0.05 || e0 - H > 2) continue;
+          const f0 = (p0[0] - c[0]) * bx[0] + (p0[1] - c[1]) * bx[1], f1 = (p1[0] - c[0]) * bx[0] + (p1[1] - c[1]) * bx[1];
+          const fed = Math.min(Mx, Math.max(f0, f1)) - Math.max(0, Math.min(f0, f1)); if (fed < 0.5 * Mx) continue;
+          if (leg === H || e0 < leg) leg = e0; }
+        return leg; };
+      const T2 = tulFal([-ux, -uy], [wx, wy], T, S), S2 = tulFal([wx, wy], [-ux, -uy], S, T);
+      if (T2 > T + 1e-6 || S2 > S + 1e-6) { T = T2; S = S2; K = [c[0] - ux * T + wx * S, c[1] - uy * T + wy * S]; }
       if (T > lu + 1e-3 || S > lw + 1e-3) continue;
       const Pu: P2 = [c[0] - ux * T, c[1] - uy * T], Pw: P2 = [c[0] + wx * S, c[1] + wy * S];
       // a téglalap a körvonalon kívül: a közepe kint, és nincs benne körvonalcsúcs
