@@ -10,10 +10,14 @@ import { pdfLapok, lapTinta, alaprajzFeldolgoz, metszetFeldolgoz, type TervLap, 
 import { jegyzekSorok, szintekCimbol } from '@terv/alaprajz';
 import { zartsagEllenoriz, type ZartsagHiba } from '@terv/zartsag';
 import type { EpuletModell } from '@terv/epulet';
+import { elemAlakok, type ElemAlak } from '@terv/forrasAlak';
+import { homlokzatiAnyagok, jelmagyarazat, type HomlokzatiAnyag, type JelmagyarazatTetel } from '@terv/jelmagyarazat';
 import { alapAllapot, elemzesLap, tervFolyamat, type FolyamatAllapot } from './folyamat';
 
 export type { EpuletModell } from '@terv/epulet';
 export type { ZartsagHiba } from '@terv/zartsag';
+export type { ElemAlak } from '@terv/forrasAlak';
+export { elemekPontban } from '@terv/forrasAlak';
 
 export interface PdfbolEpuletEredmeny {
   modell: EpuletModell | null;
@@ -24,6 +28,15 @@ export interface PdfbolEpuletEredmeny {
   /** A modell zártság-ellenőrzése: ahol a beolvasás hiányos (hiányzó fal, fal–tető rés, tetőhézag, fedetlen rész) –
    *  hely (m, a modell koordinátáiban) és leírás, a 3D jelöléséhez. */
   zartsag: ZartsagHiba[];
+  /** A modellelemek (fal, nyílás, tér, födém, pillér, gerenda) alakja a forrás-tervlapon – 2D ⇄ 3D kijelöléshez: a lap
+   *  sorszáma (a `lapok` sorrendje) és sokszög lapkoordinátában (pt; a `lapKepek` képére: px = pt × kepSzel / szel). */
+  elemAlakok: ElemAlak[];
+  /** A lapok előnézeti képe (JPEG dataURL) és mérete: képpont, ill. a lap mérete pontban (a rárajzoláshoz). */
+  lapKepek: { kep: string; kepSzel: number; kepMag: number; szel: number; mag: number }[];
+  /** A homlokzati lapok számozott anyaglistája („1. Homlokzati nemesvakolat törtfehér, Baumit Life 0019”) – lapindexszel. */
+  homlokzatiAnyagok: (HomlokzatiAnyag & { lap: number })[];
+  /** A lapok jelmagyarázatának tételei (minta színe / mintázata / rétege → anyagnév) – lapindexszel. */
+  jelmagyarazat: (JelmagyarazatTetel & { lap: number })[];
 }
 
 /**
@@ -75,8 +88,13 @@ export async function pdfbolEpulet(fajlok: (File | { name: string; type?: string
   if (modell) { try { zartsag = zartsagEllenoriz(modell); } catch { zartsag = []; } }
   if (zartsag.length) figyelmeztetes.push(`A modell nem zárt – a beolvasás ${zartsag.length} helyen hiányos: ${zartsag.slice(0, 5).map((h) => h.leiras).join('; ')}${zartsag.length > 5 ? ' …' : ''}`);
   opciok.halad?.(1, 'kész');
+  let alakok: ElemAlak[] = [];
+  if (modell) { try { alakok = elemAlakok(modell); } catch { alakok = []; } }
+  const hAnyag = lapok.flatMap((l, i) => { if (l.szerep !== 'homlokzat') return []; try { return homlokzatiAnyagok(l.lap).map((x) => ({ ...x, lap: i })); } catch { return []; } });
+  const jm = lapok.flatMap((l, i) => { try { return jelmagyarazat(l.lap).map((x) => ({ ...x, lap: i })); } catch { return []; } });
   return {
-    modell, figyelmeztetes, zartsag,
+    modell, figyelmeztetes, zartsag, elemAlakok: alakok, homlokzatiAnyagok: hAnyag, jelmagyarazat: jm,
+    lapKepek: lapok.map((l) => ({ kep: l.kep, kepSzel: l.kepSzel, kepMag: l.kepMag, szel: l.lap.szel, mag: l.lap.mag })),
     lapok: lapok.map((l, i) => ({ fajl: l.fajl, oldal: l.oldal, szerep: l.szerep, cim: l.cim, ...(typeof elemzesek[i] === 'string' ? { hiba: elemzesek[i] as string } : {}) })),
   };
 }

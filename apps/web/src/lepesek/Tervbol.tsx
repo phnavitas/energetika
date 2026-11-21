@@ -111,6 +111,7 @@ const poligonTerulet = (q: [number, number][], mPerPt: number) => Math.abs(q.red
 const IRANY_SZIN: Record<number, string> = { 0: '#A16207', 90: '#2E6DB4', 180: '#15803D', 270: '#A21CAF' };
 const IRANY_NEV: Record<number, string> = { 0: 'lapon fent', 90: 'lapon jobbra', 180: 'lapon lent', 270: 'lapon balra' };
 import { alaprajzFeldolgozHatter, pdfLapokHatter } from '../terv/hatter';
+import { elemAlakok } from '@terv/forrasAlak';
 import { AZ_TAJ, kulterRaszter, norm, futottRiK, pecsetPontok, kulsoKozelE, alapKijeloles, BEJARATI_H, burokNyilasok, eszakHomGy, homlokzatGy, nezetGy, homlokzatNezetTar, homlokzatRajzTar, burokAutoGy, burokAutoTar, nevFeliratok, vartTer, burok3dTar, burok3dCache, elemzesLap, burokFalGy, burokFalakAuto, ferdeModell, lapKategoriak, burokNyilasokPt, atvetelReszek, tervbolFuggo, homMagGy, type Kijeloles, type BurokFalAuto , tervFolyamat, SZINT_SOR, kerdesKulcs, nyilasMeretAlkalmaz, type ModellKezi } from '../terv/folyamat';
 export { tervbolFuggo } from '../terv/folyamat';
 
@@ -606,6 +607,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   try { (globalThis as any).__epulet = epuletModellApp; } catch { /* */ }
   try { (globalThis as any).__elemzesek = () => ({ lapok, elemzesek, kijelolesek, futott: (i: number) => { const a = elemzesek[i]; return typeof a === 'object' ? [...futottRiK(a, kijeloles(i, a))] : []; }, nevF: (i: number) => nevFeliratok(lapok[i]!.lap) }); } catch { /* */ }
   try { (globalThis as any).__szobaMag = () => alaprajzLapok.map(({ i }) => { const a = elemzesek[i]; if (typeof a !== 'object') return null; const v = szobaMagassag(i, a); return v ? { lap: i, tengely: v.tengely, hatarok: v.hatarok, savok: v.savok, helyisegek: [...v.magassag.entries()].map(([ri, h]) => [a.magHelyisegek[ri]?.kod, a.magHelyisegek[ri]?.nev, h]) } : null; }); } catch { /* */ }
+  // a 3D-ben kijelölt elem (fal, nyílás, tér) – a 2D rajzon kiemelve (alakja a forráslapon)
+  const [kivElem, setKivElem] = useState<string | null>(null);
   const epMd = useMemo(() => { if (!nezet3d || modell3d !== 'teljes') return null; try { return epuletModellApp(); } catch { return null; } }, [nezet3d, modell3d, elemzesek, kijelolesek, bm, lapok, modellKezi]); // eslint-disable-line react-hooks/exhaustive-deps
   try { (globalThis as any).__burok3d = () => ({ belso: modellSzintek('belso'), kulso: modellSzintek('kulso') }); } catch { /* */ }
   try { (globalThis as any).__modell3d = () => ({ belso: (() => { const x = modellSzintek('belso'); return x ? modellOsszesites(x, eszakSz) : null; })(), kulso: (() => { const x = modellSzintek('kulso'); return x ? modellOsszesites(x, eszakSz) : null; })() }); } catch { /* */ }
@@ -1227,7 +1230,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   const md = epMd;
                   if (!md || !md.falak.length) return <div class="kartya halkabb" style="padding:60px 16px 16px">{valto}A 3D modellhez a lap léptéke és a felismert falak kellenek (add meg a méretarányt).</div>;
                   const hibak = (() => { try { return zartsagEllenoriz(md); } catch { return []; } })();
-                  return <div class="kartya" style="padding:56px 0 0;overflow:hidden;position:relative">{valto}<Epulet3D modell={md} hibak={hibak} kivNy={kivNy} onNyilas={(f) => { setKivNy(f); if (f && f.lap !== aIdx && f.lap >= 0) setAIdx(f.lap); }} magassag={Math.round(Math.min(760, Math.max(rogzit ? 300 : 420, (typeof window !== 'undefined' ? window.innerHeight : 800) * (rogzit ? 0.5 : 0.7))))} />{kivNyAdat && <NyilasMeretSzerk adat={kivNyAdat} allit={(x) => nyMeretAllit(kivNy!.lap, kivNy!.ny, x)} bezar={() => setKivNy(null)} />}
+                  return <div class="kartya" style="padding:56px 0 0;overflow:hidden;position:relative">{valto}<Epulet3D modell={md} hibak={hibak} kivNy={kivNy} onNyilas={(f) => { setKivNy(f); if (f && f.lap !== aIdx && f.lap >= 0) setAIdx(f.lap); }} onElem={(id) => { setKivElem(id); const e = id ? elemAlakok(md).find((x) => x.id === id) : undefined; if (e && e.lap !== aIdx) setAIdx(e.lap); }} magassag={Math.round(Math.min(760, Math.max(rogzit ? 300 : 420, (typeof window !== 'undefined' ? window.innerHeight : 800) * (rogzit ? 0.5 : 0.7))))} />{kivNyAdat && <NyilasMeretSzerk adat={kivNyAdat} allit={(x) => nyMeretAllit(kivNy!.lap, kivNy!.ny, x)} bezar={() => setKivNy(null)} />}
                     {hibak.length > 0 && (
                       <div role="status" style="margin:0;padding:10px 14px;border-top:1px solid #FCA5A5;background:#FEF2F2">
                         <strong style="color:#B91C1C">A modell nem zárt – a beolvasás itt hiányos ({hibak.length} hely, a 3D-ben pirossal jelölve):</strong>
@@ -1585,6 +1588,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   <line x1={0} y1={0} x2={Math.sin(rad) * nyilHossz * 0.7} y2={-Math.cos(rad) * nyilHossz * 0.7} stroke="#B91C1C" stroke-width={nyilHossz * 0.08} />
                   <text x={Math.sin(rad) * nyilHossz * 0.95} y={-Math.cos(rad) * nyilHossz * 0.95 + nyilHossz * 0.12} font-size={nyilHossz * 0.35} text-anchor="middle" fill="#B91C1C" font-weight="700" font-family="system-ui">É</text>
                 </g>
+                {kivElem && epMd && elemAlakok(epMd).filter((e) => e.id === kivElem && e.lap === aIdx).flatMap((e) => e.poligonok.map((p) => <polygon points={p.map((q) => q.join(',')).join(' ')} fill="rgba(249,115,22,.25)" stroke="#F97316" stroke-width={3} vector-effect="non-scaling-stroke" pointer-events="none" />))}
               </svg>
             </div>
             )}
