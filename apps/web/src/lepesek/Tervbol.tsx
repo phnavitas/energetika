@@ -13,7 +13,7 @@ import type { TervNyilas } from '@terv/nyilaszarok';
 import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, eszakJavitas, eszakJavitasMent, type TervLap, type AlaprajzFeldolgozas } from '@terv/elemzes';
 import { egtaj, jegyzekenKivul, pecsetBelmagassag, jegyzekSorok, szintekCimbol, szintNev } from '@terv/alaprajz';
 import { tervAtvesz, type AtvettNyilas, type AtvettHelyiseg } from '../terv/atvetel';
-import type { Raszter, FalSzakasz } from '@terv/raszter';
+import { poliRajzol, type Raszter, type FalSzakasz } from '@terv/raszter';
 import { MintaLakasok } from './MintaLakasok';
 import { Burok3D, modellOsszesites, tetoGeo, type Burok3DSzint } from './Burok3D';
 import { homlokzatRajzok, mertMagassagok, eszakHomlokzatbol, tetoAblakokHomlokzatrol, oromSzelessegek, type HomlokzatRajz, type MertMagassag } from '@terv/homlokzatIllesztes';
@@ -472,8 +472,14 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     if (!al?.r || !retegek.has('helyiseg')) return '';
     // a helyiségek területe a hőburokbeli szerepük színével (fűtött, fűtetlen, szomszéd épület, kültér)
     const r = al.r; const szinek = al.magHelyisegek.map((h) => { const i = helyisegek.indexOf(h); return i < 0 ? null : SZEREP_SZIN[szerep(i)]; });
-    return raszterReteg(r, (k) => { const c = r.cimke[k]!; return c >= 2 ? szinek[c - 2] ?? null : null; });
-  }, [al, katKulcs, retegek.has('helyiseg')]);
+    // a fűtött (és lakótéren belüli) helyiség a hőburkon kívül nem látszik: a burokon túlra elárasztott rész (pl. a
+    // bejárati fülke, ahová a felismerés a helyiséget kiengedte) nem a helyiség (Balázs, 2026-11-21: „hogy nyúlhat túl a
+    // helyiség a fűtött burkon? ez alapszabály”)
+    const benn = burok.length ? new Uint8Array(r.w * r.h) : null;
+    if (benn) { const ptPx = r.mPerPt / r.px; poliRajzol(benn, r.w, r.h, burok.map((q) => q.flat()), (x, y) => [(x - r.x0) * ptPx, (y - r.y0) * ptPx]); }
+    const burokban = al.magHelyisegek.map((h) => { const i = helyisegek.indexOf(h); return i >= 0 && (szerep(i) === 'futott' || szerep(i) === 'erosen'); });
+    return raszterReteg(r, (k) => { const c = r.cimke[k]!; if (c < 2) return null; if (benn && burokban[c - 2] && !benn[k]) return null; return szinek[c - 2] ?? null; });
+  }, [al, katKulcs, retegek.has('helyiseg'), burok]);
   const nyilasKep = useMemo(() => (al?.r && (retegek.has('nyilas') || retegek.has('helyiseg')) ? raszterReteg(al.r, (k) => (al.r!.nyilas[k] ? '#0EA5E9' : null)) : ''), [al, retegek.has('nyilas') || retegek.has('helyiseg')]);
   // falak pirossal; a külső sraffozott felület (járda, térkő, kavics – nem fal) szürkével
   // a kiválasztott helyiség kiemelése (sárga kitöltés, erős körvonal)
