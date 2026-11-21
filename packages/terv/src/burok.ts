@@ -395,13 +395,16 @@ function belsoZsebek(r: Raszter, m: Uint8Array, futott: ReadonlySet<number>, til
     q.splice(0, q.length, ...tart); if (q.length * r.px * r.px < 0.5) continue;
     // (a raszter szerint külső térnek vett zseb – lépcső, lépcsőház – csak kicsi, és a fűtött tér felőli oldalán kívül
     // döntően fal határolja: nem a rajz körüli fák, terepvonalak közé zárt terület)
+    // (a rajzi vonalak – méretvonal, telekhatár, terepvonal – közé zárt, felirat nélküli terület sem zseb: 2 m² fölött a
+    // fűtött tér felőli oldalán kívül döntően fal határolja – Tb-barlang: a konyha melletti, fal nélküli sáv a burokban)
+    const falHatar = () => { let fal = 0, mas = 0;
+      for (const a of q) { const x = a % w; for (const n of [x > 0 ? a - 1 : -1, x < w - 1 ? a + 1 : -1, a - w, a + w]) { if (n < 0 || n >= N || benne.has(n) || m[n]) continue; if (r.fal[n]) fal++; else mas++; } }
+      return fal >= 2 * mas; };
     if (q.some((a) => r.cimke[a] === 1)) {
       // (megnevezett – feliratos – külső tér: erkély, terasz, loggia)
       if (q.length * r.px * r.px > 15 || q.some((a) => tiltoK.has(a))) continue;
-      let fal = 0, mas = 0;
-      for (const a of q) { const x = a % w; for (const n of [x > 0 ? a - 1 : -1, x < w - 1 ? a + 1 : -1, a - w, a + w]) { if (n < 0 || n >= N || benne.has(n) || m[n]) continue; if (r.fal[n]) fal++; else mas++; } }
-      if (fal < 2 * mas) continue;
-    }
+      if (!falHatar()) continue;
+    } else if (q.length * r.px * r.px > 2 && !falHatar()) continue;
     // nyíláson át (áthidalt rés, ajtó, ablak) nem nyílik a külső térre: a nyíláscellákon túl nincs külső tér / lapszél
     const nyL = new Set<number>(nyCell); const sor = [...nyL]; let kifele = false;
     for (let t = 0; t < sor.length && !kifele && t < 50000; t++) {
