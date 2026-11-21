@@ -155,6 +155,14 @@ export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, onElem, hiba
       const pos: number[] = []; for (const h of modell.magasteto.haromszogek) for (const [x, y, z] of h) pos.push(x!, z!, y!);
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals();
       const m = new THREE.Mesh(g, mat(SZIN.teto, 0.85)); (m.material as THREE.Material).side = THREE.DoubleSide; grp.add(m);
+      // a magastető nélküli részek lapostetője (felülről nyitott belső tér nincs): a legfelső szint födémjének síkjában
+      const ft = modell.fodemek.find((f) => f.alatt === modell.magasteto!.szint);
+      if (ft) for (const p of modell.magasteto.lapos ?? []) {
+        if (p.length < 3) continue;
+        const sh = new THREE.Shape(p.map(([x, y]) => new THREE.Vector2(x, y)));
+        const g2 = new THREE.ExtrudeGeometry(sh, { depth: ft.vastag, bevelEnabled: false }); g2.rotateX(Math.PI / 2);
+        const m2 = new THREE.Mesh(g2, mat(SZIN.teto, 0.6)); m2.position.y = ft.z; grp.add(m2);
+      }
     }
     // pillérek
     for (const p of modell.pillerek ?? []) {

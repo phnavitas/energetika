@@ -112,7 +112,7 @@ const IRANY_SZIN: Record<number, string> = { 0: '#A16207', 90: '#2E6DB4', 180: '
 const IRANY_NEV: Record<number, string> = { 0: 'lapon fent', 90: 'lapon jobbra', 180: 'lapon lent', 270: 'lapon balra' };
 import { alaprajzFeldolgozHatter, pdfLapokHatter } from '../terv/hatter';
 import { elemAlakok } from '@terv/forrasAlak';
-import { AZ_TAJ, kulterRaszter, norm, futottRiK, pecsetPontok, kulsoKozelE, alapKijeloles, BEJARATI_H, burokNyilasok, eszakHomGy, homlokzatGy, nezetGy, homlokzatNezetTar, homlokzatRajzTar, burokAutoGy, burokAutoTar, nevFeliratok, vartTer, burok3dTar, burok3dCache, elemzesLap, burokFalGy, burokFalakAuto, ferdeModell, lapKategoriak, burokNyilasokPt, atvetelReszek, tervbolFuggo, homMagGy, type Kijeloles, type BurokFalAuto , tervFolyamat, SZINT_SOR, kerdesKulcs, nyilasMeretAlkalmaz, type ModellKezi } from '../terv/folyamat';
+import { AZ_TAJ, kulterRaszter, norm, futottRiK, padloigTetoter, pecsetPontok, kulsoKozelE, alapKijeloles, BEJARATI_H, burokNyilasok, eszakHomGy, homlokzatGy, nezetGy, homlokzatNezetTar, homlokzatRajzTar, burokAutoGy, burokAutoTar, nevFeliratok, vartTer, burok3dTar, burok3dCache, elemzesLap, burokFalGy, burokFalakAuto, ferdeModell, lapKategoriak, burokNyilasokPt, atvetelReszek, tervbolFuggo, homMagGy, type Kijeloles, type BurokFalAuto , tervFolyamat, SZINT_SOR, kerdesKulcs, nyilasMeretAlkalmaz, type ModellKezi } from '../terv/folyamat';
 export { tervbolFuggo } from '../terv/folyamat';
 
 export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modosit; ugrik: (n: 'helyisegek' | 'hatarolas' | 'retegrendek') => void }) {
@@ -135,7 +135,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const reszElotagok = reszKod.split(/[,;\s]+/).map((x) => x.trim().toLowerCase().replace(/[^a-z0-9]/g, '')).filter(Boolean);
   const F = tervFolyamat({ get lapok() { return lapok; }, get elemzesek() { return elemzesek; }, get kijelolesek() { return kijelolesek; }, get szintKi() { return szintKi; }, get kihagyLap() { return kihagyLap; },
     get eszakKulon() { return eszakKulon; }, get eszakKozos() { return eszakKozos; }, get futottValasz() { return futottValasz; }, get mindFutott() { return mindFutott; }, get reszKod() { return reszKod; },
-    get bm() { return bm; }, get me() { return me; }, get terdfalKezi() { return terdfalKezi; }, get homlokzatLapok() { return homlokzatLapok; }, get modellKezi() { return modellKezi; } });
+    get bm() { return bm; }, get me() { try { return me; } catch { return null; } /* (a metszet a render későbbi részén áll elő – előtte nincs) */ }, get terdfalKezi() { return terdfalKezi; }, get homlokzatLapok() { return homlokzatLapok; }, get modellKezi() { return modellKezi; } });
   const { reszKizar, masSzintKizar, kjVeg, lapSzintek, kimarad, eszakHomSajat, eszakHom, eszakFelismert, eszakLap, mert3d, homMag3d, elMagFv, oromok, homMagModell, szobaMagassag } = F;
   void eszakHomSajat; void eszakHom; void reszKizar; void masSzintKizar;
   // beolvasáskor eldöntendő kérdések: a fűtetlennek javasolt helyiségek (garázs, pince, padlás…) fűtöttek-e, és a
@@ -742,6 +742,11 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     // tetőtéri alaprajz (a legfelső szint tetőtér): a metszet tetőhajlása és térdfala szerint ferde tető + térdfal
     const tetoterLap = o.szintek.includes('T') && o.tetoAt && me?.szintek.belmagassag.length ? true : false;
     const extraUz: string[] = [];
+    // A alakú ház: a térdfal a tető magassága az alaprajz körvonalán, a helyiségek belmagassága a valódi fűtött
+    // keresztmetszet szerinti átlag (a metszet tetőtér-adata erre a lapra így módosul)
+    const pT = tetoterLap && me?.padloigTeto && me.tetoter && a.r ? padloigTetoter(a.r, futottRiK(a, k), me.padloigTeto, me.tetoter.hajlas) : null;
+    const ttL = pT && me?.tetoter ? { ...me.tetoter, terdfal: pT.terdfal } : me?.tetoter;
+    if (pT && me?.padloigTeto) extraUz.push(`A metszeten a tető a padlóig fut le (A alakú ház, a tető alatt nincs szintmagas külső fal): a szintet tetőtérként vettem – ${sz(me.tetoter?.hajlas ?? 0, 0)}° hajlás, a tér a ${sz(me.padloigTeto.gerinc, 2)} m-es belső gerincig nyitott. Az alaprajz körvonala (${sz(pT.W, 2)} m széles) a tető ${sz(pT.terdfal, 2)} m-es magasságában zár: ez a térdfal; a helyiségek átlagos belmagassága ${sz(pT.belmag, 2)} m (a fűtött térfogat a teljes tetőtéri keresztmetszet szerint). Az alapterületbe az 1,9 m-nél magasabb rész számít. Ha a szint nem tetőtér, a lap szintjét állítsd át.`);
     // (tetőtéren a falon el nem férő ablakfelirat a tetősík ablaké: nem falnyílás)
     if (tetoterLap) { const tfa = tetoterFeliratAblakok(a); if (tfa.length) { k = { ...k, kizartNy: new Set([...k.kizartNy, ...tfa]) }; extraUz.push(`Tetőtér: ${tfa.length} ablakfelirat a homlokzaton látszó tetősík ablakokkal azonos szélességű és a térdfal fölé nyúlik – a tetősík ablak méreteként vettem, nem falnyílásként.`); } }
     // a kézzel megadott szerep felülírja a becslést (és a „nem hőburok” kihagyást)
@@ -804,9 +809,9 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     }
     return tervAtvesz(q, {
       helyisegek: hs, retegrendek: blokkok, nyilasok: ny,
-      eszakSzog: o.eszak, belmagassag: (tetoterLap ? me?.tetoter?.belmagassag ?? me?.szintek.belmagassag.at(-1) : undefined) ?? bm ?? 2.7, szintszam: szintszam ?? 1, csere: o.csere, padloAt: o.padloAt, tetoAt: o.tetoAt,
+      eszakSzog: o.eszak, belmagassag: (pT ? pT.belmag : tetoterLap ? me?.tetoter?.belmagassag ?? me?.szintek.belmagassag.at(-1) : undefined) ?? bm ?? 2.7, szintszam: szintszam ?? 1, csere: o.csere, padloAt: o.padloAt, tetoAt: o.tetoAt,
       ...(!szomszedFutott && szomszedH >= 0.3 ? { szomszedFutetlen: szomszedH } : {}),
-      ...(tetoterLap && me?.tetoter ? { tetoter: { ...me.tetoter, orom: oromok(o.eszak, a.e.meretarany ?? undefined), ...ferdeModell(a, k, me.tetoter, oromok(o.eszak, a.e.meretarany ?? undefined), bm ?? 2.6) }, tetoablakok: tetoAblakok(a, hs, k, o.eszak) } : a.tetoablakok?.length ? { tetoablakok: tetoAblakok(a, hs, k, o.eszak) } : {}),
+      ...(tetoterLap && ttL ? { tetoter: { ...ttL, orom: oromok(o.eszak, a.e.meretarany ?? undefined), ...ferdeModell(a, k, ttL, oromok(o.eszak, a.e.meretarany ?? undefined), bm ?? 2.6) }, tetoablakok: tetoAblakok(a, hs, k, o.eszak) } : a.tetoablakok?.length ? { tetoablakok: tetoAblakok(a, hs, k, o.eszak) } : {}),
       ...(mintaFajta === 'blokkos' ? { alapFalSablon: 'fal_blokk_kohosalak' } : {}),
       forras: [o.fajl, mLap?.fajl].filter(Boolean).join(', '), szintek: o.szintek,
       ...(terepAlatt ? { terepAlatt: true, ...(pinceMelyseg ? { terepMelyseg: pinceMelyseg } : {}) } : {}),

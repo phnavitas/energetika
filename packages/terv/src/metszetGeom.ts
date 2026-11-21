@@ -61,8 +61,9 @@ export function fodemSavok(lap: Lap): FodemSav[] { return metszetElemek(lap).sav
  * szélesség (m) és a lapon a vízszintes helye (pt). */
 export interface MetszetElem { reteg: string; zFelso: number; zAlso: number; magas: number; szel: number; x: number; lap?: number }
 
-/** A metszet vízszintes sávjai (fodemSavok) és kis keresztmetszetű elemei (12–150 cm széles, 10–150 cm magas kitöltés). */
-export function metszetElemek(lap: Lap): { savok: FodemSav[]; kisElemek: MetszetElem[]; mPt?: number } {
+/** A metszet szintjeleiből a lap függőleges koordinátájának (pt) leképezése magasságra (m, ±0,00-hoz): a jelpárok
+ *  leggyakoribb meredeksége és a tengelymetszet szerinti csoportok (egy lapon több metszet is lehet egymás alatt). */
+export function szintLekepezes(lap: Lap): { z: (y: number) => number; mPt: number; csoportok: { b: number; y0: number; y1: number; n: number }[] } | null {
   // vízszintes vonaldarabok (a szintjel vonalához)
   const vv: [number, number, number][] = [];
   for (const u of lap.utvonalak) if (u.muvelet !== 'fill' && u.muvelet !== 'none') for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2)
@@ -75,11 +76,11 @@ export function metszetElemek(lap: Lap): { savok: FodemSav[]; kisElemek: Metszet
   };
   const jel = lap.szovegek.filter((t) => Math.abs(t.szog) < 2).map((t) => ({ t, m: SZINTJEL.exec(t.s.replace(/\s+/g, ' ').trim()) }))
     .filter((x) => x.m).map((x) => ({ y: jelY(x.t), v: (/[\-−–]/.test(x.m![1]!) ? -1 : 1) * Number(x.m![2]!.replace(',', '.')) }));
-  if (jel.length < 2) return { savok: [], kisElemek: [] };
+  if (jel.length < 2) return null;
   // meredekség (m / pt): a jelpárok meredekségei közül a legtöbb párral (± 2 %) egyező
   const mer: number[] = [];
   for (let i = 0; i < jel.length; i++) for (let j = i + 1; j < jel.length; j++) { const dv = jel[j]!.v - jel[i]!.v, dy = jel[j]!.y - jel[i]!.y; if (Math.abs(dv) >= 1 && Math.abs(dy) > 1) mer.push(dv / dy); }
-  if (!mer.length) return { savok: [], kisElemek: [] };
+  if (!mer.length) return null;
   let k = mer[0]!, kDb = 0;
   for (const c of mer) { const db = mer.filter((d) => Math.abs(d - c) <= 0.02 * Math.abs(c)).length; if (db > kDb) { kDb = db; k = c; } }
   const egy = mer.filter((d) => Math.abs(d - k) <= 0.02 * Math.abs(k)).sort((a, b) => a - b); k = egy[Math.floor(egy.length / 2)]!;
@@ -90,9 +91,16 @@ export function metszetElemek(lap: Lap): { savok: FodemSav[]; kisElemek: Metszet
   for (const j of jel) { const bj = j.v - k * j.y; const c = csop.find((q) => Math.abs(q.b - bj) <= 0.04);
     if (c) { c.b = (c.b * c.n + bj) / (c.n + 1); c.n++; c.y0 = Math.min(c.y0, j.y); c.y1 = Math.max(c.y1, j.y); } else csop.push({ b: bj, y0: j.y, y1: j.y, n: 1 }); }
   const ervenyes = csop.filter((c) => c.n >= 2);
-  if (!ervenyes.length) return { savok: [], kisElemek: [] };
-  const mPt = Math.abs(k);
+  if (!ervenyes.length) return null;
   const z = (y: number) => { const c = ervenyes.reduce((p, q) => { const d = (x: typeof q) => (y < x.y0 ? x.y0 - y : y > x.y1 ? y - x.y1 : 0); return d(q) < d(p) ? q : p; }); return k * y + c.b; };
+  return { z, mPt: Math.abs(k), csoportok: ervenyes };
+}
+
+/** A metszet vízszintes sávjai (fodemSavok) és kis keresztmetszetű elemei (12–150 cm széles, 10–150 cm magas kitöltés). */
+export function metszetElemek(lap: Lap): { savok: FodemSav[]; kisElemek: MetszetElem[]; mPt?: number } {
+  const lk = szintLekepezes(lap);
+  if (!lk) return { savok: [], kisElemek: [] };
+  const { z, mPt } = lk;
   const savok: FodemSav[] = [], kisElemek: MetszetElem[] = [];
   for (const u of lap.utvonalak) {
     if (u.muvelet === 'stroke' || u.muvelet === 'none' || !u.reteg || SAV_NEM.test(u.reteg)) continue;
@@ -287,4 +295,101 @@ export function belmagassagSavok(lap: Lap): BelmagSavok[] {
     ki.push({ y0: c.y0, y1: c.y1, mPt, s0, s1, savok });
   }
   return ki;
+}
+
+/** A padlóig (a földszinti padló közelébe) lefutó magastető (A alakú ház): a tetősík belső alsó élének magassága
+ *  (térdfal, m) és a belső gerinc magassága (m), a padlóhoz (±0,00) mérve. */
+export interface PadloigTeto { terdfal: number; gerinc: number }
+
+/**
+ * A metszeten a tető a földszinti padlóig fut le (A alakú ház): a hajlásszögű (± 2°), legalább 2 m-es emelkedő és lejtő
+ * tetővonalak közös gerinccel, alsó végük mindkét oldalon a ±0,00 közelében (−0,6 … +1,5 m) – a tető alatt nincs
+ * szintmagas külső fal. Ha a tető alatt mindkét oldalon a padlóra álló, legalább 1,9 m magas falmetszet áll (a tetőn
+ * belüli fal), az szint, nem tetőtér: null. A magasság a szintjelekből (szintLekepezes).
+ */
+export function padloigEroTeto(lap: Lap, hajlas: number, mPerPt?: number): PadloigTeto | null {
+  const lk = szintLekepezes(lap); if (!lk) return null;
+  // ismert léptéknél (rajzi méretarány) a szintjelek csak a ±0,00 helyét adják: a kevés (két) jelből számolt meredekség
+  // pontatlan lehet (a jel vonala más szerkezeté); a rajz csak a jelcsoport sávjától 3 m-en belül számít
+  const k0 = lk.z(1) - lk.z(0), mPt = mPerPt ?? lk.mPt;
+  const csop = (y: number) => lk.csoportok.reduce((p, q) => { const d = (x: typeof q) => (y < x.y0 ? x.y0 - y : y > x.y1 ? y - x.y1 : 0); return d(q) < d(p) ? q : p; });
+  const z = (y: number) => { const c = csop(y); return mPerPt ? (-c.b / k0 - y) * mPerPt * Math.sign(-k0) : k0 * y + c.b; };
+  const kozel = (y: number) => { const c = csop(y); return (y < c.y0 ? c.y0 - y : y > c.y1 ? y - c.y1 : 0) * mPt <= 3; };
+  const NEM_TETO = /m[ée]retez|felirat|terep|k[öo]rnyezet|jel|b[úu]tor|szerkeszt|n[öo]v[ée]ny|fa\b/i;
+  type Sz = { ax: number; ay: number; lx: number; ly: number; dir: number; L: number };
+  const sz: Sz[] = [];
+  for (const u of lap.utvonalak) {
+    if (u.reteg && NEM_TETO.test(u.reteg)) continue;
+    for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) {
+      const dx = p[i + 2]! - p[i]!, dy = p[i + 3]! - p[i + 1]!, L = Math.hypot(dx, dy) * mPt; if (L < 2) continue;
+      const a = (Math.atan2(Math.abs(dy), Math.abs(dx)) * 180) / Math.PI; if (Math.abs(a - hajlas) > 2) continue;
+      // felső (gerinc felőli) és alsó vég; dir: az alsó vég a gerinctől jobbra (+1) vagy balra (−1)
+      const [ax, ay, lx, ly] = p[i + 1]! < p[i + 3]! ? [p[i]!, p[i + 1]!, p[i + 2]!, p[i + 3]!] : [p[i + 2]!, p[i + 3]!, p[i]!, p[i + 1]!];
+      sz.push({ ax, ay, lx, ly, dir: Math.sign(lx - ax), L });
+    }
+  }
+  if (sz.length < 2) return null;
+  // gerincenként (a felső végek 0,5 m-en belül), a leghosszabb vonalak gerincétől
+  const kesz = new Set<Sz>(); let leg: PadloigTeto | null = null;
+  for (const s0 of [...sz].sort((a, b) => b.L - a.L)) {
+    if (kesz.has(s0)) continue;
+    const cs = sz.filter((s) => Math.hypot(s.ax - s0.ax, s.ay - s0.ay) * mPt <= 0.5 || (Math.abs(s.ax - s0.ax) * mPt <= 0.5 && s.ay >= s0.ay - 0.1 / mPt && (s.ay - s0.ay) * mPt <= 1.2));
+    for (const s of cs) kesz.add(s);
+    const bal = cs.filter((s) => s.dir < 0), jobb = cs.filter((s) => s.dir > 0);
+    if (!bal.length || !jobb.length || !cs.every((s) => kozel(s.ly))) continue;
+    // a leghosszabb vonal alsó vége oldalanként (a külső, a talajig érő síkok), ill. a belső felület alsó vége (a
+    // legmagasabb alsó vég a leghosszabb vonal 1,5 m-es környezetében)
+    const also = (t: Sz[]) => { const h = Math.max(...t.map((s) => s.L)); const k = t.filter((s) => s.L >= h - 1.5); return { kulso: Math.min(...k.map((s) => z(s.ly))), belso: Math.max(...k.map((s) => z(s.ly))), x: k.reduce((q, s) => q + s.lx, 0) / k.length }; };
+    const b = also(bal), j = also(jobb);
+    if (b.kulso < -0.6 || j.kulso < -0.6 || b.belso > 1.5 || j.belso > 1.5) continue;
+    if (Math.abs(j.x - b.x) * mPt < 3) continue;
+    // a tetőn belüli, szintmagas fal (a padlóra álló, ≥ 1,9 m magas falmetszet a tetősík alatt mindkét oldalon): szint
+    const tetoZ = (x: number, t: Sz[]) => { const s = t.reduce((p, q) => (q.L > p.L ? q : p)); const f = (x - s.ax) / ((s.lx - s.ax) || 1); return z(s.ay + f * (s.ly - s.ay)); };
+    const falOldal = (t: Sz[], o: { x: number }) => lap.utvonalak.some((u) => {
+      if (u.muvelet === 'stroke' || u.muvelet === 'none' || (u.reteg && NEM_TETO.test(u.reteg))) return false;
+      const w = (u.bbox[2] - u.bbox[0]) * mPt, h = (u.bbox[3] - u.bbox[1]) * mPt; if (w < 0.08 || w > 0.8 || h < 1.9) return false;
+      const cx = (u.bbox[0] + u.bbox[2]) / 2; if ((cx - o.x) * (b.x < j.x ? (t === bal ? 1 : -1) : (t === bal ? -1 : 1)) < 0.2 / mPt) return false;
+      const zA = z(u.bbox[3]), zF = z(u.bbox[1]);
+      return Math.abs(zA) <= 0.4 && zF - zA >= 1.9 && Math.abs(zF - tetoZ(cx, t)) <= 0.6;
+    });
+    if (falOldal(bal, b) && falOldal(jobb, j)) return null;
+    // a belső gerinc: a gerinc alatti (1,2 m-en belüli) legalsó csúcs – a tetőszerkezet belső síkja
+    const r2 = (v: number) => Math.round(v * 100) / 100;
+    const ki = { terdfal: r2(Math.max(0, Math.min(b.belso, j.belso))), gerinc: r2(Math.min(...cs.map((s) => z(s.ay)))) };
+    if (!leg || ki.gerinc > leg.gerinc) leg = ki;
+  }
+  return leg;
+}
+
+/** A metszet- és homlokzatlapok szintjelei (pozitív): érték, hány lapon szerepel, és szerepel-e homlokzaton. */
+export interface SzintJelDb { v: number; db: number; hom: boolean }
+export function szintJelekLapokrol(lapok: { lap: Lap; homlokzat: boolean }[]): SzintJelDb[] {
+  const db = new Map<number, number>(), hom = new Set<number>();
+  for (const { lap: l, homlokzat } of lapok) { const egy = new Set<number>(); for (const t of l.szovegek) { if (Math.abs(t.szog) > 2) continue; const m = SZINTJEL.exec(t.s.replace(/\s+/g, ' ').trim()); if (!m || /[\-−–]/.test(m[1]!)) continue; egy.add(Number(m[2]!.replace(',', '.'))); } for (const v of egy) { db.set(v, (db.get(v) ?? 0) + 1); if (homlokzat) hom.add(v); } }
+  const vanHom = lapok.some((l) => l.homlokzat);
+  return [...db.entries()].map(([v, n]) => ({ v, db: n, hom: !vanHom || hom.has(v) }));
+}
+
+/**
+ * Az eresz és a gerinc magassága a szintjelekből (metszet, homlokzat): a lapokon legalább kétszer kiírt jelek közül az a
+ * pár, amely a tető hajlásával és a tetőtest külső szélességével (W, a gerincre merőlegesen) összefér: gerinc − eresz =
+ * (W / 2 + kiállás) · tg(hajlás), 0,2–1,2 m-es kiállással (a kiírt kiállás, ill. 0,5 m körül a legjobb; a közel azonos
+ * jók közül a több lapon kiírt pár). Az eresz a homlokzaton is kiírt jel (a tetőszél – csatorna – magassága).
+ */
+export function ereszGerincJelekbol(jelek: SzintJelDb[], hajlas: number, W: number, zMin: number, kiallas?: number): { zEresz: number; gerinc: number; kiallas: number } | null {
+  const db = new Map(jelek.map((j) => [j.v, j.db]));
+  const jel = jelek.filter((j) => j.db >= 2);
+  const tg = Math.tan((hajlas * Math.PI) / 180); if (!(tg > 0) || !(W > 2)) return null;
+  const jo: { e: number; g: number; k: number; d: number }[] = [];
+  for (const E of jel) { const e = E.v; if (e < zMin || !E.hom) continue; for (const { v: g } of jel) { if (g < e + 1) continue;
+    const k = (g - e) / tg - W / 2; if (k < 0.2 || k > 1.2) continue;
+    jo.push({ e, g, k, d: Math.abs(k - (kiallas ?? 0.5)) }); } }
+  if (!jo.length) return null;
+  jo.sort((a, b) => a.d - b.d);
+  const kozel = jo.filter((x) => x.d - jo[0]!.d < 0.15);
+  const n = (x: typeof jo[number]) => (db.get(x.e) ?? 0) * 100 + (db.get(x.g) ?? 0);
+  kozel.sort((a, b) => n(b) - n(a) || a.d - b.d);
+  if (kozel.length > 1 && n(kozel[0]!) === n(kozel[1]!) && (kozel[0]!.e !== kozel[1]!.e || kozel[0]!.g !== kozel[1]!.g)) return null;
+  const r2 = (v: number) => Math.round(v * 100) / 100;
+  return { zEresz: r2(kozel[0]!.e), gerinc: r2(kozel[0]!.g), kiallas: r2(kozel[0]!.k) };
 }

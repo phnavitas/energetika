@@ -204,6 +204,21 @@ tartó) – a hőszigetelés-burkolat, eresz, csatorna, járda, korlát nem.
 - Pecsét két előtag nélküli területsorral („12,82 m²” fölött „15,85 m²”): a nagyobb a teljes (A), a kisebb a hasznos;
   a jegyzék „Terület | Teljes terület” oszlopai ugyanígy. Csak burkolatnevű pecsét („greslap” + „parketta”) helyiség,
   nem külső burkolt felület.
+- A alakú ház (2026-11-21, Balázs): ha a metszeten a tető a földszinti padlóig fut (mindkét oldalon a ±0,00 közelében
+  végződik, és a tető alatt nincs ≥ 1,9 m-es, padlóra álló fal), a szint tetőtér (`metszetFeldolgoz().padloigTeto`);
+  ha a tetőn belül szintmagas fal áll, szint marad. A térdfal az alaprajz körvonalán mért tetőmagasság (a rajz az
+  1,9 m-es vonalig zár), a tér a belső gerincig nyitott; az alapterületbe az 1,9 m feletti rész számít.
+- Garázs a berajzolt gépkocsiból (2026-11-21): az autó-réteg (`KÖRNYEZET - auto`, gépkocsi, car…) kocsi méretű
+  csoportja pecsét nélküli, háromoldalt falazott térben helyiség (`helyisegek[].gepkocsi`); a nyitott oldal kapu
+  (`garazskapu`). Ha van homlokzati rajz, de a kapu ott nem látszik: kültéri beálló. Garázsban a felirat nélküli,
+  ≥ 1,8 m-es külső nyílás és a „pm 0”-s, ≥ 2,2 m-es nyílás is kapu.
+- Faldarabok összefűzése (teljes modell, 2026-11-21): az egy vonalba eső, egymáshoz csatlakozó falszakaszok, amelyek
+  anyaga, rétegei, vastagsága, magassága, szerkezete, hőburok-szerepe és oldalainak fajtája azonos, egy fal
+  (`falak[].osszefuzott`: az eredeti azonosítók); a nyílások helye és a pillérek hivatkozása átszámítva.
+- Fal és tető: a legfelső szint külső falai a tető alsó síkjáig érnek (magasabb tetőnél profillal felfelé, alacsonyabb
+  tetőszélnél lefelé – legfeljebb a belmagasságig, `jelleg: 'parkany'`). Az eresz magassága és a kiállás a metszet /
+  homlokzat szintjeleiből: az eresz (a homlokzaton is kiírt jel) és a gerinc az a pár, amely a hajlással és a tetőtest
+  szélességével összefér (gerinc − eresz = (W/2 + kiállás) · tg α, 0,2–1,2 m-es kiállással).
 
 ## Fejlesztés, frissítés
 

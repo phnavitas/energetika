@@ -8,10 +8,11 @@ import { retegSzures } from './retegek';
 import { rajzpecsetTeglalap, pecsetKeretNelkul } from './rajzpecset';
 import { pdfZonakNyers, zonakSzur, poliTer, poliBenne, belsoPont } from './zonak';
 import { raszterEpit, type Raszter, type RaszterBeallitas } from './raszter';
+import { gepkocsik } from './gepkocsi';
 import { kotaEllenoriz } from './kota';
 import type { TintaKep } from './tinta';
 import { meretaranyKotabol, automatikusHelyisegek, lakasCsoportok, arnyalatHatarok, type SzurkeKep } from './autohelyiseg';
-import { terdfalGeometria, tetoHajlasRajzbol } from './metszetGeom';
+import { terdfalGeometria, tetoHajlasRajzbol, padloigEroTeto, type PadloigTeto } from './metszetGeom';
 import { fuggonyfalak, szarnyFeliratE, jeloletlenNyilasok, lancNyilasok, tetoablakJelek, type TetoablakJel, nyilasFeliratok, nyilasokHozzarendel, falfulkeE, type TervNyilas, type NyilasFelirat } from './nyilaszarok';
 import { talajOldal } from './talaj';
 import { retegrendBlokkok, szerepBecsles, retegekEpit, szintekKeres, tetoterKeres, type TetoterAdat, type TervRetegrend, type SzerepBecsles, type TervRetegUI, type SzintEredmeny } from './metszet';
@@ -288,6 +289,14 @@ function leirasParosit(e: AlaprajzEredmeny, mag: TervHelyiseg[], lista: TervHely
     const h = mag[p.i]!, j = sorok[p.j]!;
     h.kod = j.kod; h.nev = j.nev; if (j.burkolat) h.burkolat = j.burkolat; h.A = j.A;
   }
+  // a berajzolt gépkocsi szerint felvett tér (garázs) a lista egyetlen, még szabad garázs-sorához (név szerint)
+  mag.forEach((h, i) => {
+    if (hFoglalt.has(i) || !h.gepkocsi) return;
+    const jj = sorok.map((j, k) => ({ j, k })).filter(({ j, k }) => !jFoglalt.has(k) && /gar[aá]zs|gépkocsi|gepkocsi|beálló/i.test(j.nev));
+    if (jj.length !== 1) return;
+    const { j, k } = jj[0]!; hFoglalt.add(i); jFoglalt.add(k);
+    h.kod = j.kod; h.nev = j.nev; if (j.burkolat) h.burkolat = j.burkolat; h.A = j.A;
+  });
   mag.forEach((h, i) => { if (!hFoglalt.has(i)) { h.nev = `${h.nev} (listában nem azonosított)`; h.hasznosA = 0; } });
   const csak = sorok.filter((_, jj) => !jFoglalt.has(jj)).map((j) => ({ ...j, forras: 'jegyzek' as const }));
   e.helyisegek = [...e.helyisegek, ...csak];
@@ -421,6 +430,44 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
     if (magHelyisegek.length) e.figyelmeztetesek.push(`Helyiségpecsét nincs a lapon: ${magHelyisegek.length} zárt teret ismertem fel helyiségként (Helyiség 1, 2, …). Jelöld ki a lakás helyiségeit, és nevezd át őket a Helyiségek lépésben.`);
   }
   if (!e.mPerPt || !magHelyisegek.length) return { e, magHelyisegek, r: null, nyilasok: [] };
+  // berajzolt gépkocsi pecsét nélküli térben (garázs vagy fedett beálló): ha a kocsit három oldalról fal veszi körül, a
+  // nyitott oldal kapunyílással zárul, és a tér helyiségmagot kap (a garázs és a beálló közti döntés a homlokzat szerint
+  // – a kapu látszik-e – az átvételkor). A kocsi rétegét a rétegszűrés elhagyja: az eredeti lapon keresünk.
+  const garazsok: { x: number; y: number }[] = [];
+  {
+    const kocsik = gepkocsik(lap0, e.mPerPt);
+    // (egymás melletti kocsik – ≤ 7 m – egy tér; a csoport közepe a mag)
+    const csop: { x: number; y: number; db: number }[] = [];
+    for (const k of kocsik) { const c = csop.find((q) => Math.hypot(q.x / q.db - k.x, q.y / q.db - k.y) * e.mPerPt! <= 7); if (c) { c.x += k.x; c.y += k.y; c.db++; } else csop.push({ x: k.x, y: k.y, db: 1 }); }
+    const jelolt = csop.map((c) => ({ x: c.x / c.db, y: c.y / c.db }));
+    if (jelolt.length) {
+      halad?.('berajzolt gépkocsi: garázs / beálló');
+      const mg = magHelyisegek.map((h) => ({ ...(h.mutato ?? h), A: h.A }));
+      const rP = raszterEpit(lap, e.mPerPt, mg, { garazsok: jelolt, kulsoPontok: e.helyisegek.filter((h) => h.kulter && h.forras === 'pecset').map((h) => h.mutato ?? h), ...(auto ? { px: 0.04, resZaras: 3.0, vastagVonalFal: 0.05 } : {}) });
+      jelolt.forEach((g, k) => {
+        if (!rP.garazsKapuk?.[k]) return;
+        const gx = Math.round((g.x - rP.x0) * rP.mPerPt / rP.px), gy = Math.round((g.y - rP.y0) * rP.mPerPt / rP.px);
+        if (gx < 0 || gy < 0 || gx >= rP.w || gy >= rP.h) return;
+        // (a kocsi helye a kapu lezárása után zárt, pecsét nélküli tér – 0 címke –; helyiségben vagy kint: nem új tér)
+        let i0 = gy * rP.w + gx;
+        if (rP.fal[i0] || rP.nyilas[i0]) { const sz = [i0 - 1, i0 + 1, i0 - rP.w, i0 + rP.w].find((q) => q >= 0 && q < rP.w * rP.h && !rP.fal[q] && !rP.nyilas[q]); if (sz === undefined) return; i0 = sz; }
+        // (zárt, pecsét nélküli tér – 0 címke –, vagy egy helyiségbe – ajtón át – átfolyt terület: a helyiség a pecsétben írt
+        // területének sokszorosára nőtt; helyiségben, ill. kint álló kocsi nem új tér)
+        const c0 = rP.cimke[i0]!, sajat = c0 >= 2 ? mg[c0 - 2] : undefined;
+        if (c0 !== 0 && !(sajat?.A && (rP.helyisegek[c0 - 2]?.A ?? 0) > Math.max(1.6 * sajat.A, sajat.A + 10))) return;
+        const latott = new Uint8Array(rP.w * rP.h), sor = [i0]; latott[i0] = 1; let db = 0, szel = false;
+        for (let q = 0; q < sor.length; q++) { const i = sor[q]!; db++; const x = i % rP.w, y = (i / rP.w) | 0; if (x === 0 || y === 0 || x === rP.w - 1 || y === rP.h - 1) szel = true;
+          for (const n of [x > 0 ? i - 1 : -1, x < rP.w - 1 ? i + 1 : -1, i - rP.w, i + rP.w]) if (n >= 0 && n < rP.w * rP.h && !latott[n] && !rP.fal[n] && !rP.nyilas[n] && rP.cimke[n] === c0) { latott[n] = 1; sor.push(n); } }
+        // (átfolyásnál a tér területe a helyiség többlete)
+        const A = c0 === 0 ? db * rP.px * rP.px : db * rP.px * rP.px - (sajat?.A ?? 0);
+        if (szel || A < 10 || A > 120) return;
+        garazsok.push(g);
+        const h: TervHelyiseg = { nev: 'Garázs', A: Math.round(A * 100) / 100, x: g.x, y: g.y, forras: 'pecset', kulter: false, kezi: true, gepkocsi: true };
+        e.helyisegek = [...e.helyisegek, h]; magHelyisegek = [...magHelyisegek, h];
+      });
+      if (garazsok.length) e.figyelmeztetesek.push(`Berajzolt gépkocsi pecsét nélküli, háromoldalt falazott térben: ${garazsok.length === 1 ? 'a teret' : `${garazsok.length} teret`} garázsnak vettem, a nyitott oldalát kapunak. Ha a homlokzaton ott nincs kapu, kültéri beálló lesz belőle.`);
+    }
+  }
   const kulsoPontok = e.helyisegek.filter((h) => h.kulter && h.forras === 'pecset').map((h) => h.mutato ?? h);
   const magok = magHelyisegek.map((h) => ({ ...(h.mutato ?? h), A: h.A }));
   let r: Raszter; let r3d: Raszter | undefined; let r3dP = 0;
@@ -428,7 +475,7 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
     // pecsét nélküli lap: a zárt terekből indított elárasztás. Az a „helyiség”, amely a végső raszterben a lap széléig
     // kifolyik, vagy a zárt térként mért területének többszörösére nő (a rajz körüli méretlánc-zseb, keretmező),
     // nem helyiség – kihagyjuk, és újraépítjük a raszter nélküle (különben az egész lapot elárasztja).
-    const opc = { px: 0.04, resZaras: 3.0, vastagVonalFal: 0.05, ...(szurke && !reteges ? { szinKep: szurke } : {})};
+    const opc = { px: 0.04, resZaras: 3.0, vastagVonalFal: 0.05, ...(szurke && !reteges ? { szinKep: szurke } : {}), ...(garazsok.length ? { garazsok } : {}) };
     halad?.('zárt terek felismerése (pecsét nélküli lap)');
     r = raszterEpit(lap, e.mPerPt, magok, opc);
     for (let kor = 0; kor < 12; kor++) {
@@ -436,7 +483,7 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
       const rossz = new Set(magHelyisegek.map((h, i) => ((r.helyisegek[i]?.szivarog || (db.get(i) ?? 0) * r.px * r.px > Math.max(2 * h.A, h.A + 15)) ? i : -1)).filter((i) => i >= 0));
       if (!rossz.size || rossz.size === magHelyisegek.length) break;
       magHelyisegek = magHelyisegek.filter((_, i) => !rossz.has(i));
-      magHelyisegek.forEach((h, i) => { h.nev = `Helyiség ${i + 1}`; });
+      { let n = 0; magHelyisegek.forEach((h) => { if (!h.gepkocsi) h.nev = `Helyiség ${++n}`; }); }
       e.helyisegek = magHelyisegek;
       magok.splice(0, magok.length, ...magHelyisegek.map((h) => ({ ...(h.mutato ?? h), A: h.A })));
       r = raszterEpit(lap, e.mPerPt, magok, opc);
@@ -449,7 +496,7 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
     // amelyben a helyiségek kiterjedése a pecsétben írt területhez a legjobban illik (területtel súlyozott egyezés)
     const kapuk = nyilasFeliratok(lap.szovegek, lap.utvonalak).filter((f) => f.kapuJelolt && f.szel >= 2.5).map((f) => ({ x: f.x, y: f.y, szel: f.szel, fal: f.fal }));
     const zonaPoli = zonaPoliMap.size ? magHelyisegek.map((h) => zonaPoliMap.get(h)?.map((p) => p.flat())) : undefined;
-    const alap = { ...(kulsoPontok.length ? { kulsoPontok } : {}), ...(kapuk.length ? { kapuk } : {}), ...(zonaPoli?.some(Boolean) ? { zonaPoli } : {}) };
+    const alap = { ...(kulsoPontok.length ? { kulsoPontok } : {}), ...(kapuk.length ? { kapuk } : {}), ...(zonaPoli?.some(Boolean) ? { zonaPoli } : {}), ...(garazsok.length ? { garazsok } : {}) };
     const valtozatok: RaszterBeallitas[] = [alap, { ...alap, ablaksor: false }, ...(tinta ? [{ ...alap, tinta }, { ...alap, tinta, ablaksor: false }] : [])];
     const vektoros: RaszterBeallitas[] = [{ ...alap, vektorFal: true }, ...(tinta ? [{ ...alap, tinta, vektorFal: true }] : [])];
     let leg: { r: Raszter; p: number } | null = null; let legBeall: RaszterBeallitas | null = null;
@@ -565,6 +612,8 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
         if (ki.size) for (let i = nyilasok.length - 1; i >= 0; i--) if (ki.has(nyilasok[i]!)) { szarnyKi.push(nyilasok[i]!); nyilasok.splice(i, 1); }
       } }
     nyilasok.push(...jeloletlenNyilasok(r, nyilasok).filter((n) => !(keskenyKi && n.szel < 0.6)));
+    // garázs (pecsétes vagy a berajzolt kocsi szerinti) felirat nélküli, legalább 1,8 m széles külső falnyílása: kapu
+    for (const n of nyilasok) if (n.mert && n.kulso && n.szel >= 1.8 && /gar[aá]zs|gépkocsi|gepkocsi|beálló/i.test(magHelyisegek[n.helyiseg ?? -1]?.nev ?? '')) { n.fajta = 'garazskapu'; n.pm = 0; }
   }
   // méretláncba írt nyílásméretek (szélesség / magasság) a mért falnyílásokra
   lancNyilasok(feliratok, nyilasok, r, lap.szovegek, magHelyisegek.map((h) => h.nev));
@@ -660,6 +709,8 @@ export interface MetszetFeldolgozas {
   tetoter: TetoterAdat | null;
   /** A magastető hajlásszöge felirat nélkül, a metszet ferde tetővonalaiból (csak az épületmodellhez). */
   tetoHajlas?: number;
+  /** A tető a földszinti padlóig fut le (A alakú ház, a tető alatt nincs szintmagas külső fal): a szint tetőtér. */
+  padloigTeto?: PadloigTeto;
 }
 
 /**
@@ -676,12 +727,22 @@ export function metszetFeldolgoz(lap: Lap): MetszetFeldolgozas {
   const b = retegrendBlokkok(lap.szovegek).map(padlasBontas);
   const tt = tetoterKeres(lap.szovegek, szintekKeres(lap.szovegek));
   // térdfal a metszet rajzolatából (a födémre ráálló, a tetőbe futó falkitöltés); felirat csak ennek híján
-  if (tt) { const M = meretaranyKeres(lap.szovegek); const g = M ? terdfalGeometria(lap, (25.4 / 72) / 1000 * M) : null; if (g !== null) { tt.terdfal = g; tt.terdfalForras = 'rajz'; } else if (tt.terdfal !== null) tt.terdfalForras = 'felirat'; }
+  const M = meretaranyKeres(lap.szovegek), mpp = M ? (25.4 / 72) / 1000 * M : undefined;
+  if (tt) { const g = mpp ? terdfalGeometria(lap, mpp) : null; if (g !== null) { tt.terdfal = g; tt.terdfalForras = 'rajz'; } else if (tt.terdfal !== null) tt.terdfalForras = 'felirat'; }
+  const tetoHajlas = !tt ? tetoHajlasRajzbol(lap, mpp) : null;
+  // a földszinti padlóig lefutó tető (A alakú ház): a szint tetőtér – a térdfal a tetősík belső alsó éle, a
+  // „padlásfödém” a belső gerinc (a tér a gerincig nyitott); a térdfal-felirat elsőbbséget kap
+  const hj = tt?.hajlas ?? tetoHajlas;
+  const pt = hj ? padloigEroTeto(lap, hj, mpp) : null;
+  const tt2: TetoterAdat | null = pt
+    ? { ...(tt ?? { terdfalTipp: null }), hajlas: hj!, terdfal: tt?.terdfalForras === 'felirat' ? tt.terdfal : pt.terdfal, terdfalForras: tt?.terdfalForras === 'felirat' ? 'felirat' : 'rajz', belmagassag: pt.gerinc, padlo: 0 }
+    : tt;
   return {
     blokkok: b.map((rr) => { const becsles = szerepBecsles(rr, b); return { rr, becsles, retegek: retegekEpit(rr, becsles, ujId) }; }),
     szintek: szintekKeres(lap.szovegek),
-    tetoter: tt,
-    ...(!tt ? (() => { const M = meretaranyKeres(lap.szovegek); const h = tetoHajlasRajzbol(lap, M ? (25.4 / 72) / 1000 * M : undefined); return h ? { tetoHajlas: h } : {}; })() : {}),
+    tetoter: tt2,
+    ...(tetoHajlas ? { tetoHajlas } : {}),
+    ...(pt ? { padloigTeto: pt } : {}),
   };
 }
 

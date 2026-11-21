@@ -646,7 +646,8 @@ export function nyilasokHozzarendel(feliratok0: NyilasFelirat[], r: Raszter, nev
     const fp = tPm !== null ? tPm : f.pm;
     // lakóhelyiség (nappali, szoba, konyha) külső ajtaja erkély- / teraszajtó (a széles is: tolóajtó), nem bejárati ajtó és nem kapu
     const lako = p ? LAKO.test(nevek[p.h] ?? '') : false;
-    const kapu = kulso && fp === null && f.mag >= 1.8 && (garazsban ? f.kapuJelolt || f.szel >= 1.8 : !lako && f.kapuJelolt && f.szel >= 2.2);
+    // (garázsban a küszöb nélküli – „pm 0” feliratú –, legalább 2,2 m széles, ajtómagasságú nyílás is kapu, nem erkélyajtó)
+    const kapu = kulso && f.mag >= 1.8 && (fp === null || (garazsban && fp <= 0.05 && f.szel >= 2.2)) && (garazsban ? f.kapuJelolt || f.szel >= 1.8 : fp === null && !lako && f.kapuJelolt && f.szel >= 2.2);
     const fajta: TervNyilas['fajta'] = kapu ? 'garazskapu' : !kulso ? 'belso_ajto' : fp !== null && fp > 0.05 ? 'ablak' : fp !== null ? 'erkelyajto' : f.mag >= 1.9 ? (tipusLap || lako ? 'erkelyajto' : 'bejarati_ajto') : 'ablak';
     if (f.lanc) lancHozzarendelt.add(f);
     ki.push({ ...f, pm: fp, helyiseg: p?.h ?? null, irany: p?.irany ?? null, kulso, fajta, ...(folt && !elteroIrany ? { hely: kompHely(folt) } : {}), ...(!kulso && p?.masik !== undefined ? { masik: p.masik } : {}), ...(kulso && tipp ? { iranyTipp: true } : {}), ...(!kulso && p?.nyitott ? { oldalBizonytalan: true } : {}), ...(csakModell ? { csakModell: true } : {}) });

@@ -5,6 +5,8 @@ forras/
 apps/web/node_modules
 apps/web/dist
 apps/web/dist-egy
+apps/web/dist-dbg
+apps/web/dist-base
 apps/web/dist-hamis
 apps/web/dist-hamis2
 __pycache__/
