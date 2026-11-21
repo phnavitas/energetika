@@ -1066,6 +1066,45 @@ function oromFalak(falak: Fal[], szintek: Szint[], mt: Magasteto): void {
   }
 }
 
+
+type T3 = [number, number, number];
+/**
+ * Tetőrészek egyesítése felülnézetben: minden rész háromszögeiből levágjuk azt a részt, amely egy másik rész valamelyik
+ * háromszöge alatt (alacsonyabban) van – a látható tetőfelület a felső burkoló. Konvex darabolással (félsíkok).
+ */
+export function tetoUnio(reszek: T3[][][]): T3[][][] {
+  type F = [number, number, number]; // α x + β y + γ ≥ 0
+  const sik = (t: T3[]) => { const [a, b, c] = t as [T3, T3, T3]; const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; if (Math.abs(nz) < 1e-12) return null;
+    return { A: -nx / nz, B: -ny / nz, C: a[2] + (nx * a[0] + ny * a[1]) / nz }; };
+  const vag = (q: P2[], f: F): P2[] => { const ki: P2[] = []; for (let i = 0; i < q.length; i++) { const p = q[i]!, r = q[(i + 1) % q.length]!; const fp = f[0] * p[0] + f[1] * p[1] + f[2], fr = f[0] * r[0] + f[1] * r[1] + f[2];
+    if (fp >= 0) ki.push(p); if ((fp >= 0) !== (fr >= 0)) { const t = fp / (fp - fr); ki.push([p[0] + (r[0] - p[0]) * t, p[1] + (r[1] - p[1]) * t]); } } return ki; };
+  const ter = (q: P2[]) => { let a = 0; for (let i = 0; i < q.length; i++) { const p = q[i]!, r = q[(i + 1) % q.length]!; a += p[0] * r[1] - r[0] * p[1]; } return Math.abs(a) / 2; };
+  const elek = (t: T3[]): F[] => { const [a, b, c] = t as [T3, T3, T3]; const s0 = Math.sign((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])) || 1;
+    return [[a, b], [b, c], [c, a]].map(([p, q]) => [-(q![1] - p![1]) * s0, (q![0] - p![0]) * s0, ((q![1] - p![1]) * p![0] - (q![0] - p![0]) * p![1]) * s0] as F); };
+  return reszek.map((resz, i) => resz.flatMap((t) => {
+    const s0 = sik(t); if (!s0) return [t];
+    let darab: P2[][] = [t.map(([x, y]) => [x, y] as P2)];
+    for (let j = 0; j < reszek.length; j++) { if (j === i) continue; for (const u of reszek[j]!) {
+      const s1 = sik(u); if (!s1) continue;
+      // R = u alaprajza ∩ { z_u − z_t ≥ 1 mm } (itt t a takart)
+      const H: F[] = [...elek(u), [s1.A - s0.A, s1.B - s0.B, s1.C - s0.C - 0.001]];
+      const uj: P2[][] = [];
+      for (const q of darab) {
+        // gyors kizárás: q ∩ R üres?
+        let x: P2[] = q; for (const h of H) { x = vag(x, h); if (x.length < 3) break; }
+        if (x.length < 3 || ter(x) < 1e-6) { uj.push(q); continue; }
+        // q \ R = ⋃_k (q ∩ ¬H_k ∩ H_1..H_{k−1})
+        for (let k = 0; k < H.length; k++) { let y: P2[] = vag(q, [-H[k]![0], -H[k]![1], -H[k]![2]]); for (let m = 0; m < k && y.length >= 3; m++) y = vag(y, H[m]!); if (y.length >= 3 && ter(y) > 1e-6) uj.push(y); }
+      }
+      darab = uj; if (!darab.length) return [];
+    } }
+    if (darab.length === 1 && darab[0]!.length === 3 && ter(darab[0]!) > ter(t.map(([x, y]) => [x, y] as P2)) - 1e-9) return [t];
+    const z = (p: P2): T3 => [p[0], p[1], s0.A * p[0] + s0.B * p[1] + s0.C];
+    return darab.flatMap((q) => { const ki: T3[][] = []; for (let k = 1; k + 1 < q.length; k++) ki.push([z(q[0]!), z(q[k]!), z(q[k + 1]!)]); return ki; });
+  }));
+}
+
 function magastetoEpit(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], t: MagastetoBe, pillerek: Piller[] = []): Magasteto | null {
   const fel = [...szintek].sort((a, b) => b.z0 - a.z0)[0]; if (!fel || !(t.hajlas > 5)) return null;
   const fd = fodemek.find((f) => f.alatt === fel.id && f.id.startsWith('FT')) ?? fodemek.find((f) => f.folott === fel.id);
@@ -1135,7 +1174,15 @@ function magastetoEpit(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], 
   }
   if (!reszek.length || !mod) return null;
   const [fo, ...tobbi] = reszek;
-  for (const f of feltetok) fo!.haromszogek.push(...feltetoHaromszogek(f.pol, f.hajlas, f.lejt, zEresz));
+  // a tetőrészek (fő tető, további darabok, féltetők) egymásba metsződnek: ahol két rész alaprajzban fedi egymást, a
+  // magasabb felület látszik – az alacsonyabb háromszögek takart része levágva (a félnyereg a nyeregtető síkjáig ér)
+  const ft = feltetok.map((f) => feltetoHaromszogek(f.pol, f.hajlas, f.lejt, zEresz));
+  if (ft.length + tobbi.length > 0) {
+    const u = tetoUnio([fo!.haromszogek, ...tobbi.map((q) => q.haromszogek), ...ft]);
+    fo!.haromszogek = u[0]!; tobbi.forEach((q, k) => { q.haromszogek = u[1 + k]!; });
+    ft.forEach((_, k) => { ft[k] = u[1 + tobbi.length + k]!; });
+  }
+  for (const h of ft) fo!.haromszogek.push(...h);
   const kerP = (p: P2[]) => p.map(([x, y]) => [sz(x), sz(y)] as P2);
   return { szint: fel.id, hajlas: t.hajlas, kiallas, kiallasBecsult: t.kiallas === undefined && !eg, mod, zEresz, eresz: kerP(fo!.eresz),
     ...(fedett.length ? { fedett } : {}), ...(oromElvetve ? { oromElvetve } : {}), ...(lapos.length ? { lapos: lapos.map(kerP), laposSav: sav.map((q) => ({ tengely: q.tengely, a: sz(q.a), b: sz(q.b), ...(q.felteto ? { felteto: { ...q.felteto, c0: sz(q.felteto.c0), c1: sz(q.felteto.c1) } } : {}) })) } : {}), ...(tobbi.length ? { tovabbiEresz: tobbi.map((q) => kerP(q.eresz)) } : {}), ...(feltetok.length ? { felteto: feltetok.map((f) => ({ ...f, pol: kerP(f.pol) })) } : {}),
