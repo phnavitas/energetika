@@ -440,6 +440,9 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
     const csop: { x: number; y: number; db: number }[] = [];
     for (const k of kocsik) { const c = csop.find((q) => Math.hypot(q.x / q.db - k.x, q.y / q.db - k.y) * e.mPerPt! <= 7); if (c) { c.x += k.x; c.y += k.y; c.db++; } else csop.push({ x: k.x, y: k.y, db: 1 }); }
     const jelolt = csop.map((c) => ({ x: c.x / c.db, y: c.y / c.db }));
+    // a garázs felirata (pecsét) is jelölt – a kocsi nélkül rajzolt, ill. nem felismert kocsis garázs (a kapuja nyitott rés)
+    for (const h of magHelyisegek) { if (!/gar[áa]zs|g[ée]pkocsi|gk\.?\s*t[áa]rol|g[ée]pj[áa]rm[űu]/i.test(h.nev)) continue;
+      const p = h.mutato ?? h; if (!jelolt.some((q) => Math.hypot(q.x - p.x, q.y - p.y) * e.mPerPt! <= 7)) jelolt.push({ x: p.x, y: p.y }); }
     if (jelolt.length) {
       halad?.('berajzolt gépkocsi: garázs / beálló');
       const mg = magHelyisegek.map((h) => ({ ...(h.mutato ?? h), A: h.A }));
@@ -454,6 +457,11 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
         // (zárt, pecsét nélküli tér – 0 címke –, vagy egy helyiségbe – ajtón át – átfolyt terület: a helyiség a pecsétben írt
         // területének sokszorosára nőtt; helyiségben, ill. kint álló kocsi nem új tér)
         const c0 = rP.cimke[i0]!, sajat = c0 >= 2 ? mg[c0 - 2] : undefined;
+        // (FELIRATOS garázs – „Gépkocsi tároló”, „Garázs” – a kocsival: a kapu lezárásával a pecsétes helyiség zárt; új tér
+        // nem kell, de a kapu a végső rácson is záruljon – Balázs, 2026-11-21: „ha nem is zárt a vonal, de a felirat
+        // garázs, akkor ott kapu van és a helyiség zárt”; Tarján, Nefelejcs: eddig a kapun át kifolyt)
+        if (c0 >= 2 && /gar[áa]zs|g[ée]pkocsi|gk\.?\s*t[áa]rol|g[ée]pj[áa]rm[űu]/i.test(magHelyisegek[c0 - 2]?.nev ?? '')
+          && (rP.helyisegek[c0 - 2]?.A ?? 0) <= Math.max(1.6 * (sajat?.A ?? 0), (sajat?.A ?? 0) + 10)) { garazsok.push(g); return; }
         if (c0 !== 0 && !(sajat?.A && (rP.helyisegek[c0 - 2]?.A ?? 0) > Math.max(1.6 * sajat.A, sajat.A + 10))) return;
         const latott = new Uint8Array(rP.w * rP.h), sor = [i0]; latott[i0] = 1; let db = 0, szel = false;
         for (let q = 0; q < sor.length; q++) { const i = sor[q]!; db++; const x = i % rP.w, y = (i / rP.w) | 0; if (x === 0 || y === 0 || x === rP.w - 1 || y === rP.h - 1) szel = true;
@@ -465,7 +473,7 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
         const h: TervHelyiseg = { nev: 'Garázs', A: Math.round(A * 100) / 100, x: g.x, y: g.y, forras: 'pecset', kulter: false, kezi: true, gepkocsi: true };
         e.helyisegek = [...e.helyisegek, h]; magHelyisegek = [...magHelyisegek, h];
       });
-      if (garazsok.length) e.figyelmeztetesek.push(`Berajzolt gépkocsi pecsét nélküli, háromoldalt falazott térben: ${garazsok.length === 1 ? 'a teret' : `${garazsok.length} teret`} garázsnak vettem, a nyitott oldalát kapunak. Ha a homlokzaton ott nincs kapu, kültéri beálló lesz belőle.`);
+      if (e.helyisegek.some((h) => h.gepkocsi)) e.figyelmeztetesek.push(`Berajzolt gépkocsi pecsét nélküli, háromoldalt falazott térben: ${garazsok.length === 1 ? 'a teret' : `${garazsok.length} teret`} garázsnak vettem, a nyitott oldalát kapunak. Ha a homlokzaton ott nincs kapu, kültéri beálló lesz belőle.`);
     }
   }
   const kulsoPontok = e.helyisegek.filter((h) => h.kulter && h.forras === 'pecset').map((h) => h.mutato ?? h);

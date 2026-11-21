@@ -704,6 +704,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       return false;
     };
     const hasznalt = new Set<number>();
+    const jelolt: { fuggo: boolean; ax: number; ay: number; bx: number; by: number; a0: number; b0: number; c0: number; hossz: number }[] = [];
     szegm.forEach((S, i) => {
       if (hasznalt.has(i)) return;
       const tars = szegm.map((T, j) => ({ T, j })).filter(({ T, j }) => j !== i && T.fuggo === S.fuggo && Math.abs(T.c - S.c) <= 0.12 / mPerPt && Math.abs(T.c - S.c) > 0.004 / mPerPt
@@ -755,14 +756,23 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       }
       hasznalt.add(i); for (const x of tars) hasznalt.add(x.j);
       const [ax, ay] = S.fuggo ? [c0, a0] : [a0, c0], [bx, by] = S.fuggo ? [c1, b0] : [b0, c1];
-      if (uvegfalak.some((g) => g.fuggo === S.fuggo && Math.abs((S.fuggo ? g.x0 : g.y0) - c0) < 0.4 / mPerPt && Math.min(S.fuggo ? g.y1 : g.x1, b0) - Math.max(S.fuggo ? g.y0 : g.x0, a0) > 0)) return;
-      uvegfalak.push({ x0: ax, y0: ay, x1: bx, y1: by, hossz: (b0 - a0) * mPerPt, fuggo: S.fuggo });
+      if (jelolt.some((g) => g.fuggo === S.fuggo && Math.abs(g.c0 - c0) < 0.4 / mPerPt && Math.min(g.b0, b0) - Math.max(g.a0, a0) > 0)) return;
+      jelolt.push({ fuggo: S.fuggo, ax, ay, bx, by, a0, b0, c0, hossz: (b0 - a0) * mPerPt });
+    });
+    // PADLÓMINTÁZAT (Tarján, 2026-11-21): a parketta / burkolat sraffozása a helyiségen át falból falba futó, páros vonalak
+    // ismétlődő sora – nem üvegfal. Az a jelölt, amellyel párhuzamosan, a hosszának felén átfedve 0,15–1,5 m-en belül
+    // legalább két másik jelölt fut, mintázat (a valódi üvegfal nem ismétlődik sávonként a helyiségen át).
+    for (const g of jelolt) {
+      const tars = jelolt.filter((q) => q !== g && q.fuggo === g.fuggo && Math.abs(q.c0 - g.c0) * mPerPt >= 0.15 && Math.abs(q.c0 - g.c0) * mPerPt <= 1.5
+        && Math.min(q.b0, g.b0) - Math.max(q.a0, g.a0) >= 0.5 * Math.min(q.b0 - q.a0, g.b0 - g.a0)).length;
+      if (tars >= 2) continue;
+      uvegfalak.push({ x0: g.ax, y0: g.ay, x1: g.bx, y1: g.by, hossz: g.hossz, fuggo: g.fuggo });
       // a sáv lezárása (a helyiség ne folyjon ki rajta)
-      const [px0, py0] = tr(ax, ay), [px1, py1] = tr(bx, by);
+      const [px0, py0] = tr(g.ax, g.ay), [px1, py1] = tr(g.bx, g.by);
       const pad = Math.max(1, Math.round(0.03 / px));
       for (let y = Math.max(0, Math.floor(Math.min(py0, py1)) - pad); y <= Math.min(h - 1, Math.ceil(Math.max(py0, py1)) + pad); y++)
         for (let x = Math.max(0, Math.floor(Math.min(px0, px1)) - pad); x <= Math.min(w - 1, Math.ceil(Math.max(px0, px1)) + pad); x++) if (!fal[y * w + x]) nyilas[y * w + x] = 1;
-    });
+    }
     // ablaksor: egymás mellé sorolt, egyenként keskeny ablakmodulok (tokvonal-párokkal), együtt ≥ 1,2 m, a sor mindkét vége
     // falba (pillérbe) fut, vagy ajtón át falba – pl. üvegezett homlokzat oszlopok között; bizonyíték: a mellvédfeliratok
     {
@@ -947,9 +957,9 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
     // a két oldalfal (az nyitott irányra merőleges két irányban talált fal) mentén a nyitott irányba a fal végéig
     const oldalak = iranyok.map((ir, i) => ({ ir, t: tav[i]! })).filter(({ ir }) => ir[0] === 0 ? dx !== 0 : dy !== 0);
     if (oldalak.length !== 2) { garazsKapuk.push(null); continue; }
-    // (a fal belső síkja nem pontosan egy sorban fut: lépésenként a falra merőleges, 0,25 m-es sávban keresünk falat,
+    // (a fal belső síkja nem pontosan egy sorban fut – lépcsős oldalfal: lépésenként a falra merőleges, kifelé 1 m-es sávban keresünk falat,
     // és legfeljebb 0,3 m-es hézagot – pl. rajzi rést – átlépünk)
-    const savban = (x: number, y: number, ir: [number, number, number]) => { for (let j = -2; j <= Math.round(0.25 / px); j++) if (falE(x + ir[0] * j, y + ir[1] * j)) return true; return false; };
+    const savban = (x: number, y: number, ir: [number, number, number]) => { for (let j = -2; j <= Math.round(1.0 / px); j++) if (falE(x + ir[0] * j, y + ir[1] * j)) return true; return false; };
     const vegek = oldalak.map(({ ir, t }) => { const sx = cx + ir[0] * t, sy = cy + ir[1] * t; let k = 0, utolso = 0; const hez = Math.round(0.3 / px);
       while (k < Math.round(12 / px)) { k++; if (savban(sx + dx * k, sy + dy * k, ir)) utolso = k; else if (k - utolso > hez) break; }
       return { sx, sy, k: utolso }; });
