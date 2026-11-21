@@ -585,7 +585,11 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
     const kozepFal = (u: Utvonal) => { const [cx, cy] = tr((u.bbox[0] + u.bbox[2]) / 2, (u.bbox[1] + u.bbox[3]) / 2); const xi = Math.floor(cx), yi = Math.floor(cy); return xi >= 0 && yi >= 0 && xi < w && yi < h && !!fal[yi * w + xi]; };
     const T = (u: Utvonal) => u.pontok.reduce((t, p) => t + poliTerulet(p), 0);
     const ossz = feherFal.reduce((t, u) => t + T(u), 0), fal0 = feherFal.filter(kozepFal).reduce((t, u) => t + T(u), 0);
-    if (fal0 < 0.5 * ossz) for (const u of feherFal) { if (kozepFal(u)) continue; poliRajzol(fal, w, h, u.pontok, tr); stilusRajzol(u, false); poliRajzol(reteg, w, h, u.pontok, tr); darabok.push(u.bbox); }
+    // (… és a fal anyagának jelentős – a már felismert fal területének legalább fele – része: a sraffozott falú rajzon a
+    // falrétegen lévő kevés fehér elem – áthidaló, kémény, takarás – nem fal; Kömlőd)
+    const ffM = new Uint8Array(w * h); for (const u of feherFal) poliRajzol(ffM, w, h, u.pontok, tr);
+    let ffN = 0, falN = 0; for (let i = 0; i < w * h; i++) { if (ffM[i] && !fal[i]) ffN++; if (fal[i]) falN++; }
+    if (fal0 < 0.5 * ossz && ffN >= 0.5 * falN) for (const u of feherFal) { if (kozepFal(u)) continue; poliRajzol(fal, w, h, u.pontok, tr); stilusRajzol(u, false); poliRajzol(reteg, w, h, u.pontok, tr); darabok.push(u.bbox); }
   }
   // apró, elszigetelt kitöltések (bútor, oszlopjel) nem falak: csak a falhálózat nagy összefüggő részei maradnak
   {

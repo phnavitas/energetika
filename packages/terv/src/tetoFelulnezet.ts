@@ -160,6 +160,19 @@ function nyeregteto(sz: Sz[]): TetoFelulnezet | null {
       let v = -dN + 0.1 * W; for (const [lo, hi] of iv) { if (lo > v + tol) break; v = Math.max(v, hi); }
       return v >= dP - 0.1 * W && iv.some(([lo]) => lo <= -dN + 0.1 * W); };
     if (!veg(g.x0, g.y0) || !veg(g.x1, g.y1)) continue;
+    // tetőfelület jele mindkét tetősíkon: legalább 6, a gerinccel párhuzamos (cserépsor) vagy rá merőleges (esésvonal)
+    // sraffvonal a gerinc és az eresz között – a középvonallal kettéosztott telek, épületkörvonal nem tető
+    const sik = (lo: number, hi: number) => sz.filter((q) => {
+      if (q === g) return false;
+      const d = Math.abs(((q.a - g.a) % 180 + 180) % 180); const par = Math.min(d, 180 - d) <= 3, mer = Math.abs(d - 90) <= 3; if (!par && !mer) return false;
+      const t = ((q.x0 + q.x1) / 2 - g.x0) * ux + ((q.y0 + q.y1) / 2 - g.y0) * uy, e = ((q.x0 + q.x1) / 2 - g.x0) * nx + ((q.y0 + q.y1) / 2 - g.y0) * ny;
+      return t > 0.05 * g.L && t < 0.95 * g.L && e > lo + 0.08 * (hi - lo) && e < hi - 0.08 * (hi - lo); }).length;
+    if (sik(0, dP) < 6 || sik(-dN, 0) < 6) continue;
+    // a gerinc nem a sraffozás egyik vonala: mellette (a tetőszélesség 15 %-án belül) nincs vele párhuzamos vonal – a
+    // sűrű, egyenközű mintázatban (burkolat, parkolócsík) a középső vonal sem gerinc
+    if (sz.some((q) => { if (q === g) return false; const d = Math.abs(((q.a - g.a) % 180 + 180) % 180); if (Math.min(d, 180 - d) > 3) return false;
+      const e = Math.abs(((q.x0 + q.x1) / 2 - g.x0) * nx + ((q.y0 + q.y1) / 2 - g.y0) * ny), t = ((q.x0 + q.x1) / 2 - g.x0) * ux + ((q.y0 + q.y1) / 2 - g.y0) * uy;
+      return e > 0.3 && e < 0.15 * (dP + dN) && t > 0 && t < g.L; })) continue;
     const P = [[g.x0 + nx * dP, g.y0 + ny * dP], [g.x1 + nx * dP, g.y1 + ny * dP], [g.x0 - nx * dN, g.y0 - ny * dN], [g.x1 - nx * dN, g.y1 - ny * dN]];
     const b = { x0: Math.min(...P.map((q) => q[0]!)), y0: Math.min(...P.map((q) => q[1]!)), x1: Math.max(...P.map((q) => q[0]!)), y1: Math.max(...P.map((q) => q[1]!)) };
     // (ugyanaz a tető – más gerincjelölttel – csak egyszer)

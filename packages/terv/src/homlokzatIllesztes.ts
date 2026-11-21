@@ -302,7 +302,8 @@ export function oromSzelessegek(lap: Lap, hajlas: number, tartalekM?: number, op
     const by0 = Math.min(...r.keretek.map((k) => k.y0)) - 5 / m, by1 = Math.max(...r.keretek.map((k) => k.y1)) + 1 / m;
     // (a kibővített terület nem nyúlhat át a lap másik, mellette álló homlokzatrajzára – Tata-Nyárfa: a délkeleti nézet
     // 12 m-es sávja a délnyugati oromfalát is befogta)
-    for (const q of rajzok) { if (q === r) continue;
+    // (csak a teljes modell tetőjénél – a Navitherm tetőtér-geometriája a régi szabállyal)
+    if (opt.kontyNelkul) for (const q of rajzok) { if (q === r) continue;
       const qx0 = Math.min(...q.keretek.map((k) => k.x0)), qx1 = Math.max(...q.keretek.map((k) => k.x1));
       const qy0 = Math.min(...q.keretek.map((k) => k.y0)), qy1 = Math.max(...q.keretek.map((k) => k.y1));
       if (qy1 < by0 || qy0 > by1) continue;
