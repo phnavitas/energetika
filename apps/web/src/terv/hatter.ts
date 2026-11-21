@@ -40,8 +40,8 @@ let olvasoHibas = false;
  * így azonnal felszabadulnak). Ha a munkaszál nem indítható / nem támogatott (OffscreenCanvas nélkül, egyfájlos
  * előnézetben), vagy hibával áll le, a fő szálon olvasunk.
  */
-export async function pdfLapokHatter(f: File, kepSzel = 2000, halad?: (kesz: number, ossz: number) => void): Promise<TervLap[]> {
-  const fo = () => pdfLapok(f, kepSzel, halad);
+export async function pdfLapokHatter(f: File, kepSzel = 2000, halad?: (kesz: number, ossz: number) => void, probalkozas = 0): Promise<TervLap[]> {
+  const fo = () => { console.warn(`PDF-olvasó munkaszál nem használható (${f.name}) – a fő szálon olvasok.`); return pdfLapok(f, kepSzel, halad); };
   if (olvasoHibas || typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') return fo();
   let w: Worker;
   try { w = new OlvasoWorker(); } catch { olvasoHibas = true; return fo(); }
@@ -49,16 +49,19 @@ export async function pdfLapokHatter(f: File, kepSzel = 2000, halad?: (kesz: num
   return new Promise<TervLap[]>((ok, hiba) => {
     let kesz = false, elindult = false;
     const vege = () => { kesz = true; w.terminate(); };
-    const tartalek = (vegleges: boolean) => { vege(); if (vegleges) olvasoHibas = true; fo().then(ok, hiba); };
+    // (átmeneti hiba – pl. terhelés alatt nem indult el a munkaszál –: egyszer újra; csak utána a fő szálon, mert a
+    // fő szál képe képpontra nem azonos a munkaszáléval, és az eredmény ne függjön a véletlentől)
+    const tartalek = (vegleges: boolean) => { vege(); if (!vegleges && probalkozas < 1) { pdfLapokHatter(f, kepSzel, halad, probalkozas + 1).then(ok, hiba); return; } if (vegleges) olvasoHibas = true; fo().then(ok, hiba); };
     w.onmessage = (e: MessageEvent<{ id: number; lapok?: TervLap[]; hiba?: string; halad?: [number, number]; nincs?: boolean }>) => {
       if (e.data.id !== id || kesz) return;
       if (e.data.halad) { elindult = true; halad?.(e.data.halad[0], e.data.halad[1]); return; }
       if (e.data.nincs) { tartalek(true); return; }
       if (e.data.lapok) { vege(); ok(e.data.lapok); return; }
-      // (hiba a munkaszálon – pl. a pdf.js ott nem tud megjeleníteni valamit –: a fő szálon újra)
+      // (hiba a munkaszálon – pl. a pdf.js ott nem tud megjeleníteni valamit)
+      console.warn('PDF-olvasó munkaszál hiba:', e.data.hiba);
       tartalek(false);
     };
-    w.onerror = (ev) => { if (kesz) return; ev.preventDefault?.(); tartalek(!elindult); };
+    w.onerror = (ev) => { if (kesz) return; ev.preventDefault?.(); console.warn('PDF-olvasó munkaszál leállt:', ev.message); tartalek(false); };
     try { w.postMessage({ id, f, kepSzel }); } catch { tartalek(true); }
   });
 }

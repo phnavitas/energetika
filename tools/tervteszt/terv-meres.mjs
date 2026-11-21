@@ -12,6 +12,7 @@ const b = await pw.chromium.launch();
 const p = await b.newPage({ viewport: { width: 1500, height: 1000 } });
 const hibak = []; p.on('pageerror', (e) => hibak.push(String(e)));
 const log = []; const L = (...x) => { log.push(x.join(' ')); };
+p.on('console', (m) => { if (/munkaszál/.test(m.text())) L('KONZOL', m.text().slice(0, 200)); });
 const v = (ms) => new Promise((r) => setTimeout(r, ms));
 const k = async (szoveg, hol = 'button') => { const e = p.locator(hol, { hasText: szoveg }).first(); await e.click({ timeout: 15000 }); };
 await p.goto(`http://localhost:${process.env.PORT ?? 4181}/`, { waitUntil: 'networkidle' });
