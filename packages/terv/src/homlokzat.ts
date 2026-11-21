@@ -80,7 +80,7 @@ export function homlokzatElemez(lap: Lap): HomlokzatEredmeny {
   const w = (b: BB) => b[2] - b[0], h = (b: BB) => b[3] - b[1];
 
   // lépték: pecsét „1:100”, ennek hiányában a szintjelekből
-  const M = meretaranyKeres(lap.szovegek);
+  const M = meretaranyKeres(lap.szovegek, lap.utvonalak);
   const szint = lap.szovegek.filter((t) => t.x < xmax && /^[+±-]?\d{1,2},\d{2}$/.test(t.s.trim())).map((t) => ({ y: t.y, z: Number(t.s.trim().replace('±', '').replace(',', '.')) }));
   let mag: ((y: number) => number) | null = null, mPerPtSzint: number | null = null;
   if (szint.length >= 3) {
@@ -164,7 +164,7 @@ export interface VonalIndex { mPerPt: number; fugg: { x: number; a: number; b: n
 
 export function vonalIndex(lap: Lap, tartalekM?: number): VonalIndex | null {
   // lépték a feliratból; hibás / hiányzó felirat („M 1:00”) esetén a méretláncokból, végül a tervcsomag alaprajzi léptéke
-  const M = meretaranyKeres(lap.szovegek) || meretaranyKotabol(lap.szovegek, lap.utvonalak) || tartalekM || null;
+  const M = meretaranyKeres(lap.szovegek, lap.utvonalak) || meretaranyKotabol(lap.szovegek, lap.utvonalak) || tartalekM || null;
   if (!M) return null;
   const mPerPt = (25.4 / 72) / 1000 * M;
   const jm = lap.szovegek.filter((t) => /^(megjegyzések|anyagjelölések|homlokzati anyagok|felületek|építtető|megrendelő|tervező)\b/i.test(t.s.trim())).map((t) => t.x);

@@ -541,7 +541,7 @@ export function tervFolyamat(S: FolyamatAllapot) {
     if (!gk.length || !S.homlokzatLapok.length) return [];
     const mm = mert3d(i, a);
     // a homlokzati rajzokon a kapu (szekcionált / lamellás panelsor) – a kapunyíláshoz illő (± 0,6 m) szélességgel
-    const homKapuk = S.homlokzatLapok.flatMap(({ l }) => { let v = homKapuGy.get(l.lap); if (!v) { const M = meretaranyKeres(l.lap.szovegek) ?? a.e.meretarany ?? 100; try { v = homlokzatiKapuk(l.lap, (25.4 / 72) / 1000 * M); } catch { v = []; } homKapuGy.set(l.lap, v); } return v; });
+    const homKapuk = S.homlokzatLapok.flatMap(({ l }) => { let v = homKapuGy.get(l.lap); if (!v) { const M = meretaranyKeres(l.lap.szovegek, l.lap.utvonalak) ?? a.e.meretarany ?? 100; try { v = homlokzatiKapuk(l.lap, (25.4 / 72) / 1000 * M); } catch { v = []; } homKapuGy.set(l.lap, v); } return v; });
     return gk.filter((j) => { const ri = a.magHelyisegek.indexOf(a.e.helyisegek[j]!); const kapu = a.nyilasok.find((n) => n.helyiseg === ri && n.fajta === 'garazskapu');
       if (!kapu) return true;
       if (kapu.mert && mm?.get(kapu)?.forras === 'homlokzat') return false;
@@ -762,7 +762,7 @@ export function tervFolyamat(S: FolyamatAllapot) {
       if (!/helysz[íi]nrajz|tet[őo] ?fel[üu]ln[ée]zet|tet[őo]felülnézet/i.test(l.cim ?? '')) continue;
       let t: TetoFelulnezet | null | undefined = tetoFelulGy.get(l.lap);
       if (t === undefined) { try { t = tetoFelulnezet(l.lap); } catch { t = null; } tetoFelulGy.set(l.lap, t); }
-      const M = meretaranyKeres(l.lap.szovegek); if (!t || !M) continue;
+      const M = meretaranyKeres(l.lap.szovegek, l.lap.utvonalak); if (!t || !M) continue;
       const mPt = (25.4 / 72 / 1000) * M;
       // (a tetővonalak befoglalója az ereszig ér – az alaprajzi kiterjedésnél ereszkiállással nagyobb)
       let leg = null as { c: number; hiba: number } | null;
@@ -797,7 +797,7 @@ export function tervFolyamat(S: FolyamatAllapot) {
       if (!/helysz[íi]nrajz|tet[őo] ?fel[üu]ln[ée]zet|tet[őo]felülnézet/i.test(l.cim ?? '')) continue;
       let t: TetoFelulnezet | null | undefined = tetoFelulGy.get(l.lap);
       if (t === undefined) { try { t = tetoFelulnezet(l.lap); } catch { t = null; } tetoFelulGy.set(l.lap, t); }
-      const M = meretaranyKeres(l.lap.szovegek); if (!t || !M) continue;
+      const M = meretaranyKeres(l.lap.szovegek, l.lap.utvonalak); if (!t || !M) continue;
       const mPt = (25.4 / 72 / 1000) * M;
       let leg = null as { c: number; hiba: number } | null;
       t.csoportok.forEach((b, c) => { const m = [(b.x1 - b.x0) * mPt, (b.y1 - b.y0) * mPt].sort((p, q) => q - p); const hiba = Math.max(Math.abs(m[0]! - meret[0]! - 0.8) / meret[0]!, Math.abs(m[1]! - meret[1]! - 0.8) / meret[1]!); if (hiba <= 0.2 && (!leg || hiba < leg.hiba)) leg = { c, hiba }; });

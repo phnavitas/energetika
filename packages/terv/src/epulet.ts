@@ -1610,7 +1610,62 @@ function ereszFelulnezetbol(pol: P2[], sz: [number, number, number, number][], k
   const tip = oldalak.filter((d): d is number => d !== null).sort((a, b) => a - b);
   const kiallas = tip.length >= 2 ? tip[Math.floor((tip.length - 1) / 2)]! : undefined;
   void kiallas0;
+  // A TETŐIDOM A FELÜLNÉZETBŐL (Balázs: „a helyszínrajzi tetőidomból kell kiindulni"): az ereszvonal a felülnézet
+  // élgerinc- és vápavonalainak külső végpontjain át fut (kontyolt tetőnél minden ereszsarokban ilyen vonal végződik:
+  // a domború sarokban élgerinc, a homorúban vápa). A külső vég az épület körvonalán kívül / a szélén van, a belső
+  // (gerinc, csúcs) mélyen az épület fölött. A végpontokból a derékszögű ereszvonal egyértelmű: egy vonalba eső
+  // pontok sorban párosítva adják az éleket. A tetőt ez fedi – a födém körvonalán túli fedett terasz, bejárat is.
+  const E = ereszKonturVegpontokbol(vegek.map(({ p, m }) => ({ p: [p[0] + best.T[0], p[1] + best.T[1]] as P2, m: [m[0] + best.T[0], m[1] + best.T[1]] as P2 })), pol);
+  if (E) {
+    const k = kiallas ?? kiallas0;
+    // (a tető a födém körvonalából épül, a kiállással kifelé: az ereszvonal a kiállással befelé tolva)
+    const n2 = E.length, A3 = E.reduce((t, [x, y], i) => { const [x2, y2] = E[(i + 1) % n2]!; return t + x * y2 - x2 * y; }, 0), el2 = Math.sign(A3) || 1;
+    const nr = (a: P2, b: P2): P2 => { const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1e-9; return [el2 * (b[1] - a[1]) / L, -el2 * (b[0] - a[0]) / L]; };
+    const belul = E.map((v, i) => { const a = E[(i + n2 - 1) % n2]!, b = E[(i + 1) % n2]!; const na = nr(a, v), nb = nr(v, b); return [v[0] - k * (na[0] + nb[0]), v[1] - k * (na[1] + nb[1])] as P2; });
+    return { pol: belul, ...(kiallas !== undefined ? { kiallas } : {}), kiterjesztes: [belul], oldalak };
+  }
   return { pol, ...(kiallas !== undefined ? { kiallas } : {}), kiterjesztes: [], oldalak };
+}
+
+/**
+ * Derékszögű ereszvonal a felülnézet 45°-os vonalainak (élgerinc, vápa) végpontjaiból, modellkoordinátában. A szakasz
+ * külső vége a födém körvonalán kívül vagy a szélén (≤ 0,15 m-rel beljebb), a belső legalább 0,8 m-rel beljebb van.
+ * A külső végek közül az egy vízszintes / függőleges vonalba esők (± 0,12 m) sorban párosítva adják az éleket; ha
+ * valamelyik vonalon páratlan a pontok száma, vagy a lánc nem zárt / nem fedi a födémet, nincs eredmény (null).
+ */
+export function ereszKonturVegpontokbol(vegek: { p: P2; m: P2 }[], pol: P2[]): P2[] | null {
+  const tav = (x: number, y: number) => { let d = Infinity; for (let i = 0, j = pol.length - 1; i < pol.length; j = i++) { const [ax, ay] = pol[j]!, [bx, by] = pol[i]!; const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy || 1;
+    const u = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2)); d = Math.min(d, Math.hypot(x - ax - u * dx, y - ay - u * dy)); } return pontBenne(pol, x, y) ? d : -d; };
+  const kulso: P2[] = [];
+  for (const { p, m } of vegek) {
+    const dp = tav(p[0], p[1]), dm = tav(m[0], m[1]);
+    if (dp > 0.15 || dm < 0.8) continue; // p a külső vég, m a belső
+    if (dp < -3) continue; // (messze kívül: nem ennek a tetőnek a vonala)
+    if (!kulso.some((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) < 0.12)) kulso.push(p);
+  }
+  if (kulso.length < 4 || kulso.length % 2) return null;
+  const tol = 0.12;
+  const csoport = (k: 0 | 1) => { const cs: number[][] = []; const idx = kulso.map((_, i) => i).sort((a, b) => kulso[a]![k] - kulso[b]![k]);
+    for (const i of idx) { const u = cs[cs.length - 1]; if (u && Math.abs(kulso[i]![k] - kulso[u[0]!]![k]) <= tol) u.push(i); else cs.push([i]); } return cs; };
+  const szomsz: number[][] = kulso.map(() => []);
+  for (const k of [0, 1] as const) for (const cs of csoport(k)) {
+    if (cs.length % 2) return null;
+    const m = 1 - k; cs.sort((a, b) => kulso[a]![m] - kulso[b]![m]);
+    for (let i = 0; i < cs.length; i += 2) { szomsz[cs[i]!]!.push(cs[i + 1]!); szomsz[cs[i + 1]!]!.push(cs[i]!); }
+  }
+  if (szomsz.some((l) => l.length !== 2)) return null;
+  // egyetlen zárt lánc
+  const sor = [0]; let elozo = -1, akt = 0;
+  for (let g = 0; g < kulso.length; g++) { const kov = szomsz[akt]![0] === elozo ? szomsz[akt]![1]! : szomsz[akt]![0]!; if (kov === 0) break; sor.push(kov); elozo = akt; akt = kov; }
+  if (sor.length !== kulso.length) return null;
+  // (a pontok a közös vonalra igazítva)
+  const E: P2[] = sor.map((i) => [...kulso[i]!] as P2);
+  for (let i = 0; i < E.length; i++) { const a = E[i]!, b = E[(i + 1) % E.length]!; if (Math.abs(a[0] - b[0]) <= tol) { const x = (a[0] + b[0]) / 2; a[0] = x; b[0] = x; } else { const y = (a[1] + b[1]) / 2; a[1] = y; b[1] = y; } }
+  // a födém (legalább 97 %-ban) az ereszvonalon belül
+  let db = 0, be = 0; const xs = pol.map((q) => q[0]), ys = pol.map((q) => q[1]);
+  for (let x = Math.min(...xs); x <= Math.max(...xs); x += 0.25) for (let y = Math.min(...ys); y <= Math.max(...ys); y += 0.25) if (pontBenne(pol, x, y)) { db++; if (pontBenne(E, x, y)) be++; }
+  if (!db || be < 0.97 * db) return null;
+  return E;
 }
 const sz2 = (v: number) => Math.round(v * 1000) / 1000;
 

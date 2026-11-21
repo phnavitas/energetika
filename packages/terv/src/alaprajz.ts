@@ -3,6 +3,7 @@
  * északjel felismerése. Csak a kinyert szövegekre és útvonalakra támaszkodik (rajzolóprogramtól független):
  * a helyiségpecsét általában kód / név / burkolat / „xx,xx m²” sorokból álló, egymás alatti szövegtömb.
  */
+import { valosMeretarany } from './leptek';
 import type { Lap, Szoveg, Utvonal } from './kinyeres';
 
 export interface TervHelyiseg {
@@ -86,8 +87,17 @@ export const kulterNev = (nev: string) => kulterE(nev);
 const kozep = (t: Szoveg) => t.x + t.szel / 2;
 const vizszintes = (t: Szoveg) => Math.abs(t.szog) < 2;
 
-/** Méretarány: „M=1:100”, „M 1:50”, vagy önálló „1:100” felirat. */
-export function meretaranyKeres(sz: Szoveg[]): number | null {
+/**
+ * A lap méretaránya (1:M). A rajzelemekkel (utvonalak) a VALÓS lépték: a lapra írt, ha a méretláncok nem cáfolják,
+ * különben a méretláncokból kalibrált (kicsinyítve nyomtatott PDF) – lásd leptek.ts.
+ */
+export function meretaranyKeres(sz: Szoveg[], utvonalak?: Lap['utvonalak']): number | null {
+  const irt = meretaranyIrt(sz);
+  return utvonalak ? valosMeretarany(sz, utvonalak, irt) : irt;
+}
+
+/** A lapra írt méretarány: „M=1:100”, „M 1:50”, vagy önálló „1:100” felirat. */
+export function meretaranyIrt(sz: Szoveg[]): number | null {
   // (több arány egy feliratban – „M = 1:1, 1:100” –: az 1:20-nál kisebb léptékű a rajzé; az 1:1 / 1:5 részlet)
   const rajzi = (s: string) => [...s.matchAll(/1\s*:\s*(\d{1,4})/g)].map((m) => Number(m[1])).filter((v) => v >= 20);
   for (const t of sz) { if (!/M\s*=?\s*1\s*:\s*\d/i.test(t.s)) continue; const v = rajzi(t.s); if (v.length) return v[0]!; }
@@ -620,8 +630,10 @@ export const azimut = (lapIrany: number, eszakSzog: number) => szogNorm(lapIrany
 /** A teljes 1. kör: lépték, helyiségek (pecsét + jegyzék egyeztetése), egységek, északjel. */
 export function alaprajzElemez(lap: Lap): AlaprajzEredmeny {
   const figy: string[] = [];
-  const M = meretaranyKeres(lap.szovegek);
+  const Mirt = meretaranyIrt(lap.szovegek), M = meretaranyKeres(lap.szovegek, lap.utvonalak);
   if (!M) figy.push('A méretarányt nem találtam a lapon (pl. „M=1:100”) – add meg kézzel.');
+  else if (!Mirt) figy.push(`A lépték a méretláncokból kalibrálva: M = 1:${M}. Ellenőrizd egy ismert méreten.`);
+  else if (M !== Mirt) figy.push(`A rajz kicsinyítve / nagyítva került a lapra: a lapra írt 1:${Mirt} helyett a méretláncok szerinti valós lépték 1:${M} – ezzel számolok.`);
   const pec = pecsetek(lap.szovegek);
   mutatokKeres(lap, pec);
   const jegy = jegyzekSorok(lap.szovegek);
