@@ -1,4 +1,5 @@
-// Az ELBA-nak szánt böngészős csomag: PDF-tervlapokból épületmodell (apps/web/src/terv/elba.ts).
+// Az ELBA-nak szánt böngészős csomagok: PDF-tervlapokból épületmodell (apps/web/src/terv/elba.ts) és a közös 3D-motor
+// (apps/web/src/nezo3d/elba.ts → elba-3d.mjs).
 // Kimenet: dist/elba/elba-terv.mjs (ESM, a pdf.js „legacy” – polyfilles – változatával együtt, munkaszál nélkül).
 // Használat: node tools/elba/csomag.mjs
 import { build } from 'esbuild';
@@ -16,3 +17,10 @@ await build({
   } }],
 });
 console.log('dist/elba/elba-terv.mjs kész');
+// a közös 3D-motor (three.js-sel): külön csomag, az ELBA csak a 3D megnyitásakor tölti be
+await build({
+  entryPoints: [path.join(gyoker, 'apps/web/src/nezo3d/elba.ts')], outfile: path.join(gyoker, 'dist/elba/elba-3d.mjs'),
+  bundle: true, format: 'esm', platform: 'browser', target: 'es2020', minify: true, legalComments: 'none', logLevel: 'warning',
+  tsconfig: path.join(gyoker, 'apps/web/tsconfig.json'),
+});
+console.log('dist/elba/elba-3d.mjs kész');
