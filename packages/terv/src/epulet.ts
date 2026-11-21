@@ -1578,10 +1578,12 @@ function falAnyag(L: LapBemenet, f: FalNyers): Fal['anyag'] | undefined {
 const jmTar = new WeakMap<Lap, JelmagyarazatTetel[]>();
 /** A kitöltés jelmagyarázat szerinti neve és katalógusanyaga. */
 function jmAnyag(L: LapBemenet, szin: string, reteg: string | undefined, vastag: number): { nev?: string; anyagId?: string } {
-  if (!L.rajz) return {};
+  // (jelmagyarázat híján a PDF-réteg neve – „POROTHERM FAL 30”, „Falazat - vázkerámia” – adhatja a katalógusanyagot)
+  const retegbol = () => { const a = reteg ? anyagKepez(reteg, Math.round(vastag * 100), 'fal').anyagId : undefined; return a ? { anyagId: a } : {}; };
+  if (!L.rajz) return retegbol();
   let t = jmTar.get(L.rajz); if (!t) { try { t = jelmagyarazat(L.rajz); } catch { t = []; } jmTar.set(L.rajz, t); }
-  if (!t.length) return {};
-  const nev = jelmagyarazatNev(t, { szin, ...(reteg ? { reteg } : {}) }); if (!nev) return {};
+  if (!t.length) return retegbol();
+  const nev = jelmagyarazatNev(t, { szin, ...(reteg ? { reteg } : {}) }); if (!nev) return retegbol();
   const a = anyagKepez(nev, Math.round(vastag * 100), 'fal').anyagId;
   return { nev, ...(a ? { anyagId: a } : {}) };
 }
