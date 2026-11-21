@@ -219,6 +219,17 @@ tartó) – a hőszigetelés-burkolat, eresz, csatorna, járda, korlát nem.
   tetőszélnél lefelé – legfeljebb a belmagasságig, `jelleg: 'parkany'`). Az eresz magassága és a kiállás a metszet /
   homlokzat szintjeleiből: az eresz (a homlokzaton is kiírt jel) és a gerinc az a pár, amely a hajlással és a tetőtest
   szélességével összefér (gerinc − eresz = (W/2 + kiállás) · tg α, 0,2–1,2 m-es kiállással).
+- A tetőfelület (`magasteto.haromszogek`) a tető ALSÓ síkja: a külső fal eddig ér; a 3D a tetőtestet innen felfelé
+  rajzolja a ferde tető rétegrendjének vastagságával (ennek híján 28 cm).
+- Féltető és sátor- / nyeregtető (2026-11-21): a féltető síkja a szintvonala irányában a szomszéd tetőrész gerincéig
+  továbbnyúlik, a takart részeket a felső burkoló vágja le – a két tető vápában metsződik, nincs közöttük rés.
+- Lépcsőfal (teljes modell, 2026-11-21): a belső fal, amelynek két oldalán a tető magassága ≥ 0,5 m-rel eltér
+  (féltető magas éle a lapostető mellett), a magasabb tető alsó síkjáig ér – ez zárja a tömeget a két tető között.
+- Bejárati beugró (rétegzett lapon, 2026-11-21): a körvonal zárása (≤ 2 m-es rések a burkon) nem zárja le a beugrót: a
+  sarkát átlósan elvágó, mindkét irányban ≥ 1 m-es, 2,2 m-nél hosszabb zárósáv nem nyílás – a beugró kültér, a mélyén
+  lévő (≤ 1,4 m-es) bejárati rés kisebb sugarú zárással nyílás.
+- 3D: a fal egy test (a nyílások kivonva, az egymás mellé érő nyílások egy lyukként), T-csatlakozásban a másik fal
+  síkjáig; a koszorú a nyílásoknál kivágva; a falban álló pillér nem látszik.
 
 ## Fejlesztés, frissítés
 

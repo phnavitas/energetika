@@ -1050,11 +1050,20 @@ function oromFalak(falak: Fal[], szintek: Szint[], mt: Magasteto): void {
     const teto0 = f.z0 + f.h - sz0.z0, n = Math.max(2, Math.ceil(L / 0.25));
     const pr: { t: number; z: number }[] = [];
     let res = 0;
+    // LÉPCSŐFAL: a belső fal, amelynek egyik oldalán magastető (féltető magas éle), a másikon lapostető / alacsonyabb
+    // tető van – a kettő közti függőleges szakaszt ez a fal zárja, tehát a magasabb tető alsó síkjáig ér (Balázs,
+    // 2026-11-21: „tömeg nem zárt”)
+    const nx = -(f.b[1] - f.a[1]) / L, ny = (f.b[0] - f.a[0]) / L, d = f.vastag / 2 + 0.1;
+    const lepcso = !f.kulso && [0.25, 0.5, 0.75].some((t) => { const x = f.a[0] + (f.b[0] - f.a[0]) * t, y = f.a[1] + (f.b[1] - f.a[1]) * t;
+      const z1 = tetoZ(x + nx * d, y + ny * d), z2 = tetoZ(x - nx * d, y - ny * d), lo = (z: number | null) => (z === null ? teto0 + sz0.z0 : z);
+      return Math.abs(lo(z1) - lo(z2)) > 0.5; });
     for (let k = 0; k <= n; k++) {
-      const t = k / n, z = tetoZ(f.a[0] + (f.b[0] - f.a[0]) * t, f.a[1] + (f.b[1] - f.a[1]) * t);
+      const t = k / n, x = f.a[0] + (f.b[0] - f.a[0]) * t, y = f.a[1] + (f.b[1] - f.a[1]) * t;
+      const zs = lepcso ? [tetoZ(x + nx * d, y + ny * d), tetoZ(x - nx * d, y - ny * d)].filter((v): v is number => v !== null) : [];
+      const z = lepcso && zs.length ? Math.max(...zs) : tetoZ(x, y);
       // (a fal a tető alsó síkjáig ér: magasabb tetőnél felfelé – oromzat, féltető –, alacsonyabb tetőnél – a tetőszél a
       // fal síkjában a fal teteje alatt – lefelé, legfeljebb a szint belmagasságáig: a fal nem metszi át a tetőt)
-      const zr0 = z === null ? teto0 : Math.max(Math.min(teto0, sz0.belmag), z - sz0.z0), zr = f.kulso ? zr0 : z === null ? teto0 : Math.min(teto0, Math.max(Math.min(teto0, sz0.belmag), z - sz0.z0 - 0.3)); res = Math.max(res, Math.abs(zr - teto0));
+      const zr0 = z === null ? teto0 : Math.max(Math.min(teto0, sz0.belmag), z - sz0.z0), zr = f.kulso || lepcso ? zr0 : z === null ? teto0 : Math.min(teto0, Math.max(Math.min(teto0, sz0.belmag), z - sz0.z0 - 0.3)); res = Math.max(res, Math.abs(zr - teto0));
       pr.push({ t: sz(t, 4), z: sz(zr, 3) });
     }
     if (res < 0.15) continue;
@@ -1178,6 +1187,10 @@ function magastetoEpit(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], 
   // a tetőrészek (fő tető, további darabok, féltetők) egymásba metsződnek: ahol két rész alaprajzban fedi egymást, a
   // magasabb felület látszik – az alacsonyabb háromszögek takart része levágva (a félnyereg a nyeregtető síkjáig ér)
   const ft = feltetok.map((f) => feltetoHaromszogek(f.pol, f.hajlas, f.lejt, zEresz));
+  // a féltető a szomszédos (sátor-, nyereg-) tető felé a síkja mentén továbbnyúlik, amíg a másik tető síkjába nem metsz:
+  // így a két tető összemetsződik (vápa), és nem marad közöttük függőleges rés (Balázs, 2026-11-21: „nincs tető
+  // összemetsződés a sátortető és félnyereg között”). A takart részt a tetoUnio vágja le.
+  feltetok.forEach((f, k) => { ft[k]!.push(...feltetoToldas(f, zEresz, reszek.map((q) => q.haromszogek))); });
   if (ft.length + tobbi.length > 0) {
     const u = tetoUnio([fo!.haromszogek, ...tobbi.map((q) => q.haromszogek), ...ft]);
     fo!.haromszogek = u[0]!; tobbi.forEach((q, k) => { q.haromszogek = u[1 + k]!; });
@@ -1365,6 +1378,38 @@ function sarokZaras(falak: Fal[], nyilasok: Nyilas[]) {
  * Féltető (egy síkú tető) háromszögei: a derékszögű alaprajz a csúcsai x / y koordinátáinak rácsán soronként összevont
  * téglalapokra bontva; a sík az alsó élén (a lejtés irányában a legszélső koordináta) az eresz magasságában.
  */
+/** A féltető síkjának toldása a mellette álló tetőrészek alaprajzára: a lejtésre merőleges (szintvonal-) irányban a
+ *  szomszéd rész feléig (a gerincéig), a féltető lejtésirányú sávján belül, a szomszéd háromszögeire vágva. */
+function feltetoToldas(f: { pol: P2[]; hajlas: number; lejt: number }, zE: number, masok: [number, number, number][][][]): [number, number, number][][] {
+  const xs = f.pol.map((q) => q[0]), ys = f.pol.map((q) => q[1]);
+  const fx0 = Math.min(...xs), fx1 = Math.max(...xs), fy0 = Math.min(...ys), fy1 = Math.max(...ys);
+  const tg = Math.tan((f.hajlas * Math.PI) / 180);
+  const z = (x: number, y: number) => zE + tg * (f.lejt === 180 ? fy1 - y : f.lejt === 0 ? y - fy0 : f.lejt === 90 ? fx1 - x : x - fx0);
+  const xTeng = f.lejt === 0 || f.lejt === 180; // a szintvonal x irányú
+  const [c0, c1, s0, s1] = xTeng ? [fx0, fx1, fy0, fy1] : [fy0, fy1, fx0, fx1];
+  const vag = (q: P2[], a: number, b: number, c: number): P2[] => { const ki: P2[] = []; for (let i = 0; i < q.length; i++) { const p = q[i]!, r = q[(i + 1) % q.length]!; const fp = a * p[0] + b * p[1] + c, fr = a * r[0] + b * r[1] + c;
+    if (fp >= 0) ki.push(p); if ((fp >= 0) !== (fr >= 0)) { const t = fp / (fp - fr); ki.push([p[0] + (r[0] - p[0]) * t, p[1] + (r[1] - p[1]) * t]); } } return ki; };
+  const ki: [number, number, number][][] = [];
+  for (const resz of masok) {
+    if (!resz.length) continue;
+    const pc = resz.flatMap((t) => t.map((v) => (xTeng ? v[0] : v[1]))), p0 = Math.min(...pc), p1 = Math.max(...pc), D = (p1 - p0) / 2;
+    const savok: [number, number][] = [];
+    if (p0 <= c1 + 0.5 && p1 > c1 + 0.05) savok.push([c1, Math.min(p1, c1 + D)]);
+    if (p1 >= c0 - 0.5 && p0 < c0 - 0.05) savok.push([Math.max(p0, c0 - D), c0]);
+    for (const [a0, a1] of savok) for (const t of resz) {
+      let q: P2[] = t.map((v) => [v[0], v[1]] as P2);
+      // sáv: a0 ≤ c ≤ a1 és s0 ≤ s ≤ s1 (xTeng: c = x, s = y)
+      q = xTeng ? vag(q, 1, 0, -a0) : vag(q, 0, 1, -a0); if (q.length >= 3) q = xTeng ? vag(q, -1, 0, a1) : vag(q, 0, -1, a1);
+      if (q.length >= 3) q = xTeng ? vag(q, 0, 1, -s0) : vag(q, 1, 0, -s0); if (q.length >= 3) q = xTeng ? vag(q, 0, -1, s1) : vag(q, -1, 0, s1);
+      if (q.length < 3) continue;
+      for (let k = 1; k + 1 < q.length; k++) { const A = q[0]!, B = q[k]!, C = q[k + 1]!;
+        if (Math.abs((B[0] - A[0]) * (C[1] - A[1]) - (C[0] - A[0]) * (B[1] - A[1])) < 1e-6) continue;
+        ki.push([[A[0], A[1], z(A[0], A[1])], [B[0], B[1], z(B[0], B[1])], [C[0], C[1], z(C[0], C[1])]]); }
+    }
+  }
+  return ki;
+}
+
 function feltetoHaromszogek(p: P2[], hajlas: number, lejt: number, zE: number): [number, number, number][][] {
   const xs = [...new Set(p.map((q) => q[0]))].sort((a, b) => a - b), ys = [...new Set(p.map((q) => q[1]))].sort((a, b) => a - b);
   const tg = Math.tan((hajlas * Math.PI) / 180), x0 = xs[0]!, x1 = xs[xs.length - 1]!, y0 = ys[0]!, y1 = ys[ys.length - 1]!;

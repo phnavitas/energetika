@@ -113,7 +113,7 @@ function befele(p: [number, number][], d: number): [number, number][] {
 }
 const norm2 = (v: [number, number]): [number, number] => { const l = Math.hypot(v[0], v[1]) || 1; return [v[0] / l, v[1] / l]; };
 
-/** vastag tető: a felület (felső sík) lefelé eltolt másolata + a szabad élek mentén oldallapok */
+/** vastag tető: a felület függőlegesen eltolt másolata (vast > 0: lefelé, < 0: felfelé) + a szabad élek mentén oldallapok */
 function vastagTeto(pos: number[], vast: number): THREE.BufferGeometry {
   const ki: number[] = [...pos];
   for (let i = 0; i < pos.length; i += 9) { // alsó sík (fordított körüljárással)
@@ -270,16 +270,17 @@ export function epuletElemek(modell: EpuletModell, opc: EpuletElemOpc = {}): Ele
   }
   // magastető (a modell tetőfelülete háromszögekben) és a magastető nélküli részek lapostetője
   if (modell.magasteto) {
-    // a tető VASTAG test (Balázs, 2026-11-21: „tetőnek legyen vastagsága”): a felület a felső sík, lefelé a ferde tető
-    // rétegrendjének vastagságával (a metszetből; ennek híján 28 cm), függőlegesen mérve (÷ cos hajlás)
+    // a tető VASTAG test (Balázs, 2026-11-21: „tetőnek legyen vastagsága”): a modell tetőfelülete a tető ALSÓ síkja (a
+    // külső fal eddig ér – oromFalak), a test innen FELFELÉ a ferde tető rétegrendjének vastagságával (a metszetből;
+    // ennek híján 28 cm), függőlegesen mérve (÷ cos hajlás) – így a tető a falon ül, a fal nem bújik ki belőle
     const tv = tetoVastag(modell) / Math.cos((Math.min(60, modell.magasteto.hajlas) * Math.PI) / 180);
     const pos: number[] = []; for (const h of modell.magasteto.haromszogek) for (const [x, y, z] of h) pos.push(x!, z!, y!);
-    ki.push({ id: 'TETO', tipus: 'teto', szint: modell.magasteto.szint, geo: vastagTeto(pos, tv), adat: { fajta: 'teto', id: 'TETO' } satisfies EpuletForras });
+    ki.push({ id: 'TETO', tipus: 'teto', szint: modell.magasteto.szint, geo: vastagTeto(pos, -tv), adat: { fajta: 'teto', id: 'TETO' } satisfies EpuletForras });
     // (felülről nyitott belső tér nincs): a legfelső szint födémjének síkjában; befelé húzva, hogy a falsíkon ne látsszon sávként
     const ft = modell.fodemek.find((f) => f.alatt === modell.magasteto!.szint);
     if (ft) (modell.magasteto.lapos ?? []).forEach((p, i) => {
       if (p.length < 3) return;
-      const g2 = new THREE.ExtrudeGeometry(new THREE.Shape(befele(p, 0.02).map(([x, y]) => new THREE.Vector2(x, y))), { depth: ft.vastag, bevelEnabled: false }); g2.rotateX(Math.PI / 2); g2.translate(0, ft.z, 0);
+      const g2 = new THREE.ExtrudeGeometry(new THREE.Shape(befele(p, 0.1).map(([x, y]) => new THREE.Vector2(x, y))), { depth: ft.vastag, bevelEnabled: false }); g2.rotateX(Math.PI / 2); g2.translate(0, ft.z, 0);
       ki.push({ id: `LAPOS-${i + 1}`, tipus: 'teto', szint: modell.magasteto!.szint, geo: g2, adat: { fajta: 'lapos', id: `LAPOS-${i + 1}`, fodem: ft.id } satisfies EpuletForras });
     });
   }
@@ -304,7 +305,7 @@ export function epuletElemek(modell: EpuletModell, opc: EpuletElemOpc = {}): Ele
     const tipus = fd.burok === 'teto' && !padlas ? 'teto' : fd.alatt === null ? 'padlo' : 'fodem';
     for (const p0 of fd.poligonok) {
       if (p0.length < 3) continue;
-      const p = padlas ? befele(p0, 0.02) : p0;
+      const p = padlas ? befele(p0, 0.1) : p0;
       const g = new THREE.ExtrudeGeometry(new THREE.Shape(p.map(([x, y]) => new THREE.Vector2(x, y))), { depth: fd.vastag, bevelEnabled: false }); g.rotateX(Math.PI / 2); g.translate(0, fd.z, 0); // (z a födém teteje, lefelé vastag)
       ki.push({ id: fd.id, tipus, szint: fd.folott ?? fd.alatt, geo: g, adat: { fajta: 'fodem', id: fd.id, ...(fd.burok ? { burok: fd.burok } : {}), alatt: fd.alatt } satisfies EpuletForras });
     }

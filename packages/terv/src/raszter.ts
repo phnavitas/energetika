@@ -996,6 +996,32 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       if (K[i] || B[i]) continue; const x = i % w;
       if ((x > 0 && K[i - 1]) || (x < w - 1 && K[i + 1]) || (i >= w && K[i - w]) || (i + w < w * h && K[i + w])) { nyilas[i] = 1; zarGyuru[i] = 1; }
     }
+    // a zárás csak a ≤ 2 m-es réseket zárja: a beugró (bejárati fülke, behúzás) sarkát átlósan elvágó, 2,2 m-nél
+    // hosszabb, mindkét irányban legalább 1 m-es (nem egyenes) zárósáv nem nyílás – a beugró kültér marad (Balázs, 2026-11-21: „a hőburok nem ismeri
+    // fel a bejárati beugrást”). Az egyenes sávok (a falsíkban fekvő ajtó, tok nélküli nyílás) maradnak.
+    const lat = new Uint8Array(w * h), m10 = 1.0 / px, m22 = 2.2 / px, nyitott: [number, number, number, number][] = [];
+    for (let i = 0; i < w * h; i++) {
+      if (!zarGyuru[i] || lat[i]) continue;
+      const tag: number[] = [i]; lat[i] = 1; let x0 = w, x1 = -1, y0 = h, y1 = -1;
+      for (let k = 0; k < tag.length; k++) { const q = tag[k]!, x = q % w, y = (q - x) / w; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue; const n = yy * w + xx; if (zarGyuru[n] && !lat[n]) { lat[n] = 1; tag.push(n); } } }
+      const ex = x1 - x0 + 1, ey = y1 - y0 + 1;
+      if (Math.min(ex, ey) > m10 && Math.hypot(ex, ey) > m22) { for (const q of tag) { nyilas[q] = 0; zarGyuru[q] = 0; } nyitott.push([x0, y0, x1, y1]); }
+    }
+    // a beugró mélyén lévő (keskenyebb, ≤ 1,4 m-es) rést – a bejárati ajtót – kisebb sugarú zárással zárjuk, hogy a
+    // külső tér ne folyjon be az ajtónyílásba
+    if (nyitott.length) {
+      const R2 = Math.max(2, Math.round(0.7 / px)), M = Math.round(2.5 / px);
+      const D2 = tagit(B, w, h, R2), kint2 = new Uint8Array(w * h), sor2: number[] = [];
+      for (let x = 0; x < w; x++) for (const y of [0, h - 1]) { const i = y * w + x; if (!D2[i] && !kint2[i]) { kint2[i] = 1; sor2.push(i); } }
+      for (let y = 0; y < h; y++) for (const x of [0, w - 1]) { const i = y * w + x; if (!D2[i] && !kint2[i]) { kint2[i] = 1; sor2.push(i); } }
+      for (let k = 0; k < sor2.length; k++) { const q = sor2[k]!, x = q % w; for (let j = 0; j < 4; j++) { const n = j === 0 ? (x > 0 ? q - 1 : -1) : j === 1 ? (x < w - 1 ? q + 1 : -1) : j === 2 ? q - w : q + w; if (n >= 0 && n < w * h && !D2[n] && !kint2[n]) { kint2[n] = 1; sor2.push(n); } } }
+      const K2 = tagit(kint2, w, h, R2);
+      for (const [x0, y0, x1, y1] of nyitott) for (let y = Math.max(0, y0 - M); y <= Math.min(h - 1, y1 + M); y++) for (let x = Math.max(0, x0 - M); x <= Math.min(w - 1, x1 + M); x++) {
+        const i = y * w + x; if (K2[i] || B[i]) continue;
+        if ((x > 0 && K2[i - 1]) || (x < w - 1 && K2[i + 1]) || (i >= w && K2[i - w]) || (i + w < w * h && K2[i + w])) { nyilas[i] = 1; zarGyuru[i] = 1; }
+      }
+    }
   }
   const gat = new Uint8Array(w * h);
   for (let i = 0; i < w * h; i++) gat[i] = fal[i] || nyilas[i] ? 1 : 0;
