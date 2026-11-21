@@ -537,9 +537,9 @@ export function tervFolyamat(S: FolyamatAllapot) {
     const mm = mert3d(i, a);
     // a homlokzati rajzokon a kapu (szekcionált / lamellás panelsor) – a kapunyíláshoz illő (± 0,6 m) szélességgel
     const homKapuk = S.homlokzatLapok.flatMap(({ l }) => { let v = homKapuGy.get(l.lap); if (!v) { const M = meretaranyKeres(l.lap.szovegek) ?? a.e.meretarany ?? 100; try { v = homlokzatiKapuk(l.lap, (25.4 / 72) / 1000 * M); } catch { v = []; } homKapuGy.set(l.lap, v); } return v; });
-    return gk.filter((j) => { const ri = a.magHelyisegek.indexOf(a.e.helyisegek[j]!); const kapu = a.nyilasok.find((n) => n.helyiseg === ri && n.fajta === 'garazskapu' && n.mert);
+    return gk.filter((j) => { const ri = a.magHelyisegek.indexOf(a.e.helyisegek[j]!); const kapu = a.nyilasok.find((n) => n.helyiseg === ri && n.fajta === 'garazskapu');
       if (!kapu) return true;
-      if (mm?.get(kapu)?.forras === 'homlokzat') return false;
+      if (kapu.mert && mm?.get(kapu)?.forras === 'homlokzat') return false;
       return !homKapuk.some((q) => Math.abs(q.szel - kapu.szel) <= 0.6 && q.mag >= 1.8 && q.mag <= 3.2); });
   };
   // (a címben szint nélküli alaprajz – „UTCASZINTI ALAPRAJZ” – szintje a helyiségek szintjeleiből)

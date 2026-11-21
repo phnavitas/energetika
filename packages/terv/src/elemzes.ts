@@ -289,6 +289,14 @@ function leirasParosit(e: AlaprajzEredmeny, mag: TervHelyiseg[], lista: TervHely
     const h = mag[p.i]!, j = sorok[p.j]!;
     h.kod = j.kod; h.nev = j.nev; if (j.burkolat) h.burkolat = j.burkolat; h.A = j.A;
   }
+  // a berajzolt gépkocsi szerint felvett tér (garázs) a lista egyetlen, még szabad garázs-sorához (név szerint)
+  mag.forEach((h, i) => {
+    if (hFoglalt.has(i) || !h.gepkocsi) return;
+    const jj = sorok.map((j, k) => ({ j, k })).filter(({ j, k }) => !jFoglalt.has(k) && /gar[aá]zs|gépkocsi|gepkocsi|beálló/i.test(j.nev));
+    if (jj.length !== 1) return;
+    const { j, k } = jj[0]!; hFoglalt.add(i); jFoglalt.add(k);
+    h.kod = j.kod; h.nev = j.nev; if (j.burkolat) h.burkolat = j.burkolat; h.A = j.A;
+  });
   mag.forEach((h, i) => { if (!hFoglalt.has(i)) { h.nev = `${h.nev} (listában nem azonosított)`; h.hasznosA = 0; } });
   const csak = sorok.filter((_, jj) => !jFoglalt.has(jj)).map((j) => ({ ...j, forras: 'jegyzek' as const }));
   e.helyisegek = [...e.helyisegek, ...csak];
