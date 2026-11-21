@@ -17,7 +17,7 @@ import { homlokzatSziluettek, laposTetoSavok, magastetoLatszik, type HomlokzatSz
 import { homlokzatMellvedek, homlokzatElteresek, homlokzatRajzok, mertMagassagok, eszakHomlokzatbol, tetoAblakokHomlokzatrol, oromSzelessegek, type HomlokzatRajz, type MertMagassag } from '@terv/homlokzatIllesztes';
 import { nezetOszlopok } from '@terv/homlokzatProfil';
 import { tetoFelulnezet, type TetoFelulnezet } from '@terv/tetoFelulnezet';
-import { metszetElemek, ferdeTetoHossz, ereszKiallasok, ereszKiallas, belmagassagSavok, ereszGerincJelekbol, type BelmagSavok } from '@terv/metszetGeom';
+import { metszetElemek, ferdeTetoHossz, ereszKiallasok, ereszKiallas, belmagassagSavok, szintJelekLapokrol, type BelmagSavok } from '@terv/metszetGeom';
 import { helyisegMagassagok, type HelyisegMagassag } from '@terv/magassag';
 import { epuletModell, type EpuletModell, type ModellReteg, type ModellRetegrend, type LapBemenet, type Szint as EpSzint, type TerKategoria } from '@terv/epulet';
 import { falMagassagModell, type HomlokzatNezetAdat } from '@terv/homlokzatModell';
@@ -930,19 +930,10 @@ export function tervFolyamat(S: FolyamatAllapot) {
       });
     }
     const laposOldal = MK.lapos && Object.values(MK.lapos).some((w) => w > 0) ? MK.lapos : undefined;
-    // az eresz és a gerinc a szintjelekből (metszet, homlokzat): a hajlással és a tetőtest szélességével összeférő jelpár
-    // adja az eresz magasságát és – ha nincs mért – a kiállást (kézi kiállásnál nem)
-    let zEreszJel: number | undefined, kiallJel: number | undefined;
-    if (hajlas && fel && felPol && MK.kiallas === undefined) {
-      const P = felPol.map(([x, y]) => fel.m(x, y)); let W = Infinity;
-      for (let d = 0; d < 180; d += 2) { const c = Math.cos(d * Math.PI / 180), s0 = Math.sin(d * Math.PI / 180); let lo = Infinity, hi = -Infinity; for (const [x, y] of P) { const v = x * c + y * s0; if (v < lo) lo = v; if (v > hi) hi = v; } W = Math.min(W, hi - lo); }
-      const felSz = fel.szintek.slice().sort((p, q) => q.z0 - p.z0)[0]!;
-      const lapok = S.lapok.filter((l) => l.szerep === 'metszet' || l.szerep === 'homlokzat').map((l) => ({ lap: l.lap, homlokzat: l.szerep === 'homlokzat' }));
-      const eg = ereszGerincJelekbol(lapok, hajlas, W, felSz.z0 + Math.min(felSz.belmag, 2.2), kiall);
-      if (eg) { zEreszJel = eg.zEresz; if (kiallas === undefined) kiallJel = eg.kiallas; }
-    }
-    const kiall2 = kiall ?? kiallJel;
-    const teto = hajlas ? { hajlas, orom: oromK, ...(kiall2 ? { kiallas: kiall2 } : {}), ...(zEreszJel !== undefined ? { zEresz: zEreszJel } : {}), ...(lapos.length ? { lapos } : {}), ...(laposOldal ? { laposOldal } : {}), ...(MK.felteto ? { feltetoOldal: MK.felteto } : {}) } : undefined;
+    // az eresz és a gerinc a szintjelekből (metszet, homlokzat) – a párosítás a magastető építésekor, a födém külső
+    // körvonalával (kézi kiállásnál nem)
+    const szintJelek = hajlas && MK.kiallas === undefined ? szintJelekLapokrol(S.lapok.filter((l) => l.szerep === 'metszet' || l.szerep === 'homlokzat').map((l) => ({ lap: l.lap, homlokzat: l.szerep === 'homlokzat' }))) : [];
+    const teto = hajlas ? { hajlas, orom: oromK, ...(kiall ? { kiallas: kiall } : {}), ...(szintJelek.length ? { szintJelek } : {}), ...(lapos.length ? { lapos } : {}), ...(laposOldal ? { laposOldal } : {}), ...(MK.felteto ? { feltetoOldal: MK.felteto } : {}) } : undefined;
     // a metszet külsőfal-rétegrendjei (a fal hőszigetelése, ha az alaprajzon nem falként rajzolt)
     const kulsoFalRetegrend = (me?.blokkok ?? []).filter((b) => b.becsles.szerep === 'fal' && !b.becsles.kihagy).map((b) => ({ kod: b.rr.kod,
       retegek: b.retegek.filter((r) => !r.kimarad && r.dCm > 0).map((r) => ({ leiras: r.forras, vastag: r.dCm / 100, szigeteles: /hőszigetel/i.test(anyag(r.anyagId)?.kategoria ?? '') || /hőszigetel|\beps\b|\bxps\b|kőzetgyapot|üveggyapot/i.test(r.forras) })) }))
