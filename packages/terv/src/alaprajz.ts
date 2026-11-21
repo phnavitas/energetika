@@ -289,7 +289,43 @@ export function jegyzekSorok(sz: Szoveg[]): TervHelyiseg[] {
     const nev = nevResz.join(' ');
     ki.push({ kod, nev: nagybetuJavit(nev), burkolat, A: szamErtek(utolso), ...(hasznos !== undefined ? { hasznosA: hasznos } : {}), x: kozep(r[0]!), y: r[0]!.y, forras: 'jegyzek', kulter: kulterE(nev), egyseg: egysegKod(kod) });
   }
+  if (!ki.length) ki.push(...oszlopJegyzek(vsz));
   return ki;
+}
+
+/**
+ * Oszlopos (fektetett) helyiségjegyzék: helyiségenként egy oszlop, felülről lefelé a név, a helyiségszám, a burkolat
+ * („P: Csempe”) és a terület („MT: 6,93 m²”) – a rajzon a helyiségben csak a szám áll (Pákozd). Legalább három, egy
+ * sorban álló területcella kell; az oszlop a területcella bal széléhez (± 6 pt) igazított, fölötte 45 pt-en belüli
+ * cellák.
+ */
+function oszlopJegyzek(vsz: (Szoveg & { s: string })[]): TervHelyiseg[] {
+  // (a címke és az érték külön szöveg is lehet: „MT:” | „6,93 m”)
+  vsz = vsz.map((t) => { if (!/^(?:MT|A|T|NT|P)\s*:$/i.test(t.s.trim())) return t;
+    const k = vsz.find((u) => u !== t && Math.abs(u.y - t.y) < t.meret * 0.4 && u.x > t.x && u.x - (t.x + t.szel) < 3 * t.meret);
+    return k ? { ...t, s: `${t.s.trim()} ${k.s.trim()}`, szel: k.x + k.szel - t.x } : t; });
+  const TER = /^(?:(?:MT|A|T|NT|terület)\s*[:=]\s*)?(\d{1,4}[,.]\d{1,2})\s*(?:m\s*(?:²|2)?)?$/i;
+  const ter = vsz.map((t) => ({ t, m: TER.exec(t.s.trim()) })).filter((x) => x.m && /[:=]|m/i.test(x.t.s));
+  // egy sorban (± 0,4 betűméret) legalább 3 területcella
+  const sorok: (typeof ter)[] = [];
+  for (const x of ter) { const r = sorok.find((q) => Math.abs(q[0]!.t.y - x.t.y) < x.t.meret * 0.4); if (r) r.push(x); else sorok.push([x]); }
+  const ki: TervHelyiseg[] = [];
+  for (const sor of sorok) {
+    if (sor.length < 3) continue;
+    for (const { t, m } of sor) {
+      const osz = vsz.filter((u) => u !== t && Math.abs(u.x - t.x) <= 6 && u.y < t.y - u.meret * 0.3 && u.y >= t.y - 45).sort((p, q) => q.y - p.y);
+      const kodT = osz.find((u) => /^\d{1,3}[a-z]?$/i.test(u.s.trim()));
+      if (!kodT) continue;
+      const nevT = osz.find((u) => u.y < kodT.y - u.meret * 0.3 && /\p{L}{2}/u.test(u.s) && !/^[A-ZÁÉ]{1,3}\s*:/.test(u.s.trim()));
+      if (!nevT) continue;
+      // burkolat: a „P:” cella mellett (jobbra, ugyanabban a sorban) álló szöveg
+      const pT = osz.find((u) => /^P\s*:/i.test(u.s.trim()));
+      const bT = pT ? (pT.s.trim().replace(/^P\s*:\s*/i, '') || vsz.find((u) => Math.abs(u.y - pT.y) < pT.meret * 0.4 && u.x > pT.x && u.x - (pT.x + pT.szel) < 3 * pT.meret)?.s.trim()) : undefined;
+      const nev = nevT.s.trim();
+      ki.push({ kod: kodT.s.trim(), nev: nagybetuJavit(nev), ...(bT ? { burkolat: bT } : {}), A: szamErtek(m![1]!), x: kodT.x + kodT.szel / 2, y: kodT.y, forras: 'jegyzek', kulter: kulterE(nev) });
+    }
+  }
+  return ki.length >= 3 ? ki : [];
 }
 
 /**
@@ -587,6 +623,12 @@ export function alaprajzElemez(lap: Lap): AlaprajzEredmeny {
   const pec = pecsetek(lap.szovegek);
   mutatokKeres(lap, pec);
   const jegy = jegyzekSorok(lap.szovegek);
+  // a jegyzék táblázatában (a sorai befoglalójában) álló „pecsét” a táblázat cellája (név + terület egymás alatt), nem a
+  // rajz pecsétje – ha a területe egy jegyzéksoré (Pákozd: az oszlopos jegyzék első oszlopa)
+  if (jegy.length >= 3) {
+    const jx0 = Math.min(...jegy.map((j) => j.x)) - 40, jx1 = Math.max(...jegy.map((j) => j.x)) + 40, jy0 = Math.min(...jegy.map((j) => j.y)) - 25, jy1 = Math.max(...jegy.map((j) => j.y)) + 25;
+    for (let k = pec.length - 1; k >= 0; k--) { const h = pec[k]!; if (h.x >= jx0 && h.x <= jx1 && h.y >= jy0 && h.y <= jy1 && jegy.some((j) => Math.abs(j.A - h.A) < 0.011)) pec.splice(k, 1); }
+  }
   const helyisegek: TervHelyiseg[] = [...pec];
   // a jegyzék sorát a pecséthez kötjük: azonos kód (írásmódtól függetlenül), vagy azonos terület és hasonló név
   const kodN = (k?: string) => (k ?? '').toLowerCase().replace(/[^a-z0-9]/g, '').replace(/(\D)0+(\d)/g, '$1$2');
@@ -599,13 +641,18 @@ export function alaprajzElemez(lap: Lap): AlaprajzEredmeny {
   // a jegyzék (táblázat) kódcellája: mellette (≤ 3 betűméret) másik jegyzékbeli kód áll – a rajzon a pecsétkód magában van
   const jKodok = new Set(jegy.map((j) => kodN(j.kod)).filter((k) => k));
   const kodSzovegek = lap.szovegek.filter((t) => jKodok.has(kodN(szovegJavit(t.s).trim())));
-  const tablaban = (t: { x: number; y: number; meret: number }) => kodSzovegek.some((u) => u !== t && Math.hypot(u.x - t.x, u.y - t.y) < 3 * t.meret);
+  // (a táblázat cellái azonos betűméretűek – a rajzon a pecsétszám mellett álló lépcsőfok-számozás nem táblázat)
+  const tablaban = (t: { x: number; y: number; meret: number }) => kodSzovegek.some((u) => u !== t && Math.abs(u.meret - t.meret) < 0.3 * t.meret && Math.hypot(u.x - t.x, u.y - t.y) < 3 * t.meret);
   for (const j of jegy) {
     const p = parja(j);
     if (p) { p.jegyzekA = j.A; if (Math.abs(p.A - j.A) > 0.011) figy.push(`${p.kod ?? p.nev}: a pecsét ${p.A.toFixed(2)} m², a jegyzék ${j.A.toFixed(2)} m² – ellenőrizd.`); if (!p.burkolat && j.burkolat) p.burkolat = j.burkolat; continue; }
     if (helyisegek.some((h) => h.forras === 'jegyzek' && kodN(h.kod) === kodN(j.kod) && Math.abs(h.A - j.A) < 0.011)) continue;
     // terület nélküli pecsét: a rajzon csak a helyiségkód áll („Afsz03”) – a helye onnan, a neve és területe a jegyzékből
-    const kodFel = j.kod ? lap.szovegek.filter((t) => kodN(szovegJavit(t.s).trim()) === kodN(j.kod) && Math.abs(t.y - j.y) > t.meret * 1.5 && !tablaban(t)) : [];
+    let kodFel = j.kod ? lap.szovegek.filter((t) => kodN(szovegJavit(t.s).trim()) === kodN(j.kod) && Math.abs(t.y - j.y) > t.meret * 1.5 && !tablaban(t)) : [];
+    // (csupa számjegyű kód – „1”…„9” –: a lépcső fokszámozása, a vonalléptéké is ilyen; a helyiségszám a vízszintes,
+    // legnagyobb betűs közülük – Pákozd)
+    if (kodFel.length > 1 && /^\d{1,3}$/.test(j.kod ?? '')) { kodFel = kodFel.filter((t) => /^\d{1,3}$/.test(szovegJavit(t.s).trim())); const v = kodFel.filter((t) => Math.abs(t.szog) < 2); const mx = Math.max(...v.map((t) => t.meret)); const n = v.filter((t) => t.meret >= 0.9 * mx);
+      if (n.length === 1 && n[0]!.meret >= 1.5 * Math.max(0, ...kodFel.filter((t) => t !== n[0]).map((t) => t.meret))) kodFel = n; }
     if (kodFel.length === 1 && helyisegek.some((h) => h.forras === 'pecset' && kodN(h.kod) === kodN(j.kod))) continue;
     if (kodFel.length === 1) {
       const t = kodFel[0]!;
@@ -615,7 +662,7 @@ export function alaprajzElemez(lap: Lap): AlaprajzEredmeny {
     helyisegek.push(j); if (pec.length) csakJegyzek++;
   }
   if (csakJegyzek) figy.push(`${csakJegyzek} helyiség csak a jegyzékben szerepel (pecsétje nem található) – alapból nem kerül át, ellenőrizd.`);
-  if (!pec.length && jegy.length) figy.push('Helyiségpecsétet nem találtam, a helyiségjegyzékből olvastam be (a helyiségek helye a rajzon nem ismert).');
+  if (!pec.length && jegy.length && !helyisegek.some((h) => h.forras === 'pecset')) figy.push('Helyiségpecsétet nem találtam, a helyiségjegyzékből olvastam be (a helyiségek helye a rajzon nem ismert).');
   if (!helyisegek.length) figy.push('Helyiséget nem találtam: a pecsétekben „xx,xx m²” formájú területnek kell szerepelnie.');
   helyisegek.sort((a, b) => (a.kod ?? '').localeCompare(b.kod ?? '', 'hu', { numeric: true }));
   // kód nélküli pecsét: a legközelebbi „N. lakás” / „Lakás N” felirat szerinti egység

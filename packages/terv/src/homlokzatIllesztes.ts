@@ -262,17 +262,20 @@ export function tetoAblakokHomlokzatrol(lap: Lap, kuszob: number, hajlas: number
  *  héjazat-sraffozás – az él alatt 0,3–0,9 m-rel, az él középső 60 %-a mentén, a minták többségén) */
 function tetoFeluletAlatt(lap: Lap, [bx0, by0, bx1, by1]: number[], m: number): (x0: number, y0: number, x1: number, y1: number) => boolean {
   const TETO = /tet[őo]|h[ée]j|cser[ée]p|fed[ée]s|zsindely|pala\b/i;
-  const kitolt: number[][] = [], kozep: [number, number][] = [];
+  // (a tetőréteg kitöltésének sokszöge – nem a befoglalója: a ferde oromdeszka, a tetőszél-sáv befoglalója az egész
+  // oromháromszöget lefedné; Tata-Nyárfa: az oromfal így kontylapnak látszott)
+  const kitolt: number[][][] = [], kozep: [number, number][] = [];
   for (const u of lap.utvonalak) {
     if (u.muvelet === 'none' || u.bbox[2] < bx0 || u.bbox[0] > bx1 || u.bbox[3] < by0 || u.bbox[1] > by1) continue;
-    if (u.muvelet !== 'stroke' && u.reteg && TETO.test(u.reteg)) kitolt.push(u.bbox);
+    if (u.muvelet !== 'stroke' && u.reteg && TETO.test(u.reteg)) kitolt.push(u.pontok);
     for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) {
       const l = Math.hypot(p[i + 2]! - p[i]!, p[i + 3]! - p[i + 1]!) * m; if (l > 0.02 && l < 0.6) kozep.push([(p[i]! + p[i + 2]!) / 2, (p[i + 1]! + p[i + 3]!) / 2]);
     }
   }
   const R = 0.25 / m, A = Math.PI * 0.25 * 0.25;
   const suru = (pts: [number, number][], x: number, y: number) => pts.reduce((n, [cx, cy]) => n + ((cx - x) ** 2 + (cy - y) ** 2 <= R * R ? 1 : 0), 0) / A;
-  const teto = (x: number, y: number) => kitolt.some((b) => x >= b[0]! && x <= b[2]! && y >= b[1]! && y <= b[3]!) || suru(kozep, x, y) >= 40;
+  const benne = (pk: number[][], x: number, y: number) => { let be = false; for (const p of pk) { const n = p.length / 2; for (let i = 0, j = n - 1; i < n; j = i++) { const xi = p[2 * i]!, yi = p[2 * i + 1]!, xj = p[2 * j]!, yj = p[2 * j + 1]!; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) be = !be; } } return be; };
+  const teto = (x: number, y: number) => kitolt.some((pk) => benne(pk, x, y)) || suru(kozep, x, y) >= 40;
   return (x0, y0, x1, y1) => {
     let igen = 0, db = 0;
     for (const t of [0.2, 0.35, 0.5, 0.65, 0.8]) for (const d of [0.3, 0.6, 0.9]) {
@@ -294,8 +297,16 @@ export function oromSzelessegek(lap: Lap, hajlas: number, tartalekM?: number, op
   const ki: { az: number; orom: number; kontyOldal?: boolean }[] = [];
   for (const r of rajzok) {
     const m = r.mPerPt;
-    const bx0 = Math.min(...r.keretek.map((k) => k.x0)) - 12 / m, bx1 = Math.max(...r.keretek.map((k) => k.x1)) + 12 / m;
+    const kx0 = Math.min(...r.keretek.map((k) => k.x0)), kx1 = Math.max(...r.keretek.map((k) => k.x1));
+    let bx0 = kx0 - 12 / m, bx1 = kx1 + 12 / m;
     const by0 = Math.min(...r.keretek.map((k) => k.y0)) - 5 / m, by1 = Math.max(...r.keretek.map((k) => k.y1)) + 1 / m;
+    // (a kibővített terület nem nyúlhat át a lap másik, mellette álló homlokzatrajzára – Tata-Nyárfa: a délkeleti nézet
+    // 12 m-es sávja a délnyugati oromfalát is befogta)
+    for (const q of rajzok) { if (q === r) continue;
+      const qx0 = Math.min(...q.keretek.map((k) => k.x0)), qx1 = Math.max(...q.keretek.map((k) => k.x1));
+      const qy0 = Math.min(...q.keretek.map((k) => k.y0)), qy1 = Math.max(...q.keretek.map((k) => k.y1));
+      if (qy1 < by0 || qy0 > by1) continue;
+      if (qx1 <= kx0) bx0 = Math.max(bx0, (qx1 + kx0) / 2); else if (qx0 >= kx1) bx1 = Math.min(bx1, (qx0 + kx1) / 2); }
     // kontyolt tetővég: szemből a kontylap ugyanúgy a tető hajlásával futó háromszög, mint az oromfal – de a ferde él
     // alatt tetőfelület van (tetőréteg kitöltése, ill. sűrű héjazat-sraffozás), oromfalnál falfelület
     const tetoAlatta = opt.kontyNelkul ? tetoFeluletAlatt(lap, [bx0, by0, bx1, by1], m) : null;

@@ -106,6 +106,9 @@ function poliKerulet(p: number[]) { let k = 0; for (let i = 0; i + 3 < p.length;
 function poliTerulet(p: number[]) { let a = 0; for (let i = 0; i + 3 < p.length; i += 2) a += p[i]! * p[i + 3]! - p[i + 2]! * p[i + 1]!; return Math.abs(a / 2); }
 
 /** Falmetszet-e a kitöltés: nem fehér, és a „vastagsága” (2A/K) falnyi. */
+const falFoliaTar = new Map<string, boolean>();
+/** A PDF-réteg neve fal- vagy válaszfal-fólia (retegTipus). */
+function falFoliaNev(n: string): boolean { let v = falFoliaTar.get(n); if (v === undefined) { const t = retegTipus(n); v = t === 'fal' || t === 'valaszfal'; falFoliaTar.set(n, v); } return v; }
 export function falKitoltes(u: Utvonal, mPerPt: number, maxFal = 0.9): boolean {
   if (u.muvelet === 'stroke') return false;
   let A = 0, K = 0;
@@ -323,7 +326,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
     for (let gx = Math.floor(bx0 / AR); gx <= Math.floor(bx1 / AR); gx++) for (let gy = Math.floor(by0 / AR); gy <= Math.floor(by1 / AR); gy++) for (const [cx, cy] of aproIdx.get(gx * 100000 + gy) ?? []) if (cx > bx0 && cx < bx1 && cy > by0 && cy < by1) db++;
     return db >= 10 && db / A >= 3;
   };
-  const feherJeloltek: Utvonal[] = []; const sraffozott = new Set<Utvonal>();
+  const feherJeloltek: Utvonal[] = [], feherFal: Utvonal[] = []; const sraffozott = new Set<Utvonal>();
   // falanyag-stílus térkép (kitöltésszín + sraffozottság): a fal azonosításához a sarkokban
   const stilus = new Uint16Array(w * h); const stilusId = new Map<string, number>();
   const stilusInfo: NonNullable<Raszter['stilusInfo']> = [];
@@ -348,8 +351,12 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   for (const u of lap.utvonalak) {
     if (u.bbox[2] < x0 || u.bbox[0] > x1 || u.bbox[3] < y0 || u.bbox[1] > y1) continue;
     if (!falKitoltes(u, mPerPt, maxFal) || terepburkolat(u)) continue;
-    if (feher(u.toltoSzin)) { feherJeloltek.push(u); continue; }
+    // (rétegzett lapon a fal- / válaszfal-fólia fehér kitöltése maga a falmetszet – a falazat mintázat nélkül, fehérrel
+    // kitöltve, fekete körvonallal: Tata-Nyárfa –, nem bútor)
+    if (feher(u.toltoSzin) && !(u.reteg && falFoliaNev(u.reteg))) { feherJeloltek.push(u); continue; }
     poliRajzol(fal, w, h, u.pontok, tr); stilusRajzol(u, false);
+    // (a fal-fólia fehér falmetszete rétegzett fal: a nyílások közti rövid, sarok menti L alakú darab sem bútor)
+    if (feher(u.toltoSzin)) feherFal.push(u);
     darabok.push(u.bbox);
   }
   if (b.vastagVonalFal) {
@@ -499,6 +506,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   const reteg = new Uint8Array(w * h);
   // a sraffozott falréteg rétegzett fal: a nyílások közti rövid falpillér sem „bútor”
   // (anyagStilus: a sraffmező PDF-rétegenként külön anyag – „POROTHERM FAL 30” mag, mintázattal rajzolt hőszigetelés)
+  for (const u of feherFal) poliRajzol(reteg, w, h, u.pontok, tr);
   if (sraffMaszk) { const sid = anyagAzon('sraff', true); const lid = new Map<number, number>();
     for (let i = 0; i < w * h; i++) if (sraffMaszk[i]) { reteg[i] = 1; if (anyagStilus[i]) continue;
       const lb = sraffLab?.lab[i] ?? 0; let id = sid;

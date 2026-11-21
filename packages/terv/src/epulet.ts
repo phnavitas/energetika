@@ -1204,9 +1204,13 @@ function magastetoEpit(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], 
   // legkisebb szélessége (2°-onként forgatva)
   let W = Infinity;
   for (let d = 0; d < 180; d += 2) { const c = Math.cos(d * Math.PI / 180), s0 = Math.sin(d * Math.PI / 180); let lo = Infinity, hi = -Infinity; for (const [x, y] of pol1) { const v = x * c + y * s0; if (v < lo) lo = v; if (v > hi) hi = v; } W = Math.min(W, hi - lo); }
-  const eg = t.szintJelek?.length ? ereszGerincJelekbol(t.szintJelek, t.hajlas, W, fel.z0 + Math.min(fel.belmag, 2.2), t.kiallas) : null;
+  // (tetőtéri szinten az eresz a térdfal magasságában – a padló fölött akár 0,5–2 m-rel –, teljes szint fölött a szint
+  // belmagasságán felül; Tata-Nyárfa: tetőtér +2,79, eresz +4,77)
+  const eg = t.szintJelek?.length ? ereszGerincJelekbol(t.szintJelek, t.hajlas, W, fel.z0 + (fel.kod === 'T' ? 0.3 : Math.min(fel.belmag, 2.2)), t.kiallas) : null;
   const kiallas = t.kiallas ?? eg?.kiallas ?? 0.5;
-  const pol = kisLepcsoNelkul(sekelyFulkeNelkul(kisLepcsoNelkul(pol1), Math.max(kiallas, 0.6)));
+  const sarok = sarokTerasz(kisLepcsoNelkul(pol1), pillerek.filter((p) => p.szint === fel.id && p.hely === 'szabad'));
+  fedett.push(...sarok.fedett);
+  const pol = kisLepcsoNelkul(sekelyFulkeNelkul(sarok.pol, Math.max(kiallas, 0.6)));
   const k = koszoruk.find((q) => q.szint === fel.id && q.fajta !== 'attika');
   const zEresz = sz(eg?.zEresz ?? (k ? k.zFelso : fel.z0 + fel.h), 2);
   // lapostetős sávok: a körvonal ezekbe eső része lapostető, a maradék darabjai kapnak magastetőt (legalább 2 m széles,
@@ -1516,6 +1520,53 @@ function feltetoHaromszogek(p: P2[], hajlas: number, lejt: number, zE: number): 
     }
   }
   return ki;
+}
+
+/**
+ * Fedett terasz / bejárat a körvonal belső (homorú) sarkában, egyetlen sarokpillérrel: a szabad pillér a homorú csúcs
+ * két élének meghosszabbítása közti negyedben áll (0,5–7 m-re mindkét iránytól), és a csúcs, a pillér külső sarka által
+ * kifeszített téglalap a körvonalon kívül van, két oldala a csúcs két élén fekszik – a tető ezt is fedi (Kömlőd: a
+ * fedett terasz és a fedett bejárat a szárnyak közti sarokban, egy-egy sarokoszloppal; a tető ereszvonala a pillér
+ * mögött fut). A pillér külső síkja a körvonal ± 0,35 m-en belüli koordinátáira illesztve.
+ */
+function sarokTerasz(pol0: P2[], szabad: Piller[]): { pol: P2[]; fedett: P2[][] } {
+  // (egy egyenesbe eső és ismétlődő csúcsok nélkül)
+  const tisztit = (q0: P2[]) => { let q = q0.filter((b, i) => { const a = q0[(i + q0.length - 1) % q0.length]!; return Math.hypot(b[0] - a[0], b[1] - a[1]) > 1e-6; });
+    q = q.filter((b, i) => { const a = q[(i + q.length - 1) % q.length]!, c = q[(i + 1) % q.length]!; return Math.abs((b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0])) > 1e-4; }); return q; };
+  let pol = tisztit(pol0);
+  const fedett: P2[][] = [];
+  if (!szabad.length || pol.length < 6) return { pol: pol0, fedett };
+  const A2 = pol.reduce((s, [x, y], i) => { const [x2, y2] = pol[(i + 1) % pol.length]!; return s + x * y2 - x2 * y; }, 0), el = Math.sign(A2) || 1;
+  for (const p of szabad) {
+    if (pontBenne(pol, p.kozep[0], p.kozep[1], 0.05)) continue;
+    const n = pol.length, f = Math.max(p.a, p.b) / 2;
+    const xs = pol.map((q) => q[0]), ys = pol.map((q) => q[1]);
+    const illeszt = (v: number, l: number[]) => l.reduce((b, w) => (Math.abs(w - v) < Math.abs(b - v) && Math.abs(w - v) <= 0.35 ? w : b), v);
+    for (let i = 0; i < n; i++) {
+      const a = pol[(i + n - 1) % n]!, c = pol[i]!, b = pol[(i + 1) % n]!;
+      const lu = Math.hypot(c[0] - a[0], c[1] - a[1]), lw = Math.hypot(b[0] - c[0], b[1] - c[1]); if (lu < 0.5 || lw < 0.5) continue;
+      const ux = (c[0] - a[0]) / lu, uy = (c[1] - a[1]) / lu, wx = (b[0] - c[0]) / lw, wy = (b[1] - c[1]) / lw;
+      // derékszögű, homorú csúcs: a külső negyed a beérkező él visszafelé (−u) és a kimenő él (+w) iránya közt
+      if (Math.abs(ux * wx + uy * wy) > 0.03 || Math.sign(ux * wy - uy * wx) === el) continue;
+      const dx = p.kozep[0] - c[0], dy = p.kozep[1] - c[1];
+      const t = -(dx * ux + dy * uy), s0 = dx * wx + dy * wy;
+      if (t < 0.5 || t > 7 || s0 < 0.5 || s0 > 7) continue;
+      // a pillér külső sarka (a körvonal közeli koordinátáira illesztve); a téglalap két oldala a csúcs két élén
+      const K0: P2 = [c[0] - ux * (t + f) + wx * (s0 + f), c[1] - uy * (t + f) + wy * (s0 + f)];
+      const K: P2 = [illeszt(K0[0], xs), illeszt(K0[1], ys)];
+      const T = -((K[0] - c[0]) * ux + (K[1] - c[1]) * uy), S = (K[0] - c[0]) * wx + (K[1] - c[1]) * wy;
+      if (T > lu + 1e-3 || S > lw + 1e-3) continue;
+      const Pu: P2 = [c[0] - ux * T, c[1] - uy * T], Pw: P2 = [c[0] + wx * S, c[1] + wy * S];
+      // a téglalap a körvonalon kívül: a közepe kint, és nincs benne körvonalcsúcs
+      if (pontBenne(pol, (c[0] + K[0]) / 2, (c[1] + K[1]) / 2)) continue;
+      const rx0 = Math.min(c[0], K[0]) + 0.05, rx1 = Math.max(c[0], K[0]) - 0.05, ry0 = Math.min(c[1], K[1]) + 0.05, ry1 = Math.max(c[1], K[1]) - 0.05;
+      if (pol.some(([x, y]) => x > rx0 && x < rx1 && y > ry0 && y < ry1)) continue;
+      pol = tisztit([...pol.slice(0, i), Pu, K, Pw, ...pol.slice(i + 1)]);
+      fedett.push([c, Pu, K, Pw].map(([x, y]) => [sz(x), sz(y)] as P2));
+      break;
+    }
+  }
+  return { pol: fedett.length ? pol : pol0, fedett };
 }
 
 /**

@@ -99,7 +99,9 @@ export function zartsagEllenoriz(M: EpuletModell): ZartsagHiba[] {
     // 3. a tetővel fedett szint külső falai: a fal teteje és a tető alsó síkja közt nem maradhat rés (oromfal, párkány)
     const sz = M.szintek.find((s) => s.id === mt.szint);
     for (const f of falSzint.get(mt.szint) ?? []) {
-      if (!f.kulso) continue;
+      // (a tetőtéri szoba szerinti profil – térdfal, ferde felső élű fal – a fűtött falfelület; a falazat a 3D-ben a
+      // tető alsó síkjáig ér, ez nem rés)
+      if (!f.kulso || f.jelleg === 'terdfal' || f.jelleg === 'ferde') continue;
       const L = Math.hypot(f.b[0] - f.a[0], f.b[1] - f.a[1]); if (L < 0.5) continue;
       const nx = -(f.b[1] - f.a[1]) / L, ny = (f.b[0] - f.a[0]) / L;
       const n = Math.max(2, Math.ceil(L / 0.25));

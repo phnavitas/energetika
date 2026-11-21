@@ -188,18 +188,45 @@ export function epuletElemek(modell: EpuletModell, opc: EpuletElemOpc = {}): Ele
   const zMin0 = Math.min(...modell.szintek.map((q) => q.z0));
   // falak (nyílásokkal kivágva) és nyílászárók (sötét keret + sötétebb üveg / ajtó- és kapulap)
   const valodi = modell.falak.filter((f) => f.szerkezet !== 'hatar');
+  // A magastetős szint külső fala a 3D-ben a tető alsó síkjáig ér (oromfal, térdfal fölötti rész): a modell profilja a
+  // fűtött részt írja le (a tetőtéri szoba ferde mennyezete szerint – a falfelület ebből számít), a falazat viszont a
+  // tetőig fut (Balázs, 2026-11-21, Tata-Nyárfa: „a falak hiányosan”)
+  const mt = modell.magasteto, mtSz = mt ? modell.szintek.find((q) => q.id === mt.szint) : undefined;
+  const tetoAlja = (x: number, y: number): number | null => {
+    let z: number | null = null;
+    for (const [a, b, c] of mt?.haromszogek ?? []) {
+      const den = (b![1] - c![1]) * (a![0] - c![0]) + (c![0] - b![0]) * (a![1] - c![1]); if (Math.abs(den) < 1e-12) continue;
+      const w1 = ((b![1] - c![1]) * (x - c![0]) + (c![0] - b![0]) * (y - c![1])) / den, w2 = ((c![1] - a![1]) * (x - c![0]) + (a![0] - c![0]) * (y - c![1])) / den, w3 = 1 - w1 - w2;
+      if (w1 < -1e-6 || w2 < -1e-6 || w3 < -1e-6) continue;
+      const v = w1 * a![2] + w2 * b![2] + w3 * c![2]; if (z === null || v < z) z = v;
+    }
+    return z;
+  };
+  const ofalTar = new Map<string, Fal>();
+  const ofal = (f: Fal, L: number): Fal => {
+    if (!mt || !mtSz || !f.kulso || f.szint !== mt.szint) return f;
+    let v = ofalTar.get(f.id); if (v) return v;
+    const off = f.profil && f.profil.length >= 2 ? f.h - Math.max(...f.profil.map((q) => q.z)) : 0;
+    const pz = (t: number) => { const pr = f.profil; if (!pr || pr.length < 2) return f.h; for (let i = 1; i < pr.length; i++) { const a = pr[i - 1]!, b = pr[i]!; if (t <= b.t + 1e-9) return a.z + off + ((b.z - a.z) * (t - a.t)) / Math.max(1e-9, b.t - a.t); } return pr[pr.length - 1]!.z + off; };
+    const n = Math.max(2, Math.ceil(L / 0.25)); const pr: { t: number; z: number }[] = []; let no = 0;
+    for (let k = 0; k <= n; k++) { const t = k / n, z0 = pz(t), zt = tetoAlja(f.a[0] + (f.b[0] - f.a[0]) * t, f.a[1] + (f.b[1] - f.a[1]) * t);
+      const z = zt === null ? z0 : Math.max(z0, zt - f.z0); if (z > z0 + 0.15) no++; pr.push({ t, z }); }
+    if (!no) { ofalTar.set(f.id, f); return f; }
+    const egy = [pr[0]!]; for (let i = 1; i < pr.length - 1; i++) { const p = egy[egy.length - 1]!, q = pr[i]!, r = pr[i + 1]!; if (Math.abs(p.z + ((r.z - p.z) * (q.t - p.t)) / (r.t - p.t) - q.z) > 0.01) egy.push(q); } egy.push(pr[pr.length - 1]!);
+    v = { ...f, profil: egy, h: Math.max(...egy.map((q) => q.z)) }; ofalTar.set(f.id, v); return v;
+  };
   for (const f of modell.falak) {
     if (f.szerkezet === 'hatar') continue; // helyiséghatár, nem fal
     const dx = f.b[0] - f.a[0], dy = f.b[1] - f.a[1], L = Math.hypot(dx, dy); if (L < 0.05) continue;
     const ny = nyFal.get(f.id) ?? [], rot = -Math.atan2(dy, dx), adat: EpuletForras = { fajta: 'fal', fal: f };
     // a T-csatlakozásban a fal vége a másik fal síkjáig (a tengelyig húzott vég a homlokzaton függőleges vonalként látszana)
     const [ta, tb] = tCsonk(f, valodi, L);
-    const f2: Fal = ta || tb ? { ...f, a: [f.a[0] + (dx / L) * ta, f.a[1] + (dy / L) * ta], b: [f.b[0] - (dx / L) * tb, f.b[1] - (dy / L) * tb],
-      ...(f.profil ? { profil: profilVag(f.profil, L, ta, tb) } : {}) } : f;
+    const f2: Fal = ta || tb ? { ...ofal(f, L), a: [f.a[0] + (dx / L) * ta, f.a[1] + (dy / L) * ta], b: [f.b[0] - (dx / L) * tb, f.b[1] - (dy / L) * tb],
+      ...(ofal(f, L).profil ? { profil: profilVag(ofal(f, L).profil!, L, ta, tb) } : {}) } : ofal(f, L);
     const L2 = L - ta - tb, ny2 = ta ? ny.map((n) => ({ ...n, t: n.t - ta })) : ny;
     const test = L2 > 0.05 ? falTest(f2, ny2, L2) : null;
     if (test) ki.push({ id: f.id, tipus: 'fal', szint: f.szint, geo: beeget(test, f2.a[0], f.z0, f2.a[1], rot), adat });
-    else for (const d of falDarabok(f, ny)) {
+    else for (const d of falDarabok(ofal(f, L), ny)) {
       const tm = (d.t0 + d.t1) / 2;
       const g = new THREE.BoxGeometry(d.t1 - d.t0, d.z1 - d.z0, f.vastag);
       ki.push({ id: f.id, tipus: 'fal', szint: f.szint, geo: beeget(g, f.a[0] + (dx / L) * tm, f.z0 + (d.z0 + d.z1) / 2, f.a[1] + (dy / L) * tm, rot), adat });
