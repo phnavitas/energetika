@@ -183,7 +183,8 @@ export const burokJel = (b: BurokSzerep | undefined) => b ?? null;
 
 export function epuletElemek(modell: EpuletModell, opc: EpuletElemOpc = {}): Elem3D[] {
   const ki: Elem3D[] = [];
-  const nyFal = new Map<string, typeof modell.nyilasok>(); for (const n of modell.nyilasok) nyFal.set(n.fal, [...(nyFal.get(n.fal) ?? []), n]);
+  // (a falfülke nem nyílás: nincs kivágva, és nincs kerete-üvege – Balázs, 2026-11-21: „sarkon mi az az ablak, alaprajzon nincs”)
+  const nyFal = new Map<string, typeof modell.nyilasok>(); for (const n of modell.nyilasok) if (n.fajta !== 'falfulke') nyFal.set(n.fal, [...(nyFal.get(n.fal) ?? []), n]);
   const zMin0 = Math.min(...modell.szintek.map((q) => q.z0));
   // falak (nyílásokkal kivágva) és nyílászárók (sötét keret + sötétebb üveg / ajtó- és kapulap)
   const valodi = modell.falak.filter((f) => f.szerkezet !== 'hatar');
@@ -251,7 +252,10 @@ export function epuletElemek(modell: EpuletModell, opc: EpuletElemOpc = {}): Ele
     const f = falIx.get(id); if (!f) continue;
     const dx = f.b[0] - f.a[0], dy = f.b[1] - f.a[1], L = Math.hypot(dx, dy); if (L < 0.05) continue;
     const lyuk = (nyFal.get(id) ?? []).map((n) => ({ t0: n.t - n.szel / 2, t1: n.t + n.szel / 2, z0: f.z0 + n.pm, z1: f.z0 + n.pm + n.mag }));
-    for (const d of savDarabok(L, k.zFelso - k.magas, k.zFelso, lyuk)) {
+    const sav = savDarabok(L, k.zFelso - k.magas, k.zFelso, lyuk);
+    // monolit áthidaló: a nyílás fölött a koszorú a nyílás felső síkjáig jön le (két oldalt 25 cm felfekvéssel)
+    if (k.athidaloMonolit) for (const q of lyuk) { const kz0 = k.zFelso - k.magas; if (q.z1 < kz0 - 0.02 && kz0 - q.z1 < 0.9) sav.push({ t0: Math.max(0, q.t0 - 0.25), t1: Math.min(L, q.t1 + 0.25), z0: q.z1, z1: kz0 }); }
+    for (const d of sav) {
       const tm = (d.t0 + d.t1) / 2;
       ki.push({ id: k.id, tipus: 'piller', szint: k.szint, geo: beeget(new THREE.BoxGeometry(d.t1 - d.t0, d.z1 - d.z0, Math.min(k.szel, f.vastag - 0.04)),  /* (a falon belül: a homlokzaton ne látsszon vonalként) */ f.a[0] + (dx / L) * tm, (d.z0 + d.z1) / 2, f.a[1] + (dy / L) * tm, -Math.atan2(dy, dx)),
         adat: { fajta: 'koszoru', id: k.id, fal: id, attika: k.fajta === 'attika' } satisfies EpuletForras });

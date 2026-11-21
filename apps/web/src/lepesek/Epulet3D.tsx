@@ -117,7 +117,7 @@ export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, onElem, hiba
     if (t) return `${t.kod ? t.kod + ' ' : ''}${t.nev} · ${t.A.toFixed(2)} m² · belmagasság ${t.belmag.toFixed(2)} m · ${({ futott: 'fűtött', futetlen: 'fűtetlen', kulter: 'kültér' } as const)[t.kategoria]}`;
     const cm = (v: number) => `${Math.round(v * 100)} cm`;
     const k = modell.koszoruk?.find((x) => x.id === kijelolt);
-    if (k) return `${k.fajta === 'attika' ? 'Attika' : 'Koszorú'} · ${cm(k.szel)} × ${cm(k.magas)}, felső síkja +${k.zFelso.toFixed(2)} m · ${k.hossz.toFixed(2)} m (${k.falak.length} falon) · ${k.reteg}`;
+    if (k) return `${k.fajta === 'attika' ? 'Attika' : 'Koszorú'} · ${cm(k.szel)} × ${cm(k.magas)}, felső síkja +${k.zFelso.toFixed(2)} m · ${k.hossz.toFixed(2)} m (${k.falak.length} falon) · ${k.reteg}${k.athidaloMonolit ? ' · a nyílások fölött monolit áthidalóval' : ''}`;
     const g = modell.gerendak?.find((x) => x.id === kijelolt);
     if (g) return `Gerenda · ${cm(g.szel)} × ${cm(g.magas)}, alsó síkja +${g.alsoSik.toFixed(2)} m`;
     const p = modell.pillerek?.find((x) => x.id === kijelolt);

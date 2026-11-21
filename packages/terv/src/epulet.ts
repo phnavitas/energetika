@@ -225,7 +225,10 @@ export interface MagastetoBe { hajlas: number; orom?: Record<number, number>; ki
 /** Koszorú szintenként: a teherhordó falak tetején (a metszet szerinti keresztmetszettel), a hossza a falaké. */
 export interface Koszoru { id: string; szint: string; szel: number; magas: number; zFelso: number; reteg: string; falak: string[]; hossz: number;
   /** 'attika': a koszorúra ülő vasbeton sáv a lapostetős részen (a fölötte lévő szint körvonalán kívüli teherhordó falakon). */
-  fajta?: 'koszoru' | 'attika' }
+  fajta?: 'koszoru' | 'attika';
+  /** A metszeten a koszorú a nyílás fölött magasabb (a monolit áthidaló vele együtt): a nyílásoknál a koszorú a nyílás
+   *  felső síkjáig jön le. */
+  athidaloMonolit?: true }
 
 export interface EpuletModell { szintek: Szint[]; terek: Ter[]; falak: Fal[]; nyilasok: Nyilas[]; fodemek: Fodem[]; vizszintes: VizszintesBurok[]; tetok: TetoGeom[]; lefedes?: FalLefedes[]; pillerek?: Piller[]; koszoruk?: Koszoru[]; gerendak?: Gerenda[]; alapozas?: Alapozas[]; magasteto?: Magasteto;
   /** Az alaprajzi lapok és a modell kapcsolata (visszakeresés a rajzon): a lap sorszáma, a rá eső szintek, és a
@@ -1555,10 +1558,15 @@ function koszoruKeres(szintek: Szint[], falak: Fal[], fodemek: Fodem[], elemek: 
     if (!jel.length) continue;
     const kulcs = (e: MetszetElem) => `${e.szel}|${e.magas}`;
     const db = (e: MetszetElem) => jel.filter((q) => kulcs(q) === kulcs(e)).length;
-    const leg = jel.sort((p, q) => Math.abs(p.zFelso - alja) - Math.abs(q.zFelso - alja) || db(q) - db(p))[0]!;
+    // (a koszorú alapesetben 25–30 cm magas – Balázs, 2026-11-21: „koszorúnál alapszabály, hogy nem túl magas”: a
+    // ≤ 40 cm-es jelölt előbbre való; ha csak magasabb van, az a nyílás fölötti metszet – a monolit áthidaló a koszorúval
+    // együtt –, ilyenkor a koszorú 30 cm, és a nyílásoknál az áthidaló a nyílás felső síkjáig jön le)
+    const leg = jel.sort((p, q) => Number(p.magas > 0.4) - Number(q.magas > 0.4) || Math.abs(p.zFelso - alja) - Math.abs(q.zFelso - alja) || db(q) - db(p))[0]!;
     const tf = falak.filter((f) => f.szint === sz0.id && f.szerkezet === 'teherhordo');
     if (!tf.length) continue;
-    ki.push({ id: `K${sz0.id}`, szint: sz0.id, szel: leg.szel, magas: leg.magas, zFelso: leg.zFelso, reteg: leg.reteg.trim(), falak: tf.map((f) => f.id), hossz: sz(tf.reduce((t, f) => t + f.hossz, 0), 2), fajta: 'koszoru' });
+    const magasJel = leg.magas > 0.4;
+    ki.push({ id: `K${sz0.id}`, szint: sz0.id, szel: leg.szel, magas: magasJel ? 0.3 : leg.magas, zFelso: leg.zFelso, reteg: leg.reteg.trim(), falak: tf.map((f) => f.id), hossz: sz(tf.reduce((t, f) => t + f.hossz, 0), 2), fajta: 'koszoru',
+      ...(magasJel ? { athidaloMonolit: true } : {}) });
     // attika: a koszorúra (± 5 cm) ülő, 30–100 cm magas, vasbeton / beton elem; a fölötte lévő szint körvonalán kívüli
     // (lapostetős) teherhordó falakon
     const att = elemek.filter((e) => /beton|\bvb\b/i.test(e.reteg) && !NEM.test(e.reteg) && e.szel >= 0.2 && e.szel <= 0.5 && e.magas >= 0.3 && e.magas <= 1 && Math.abs(e.zAlso - leg.zFelso) <= 0.05)
