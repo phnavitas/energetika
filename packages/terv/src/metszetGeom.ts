@@ -226,26 +226,32 @@ export function ereszKiallasok(lap: Lap, hajlas: number, mPerPt = 0.0352778): nu
     return h > 1.5 && w > 0.1 && w < 0.8;
   });
   const tav = 1.6 / mPerPt, le = 2 / mPerPt;
-  const ki: number[] = [];
+  // (falsíkonként egy érték – a tetőrétegek – héjazat, léc, deszka – egymás alatti vonalai ugyanazt az ereszt mérik: a
+  // legkülsőbb –, különben a sok párhuzamos vonallal rajzolt oldal elnyomja a többit; Bibic)
+  const falankent = new Map<string, number>();
   for (const e of also) {
     const jel = falak.filter((f) => f.bbox[1] > e.y - 5 && f.bbox[1] < e.y + le &&
       (e.dir > 0 ? f.bbox[2] <= e.x + 1 && e.x - f.bbox[2] < tav : f.bbox[0] >= e.x - 1 && f.bbox[0] - e.x < tav));
     if (!jel.length) continue;
     const kulso = e.dir > 0 ? Math.max(...jel.map((f) => f.bbox[2])) : Math.min(...jel.map((f) => f.bbox[0]));
     const d = Math.abs(e.x - kulso) * mPerPt;
-    if (d >= 0.15 && d <= 1.5) ki.push(d);
+    if (d >= 0.15 && d <= 1.5) { const k = `${e.dir}|${Math.round(kulso * mPerPt / 0.3)}`; falankent.set(k, Math.max(falankent.get(k) ?? 0, d)); }
   }
-  return ki;
+  return [...falankent.values()];
 }
 
-/** A jelöltek leggyakoribb 10 cm-es ablakának mediánja (≥ 3 jelölt kell), egyébként undefined. */
+/** A jelöltek (falsíkonként egy) leggyakoribb 10 cm-es ablakának mediánja – egyenlőségnél a kisebb –, egyébként undefined. */
 export function ereszKiallas(jeloltek: number[]): number | undefined {
-  if (jeloltek.length < 3) return undefined;
+  if (jeloltek.length < 2) return undefined;
+  // (a nagy – 1,2 m-nél nagyobb – kiállás csak helyenként – előtető, fedett bejárat – lehet, körben nem: ha van kisebb
+  // jelölt is, az számít; Balázs, 2026-11-21: „1,47 kiállás biztosan sok, csak bizonyos helyen lehet”)
+  if (jeloltek.some((v) => v <= 1.0)) jeloltek = jeloltek.filter((v) => v <= 1.25);
+  if (jeloltek.length < 2) return jeloltek.length === 1 ? Math.round(jeloltek[0]! * 100) / 100 : undefined;
   const db = new Map<number, number>();
   for (const v of jeloltek) for (const k of [Math.floor(v / 0.05), Math.floor(v / 0.05) - 1]) db.set(k, (db.get(k) ?? 0) + 1);
   const [k] = [...db].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]!;
   const s = jeloltek.filter((v) => v >= k * 0.05 && v < (k + 2) * 0.05).sort((a, b) => a - b);
-  if (s.length < 3) return undefined;
+  if (!s.length) return undefined;
   return Math.round(s[Math.floor(s.length / 2)]! * 100) / 100;
 }
 

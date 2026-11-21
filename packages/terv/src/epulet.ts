@@ -231,7 +231,9 @@ export interface MagastetoBe { hajlas: number; orom?: Record<number, number>; ki
   felul?: [number, number, number, number][];
   /** Ereszkiállás oldalanként kézzel (lapirány: 0 fent, 90 jobbra, 180 lent, 270 balra; m): az oldal falsíkjától az
    *  ereszig – a nagyobb érték a tetőt az oldal fölé (fedett terasz, bejárat) is kiterjeszti. */
-  kiallasOldal?: Record<number, number> }
+  kiallasOldal?: Record<number, number>;
+  /** A kiállás kézzel megadott (a felülnézet nem írja felül). */
+  kiallasKezi?: boolean }
 
 /** Koszorú szintenként: a teherhordó falak tetején (a metszet szerinti keresztmetszettel), a hossza a falaké. */
 export interface Koszoru { id: string; szint: string; szel: number; magas: number; zFelso: number; reteg: string; falak: string[]; hossz: number;
@@ -1224,8 +1226,9 @@ function magastetoEpit(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], 
   if (t.felul?.length) {
     const ef = ereszFelulnezetbol(pol, t.felul, kiallas);
     if (ef) {
-      // (a metszetben mért kiállás után a felülnézet élgerinc-/vápavégei – közvetlen mérés –, csak utánuk a szintjelpárból számolt)
-      if (t.kiallas === undefined && ef.kiallas !== undefined) { kiallas = ef.kiallas; felulKiallas = ef.kiallas; }
+      // (a felülnézet élgerinc-/vápavégei – közvetlen mérés, minden saroknál – elsőbbséget kapnak a metszet egy-két
+      // ereszénél és a szintjelpárból számoltnál; a kézi érték marad)
+      if (!t.kiallasKezi && ef.kiallas !== undefined) { kiallas = ef.kiallas; felulKiallas = ef.kiallas; }
       if (ef.kiterjesztes.length) pol = kisLepcsoNelkul(ef.pol);
       if ((globalThis as { OROMDBG?: unknown }).OROMDBG) console.log('OROMDBG felul', JSON.stringify(ef.oldalak), ef.kiallas, ef.kiterjesztes.length);
     }
