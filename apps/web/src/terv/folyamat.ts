@@ -382,7 +382,7 @@ export function atvetelReszek(al: AlaprajzFeldolgozas, k: Kijeloles, mert?: Map<
   const kiv = hs.map((h, i) => ({ h, i })).filter(({ i }) => valasztott[i]);
   const index = new Map(kiv.map(({ i }, j) => [i, j]));
   const helyisegek = kiv.map(({ h, i }) => ({
-    ...(k.masJegyzek?.has(i) ? { nev: `Helyiség ${ri(i) + 1} (a(z) ${h.kod ?? ''} ${h.nev} más szint jegyzéktétele)`, A: 0 } : { kod: h.kod, nev: h.nev, burkolat: h.burkolat, A: h.hasznosA ?? h.A, ...(h.hasznosA ? { teljesA: h.A } : {}) }), kategoria: kategoria(i), egyseg: h.egyseg ? (al.e.egysegInfo[h.egyseg]?.nev ?? h.egyseg) : undefined, falak: falak(i).map((f) => { const m0 = falMag && 'pontok' in f ? falMag(f as FalSzakasz, ri(i)) : null, m = m0 !== null && (m0 >= 1 || (f as { terd?: boolean }).terd) ? m0 : null; /* 1 m alatt nem fal, hanem mellvéd / terasz (mint a 3D-ben) */ return { irany: f.irany, hossz: f.hossz, ...("talaj" in f && f.talaj ? { talaj: true } : {}), ...(m !== null ? { magassag: m } : {}), ...((f as { terd?: boolean }).terd && m !== null ? { terd: true } : {}) }; }),
+    ...(k.masJegyzek?.has(i) ? { nev: `Helyiség ${ri(i) + 1} (a(z) ${h.kod ?? ''} ${h.nev} más szint jegyzéktétele)`, A: 0 } : { kod: h.kod, nev: h.nev, burkolat: h.burkolat, A: h.hasznosA ?? h.A, ...(h.hasznosA ? { teljesA: h.A } : {}) }), kategoria: kategoria(i), egyseg: h.egyseg ? (al.e.egysegInfo[h.egyseg]?.nev ?? h.egyseg) : undefined, falak: falak(i).map((f) => { const m0 = falMag && 'pontok' in f ? falMag(f as FalSzakasz, ri(i)) : null, m = m0 !== null && (m0 >= (burokFal ? 2.2 : 1) || (f as { terd?: boolean }).terd) ? m0 : null; /* nem tetőtéri lapon 2,2 m alatt (térdfal nélkül) nem a fűtött helyiség fala, hanem mellvéd, terasz, pergola; tetőtéren 1 m (mint a 3D-ben) */ return { irany: f.irany, hossz: f.hossz, ...("talaj" in f && f.talaj ? { talaj: true } : {}), ...(m !== null ? { magassag: m } : {}), ...((f as { terd?: boolean }).terd && m !== null ? { terd: true } : {}) }; }),
     // fal fűtetlen (gyengén kapcsolt) helyiség felé, pl. garázs
     futetlenFalak: (() => { const x = ri(i); if (!al.r || x < 0) return [];
       const l = al.r.helyisegek[x]!.szakaszok.filter((s) => typeof s.tul === 'number' && s.hossz >= 0.3).flatMap((s) => {
@@ -721,8 +721,10 @@ export function tervFolyamat(S: FolyamatAllapot) {
       if (elotte) return null;
       const v = hm.mod.magassag(irany, [lapra(A), lapra([(A[0] + B[0]) / 2, (A[1] + B[1]) / 2]), lapra(B)], hm.zf, hm.zc);
       // csak az érdemben alacsonyabb (alacsonyabb párkány, attika) számít; a magasabbat a szint határolja.
-      // 1 m alatt (nem tetőtéri szinten) nem fal, hanem mellvéd / terasz – azt a homlokzat nem a falnál mutatja
-      return v !== null && v < hh - 0.15 && v >= 1 ? v : null;
+      // 2,2 m alatt (nem tetőtéri lapon, tetőablakos térdfal nélkül) nem a fűtött helyiség fala: a homlokzat alacsonyabb
+      // vonala mellvéd, terasz, pergola, áthidaló gerenda (Tb-barlang: a terasz fa áthidalója 1,4 m-es „térdfal” lett);
+      // fűtött helyiség belmagassága ennél kisebb nem lehet
+      return v !== null && v < hh - 0.15 && v >= (szk.includes('T') ? 1 : 2.2) ? v : null;
     };
   };
   /** A homlokzatokon látszó oromzatok szélessége alaprajzi irányonként (0/90/180/270). */
