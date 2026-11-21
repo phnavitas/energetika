@@ -1044,7 +1044,8 @@ function oromFalak(falak: Fal[], szintek: Szint[], mt: Magasteto): void {
     return z;
   };
   for (const f of falak) {
-    if (f.szint !== mt.szint || !f.kulso || f.szerkezet === 'hatar' || f.profil) continue;
+    // (a belső fal csak lefelé igazodik: a tetőfelület alatt a tető vastagságával – ~30 cm – végződik, legfeljebb a belmagasságig)
+    if (f.szint !== mt.szint || f.szerkezet === 'hatar' || f.profil) continue;
     const L = Math.hypot(f.b[0] - f.a[0], f.b[1] - f.a[1]); if (L < 0.5) continue;
     const teto0 = f.z0 + f.h - sz0.z0, n = Math.max(2, Math.ceil(L / 0.25));
     const pr: { t: number; z: number }[] = [];
@@ -1053,7 +1054,7 @@ function oromFalak(falak: Fal[], szintek: Szint[], mt: Magasteto): void {
       const t = k / n, z = tetoZ(f.a[0] + (f.b[0] - f.a[0]) * t, f.a[1] + (f.b[1] - f.a[1]) * t);
       // (a fal a tető alsó síkjáig ér: magasabb tetőnél felfelé – oromzat, féltető –, alacsonyabb tetőnél – a tetőszél a
       // fal síkjában a fal teteje alatt – lefelé, legfeljebb a szint belmagasságáig: a fal nem metszi át a tetőt)
-      const zr = z === null ? teto0 : Math.max(Math.min(teto0, sz0.belmag), z - sz0.z0); res = Math.max(res, Math.abs(zr - teto0));
+      const zr0 = z === null ? teto0 : Math.max(Math.min(teto0, sz0.belmag), z - sz0.z0), zr = f.kulso ? zr0 : z === null ? teto0 : Math.min(teto0, Math.max(Math.min(teto0, sz0.belmag), z - sz0.z0 - 0.3)); res = Math.max(res, Math.abs(zr - teto0));
       pr.push({ t: sz(t, 4), z: sz(zr, 3) });
     }
     if (res < 0.15) continue;
@@ -1062,7 +1063,7 @@ function oromFalak(falak: Fal[], szintek: Szint[], mt: Magasteto): void {
     for (let i = 1; i < pr.length - 1; i++) { const p = ki[ki.length - 1]!, q = pr[i]!, r = pr[i + 1]!; const zv = p.z + ((r.z - p.z) * (q.t - p.t)) / (r.t - p.t || 1); if (Math.abs(zv - q.z) > 0.01) ki.push(q); }
     ki.push(pr[pr.length - 1]!);
     // (a fal magassága a profil legmagasabb pontjáig – a profil a szint padlójától mért)
-    f.profil = ki; f.jelleg = f.jelleg ?? (Math.max(...ki.map((q) => q.z)) > teto0 + 0.15 ? 'oromfal' : 'parkany'); f.h = sz(Math.max(...ki.map((q) => q.z)) + sz0.z0 - f.z0, 3);
+    f.profil = ki; if (f.kulso) f.jelleg = f.jelleg ?? (Math.max(...ki.map((q) => q.z)) > teto0 + 0.15 ? 'oromfal' : 'parkany'); f.h = sz(Math.max(...ki.map((q) => q.z)) + sz0.z0 - f.z0, 3);
   }
 }
 
