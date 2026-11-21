@@ -237,12 +237,18 @@ export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, onElem, hiba
         const m2 = new THREE.Mesh(g2, mat(anyagSz ? tsz('teto') : SZIN.teto, anyagSz ? tat('teto') : 0.6)); m2.position.y = ft.z; grp.add(elek(m2));
       }
     }
-    // pillérek
+    // pillérek. A legalsó szint SZABADON ÁLLÓ pillére (terasz, előtető) a képen a pontalapjáig, ennek híján a talajon
+    // fekvő padló aljáig ér – különben a ház alatti sáv mellett „lebeg”. (Csak megjelenítés: a pillér magassága marad.)
+    const zMin0 = Math.min(...modell.szintek.map((q) => q.z0));
+    const padloAlj = Math.min(0, ...modell.fodemek.filter((fd) => fd.alatt === null).map((fd) => fd.z - fd.vastag));
+    const pontalap = new Map((modell.alapozas ?? []).filter((a) => a.fajta === 'pontalap' && a.piller).map((a) => [a.piller!, a]));
     for (const p of modell.pillerek ?? []) {
       if (!lathato(p.szint)) continue;
       if (csakKij && kijelolt) continue;
-      const g = new THREE.BoxGeometry(p.a, p.h, p.b); const m = new THREE.Mesh(g, mat(anyagSz ? tsz('piller') : SZIN.piller, anyagSz ? tat('piller') : 0.95));
-      m.position.set(p.kozep[0], p.z0 + p.h / 2, p.kozep[1]); grp.add(elek(m));
+      const lent = p.hely === 'szabad' && Math.abs(p.z0 - zMin0) < 0.01;
+      const z0 = lent ? Math.min(p.z0, pontalap.get(p.id)?.zFelso ?? padloAlj) : p.z0, z1 = p.z0 + p.h;
+      const g = new THREE.BoxGeometry(p.a, z1 - z0, p.b); const m = new THREE.Mesh(g, mat(anyagSz ? tsz('piller') : SZIN.piller, anyagSz ? tat('piller') : 0.95));
+      m.position.set(p.kozep[0], (z0 + z1) / 2, p.kozep[1]); grp.add(elek(m));
     }
     // födémek (tető / legalsó padló) körvonallal, áttetszően
     for (const fd of modell.fodemek) {
