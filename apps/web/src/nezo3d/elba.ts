@@ -30,12 +30,32 @@ export function ifcTipus(ifc: string | undefined | null): string {
   if (k === 'IFCRAILING') return 'korlat';
   return 'egyeb';
 }
+/** Az ELBA kivonat-eleme (amit a típus eldöntéséhez nézünk). */
+export interface ElbaElemInfo { ifc?: string; szuloIfc?: string; anyag?: string; nev?: string; tipusNev?: string; szint?: string; oszt?: string }
+
+/**
+ * Megjelenési típus az IFC-osztály MELLETT a szülő, az anyag és a szint szerint (Balázs, 2026-11-21: „a rétegeket jobban
+ * kell szortírozni (cserép a tetőhöz, alapozás az egész szint, stb.)”): a rétegrész (IfcBuildingElementPart, IfcCovering)
+ * a szülőjéé; a cserép, léc, szarufa, tetőfólia a tetőé; az alapozási szint minden eleme alapozás.
+ */
+export function elbaTipus(i: ElbaElemInfo): string {
+  const szo = `${i.anyag ?? ''} ${i.nev ?? ''} ${i.tipusNev ?? ''} ${i.oszt ?? ''}`.toLowerCase();
+  if (/alapoz/i.test(i.szint ?? '')) return 'alapozas';
+  if (/cser[ée]p|tet[őo]fed|zsindely|tet[őo]l[ée]c|ellenl[ée]c|szaruf|szelemen|fog[óo]p[áa]r|tet[őo]f[óo]li|tet[őo]lemez|korcolt|[áa]ll[óo]korc|ereszcsatorna|b[áa]dog/.test(szo)) return 'teto';
+  if (/s[áa]valap|pontalap|lemezalap|l[áa]bazat|alapoz|cölöp|c[öo]l[öo]p/.test(szo)) return 'alapozas';
+  const k = (i.ifc ?? '').toUpperCase(), sz = (i.szuloIfc ?? '').toUpperCase();
+  if ((k === 'IFCBUILDINGELEMENTPART' || k === 'IFCCOVERING') && sz) return ifcTipus(sz);
+  if (k === 'IFCCOVERING' && /vakolat|h[őo]szig|homlokzat|falburk|lambéria/.test(szo)) return 'fal';
+  if (k === 'IFCMEMBER' && /\bfa\b|fa |f[űu]r[ée]sz|ragasztott|l[ée]c/.test(szo)) return 'teto';
+  return ifcTipus(k);
+}
+
 const hexSzin = (c: number[] | null | undefined) => (c && c.length >= 3 ? (Math.round(c[0]! * 255) << 16) | (Math.round(c[1]! * 255) << 8) | Math.round(c[2]! * 255) : undefined);
 
 /** IFC-ből (vagy elmentett modellképből) háromszögelt geometria → elemek. A bemenet z-fel koordinátás:
  *  {elemek:[{gid,kezd,db,szin?,ifc?}], poz, norm?} → three: (x, z, −y). */
 export function haromszogElemek(geo: { elemek: { gid: string; kezd: number; db: number; szin?: number[] | null; ifc?: string }[]; poz: Float32Array; norm?: Float32Array | null },
-  szint?: (gid: string) => string | null | undefined): Elem3D[] {
+  szint?: ((gid: string) => string | null | undefined) | null, info?: ((gid: string) => ElbaElemInfo | null | undefined) | null): Elem3D[] {
   const ki: Elem3D[] = [];
   for (const e of geo.elemek) {
     const p = new Float32Array(e.db * 3), n = geo.norm ? new Float32Array(e.db * 3) : null;
@@ -44,8 +64,11 @@ export function haromszogElemek(geo: { elemek: { gid: string; kezd: number; db: 
       if (n && geo.norm) { n[v * 3] = geo.norm[i]!; n[v * 3 + 1] = geo.norm[i + 2]!; n[v * 3 + 2] = -geo.norm[i + 1]!; } }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3));
     if (n) g.setAttribute('normal', new THREE.BufferAttribute(n, 3)); else g.computeVertexNormals();
-    const sz = hexSzin(e.szin);
-    ki.push({ id: e.gid, tipus: ifcTipus(e.ifc), szint: szint?.(e.gid) ?? null, geo: g, ...(sz !== undefined ? { szin: sz } : {}), adat: { ifc: e.ifc } });
+    const sz = hexSzin(e.szin), inf = info?.(e.gid) ?? null;
+    const tipus = inf ? elbaTipus({ ifc: e.ifc, ...inf }) : ifcTipus(e.ifc);
+    // (az IFC-ben a falréteg gyakran nincs kivágva a nyílásnál: az ablakot a szem felé hozzuk, hogy látsszon)
+    // (az IFC-ablak egy test – keret és üveg együtt: saját szín híján sötét, mint az üveg)
+    ki.push({ id: e.gid, tipus, szint: szint?.(e.gid) ?? null, geo: g, ...(sz !== undefined ? { szin: sz } : tipus === 'nyilaszaro' ? { szin: 0x3a4048 } : {}), ...(tipus === 'nyilaszaro' ? { elore: 0.35 } : {}), adat: { ifc: e.ifc } });
   }
   return ki;
 }

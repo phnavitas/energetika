@@ -37,6 +37,9 @@ export interface Elem3D {
   szulo?: string;
   /** Tetszőleges adat a hívónak (pl. a nyílás forrása, hőburok-szerep). */
   adat?: unknown;
+  /** Előrehozás a szem felé (m, nézeti térben): az IFC-ben a falréteg (vakolat, hőszigetelés) gyakran nincs kivágva a
+   *  nyílásnál, és eltakarná az ablakot – így az ablak a saját falán „átlátszik”, a távolabbi falak mögött nem. */
+  elore?: number;
 }
 /** A hívó felülírása elemenként (külső színezés, szűrés). */
 export interface Megjelenes {
@@ -84,6 +87,7 @@ export interface Nezo {
   /** A kamera ráillesztése a megadott azonosítókra (üres / hiányzó: minden élesen látható elemre). */
   illeszt(ids?: Iterable<string> | null): void;
   kamera(): KameraAllas;
+  kameraBeall(k: KameraAllas): void;
   /** Befoglaló (világ, y fel) – azonosítóra vagy az egészre. */
   doboz(id?: string | null): THREE.Box3;
   kep(): string;
@@ -136,15 +140,22 @@ export function nezoNyit(doboz: HTMLElement, opc: NezoOpciok): Nezo {
   renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
 
   const anyagok = new Map<string, THREE.Material>();
-  const anyag = (c: number, o: number) => {
-    const k = `${c}|${o.toFixed(3)}`; let m = anyagok.get(k);
+  /** a csúcsok előrehozása a szem felé (nézeti térben, m) */
+  const elorehoz = (m: THREE.Material, d: number) => {
+    if (!d) return;
+    m.onBeforeCompile = (sh) => { sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>',
+      `#include <project_vertex>\n  gl_Position = projectionMatrix * vec4( mvPosition.xyz + normalize( -mvPosition.xyz ) * ${d.toFixed(3)}, 1.0 );`); };
+    m.customProgramCacheKey = () => `elore${d.toFixed(3)}`;
+  };
+  const anyag = (c: number, o: number, d = 0) => {
+    const k = `${c}|${o.toFixed(3)}|${d}`; let m = anyagok.get(k);
     if (!m) { m = new THREE.MeshLambertMaterial({ color: c, transparent: o < 1, opacity: o, side: THREE.DoubleSide, depthWrite: o >= 1,
-      polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }); anyagok.set(k, m); }
+      polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }); elorehoz(m, d); anyagok.set(k, m); }
     return m;
   };
   const elAnyagok = new Map<string, THREE.LineBasicMaterial>();
-  const elAnyag = (o: number) => { const k = o.toFixed(3); let m = elAnyagok.get(k);
-    if (!m) { m = new THREE.LineBasicMaterial({ color: EL_SZIN, transparent: true, opacity: o, depthWrite: false }); elAnyagok.set(k, m); } return m; };
+  const elAnyag = (o: number, d = 0) => { const k = `${o.toFixed(3)}|${d}`; let m = elAnyagok.get(k);
+    if (!m) { m = new THREE.LineBasicMaterial({ color: EL_SZIN, transparent: true, opacity: o, depthWrite: false }); elorehoz(m, d); elAnyagok.set(k, m); } return m; };
   const atutAnyag = new THREE.MeshBasicMaterial({ color: kijSzin, transparent: true, opacity: 0.38, depthTest: false, depthWrite: false, side: THREE.DoubleSide });
   const atutEl = new THREE.LineBasicMaterial({ color: 0xc2410c, transparent: true, opacity: 0.95, depthTest: false });
 
@@ -171,8 +182,8 @@ export function nezoNyit(doboz: HTMLElement, opc: NezoOpciok): Nezo {
     for (const q of hal) {
       const a = allapot(q.e);
       if (!a || a.o <= 0.005) { q.m.visible = false; continue; }
-      q.m.visible = true; q.m.material = anyag(a.szin, a.o);
-      if (q.el) { q.el.visible = !a.szellem; q.el.material = elAnyag(rtg ? 0.22 : a.o < 1 ? 0.25 : 0.5); }
+      q.m.visible = true; q.m.material = anyag(a.szin, a.o, q.e.elore ?? 0);
+      if (q.el) { q.el.visible = !a.szellem; q.el.material = elAnyag(rtg ? 0.22 : a.o < 1 ? 0.25 : 0.5, q.e.elore ?? 0); }
       if (a.kattint) kattinthato.push(q.m);
       if (a.k) { const m2 = new THREE.Mesh(q.m.geometry, atutAnyag); m2.renderOrder = 20; atut.add(m2);
         if (q.el) { const e2 = new THREE.LineSegments(q.el.geometry, atutEl); e2.renderOrder = 21; atut.add(e2); } }
@@ -295,6 +306,7 @@ export function nezoNyit(doboz: HTMLElement, opc: NezoOpciok): Nezo {
   }
 
   if (opc.kamera) kameraBe(opc.kamera); else { orthoKeret(R); }
+  (globalThis as { __nezo3d?: unknown }).__nezo3d = null; // (próbákhoz: a legutóbb nyitott nézet – lent állítjuk)
   kompozitor();
 
   const api: Nezo = {
@@ -311,6 +323,7 @@ export function nezoNyit(doboz: HTMLElement, opc: NezoOpciok): Nezo {
     szintek(l) { szintL = { ...l }; alkalmaz(); },
     tipusBeall(t) { tipusB = t ?? {}; alkalmaz(); },
     illeszt,
+    kameraBeall(k) { kameraBe(k); kompozitor(); kell(); },
     kamera: () => ({ p: cam.position.toArray() as [number, number, number], t: ctl.target.toArray() as [number, number, number], orto: cam === ocam, ...(cam === ocam ? { zoom: ocam.top / ocam.zoom } : {}) }),
     doboz: doboz3,
     kep() { rajzol(); return renderer.domElement.toDataURL('image/png'); },
@@ -321,5 +334,6 @@ export function nezoNyit(doboz: HTMLElement, opc: NezoOpciok): Nezo {
       for (const m of anyagok.values()) m.dispose(); for (const m of elAnyagok.values()) m.dispose();
       renderer.dispose(); try { renderer.forceContextLoss(); } catch { /* */ } },
   };
+  (globalThis as { __nezo3d?: unknown }).__nezo3d = api;
   return api;
 }
