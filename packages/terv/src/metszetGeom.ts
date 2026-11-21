@@ -9,7 +9,39 @@ const FAL = /\bfal\b|fal-szerk|falak|főfal|fal,|tartószerkezet|pillér|\bvb\b|
 const NEM = /válasz|burkolat|csempe|bútor|terep|magasság|méretez|felirat|környezet/i;
 const EPULET = /épület|egyéb szerkezeti/i;
 
-export function terdfalGeometria(lap: Lap, mPerPt: number): number | null {
+export function terdfalGeometria(lap: Lap, mPerPt: number, padlo?: number): number | null {
+  const g = terdfalFodemre(lap, mPerPt);
+  return g !== null || padlo === undefined ? g : terdfalAtmeno(lap, padlo);
+}
+
+/**
+ * Térdfal a szintjelekből, ha a falazat a tetőtéri födémen át folytonos (a födém a fal belső síkjáig ér – a falmetszet
+ * egy darab az alsó szinttől a tetőig, Tata-Nyárfa): a tetőtér padlószintje alól induló, fölötte 0,3–2,2 m-rel végződő
+ * függőleges falkitöltés (csak felső – ≥ 2 m-en lévő – tetőtéri szintnél, felirat szerinti térdfal-tipp híján; bármely réteg – a falazat a szerkesztővonalak fóliáján is lehet –, a nem szerkezeti rétegek
+ * nélkül) tetejének magassága a padló fölött; a falak mediánja.
+ */
+function terdfalAtmeno(lap: Lap, padlo: number): number | null {
+  const lk = szintLekepezes(lap); if (!lk) return null;
+  const { z, mPt } = lk;
+  const fd = lap.utvonalak.filter((u) => u.muvelet !== 'stroke' && u.muvelet !== 'none' && !(u.reteg && (NEM.test(u.reteg) || SAV_NEM.test(u.reteg))))
+    .filter((u) => { const w = (u.bbox[2] - u.bbox[0]) * mPt; return w >= 0.1 && w <= 0.8 && (u.bbox[3] - u.bbox[1]) * mPt >= 0.1; })
+    .map((u) => [...u.bbox] as [number, number, number, number]).sort((a, b) => a[0] - b[0] || a[3] - b[3]);
+  const osz: [number, number, number, number][] = [];
+  for (const b of fd) {
+    const o = osz.find((c) => Math.min(c[2], b[2]) - Math.max(c[0], b[0]) > 0.5 * Math.min(c[2] - c[0], b[2] - b[0]) && (Math.abs(c[1] - b[3]) <= 0.05 / mPt || Math.abs(b[1] - c[3]) <= 0.05 / mPt || (b[1] < c[3] && b[3] > c[1])));
+    if (o) { o[0] = Math.min(o[0], b[0]); o[1] = Math.min(o[1], b[1]); o[2] = Math.max(o[2], b[2]); o[3] = Math.max(o[3], b[3]); } else osz.push(b);
+  }
+  const jel: number[] = [];
+  for (const c of osz) {
+    const zt = Math.max(z(c[1]), z(c[3])), zb = Math.min(z(c[1]), z(c[3]));
+    if (zb < padlo - 0.1 && zt - zb >= 2 && zt > padlo + 0.3 && zt - padlo <= 2.2) jel.push(Math.round((zt - padlo) * 100) / 100);
+  }
+  if (jel.length < 2) return null;
+  jel.sort((a, b) => a - b);
+  return jel[Math.floor((jel.length - 1) / 2)]!;
+}
+
+function terdfalFodemre(lap: Lap, mPerPt: number): number | null {
   // kitöltés, vagy (a csak vonallal rajzoló irodáknál, pl. „_ÉPÜLET” réteg) zárt körvonal
   const zartE = (u: Utvonal) => u.pontok.some((p) => p.length >= 8 && Math.hypot(p[0]! - p[p.length - 2]!, p[1]! - p[p.length - 1]!) < 0.5) || u.zart.some(Boolean);
   const fills = lap.utvonalak.filter((u) => !!u.reteg && (FAL.test(u.reteg) || EPULET.test(u.reteg)) && !NEM.test(u.reteg) && u.muvelet !== 'none' && (u.muvelet !== 'stroke' || zartE(u)));
@@ -381,9 +413,13 @@ export function ereszGerincJelekbol(jelek: SzintJelDb[], hajlas: number, W: numb
   const jel = jelek.filter((j) => j.db >= 2);
   const tg = Math.tan((hajlas * Math.PI) / 180); if (!(tg > 0) || !(W > 2)) return null;
   const jo: { e: number; g: number; k: number; d: number }[] = [];
-  for (const E of jel) { const e = E.v; if (e < zMin || !E.hom) continue; for (const { v: g } of jel) { if (g < e + 1) continue;
+  const keres = (ej: SzintJelDb[]) => { for (const E of ej) { const e = E.v; if (e < zMin || !E.hom) continue; for (const { v: g } of jel) { if (g < e + 1) continue;
     const k = (g - e) / tg - W / 2; if (k < 0.2 || k > 1.2) continue;
-    jo.push({ e, g, k, d: Math.abs(k - (kiallas ?? 0.5)) }); } }
+    jo.push({ e, g, k, d: Math.abs(k - (kiallas ?? 0.5)) }); } } };
+  keres(jel);
+  // (a homlokzaton egyszer írt eresz – a többi nézeten nincs kótázva –, a legalább kétszer szereplő gerinccel: Tata-Nyárfa
+  // +4,77 / +7,60)
+  if (!jo.length) keres(jelek.filter((j) => j.db === 1 && j.hom));
   if (!jo.length) return null;
   jo.sort((a, b) => a.d - b.d);
   const kozel = jo.filter((x) => x.d - jo[0]!.d < 0.15);

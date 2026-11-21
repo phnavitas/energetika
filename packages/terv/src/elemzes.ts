@@ -736,7 +736,7 @@ export function metszetFeldolgoz(lap: Lap): MetszetFeldolgozas {
   const tt = tetoterKeres(lap.szovegek, szintekKeres(lap.szovegek));
   // térdfal a metszet rajzolatából (a födémre ráálló, a tetőbe futó falkitöltés); felirat csak ennek híján
   const M = meretaranyKeres(lap.szovegek), mpp = M ? (25.4 / 72) / 1000 * M : undefined;
-  if (tt) { const g = mpp ? terdfalGeometria(lap, mpp) : null; if (g !== null) { tt.terdfal = g; tt.terdfalForras = 'rajz'; } else if (tt.terdfal !== null) tt.terdfalForras = 'felirat'; }
+  if (tt) { const g = mpp ? terdfalGeometria(lap, mpp, tt.terdfalTipp == null && (tt.padlo ?? 0) >= 2 ? tt.padlo! : undefined) : null; if (g !== null) { tt.terdfal = g; tt.terdfalForras = 'rajz'; } else if (tt.terdfal !== null) tt.terdfalForras = 'felirat'; }
   const tetoHajlas = !tt ? tetoHajlasRajzbol(lap, mpp) : null;
   // a földszinti padlóig lefutó tető (A alakú ház): a szint tetőtér – a térdfal a tetősík belső alsó éle, a
   // „padlásfödém” a belső gerinc (a tér a gerincig nyitott); a térdfal-felirat elsőbbséget kap

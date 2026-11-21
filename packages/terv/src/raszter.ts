@@ -350,7 +350,12 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   const stilusRajzol = (u: Utvonal, sraff: boolean) => { const id = stilusAzon(u.toltoSzin, sraff, u.reteg); poliRajzol(stilus, w, h, u.pontok, tr, id); poliRajzol(anyagStilus, w, h, u.pontok, tr, anyagAzon(u.toltoSzin, sraff, u.reteg)); };
   for (const u of lap.utvonalak) {
     if (u.bbox[2] < x0 || u.bbox[0] > x1 || u.bbox[3] < y0 || u.bbox[1] > y1) continue;
-    if (!falKitoltes(u, mPerPt, maxFal) || terepburkolat(u)) continue;
+    if (!falKitoltes(u, mPerPt, maxFal) || terepburkolat(u)) {
+      // (a fal-fólia fehér falmetszete a rövid, vastag – ≤ 0,9 m – darab is: a fehér elem hossz-szabálya a bútort szűri)
+      if (feher(u.toltoSzin) && u.muvelet !== 'stroke' && u.reteg && falFoliaNev(u.reteg) && !terepburkolat(u)) { let A = 0, K = 0; for (const p of u.pontok) { A += poliTerulet(p); K += poliKerulet(p); }
+        const v = K > 0 ? 2 * A / K * mPerPt : 0; if (v >= 0.1 && v <= maxFal) feherFal.push(u); }
+      continue;
+    }
     if (feher(u.toltoSzin)) { feherJeloltek.push(u); if (u.reteg && falFoliaNev(u.reteg)) feherFal.push(u); continue; }
     poliRajzol(fal, w, h, u.pontok, tr); stilusRajzol(u, false);
     darabok.push(u.bbox);
@@ -1385,7 +1390,12 @@ function resZar(fal: Uint8Array, nyilas: Uint8Array, w: number, h: number, maxRe
         if (db >= 3 && savok[m]![1] - savok[k]![0] >= fokRes) for (let q = k; q <= m; q++) lepcso.add(q);
         k = m;
       }
-      savok.forEach(([b0, b1], k) => { if (!lepcso.has(k)) for (let b = b0; b <= b1; b++) for (let a = k0; a < k1; a++) nyilas[idx(a, b)] = 1; });
+      // keresztező falnál végződő köz nem nyílás: ha a rés valamelyik végén a fal keresztben (a sáv mindkét oldalán, a sáv
+      // szélességénél jóval tovább) folytatódik, a „horgony” merőleges fal – a falsík nem folytatódik (csak a hosszú – a legnagyobb zárható rés 60 %-ánál hosszabb – résnél; ajtó a T-csatlakozás mellett marad), a sáv csak a helyiség egy keskeny
+      // csíkja (Tata-Nyárfa tetőtér: a szoba a felső fal és a válaszfal ajtós szakasza között kettévágva)
+      const kereszt = (a: number, b0: number, b1: number) => { const sz = b1 - b0 + 1, k = 2 * sz + 4; let e1 = 0, e2 = 0;
+        while (e1 <= k && b0 - 1 - e1 >= 0 && fal[idx(a, b0 - 1 - e1)]) e1++; while (e2 <= k && b1 + 1 + e2 < H && fal[idx(a, b1 + 1 + e2)]) e2++; return e1 > k && e2 > k; };
+      savok.forEach(([b0, b1], k) => { if (lepcso.has(k) || (k1 - k0 > 0.6 * maxRes && (kereszt(k0 - 1, b0, b1) || kereszt(k1, b0, b1)))) return; for (let b = b0; b <= b1; b++) for (let a = k0; a < k1; a++) nyilas[idx(a, b)] = 1; });
     }
   }
 }

@@ -864,7 +864,8 @@ export function jeloletlenNyilasok(r: Raszter, meglevo: TervNyilas[]): TervNyila
     if (!((a >= 2 && b === 1) || (b >= 2 && a === 1))) continue;
     const X = lapX(cx + 0.5), Y = lapY(cy + 0.5), fl = (L / 2 + 0.3) / r.mPerPt, ke = 1.5 / r.mPerPt;
     // (a feliratos nyílás teljes szélességével: a nyílás tokosztással, áthidalóval két foltra bomló része sem külön nyílás)
-    if (meglevo.some((n) => { const fl2 = fl + (n.szel ?? 0) / 2 / r.mPerPt; return n.kulso && (fuggo ? Math.abs(n.x - X) < ke && Math.abs(n.y - Y) < fl2 : Math.abs(n.y - Y) < ke && Math.abs(n.x - X) < fl2); })) continue;
+    // (csak az azonos irányú falban lévő – a sarok másik falának nyílása nem ez; Tata-Nyárfa: a szoba ablaka a wc sarokablaka mellett)
+    if (meglevo.some((n) => { const fl2 = fl + (n.szel ?? 0) / 2 / r.mPerPt; return n.kulso && (n.irany == null || (fuggo ? n.irany % 180 === 90 : n.irany % 180 === 0)) && (fuggo ? Math.abs(n.x - X) < ke && Math.abs(n.y - Y) < fl2 : Math.abs(n.y - Y) < ke && Math.abs(n.x - X) < fl2); })) continue;
     if (r.uvegfalak.some((g) => g.fuggo === fuggo && (fuggo ? Math.abs((g.x0 + g.x1) / 2 - X) < ke && Y > g.y0 && Y < g.y1 : Math.abs((g.y0 + g.y1) / 2 - Y) < ke && X > g.x0 && X < g.x1))) continue;
     const helyiseg = (a >= 2 ? a : b) - 2;
     const irany = fuggo ? (a === 1 ? 270 : 90) : (a === 1 ? 0 : 180);
