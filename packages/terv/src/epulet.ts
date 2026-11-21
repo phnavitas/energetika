@@ -196,7 +196,7 @@ export interface Alapozas { id: string; fajta: 'savalap' | 'labazat' | 'pontalap
  * Magastető a legfelső szint körvonalán (tetoModell.tetoHaromszogek): a tetőfelület háromszögei – az ELBA ebből bontja
  * fő tetőre és tetőszakaszokra (ElbaBimGeometria.tetoBontas) –, az ereszvonal, a hajlás és az ereszkiállás.
  */
-export interface Magasteto { szint: string; hajlas: number; kiallas: number; kiallasBecsult: boolean;
+export interface Magasteto { szint: string; hajlas: number; kiallas: number; kiallasBecsult: boolean; /** a kiállás forrása, ha nem a metszet: a felülnézet élgerinc- és vápavégei */ kiallasForras?: 'felulnezet';
   /** derekszogu: pontos (téglalapos bontás, főirányba forgatva); konvex: élsíkok alsó burkolója; vaz: egyenes váz (ferde, nem konvex); kozelito: derékszögűsített körvonal */
   mod: 'derekszogu' | 'konvex' | 'vaz' | 'kozelito'; zEresz: number; eresz: P2[]; haromszogek: [number, number, number][][];
   /** A tető alá vont fedett teraszok (a szint körvonalán kívül, szabad pillérsorig – fedettTerasz) alaprajzi sávjai. */
@@ -1220,7 +1220,8 @@ function magastetoEpit(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], 
   if (t.felul?.length) {
     const ef = ereszFelulnezetbol(pol, t.felul, kiallas);
     if (ef) {
-      if (t.kiallas === undefined && !eg && ef.kiallas !== undefined) { kiallas = ef.kiallas; felulKiallas = ef.kiallas; }
+      // (a metszetben mért kiállás után a felülnézet élgerinc-/vápavégei – közvetlen mérés –, csak utánuk a szintjelpárból számolt)
+      if (t.kiallas === undefined && ef.kiallas !== undefined) { kiallas = ef.kiallas; felulKiallas = ef.kiallas; }
       if (ef.kiterjesztes.length) pol = kisLepcsoNelkul(ef.pol);
       if ((globalThis as { OROMDBG?: unknown }).OROMDBG) console.log('OROMDBG felul', JSON.stringify(ef.oldalak), ef.kiallas, ef.kiterjesztes.length);
     }
@@ -1305,7 +1306,7 @@ function magastetoEpit(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], 
   }
   for (const h of ft) fo!.haromszogek.push(...h);
   const kerP = (p: P2[]) => p.map(([x, y]) => [sz(x), sz(y)] as P2);
-  return { szint: fel.id, hajlas: t.hajlas, kiallas, kiallasBecsult: t.kiallas === undefined && !eg && felulKiallas === undefined, mod, zEresz, eresz: kerP(fo!.eresz),
+  return { szint: fel.id, hajlas: t.hajlas, kiallas, kiallasBecsult: t.kiallas === undefined && !eg && felulKiallas === undefined, ...(felulKiallas !== undefined ? { kiallasForras: 'felulnezet' as const } : {}), mod, zEresz, eresz: kerP(fo!.eresz),
     ...(fedett.length ? { fedett } : {}), ...(oromElvetve ? { oromElvetve } : {}), ...(lapos.length ? { lapos: lapos.map(kerP), laposSav: sav.map((q) => ({ tengely: q.tengely, a: sz(q.a), b: sz(q.b), ...(q.felteto ? { felteto: { ...q.felteto, c0: sz(q.felteto.c0), c1: sz(q.felteto.c1) } } : {}) })) } : {}), ...(tobbi.length ? { tovabbiEresz: tobbi.map((q) => kerP(q.eresz)) } : {}), ...(feltetok.length ? { felteto: feltetok.map((f) => ({ ...f, pol: kerP(f.pol) })) } : {}),
     // (µm-re kerekítve: a tetőbontás az élek egyezéséből dolgozik – a mm-es kerekítés a T-csatlakozású élpontokat leviszi az élről)
     haromszogek: reszek.flatMap((q) => q.haromszogek).map((h) => h.map(([x, y, z]) => [sz(x, 6), sz(y, 6), sz(z, 6)] as [number, number, number])) };
@@ -1537,49 +1538,50 @@ function feltetoHaromszogek(p: P2[], hajlas: number, lejt: number, zE: number): 
 }
 
 /**
- * Az ereszvonal a felülnézetből: a felülnézet vonalait (a modell lapirányában, a csoport közepe körül) úgy toljuk el,
- * hogy a födém körvonalának élei mentén a legtöbb párhuzamos, kívül 0,15–1,2 m-re futó vonal legyen (az eresz a kiállás
- * távolságában kíséri a falsíkot). Az eltolás után élenként a legközelebbi, az él ≥ 70 %-át kísérő párhuzamos vonal
- * (0,15–3 m) az eresz: a tipikus (≤ 1,2 m) távolságok mediánja a kiállás; ahol az eresz a kiállásnál ≥ 0,8 m-rel
- * messzebb fut, a tető ott a falsíkon túl is kiterjed (az él mentén, az eresz kiállással csökkentett távolságáig).
- * Null, ha az illesztés gyenge (a körvonal kerületének felénél kevesebbet kísér eresz).
+ * Az eresz a felülnézet tetővázából (Balázs: „a tető ferde élei segítenek meghatározni, él, vápa, gerinc”): az élgerinc a
+ * kiugró sarok, a vápa a befelé forduló sarok ereszpontjába fut – mindkettő a falsarok külső szögfelezőjén, a kiállás
+ * √2-szeresére. A felülnézet vonalait (a modell lapirányában, a csoport közepe körül) úgy toljuk el, hogy a födém
+ * körvonalának minél több sarkán a szögfelezőn (0,15–1,5 m kiállásnyira) egy 45°-os (él vagy vápa) szakasz vége álljon.
+ * Saronként a kiállás; élenként a két vége átlaga (vagy az egyik) – ezek mediánja a tető kiállása. Null, ha a sarkok
+ * kevesebb mint fele illeszkedik (oromzatos – nyereg- – tetőnél nincs ilyen sarok).
  */
 function ereszFelulnezetbol(pol: P2[], sz: [number, number, number, number][], kiallas0: number): { pol: P2[]; kiallas?: number; kiterjesztes: P2[][]; oldalak: (number | null)[] } | null {
   const n = pol.length; if (n < 4) return null;
   const A2 = pol.reduce((t, [x, y], i) => { const [x2, y2] = pol[(i + 1) % n]!; return t + x * y2 - x2 * y; }, 0), el = Math.sign(A2) || 1;
-  type E = { a: P2; ux: number; uy: number; nx: number; ny: number; L: number };
-  const elek: E[] = pol.map((a, i) => { const b = pol[(i + 1) % n]!, L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1e-9, ux = (b[0] - a[0]) / L, uy = (b[1] - a[1]) / L; return { a, ux, uy, nx: el * uy, ny: -el * ux, L }; });
-  const sq = sz.map(([x0, y0, x1, y1]) => { const L = Math.hypot(x1 - x0, y1 - y0); return { x0, y0, x1, y1, L, ux: (x1 - x0) / L, uy: (y1 - y0) / L }; }).filter((q) => q.L >= 0.5);
+  const nrm = (a: P2, b: P2): P2 => { const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1e-9; return [el * (b[1] - a[1]) / L, -el * (b[0] - a[0]) / L]; };
+  // saronként a külső szögfelező (a két szomszéd él kifelé mutató normálisának összege – derékszögű saroknál √2 hosszú)
+  const sarkok = pol.map((v, i) => { const a = pol[(i + n - 1) % n]!, b = pol[(i + 1) % n]!; const na = nrm(a, v), nb = nrm(v, b); return { v, d: [na[0] + nb[0], na[1] + nb[1]] as P2 }; })
+    .filter((q) => Math.abs(Math.hypot(q.d[0], q.d[1]) - Math.SQRT2) < 0.05);
+  if (sarkok.length < 4) return null;
+  // a 45°-os szakaszok végpontjai
+  // (a vég és a szakasz másik vége: az él / vápa a sarokból befelé, a szögfelező mentén fut)
+  const vegek: { p: P2; m: P2 }[] = [];
+  for (const [x0, y0, x1, y1] of sz) { const L = Math.hypot(x1 - x0, y1 - y0); if (L < 0.7) continue; const a = Math.abs(Math.abs(x1 - x0) - Math.abs(y1 - y0)) / L; if (a > 0.06) continue; vegek.push({ p: [x0, y0], m: [x1, y1] }, { p: [x1, y1], m: [x0, y0] }); }
+  if (vegek.length < 4) return null;
   const xs = pol.map((q) => q[0]), ys = pol.map((q) => q[1]);
   const T0: P2 = [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2];
-  // élenként a párhuzamos szakaszok (eltolás nélkül, élkoordinátában: d0 + T·n a távolság, t0..t1 + T·u a hossz menti vetület)
-  const par = elek.map((e) => sq.filter((q) => Math.abs(q.ux * e.uy - q.uy * e.ux) < 0.05).map((q) => {
-    const ta = (q.x0 - e.a[0]) * e.ux + (q.y0 - e.a[1]) * e.uy, tb = (q.x1 - e.a[0]) * e.ux + (q.y1 - e.a[1]) * e.uy;
-    return { d: ((q.x0 + q.x1) / 2 - e.a[0]) * e.nx + ((q.y0 + q.y1) / 2 - e.a[1]) * e.ny, t0: Math.min(ta, tb), t1: Math.max(ta, tb) }; }));
-  const kisero = (k: number, T: P2, dMin: number, dMax: number) => { const e = elek[k]!, dt = T[0] * e.nx + T[1] * e.ny, ut = T[0] * e.ux + T[1] * e.uy;
-    // (a falsík melletti vonalcsoport – vakolat, hőszigetelés, párkány, eresz, csatorna – legkülső, a legközelebbitől
-    // ≤ 0,4 m-es lépésekben elérhető tagja az eresz)
-    const jo = par[k]!.map((q) => ({ d: q.d + dt, fed: Math.min(e.L, q.t1 + ut) - Math.max(0, q.t0 + ut) })).filter((q) => q.d >= dMin && q.d <= dMax && q.fed >= 0.5).sort((p, q) => p.d - q.d);
-    if (!jo.length) return null;
-    let leg = jo[0]!; for (const q of jo.slice(1)) { if (q.d - leg.d > 0.4) break; if (q.fed >= 0.7 * leg.fed) leg = q; }
-    return leg; };
-  const pont = (T: P2) => elek.reduce((t, e, k) => { if (e.L < 1) return t; const q = kisero(k, T, 0.15, 1.2); return t + (q ? Math.min(e.L, q.fed) : 0); }, 0);
+  const illik = (T: P2) => sarkok.map(({ v, d }) => { let leg: { s: number; e: number } | null = null;
+    for (const { p, m } of vegek) { const qx = p[0] + T[0] - v[0], qy = p[1] + T[1] - v[1]; const s = (qx * d[0] + qy * d[1]) / 2; if (s < 0.15 || s > 1.5) continue;
+      const e = Math.abs(qx * d[1] - qy * d[0]) / Math.SQRT2; if (e > 0.12) continue;
+      // a másik vég a sarokból befelé (a szögfelezőn, legalább 0,5 m-rel beljebb) – nem a sarkon kívül futó egyéb ferde vonal
+      const mx = m[0] + T[0] - v[0], my = m[1] + T[1] - v[1]; if ((mx * d[0] + my * d[1]) / 2 > s - 0.5 || Math.abs(mx * d[1] - my * d[0]) / Math.SQRT2 > 0.2 + 0.05 * Math.hypot(mx, my)) continue;
+      if (!leg || e < leg.e) leg = { s, e }; }
+    return leg; });
+  const pont = (T: P2) => illik(T).reduce((t, q) => t + (q ? 1 - q.e : 0), 0);
   let best: { T: P2; p: number } = { T: T0, p: -1 };
-  for (let dx = -3; dx <= 3.001; dx += 0.1) for (let dy = -3; dy <= 3.001; dy += 0.1) { const T: P2 = [T0[0] + dx, T0[1] + dy]; const p = pont(T); if (p > best.p + 1e-9 || (Math.abs(p - best.p) <= 1e-9 && Math.hypot(dx, dy) < Math.hypot(best.T[0] - T0[0], best.T[1] - T0[1]))) best = { T, p }; }
+  for (let dx = -3; dx <= 3.001; dx += 0.05) for (let dy = -3; dy <= 3.001; dy += 0.05) { const T: P2 = [T0[0] + dx, T0[1] + dy]; const p = pont(T); if (p > best.p + 1e-9) best = { T, p }; }
   const b0 = best.T;
-  for (let dx = -0.1; dx <= 0.1001; dx += 0.02) for (let dy = -0.1; dy <= 0.1001; dy += 0.02) { const T: P2 = [b0[0] + dx, b0[1] + dy]; const p = pont(T); if (p > best.p + 1e-9) best = { T, p }; }
-  const kerulet = elek.reduce((t, e) => t + (e.L >= 1 ? e.L : 0), 0);
-  if (best.p < 0.5 * kerulet) return null;
-  const oldalak = elek.map((e, k) => { if (e.L < 1) return null; const q = kisero(k, best.T, 0.15, 3); return q && q.fed >= 0.7 * e.L ? Math.round(q.d * 100) / 100 : null; });
-  const tip = oldalak.filter((d): d is number => d !== null && d <= 1.2).sort((a, b) => a - b);
+  for (let dx = -0.05; dx <= 0.0501; dx += 0.01) for (let dy = -0.05; dy <= 0.0501; dy += 0.01) { const T: P2 = [b0[0] + dx, b0[1] + dy]; const p = pont(T); if (p > best.p + 1e-9) best = { T, p }; }
+  const il = illik(best.T); const db = il.filter(Boolean).length;
+  if (db < Math.max(3, 0.5 * sarkok.length)) return null;
+  // élenként: a két végén lévő sarok kiállása
+  const sIdx = new Map(sarkok.map((q, k) => [q.v, k] as const));
+  const sarokS = (v: P2) => { const k = sIdx.get(v); return k === undefined ? null : il[k]?.s ?? null; };
+  const oldalak = pol.map((a, i) => { const b = pol[(i + 1) % n]!; const s1 = sarokS(a), s2 = sarokS(b); const t = [s1, s2].filter((x): x is number => x !== null); return t.length ? Math.round((t.reduce((p, q) => p + q, 0) / t.length) * 100) / 100 : null; });
+  const tip = oldalak.filter((d): d is number => d !== null).sort((a, b) => a - b);
   const kiallas = tip.length >= 2 ? tip[Math.floor((tip.length - 1) / 2)]! : undefined;
-  const k0 = kiallas ?? kiallas0;
-  // kiterjesztés: az él mentén téglalap a falsíktól az eresz − kiállás távolságig
-  const ki: P2[] = [], kiterjesztes: P2[][] = [];
-  elek.forEach((e, k) => { ki.push(e.a); const d = oldalak[k]; if (d === null || d === undefined || d < k0 + 0.8) return;
-    const D = d - k0, P = (tt: number, dd: number): P2 => [e.a[0] + e.ux * tt + e.nx * dd, e.a[1] + e.uy * tt + e.ny * dd];
-    ki.push(P(0, D), P(e.L, D)); kiterjesztes.push([P(0, 0), P(0, D), P(e.L, D), P(e.L, 0)].map(([x, y]) => [sz2(x), sz2(y)] as P2)); });
-  return { pol: kiterjesztes.length ? ki : pol, ...(kiallas !== undefined ? { kiallas } : {}), kiterjesztes, oldalak };
+  void kiallas0;
+  return { pol, ...(kiallas !== undefined ? { kiallas } : {}), kiterjesztes: [], oldalak };
 }
 const sz2 = (v: number) => Math.round(v * 1000) / 1000;
 
