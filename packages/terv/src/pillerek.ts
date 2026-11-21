@@ -38,5 +38,15 @@ export function pillerKeres(lap: Lap, mPerPt: number): TervPiller[] {
   const egy: TervPiller[] = [];
   for (const q of ki.sort((p, s) => (s.x1 - s.x0) * (s.y1 - s.y0) - (p.x1 - p.x0) * (p.y1 - p.y0)))
     if (!egy.some((o) => q.x0 >= o.x0 - 1 && q.y0 >= o.y0 - 1 && q.x1 <= o.x1 + 1 && q.y1 <= o.y1 + 1)) egy.push(q);
-  return egy;
+  // KONSZIGNÁCIÓS JEL (Balázs, 2026-11-21: „a konszig jelekből is oszlopot csináltál. Fel kell ismerni a konszignációs
+  // karikát/négyzetet, és el kell távolítani modellépítés előtt”): a nyílászáró jele – négyzet a tételszámmal és a
+  // méretével („2,40” / „1,80”) – nem pillér. A négyzet mellett (a mérete 1,3-szeresén belül) legalább két méretfelirat,
+  // ill. egy méret és egy tételszám áll.
+  const MERET = /^\d{1,2}[,.]\d{2}$/, KOD = /^[A-Z]{0,2}-?\d{1,3}[a-z]?\.?$/;
+  return egy.filter((q) => {
+    const cx = (q.x0 + q.x1) / 2, cy = (q.y0 + q.y1) / 2, r = 1.3 * Math.max(q.x1 - q.x0, q.y1 - q.y0);
+    const kozel = lap.szovegek.filter((t) => Math.abs(t.x - cx) <= r && Math.abs(t.y - cy) <= r).map((t) => t.s.trim());
+    const m = kozel.filter((t) => MERET.test(t)).length, k = kozel.filter((t) => !MERET.test(t) && KOD.test(t)).length;
+    return !(m >= 2 || (m >= 1 && k >= 1));
+  });
 }

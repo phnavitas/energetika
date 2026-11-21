@@ -86,7 +86,11 @@ export function tetoFelulnezet(lap: Lap): TetoFelulnezet | null {
     let orom = 0;
     for (const g of gerincek) for (const p of [[g.x0, g.y0], [g.x1, g.y1]] as [number, number][]) {
       const kapcs = (racs.get(kulcs(p[0], p[1])) ?? []).map((k) => sz[k]!).filter((s) => s !== g && vegKozel(s, p) && (diag(s) || tengelyMenti(s)));
-      if (!kapcs.some((s) => diag(s)) && !kapcs.some((s) => gerincek.has(s))) { orom++; const q = Math.hypot(g.x0 - p[0], g.y0 - p[1]) < 1 ? [g.x1, g.y1] : [g.x0, g.y0]; vegek.push({ hely: p, irany: (((Math.atan2(p[1] - q[1]!, p[0] - q[0]!) * 180) / Math.PI) + 360) % 360, fajta: 'orom', csoport: -1 }); }
+      // (T-csatlakozás: a gerinc vége egy másik – rá merőleges – gerinc belsejébe fut: a szárny gerince a főtető gerincéhez
+      // csatlakozik, ez nem szabad vég – Maschek: a déli szárnyak gerince a főgerincnél nem oromzat)
+      const rajtaP = (e: Sz) => { const t = ((p[0] - e.x0) * (e.x1 - e.x0) + (p[1] - e.y0) * (e.y1 - e.y0)) / (e.L * e.L); const d = Math.abs((p[0] - e.x0) * (e.y1 - e.y0) - (p[1] - e.y0) * (e.x1 - e.x0)) / e.L; return t > 0.02 && t < 0.98 && d <= tol; };
+      const tBe = sz.some((e) => e !== g && e.L >= 20 && tengelyMenti(e) && Math.abs(((e.a - g.a) % 180 + 180) % 180 - 90) <= 4 && rajtaP(e));
+      if (!tBe && !kapcs.some((s) => diag(s)) && !kapcs.some((s) => gerincek.has(s))) { orom++; const q = Math.hypot(g.x0 - p[0], g.y0 - p[1]) < 1 ? [g.x1, g.y1] : [g.x0, g.y0]; vegek.push({ hely: p, irany: (((Math.atan2(p[1] - q[1]!, p[0] - q[0]!) * 180) / Math.PI) + 360) % 360, fajta: 'orom', csoport: -1 }); }
     }
 
     // (a főirányban fut a rajz zöme – ereszvonal, cserépsraff –; a 45°-kal elforgatott „értelmezés” az ereszsarkokat

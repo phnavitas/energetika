@@ -95,7 +95,7 @@ export interface Fal {
    * terek között). */
   szerkezet?: 'teherhordo' | 'valaszfal' | 'egyeb' | 'hatar';
   /** Térdfal / oromfal / alacsonyabb párkány jelölés. */
-  jelleg?: 'terdfal' | 'oromfal' | 'parkany' | 'ferde';
+  jelleg?: 'terdfal' | 'oromfal' | 'parkany' | 'ferde' | 'felzaro';
   /** Az egy vonalban egymáshoz csatlakozó, minden jellemzőjükben azonos falszakaszokból összefűzött fal: a szakaszok
    * eredeti azonosítói (a fal azonosítója a leghosszabbé). */
   osszefuzott?: string[];
@@ -626,6 +626,7 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
   const gerendak = gerendaKeres(lapok, falak, fodemek, koszoruk);
   const magasteto = opt.teto ? magastetoEpit(szintek, fodemek, koszoruk, opt.teto, pillerek) : null;
   if (magasteto) oromFalak(falak, szintek, magasteto);
+  if (magasteto && lapok.some((L) => L.kizart)) felzaroFalak(falak, szintek, fodemek, magasteto);
   if (lapok.some((L) => L.kizart)) nyilasFalban(falak, nyilasok, szintek);
   const alapozas = opt.metszetElemek?.length ? alapozasKeres(szintek, falak, opt.metszetElemek, pillerek, opt.fodemSavok ?? [], fodemek) : [];
   // a lapok és a modell kapcsolata (az m = (pt − o) · mPerPt leképezés megfordítva)
@@ -1046,6 +1047,67 @@ function kulsoFalRetegek(falak: Fal[], fodemek: Fodem[], nyilasokRef: Nyilas[], 
  * Oromfal: a magastetővel fedett szint külső falai a tető síkjáig érnek – ahol a tető (oromzat, kontylap alatti rész)
  * a fal teteje fölött van, a fal felső éle a tetőt követi (profil), így a modell zárt (nincs rés a fal és a tető közt).
  */
+/**
+ * FELZÁRÓ FAL (teljes modell; Balázs, 2026-11-21: „félnyereg tető magasabb fele alatt nincs fal. a kis kiugró félnyereg
+ * tető alatt nincs felzáró fal”): a féltető élei mentén, ahol a tető a mellette lévő lapostetőnél / alacsonyabb tetőnél
+ * ≥ 20 cm-rel magasabban fut, és alatta (a fal síkjában, 35 cm-en belül) nincs a tetőig érő fal, a rés a lapostető
+ * (ill. az alacsonyabb tető) síkjától a féltető alsó síkjáig falat kap – a féltető élén belül, 30 cm vastagon.
+ */
+function felzaroFalak(falak: Fal[], szintek: Szint[], fodemek: Fodem[], mt: Magasteto): void {
+  const sz0 = szintek.find((s) => s.id === mt.szint); if (!sz0 || !mt.felteto?.length) return;
+  const ft = fodemek.find((f) => f.alatt === mt.szint);
+  const tetoZ = (x: number, y: number): number | null => {
+    let z: number | null = null;
+    for (const [a, b, c] of mt.haromszogek) {
+      const den = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]); if (Math.abs(den) < 1e-12) continue;
+      const w1 = ((b[1] - c[1]) * (x - c[0]) + (c[0] - b[0]) * (y - c[1])) / den, w2 = ((c[1] - a[1]) * (x - c[0]) + (a[0] - c[0]) * (y - c[1])) / den, w3 = 1 - w1 - w2;
+      if (w1 < -1e-6 || w2 < -1e-6 || w3 < -1e-6) continue;
+      const v = w1 * a[2] + w2 * b[2] + w3 * c[2]; if (z === null || v > z) z = v;
+    }
+    return z;
+  };
+  const lapos = (x: number, y: number) => (mt.lapos ?? []).some((p) => pontBenne(p, x, y));
+  const v = 0.3; let db = 0;
+  for (const f of mt.felteto) {
+    const p = f.pol, n = p.length; let A = 0; for (let i = 0; i < n; i++) { const a = p[i]!, b = p[(i + 1) % n]!; A += a[0] * b[1] - b[0] * a[1]; }
+    const s0 = A > 0 ? 1 : -1;
+    for (let i = 0; i < n; i++) {
+      const a = p[i]!, b = p[(i + 1) % n]!, L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < 0.5) continue;
+      const u: P2 = [(b[0] - a[0]) / L, (b[1] - a[1]) / L], be: P2 = [-u[1] * s0, u[0] * s0]; // befelé mutató normális
+      // a rés szakaszai: a mintapontok (25 cm-enként), ahol a tető magasan fut a kinti lapostető / alacsonyabb tető fölött
+      // és nincs alatta a tetőig érő fal
+      const K = Math.max(2, Math.ceil(L / 0.25)), jo: { t: number; zt: number; zl: number }[] = [];
+      for (let k = 0; k <= K; k++) {
+        const t = (k / K) * L, x = a[0] + u[0] * t, y = a[1] + u[1] * t;
+        const zt = tetoZ(x + be[0] * 0.05, y + be[1] * 0.05); if (zt === null) continue;
+        const kx = x - be[0] * 0.3, ky = y - be[1] * 0.3, zk = tetoZ(kx, ky);
+        const zl = zk !== null && zk < zt - 0.2 ? zk : lapos(kx, ky) && ft ? ft.z : null;
+        if (zl === null || zt - zl < 0.2) continue;
+        const fedi = falak.some((w) => { if (w.szint !== mt.szint || w.szerkezet === 'hatar') return false;
+          const Lw = Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1]); if (Lw < 0.1) return false;
+          const uw: P2 = [(w.b[0] - w.a[0]) / Lw, (w.b[1] - w.a[1]) / Lw]; if (Math.abs(uw[0] * u[0] + uw[1] * u[1]) < 0.98) return false;
+          const s = (x - w.a[0]) * uw[0] + (y - w.a[1]) * uw[1]; if (s < -0.05 || s > Lw + 0.05) return false;
+          if (Math.abs(-(x - w.a[0]) * uw[1] + (y - w.a[1]) * uw[0]) > w.vastag / 2 + 0.35) return false;
+          return w.z0 + w.h >= zt - 0.3; });
+        if (!fedi) jo.push({ t, zt, zl });
+      }
+      // összefüggő szakaszok → fal
+      for (let k0 = 0; k0 < jo.length;) {
+        let k1 = k0; while (k1 + 1 < jo.length && jo[k1 + 1]!.t - jo[k1]!.t < 0.3) k1++;
+        const t0 = jo[k0]!.t, t1 = jo[k1]!.t; const sav = jo.slice(k0, k1 + 1); k0 = k1 + 1;
+        if (t1 - t0 < 0.5) continue;
+        const zl = Math.min(...sav.map((q) => q.zl)), o: P2 = [be[0] * v / 2, be[1] * v / 2];
+        const fa: P2 = [sz_(a[0] + u[0] * t0 + o[0]), sz_(a[1] + u[1] * t0 + o[1])], fb: P2 = [sz_(a[0] + u[0] * t1 + o[0]), sz_(a[1] + u[1] * t1 + o[1])];
+        const pr = sav.map((q) => ({ t: sz((q.t - t0) / (t1 - t0), 4), z: sz(q.zt - sz0.z0, 3) }));
+        const zmax = Math.max(...pr.map((q) => q.z));
+        falak.push({ id: `FZ${++db}`, szint: mt.szint, a: fa, b: fb, vastag: v, z0: sz(zl, 3), h: sz(zmax + sz0.z0 - zl, 3), bal: { fajta: 'kulso' }, jobb: { fajta: 'kulso' },
+          kulso: true, burok: null, hossz: sz(t1 - t0, 2), sikHossz: sz(t1 - t0, 2), szerkezet: 'teherhordo', jelleg: 'felzaro', profil: pr });
+      }
+    }
+  }
+}
+const sz_ = (v: number) => sz(v, 3);
+
 function oromFalak(falak: Fal[], szintek: Szint[], mt: Magasteto): void {
   const sz0 = szintek.find((s) => s.id === mt.szint); if (!sz0) return;
   const T = mt.haromszogek;
