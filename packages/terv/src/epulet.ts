@@ -121,6 +121,8 @@ export interface Nyilas {
   burok: boolean;
   /** Forrás: a lap sorszáma és a nyílás indexe a lap elemzésében (al.nyilasok; ≥ 20000: modellAjtok) – a kézi méretmódosításhoz. */
   forras?: { lap: number; ny: number };
+  /** A teljes modellben a magassága a fal teteje alá csökkentve (a felirat szerinti nyílás a fal fölé nyúlt). */
+  levagva?: boolean;
   /** A mellvédmagasság a homlokzat szerinti (LapBemenet.mellved); az alaprajzi felirat szerinti érték. */
   pmAlaprajz?: number;
   /** A feliratos méret nem egyezik a homlokzattal (LapBemenet.homElteres): az ott álló keret mérete (m), null: nincs keret. */
@@ -608,6 +610,7 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
   const gerendak = gerendaKeres(lapok, falak, fodemek, koszoruk);
   const magasteto = opt.teto ? magastetoEpit(szintek, fodemek, koszoruk, opt.teto, pillerek) : null;
   if (magasteto) oromFalak(falak, szintek, magasteto);
+  if (lapok.some((L) => L.kizart)) nyilasFalban(falak, nyilasok, szintek);
   const alapozas = opt.metszetElemek?.length ? alapozasKeres(szintek, falak, opt.metszetElemek, pillerek, opt.fodemSavok ?? [], fodemek) : [];
   // a lapok és a modell kapcsolata (az m = (pt − o) · mPerPt leképezés megfordítva)
   // (csak eltolás és nagyítás – elforgatott leképezésnél nincs kapcsolat)
@@ -1185,6 +1188,30 @@ function falVastagJavit(falak: Fal[], nyilasok: Nyilas[]) {
  * legfeljebb a másik fal vastagságának megfelelő (≥ 0,8 m) távolságra vannak, a metszésponton túl a másik fal
  * vastagságának felével ér véget – a külső síkok a sarokban pontosan találkoznak (nincs rés, nincs kilógó falvég).
  */
+/**
+ * A nyílás a fal síkjában marad (teljes modell): ha a teteje (mellvéd + magasság) a fal felső éle (profilos falnál a
+ * nyílás két szélén mért alacsonyabb érték) fölé nyúlna – pl. tévesen olvasott mellvéd, falfülke –, a magassága a fal
+ * teteje alatt 5 cm-ig csökken (`levagva`); 30 cm-nél kisebb maradéknál a nyílás kimarad. A 3D-ben így nincs a falon
+ * túlnyúló, torz nyílás.
+ */
+function nyilasFalban(falak: Fal[], nyilasok: Nyilas[], szintek: Szint[]) {
+  const F = new Map(falak.map((f) => [f.id, f]));
+  for (let i = nyilasok.length - 1; i >= 0; i--) {
+    const n = nyilasok[i]!, f = F.get(n.fal); if (!f) continue;
+    const sz0 = szintek.find((s) => s.id === f.szint); const alap = (sz0?.z0 ?? f.z0);
+    let teto = f.z0 + f.h - alap;
+    if (f.profil && f.profil.length >= 2) {
+      const L = Math.hypot(f.b[0] - f.a[0], f.b[1] - f.a[1]) || 1;
+      const z = (t: number) => { const p = f.profil!; for (let k = 1; k < p.length; k++) if (t <= p[k]!.t) { const a = p[k - 1]!, b = p[k]!; return a.z + (b.z - a.z) * (t - a.t) / ((b.t - a.t) || 1); } return p[p.length - 1]!.z; };
+      teto = Math.min(z(Math.max(0, (n.t - n.szel / 2) / L)), z(Math.min(1, (n.t + n.szel / 2) / L)));
+    }
+    if (n.pm + n.mag <= teto - 0.05 + 1e-6) continue;
+    const m = sz(teto - 0.05 - n.pm, 2);
+    if (m < 0.3) { nyilasok.splice(i, 1); continue; }
+    n.mag = m; n.levagva = true;
+  }
+}
+
 /**
  * Az egy vonalban (± 0,5°, ± 1 cm), egymáshoz csatlakozó (≤ 2 cm rés) falszakaszok, amelyek anyaga, rétegei, vastagsága,
  * magassága, szerkezete, hőburok-szerepe és oldalainak fajtája pontosan azonos, egy fallá fűzve (a töredékek – pl. a
