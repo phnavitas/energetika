@@ -532,6 +532,8 @@ export function tervFolyamat(S: FolyamatAllapot) {
     // berajzolt gépkocsi pecsét nélküli tere (garázsnak vett): ha van homlokzati rajz, de a kapunyílás a homlokzaton nem
     // látszik (a magassága nem a homlokzatról jön), kültéri (fedett) beálló – nem helyiség
     const beallo = beallok(i, a, k);
+    // (a körvonala nagy részén fal nélküli – nyitott – tér alapból kültér, amíg a felhasználó be nem sorolja)
+    for (const [j, h] of a.e.helyisegek.entries()) if (h.nyitott && k.kat[j] === undefined && !k.kulterH?.has(j) && !k.kizartH.has(j)) beallo.push(j);
     return { ...k, kat, kizartH: kiz.length ? new Set([...k.kizartH, ...kiz]) : k.kizartH, mindFutott: S.mindFutott, ...(rk.length ? { reszKizart: new Set(rk) } : {}), ...(mszR.length ? { masJegyzek: new Set(mszR) } : {}),
       ...(beallo.length ? { kulterH: new Set([...(k.kulterH ?? []), ...beallo]) } : {}) };
   };

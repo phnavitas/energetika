@@ -30,6 +30,8 @@ export interface TervHelyiseg {
   jegyzekA?: number;
   /** Külső tér (terasz, erkély, kocsibeálló…) – alapból nem kerül a fűtött helyiségek közé. */
   kulter: boolean;
+  /** Nyitott tér: a körvonala nagy részén nincs fal (udvar, rakodótér) – alapból kültér, a felhasználó átállíthatja. */
+  nyitott?: boolean;
 }
 
 export interface Eszakjel {

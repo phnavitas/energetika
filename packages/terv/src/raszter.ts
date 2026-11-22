@@ -429,8 +429,19 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
           const sz = ((Math.atan2(dy, dx) * 180 / Math.PI) % 180 + 180) % 180; if (l >= 0.02 && l <= 0.8 && ((sz > 20 && sz < 70) || (sz > 110 && sz < 160))) n++; } }
       csakFolia = n >= 200;
     }
+    // a sraffvonal legnagyobb vonalvastagsága: 0,35 pt; ha a falak (hosszú, tengelyirányú vonalak) vastagabban
+    // rajzoltak, a vastagabb vonalú (≤ 0,5 pt, a falvonal 60 %-áig) mintázat is sraff (pl. a szendvicspanel
+    // cikk-cakk mintája 0,37 pt-tal, a falsíkok 0,6–1 pt-tal)
+    let srMaxV = 0.35;
+    { const hv: [number, number][] = [];
+      for (const u of lap.utvonalak) { if (u.muvelet !== 'stroke' || !(u.vastagsag > 0)) continue;
+        for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) { const dx = p[i + 2]! - p[i]!, dy = p[i + 3]! - p[i + 1]!; const l = Math.hypot(dx, dy) * mPerPt;
+          if (l >= 2 && (Math.abs(dx) < 0.02 * Math.abs(dy) || Math.abs(dy) < 0.02 * Math.abs(dx))) hv.push([u.vastagsag, l]); } }
+      if (hv.length) { hv.sort((a, b) => a[0] - b[0]); const ossz = hv.reduce((t, q) => t + q[1], 0); let t = 0, p90 = hv[hv.length - 1]![0];
+        for (const [v, l] of hv) { t += l; if (t >= 0.9 * ossz) { p90 = v; break; } }
+        srMaxV = Math.min(0.5, Math.max(0.35, 0.6 * p90)); } }
     for (const u of lap.utvonalak) {
-      if (u.muvelet !== 'stroke' || u.vastagsag > 0.35 || feher(u.vonalSzin)) continue;
+      if (u.muvelet !== 'stroke' || u.vastagsag > srMaxV || feher(u.vonalSzin)) continue;
       if (u.bbox[2] < x0 || u.bbox[0] > x1 || u.bbox[3] < y0 || u.bbox[1] > y1) continue;
       // (a nem falat hordozó PDF-rétegek – burkolat, terep, kert, bútor, szaniter, kerítés – sraffozása nem fal)
       if (u.reteg && NEM_FAL_RETEG.test(u.reteg)) continue;
@@ -515,6 +526,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       const tiszta = tagit(szukit(zart, w, h, 1), w, h, 1);
       let falPx = 0, srPx = 0;
       for (let i = 0; i < w * h; i++) { if (fal[i]) falPx++; if (tiszta[i]) srPx++; }
+      if ((globalThis as any).SRDBG) console.log('SRDBG db', db, 'srMaxV', srMaxV, 'letra', letra.length, 'srPx', srPx, 'falPx', falPx, 'csakFolia', csakFolia);
       if (srPx > 1.5 * falPx) {
         for (let i = 0; i < w * h; i++) if (tiszta[i]) fal[i] = 1;
         darabok.push([x0, y0, x1, y1]);

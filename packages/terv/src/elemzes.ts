@@ -266,17 +266,23 @@ export function pecsetEgyezes(r: Raszter, hs: { A: number }[]): number {
  * lát, a lapkép-„tinta” igen.
  */
 export function falFedettseg(r: Raszter): number {
-  const { w, h } = r; const d = Math.max(1, Math.round(0.1 / r.px)); let hatar = 0, fedett = 0;
+  const t = fedettsegSzamlalo(r); let h = 0, f = 0; for (let i = 0; i < t.hatar.length; i++) { h += t.hatar[i]!; f += t.fedett[i]!; }
+  return h ? f / h : 0;
+}
+/** Helyiségenként (raszterindex szerint) a határcellák és a fallal / nyílással fedettek száma. */
+export function fedettsegSzamlalo(r: Raszter): { hatar: number[]; fedett: number[] } {
+  const { w, h } = r; const d = Math.max(1, Math.round(0.1 / r.px));
+  const hatar = r.helyisegek.map(() => 0), fedett = r.helyisegek.map(() => 0);
   for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
-    const k = y * w + x, c = r.cimke[k]!; if (c < 2) continue;
+    const k = y * w + x, c = r.cimke[k]!; if (c < 2 || c - 2 >= hatar.length) continue;
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
       if (r.cimke[k + dy * w + dx] === c) continue;
-      hatar++;
-      for (let t = 1; t <= d; t++) { const xx = x + dx * t, yy = y + dy * t; if (xx < 0 || yy < 0 || xx >= w || yy >= h) break; const q = yy * w + xx; if (r.fal[q] || r.nyilas[q]) { fedett++; break; } if (r.cimke[q]! >= 2 && r.cimke[q] !== c) break; }
+      hatar[c - 2]!++;
+      for (let t = 1; t <= d; t++) { const xx = x + dx * t, yy = y + dy * t; if (xx < 0 || yy < 0 || xx >= w || yy >= h) break; const q = yy * w + xx; if (r.fal[q] || r.nyilas[q]) { fedett[c - 2]!++; break; } if (r.cimke[q]! >= 2 && r.cimke[q] !== c) break; }
       break;
     }
   }
-  return hatar ? fedett / hatar : 0;
+  return { hatar, fedett };
 }
 
 /**
@@ -561,6 +567,20 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
     }
   }
   halad?.('nyílászárók, határoló szerkezetek');
+  // nyitott tér: a helyiség körvonalának legfeljebb 30 %-án van fal vagy nyílás, miközben a lap többi helyiségét
+  // (területtel súlyozva) legalább 60 %-ban fal határolja – a pecsételt terület udvar, rakodótér, fedetlen tér
+  // (a körvonala telekhatár, burkolatszél): külső tér, nem fűtött helyiség
+  if (!auto) {
+    const t = fedettsegSzamlalo(r);
+    const arany = t.hatar.map((n, i) => (n ? t.fedett[i]! / n : 1));
+    let sA = 0, sF = 0; magHelyisegek.forEach((h, i) => { const A = r.helyisegek[i]?.A ?? 0; if (A > 0 && !h.kezi) { sA += A; sF += A * arany[i]!; } });
+    const atlag = sA ? sF / sA : 0;
+    if (atlag >= 0.6) magHelyisegek.forEach((h, i) => {
+      if (h.kulter || h.kezi || (r.helyisegek[i]?.A ?? 0) < 4 || arany[i]! >= 0.3) return;
+      h.nyitott = true;
+      e.figyelmeztetesek.push(`${h.kod ? h.kod + ' ' : ''}${h.nev}: a körvonala nagy részén (${Math.round((1 - arany[i]!) * 100)} %) nincs fal – nyitott (külső) térnek vettem. Ha zárt helyiség, állítsd át a besorolását.`);
+    });
+  }
   kotaEllenoriz(r, lap.szovegek);
   talajOldal(lap, r, e.helyisegek.filter((h) => h.forras === 'pecset' && !h.kulter).map((h) => h.mutato ?? h));
   szomszedOldal(lap, r);
