@@ -661,8 +661,77 @@ function beharapasKitolt(p0: Poligon, r: Raszter): Poligon {
   return p;
 }
 
+/**
+ * Fal nélküli kiugrás a burok szélén (Balázs: „zárd be a nem zárt modellrészt … automatikusan is"): a körvonal egy éle
+ * mentén nincs fal (a hossza ≥ 70 %-án 0,15 m-en belül sem fal-, sem nyíláscella), a két szomszéd éle befelé fut, és
+ * befelé, legfeljebb 6 m-en belül (a szomszéd élek hosszán belül) van vele párhuzamos, ≥ 60 %-ban legalább 0,2 m vastag
+ * fallal / nyílással fedett sáv (a homlokzati fal): a kiugrás a rajz kifolyása (méretvonalak, telekhatár közé zárt sáv),
+ * az él a falsáv külső síkjáig visszahúzva – ha a levágott sávban nincs fűtött helyiség felirata és ≤ 40 m².
+ * (rácskoordinátában; feliratok: a fűtött helyiségek pecsétpontjai lapkoordinátában)
+ */
+function kiugrasLevag(p0: Poligon, r: Raszter, feliratok: { x: number; y: number }[]): Poligon {
+  const { w, h } = r; const fal = r.fal, fv = r.falVonal, ny = r.nyilas;
+  const ptPx = r.mPerPt / r.px;
+  const F = feliratok.map((t) => [(t.x - r.x0) * ptPx, (t.y - r.y0) * ptPx] as [number, number]);
+  const cel = (x: number, y: number) => { const xx = Math.floor(x), yy = Math.floor(y); if (xx < 0 || yy < 0 || xx >= w || yy >= h) return false; const k = yy * w + xx; return !!(fal[k] || fv?.[k] || ny[k]); };
+  const R = Math.max(1, Math.round(0.15 / r.px));
+  const tamaszAr = (a: [number, number], b: [number, number]) => {
+    const L = Math.hypot(b[0] - a[0], b[1] - a[1]), N = Math.max(2, Math.ceil(L)); let db = 0, van = 0;
+    for (let k = 1; k < N; k++) { const x = a[0] + ((b[0] - a[0]) * k) / N, y = a[1] + ((b[1] - a[1]) * k) / N; db++;
+      let ok = false; for (let dy = -R; dy <= R && !ok; dy++) for (let dx = -R; dx <= R && !ok; dx++) if (cel(x + dx, y + dy)) ok = true; if (ok) van++; }
+    return db ? van / db : 1;
+  };
+  const V = Math.max(1, Math.round(0.2 / r.px)), S = Math.max(1, Math.round(0.3 / r.px));
+  const falSav = (a: [number, number], b: [number, number], n: [number, number]) => {
+    const L = Math.hypot(b[0] - a[0], b[1] - a[1]), N = Math.max(2, Math.ceil(L)); let db = 0, van = 0;
+    for (let k = 1; k < N; k++) { const x = a[0] + ((b[0] - a[0]) * k) / N, y = a[1] + ((b[1] - a[1]) * k) / N; db++;
+      let c = 0; for (let t = -S; t <= S; t++) if (cel(x + n[0] * t, y + n[1] * t)) c++; if (c >= V) van++; }
+    return db ? van / db : 0;
+  };
+  const dbg = (globalThis as { KLDBG?: unknown }).KLDBG;
+  const maxD = 6 / r.px, maxA = 40 / (r.px * r.px), minL = 1 / r.px;
+  let p = p0.slice();
+  for (let kor = 0; kor < 10; kor++) {
+    const n = p.length; if (n < 5) break;
+    const T = p.reduce((t, a, i) => { const b = p[(i + 1) % n]!; return t + a[0] * b[1] - b[0] * a[1]; }, 0);
+    let valt = false;
+    for (let i = 0; i < n && !valt; i++) {
+      const P = p[(i - 1 + n) % n]!, A = p[i]!, B = p[(i + 1) % n]!, Q = p[(i + 2) % n]!;
+      const L = Math.hypot(B[0] - A[0], B[1] - A[1]); if (L < minL) continue;
+      const tengelyes = (u: [number, number], v: [number, number]) => Math.abs(u[0] - v[0]) < 1 || Math.abs(u[1] - v[1]) < 1;
+      if (!tengelyes(A, B)) continue;
+      const ex = (B[0] - A[0]) / L, ey = (B[1] - A[1]) / L; const nrm: [number, number] = T > 0 ? [-ey, ex] : [ey, -ex];
+      // kifelé mutató normális ellenőrzése: az él közepétől kifelé lépve a sokszögön kívül
+      const mx = (A[0] + B[0]) / 2 + nrm[0] * 2, my = (A[1] + B[1]) / 2 + nrm[1] * 2;
+      if (pontBenneP(p, mx, my)) { nrm[0] = -nrm[0]; nrm[1] = -nrm[1]; }
+      const lp = (A[0] - P[0]) * nrm[0] + (A[1] - P[1]) * nrm[1], lq = (B[0] - Q[0]) * nrm[0] + (B[1] - Q[1]) * nrm[1];
+      const tA = tamaszAr(A, B);
+      if (dbg) console.log('KLDBG el', Math.round(L * r.px * 100) / 100, 'tamasz', Math.round(tA * 100) / 100, 'lp', Math.round(lp * r.px * 100) / 100, 'lq', Math.round(lq * r.px * 100) / 100);
+      if (lp < 0.2 / r.px || lq < 0.2 / r.px || tA >= 0.3) continue;
+      const dMax = Math.min(maxD, lp, lq);
+      let d = -1;
+      for (let t = Math.round(0.2 / r.px); t <= dMax; t++) { const a: [number, number] = [A[0] - nrm[0] * t, A[1] - nrm[1] * t], b: [number, number] = [B[0] - nrm[0] * t, B[1] - nrm[1] * t]; if (falSav(a, b, nrm) >= 0.6) { d = t; break; } }
+      if (dbg) console.log('KLDBG befele', d * r.px);
+      if (d < 0 || d * L > maxA) continue;
+      // (a falsáv külső síkja: a talált vonaltól kifelé, amíg a vonal ≥ 60 %-ban fal – a burok a fal külső síkján fut)
+      let dd = d; while (dd > 0) { const t = dd - 1; if (tamaszAr([A[0] - nrm[0] * t, A[1] - nrm[1] * t], [B[0] - nrm[0] * t, B[1] - nrm[1] * t]) < 0.6) break; dd--; }
+      const benne = F.some(([x, y]) => { const s0 = (x - A[0]) * ex + (y - A[1]) * ey, t0 = (A[0] - x) * nrm[0] + (A[1] - y) * nrm[1]; return s0 >= 0 && s0 <= L && t0 >= 0 && t0 <= dd; });
+      if (dbg) console.log('KLDBG levag', dd * r.px, 'felirat a sávban', benne);
+      if (benne) continue;
+      const A2: [number, number] = [A[0] - nrm[0] * dd, A[1] - nrm[1] * dd], B2: [number, number] = [B[0] - nrm[0] * dd, B[1] - nrm[1] * dd];
+      p = p.map((q, k) => (k === i ? A2 : k === (i + 1) % n ? B2 : q));
+      p = p.filter((b, k) => { const a = p[(k - 1 + p.length) % p.length]!; return Math.hypot(b[0] - a[0], b[1] - a[1]) > 0.5; });
+      p = p.filter((b, k) => { const a = p[(k - 1 + p.length) % p.length]!, c = p[(k + 1) % p.length]!; return Math.abs((b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0])) > 1e-6; });
+      valt = true;
+    }
+    if (!valt) break;
+  }
+  return p;
+}
+const pontBenneP = (p: Poligon, x: number, y: number) => { let b = false; for (let i = 0, j = p.length - 1; i < p.length; j = i++) { const [xi, yi] = p[i]!, [xj, yj] = p[j]!; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) b = !b; } return b; };
+
 /** A maszk (rácscellák) külső körvonalai lapkoordinátában, egyszerűsítve (Douglas–Peucker, ferde fal, derékszög). */
-function maszkKorvonal(r: Raszter, m: Uint8Array, befele = true, tart?: (sav: Poligon, cel: Poligon) => boolean): Poligon[] {
+function maszkKorvonal(r: Raszter, m: Uint8Array, befele = true, tart?: (sav: Poligon, cel: Poligon) => boolean, feliratok?: { x: number; y: number }[]): Poligon[] {
   const { w, h } = r;
   // határélek: a maszkos cella bal oldalán haladva (y lefelé nő) – irányított élek csúcsról csúcsra
   const be = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h && m[y * w + x] === 1;
@@ -691,7 +760,7 @@ function maszkKorvonal(r: Raszter, m: Uint8Array, befele = true, tart?: (sav: Po
   }
   const min = 4 / (r.px * r.px);
   const kulsok = hurkok.filter((p) => terulet(p) > min); // a cella bal oldali bejárásánál a külső határ pozitív előjelű
-  return kulsok.map((p) => { const g = globalThis as any; let q = g.NOFS ? p : fulkeSimit(p, 0.7 / r.px, 6 / r.px, befele, 0.15 / r.px, 1.5 / r.px, 0, tart); q = egyszerusit(q, 0.12 / r.px); if (!g.NOFO) q = ferdeOsszevon(q, 0.6 / r.px, 0.7 / r.px, 2.5 / r.px, 3.0 / r.px); if (!g.NODR) q = derekszog(q, 1.5 / r.px, 0.2 / r.px); if (!g.NOFS && !g.NODR) q = fulkeSimit(q, 0.7 / r.px, 6 / r.px, befele, 0, 0, 0.4 / r.px, tart); if (!g.NOFE) q = ferdeEllenoriz(q, r, m); if (!befele && !g.NOBH) q = beharapasKitolt(q, r); return q.map(([gx, gy]) => [Math.round(lapX(r, gx) * 10) / 10, Math.round(lapY(r, gy) * 10) / 10] as [number, number]); })
+  return kulsok.map((p) => { const g = globalThis as any; let q = g.NOFS ? p : fulkeSimit(p, 0.7 / r.px, 6 / r.px, befele, 0.15 / r.px, 1.5 / r.px, 0, tart); q = egyszerusit(q, 0.12 / r.px); if (!g.NOFO) q = ferdeOsszevon(q, 0.6 / r.px, 0.7 / r.px, 2.5 / r.px, 3.0 / r.px); if (!g.NODR) q = derekszog(q, 1.5 / r.px, 0.2 / r.px); if (!g.NOFS && !g.NODR) q = fulkeSimit(q, 0.7 / r.px, 6 / r.px, befele, 0, 0, 0.4 / r.px, tart); if (!g.NOFE) q = ferdeEllenoriz(q, r, m); if (!befele && !g.NOBH) q = beharapasKitolt(q, r); if (feliratok && !g.NOKL) q = kiugrasLevag(q, r, feliratok); return q.map(([gx, gy]) => [Math.round(lapX(r, gx) * 10) / 10, Math.round(lapY(r, gy) * 10) / 10] as [number, number]); })
     .filter((p) => p.length >= 3);
 }
 
@@ -1078,7 +1147,7 @@ export function burokTomeg(r: Raszter, futott: ReadonlySet<number>, zsebTilto?: 
     if (q.length * r.px * r.px <= 1.5 && !q.some((k) => r.cimke[k]! >= 2 && !H[k])) for (const k of q) M[k] = 1;
   }
   if (vart) pecsetesFoltok(r, M, vart.filter((v) => futott.has(v.ri)));
-  return maszkKorvonal(r, M, false, fulkeFalVedo(r));
+  return maszkKorvonal(r, M, false, fulkeFalVedo(r), vart?.filter((v) => futott.has(v.ri)));
 }
 
 /**
