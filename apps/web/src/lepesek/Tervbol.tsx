@@ -480,6 +480,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     return ki;
   }, [al, burok, burokMert, helyisegek, kj]);
   const [aiTokenAll, setAiTokenAll] = useState(() => !!aiToken());
+  const [aiTokenBe, setAiTokenBe] = useState('');
   const [ai, setAi] = useState<{ fut: boolean; valasz?: AiValasz | null; nyers?: string; hiba?: string } | null>(null);
   useEffect(() => setAi(null), [aIdx]);
   const aiFuttat = async () => {
@@ -1719,16 +1720,19 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                 {aiTokenAll ? (
                   <button class="gomb halk-gomb" disabled={ai?.fut} onClick={() => void aiFuttat()} title="A rajz hőburok körüli kivágata (szövegmező nélkül) a felismert eredménnyel egy képfelismerő modellnek; a válasz itt jelenik meg.">{ai?.fut ? 'AI-ellenőrzés fut…' : 'AI-ellenőrzés (kép a felismeréssel)'}</button>
                 ) : (
-                  <label class="halkabb" style="display:inline-flex;gap:6px;align-items:center">AI-token: <input type="password" size={18} onChange={(e) => { const t = (e.target as HTMLInputElement).value.trim(); aiTokenMent(t); setAiTokenAll(!!t); }} /></label>
+                  <span class="halkabb" style="display:inline-flex;gap:6px;align-items:center"><label style="display:inline-flex;gap:6px;align-items:center">AI-token: <input type="password" size={22} value={aiTokenBe} onInput={(e) => setAiTokenBe((e.target as HTMLInputElement).value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && aiTokenBe.trim()) { aiTokenMent(aiTokenBe.trim()); setAiTokenAll(true); setAiTokenBe(''); } }} /></label>
+                    <button class="gomb halk-gomb" disabled={!aiTokenBe.trim()} onClick={() => { aiTokenMent(aiTokenBe.trim()); setAiTokenAll(true); setAiTokenBe(''); }}>Mentés</button></span>
                 )}
                 {aiTokenAll && <button class="link-gomb halkabb" onClick={() => { aiTokenMent(''); setAiTokenAll(false); }}>token törlése</button>}
               </div>
               {ai?.hiba && <div class="hiba-doboz" style="margin-top:6px">{ai.hiba}</div>}
               {ai?.valasz && (
-                <div style="margin-top:6px"><strong>AI:</strong> {ai.valasz.rendben ? 'a felismerés rendben van.' : `${ai.valasz.hibak.length} hiba`}{ai.valasz.epulet?.teto ? ` · tető: ${ai.valasz.epulet.teto}` : ''}
-                  <ul style="margin:2px 0 0 18px;padding:0">{ai.valasz.hibak.map((h) => <li>{h.leiras}{h.javaslat ? ` – ${h.javaslat}` : ''}</li>)}</ul></div>
+                <div style="margin-top:6px"><strong>AI:</strong> {ai.valasz.rendben ? 'a felismerés rendben van.' : `${ai.valasz.hibak?.length ?? 0} hiba`}{ai.valasz.epulet?.teto ? ` · tető: ${ai.valasz.epulet.teto}` : ''}
+                  <ul style="margin:2px 0 0 18px;padding:0">{(ai.valasz.hibak ?? []).map((h) => <li>{h.leiras}{h.javaslat ? ` – ${h.javaslat}` : ''}</li>)}</ul></div>
               )}
               {ai?.nyers && <pre style="white-space:pre-wrap;font-size:12px">{ai.nyers}</pre>}
+              {ai && !ai.fut && !ai.hiba && !ai.valasz && !ai.nyers && <div class="hiba-doboz" style="margin-top:6px">Az AI-ellenőrzés nem adott értelmezhető választ – próbáld újra.</div>}
             </div>
           )}
           {(lapFigy.get(aIdx) ?? al.e.figyelmeztetesek).filter((f) => !(al.e.eszak && eszakJavitas(al.e.eszak.alairas) !== 0 && /északjel irányát/.test(f)) && !(/Északjelet nem találtam/.test(f) && eszakHom(al) !== null)).map((f) => <div class="figyelmeztetes" style="margin-bottom:8px">{f}</div>)}
