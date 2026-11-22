@@ -31,7 +31,7 @@ const ido = Math.round((Date.now() - t0) / 1000);
 const allapot = await p.evaluate(() => ({ halad: document.querySelector('.halad')?.textContent ?? null, hiba: [...document.querySelectorAll('.hiba-doboz')].map((d) => d.textContent).join(' | '), gombok: [...document.querySelectorAll('main button')].map((x) => x.textContent).filter((t) => /átvétel|Átvétel/.test(t ?? '')).slice(0, 5) }));
 if (process.env.VAKDBG) await p.screenshot({ path: `${ki}_allapot.png`, fullPage: false });
 // (a rögzített / ragadós sávok – átvétel-sáv, fejléc – ne takarják ki a rajz képét)
-await p.evaluate(() => { for (const e of document.querySelectorAll('body *')) { const s = getComputedStyle(e); if ((s.position === 'fixed' || s.position === 'sticky') && !e.querySelector('svg image')) e.style.display = 'none'; } });
+await p.evaluate(() => { for (const e of document.querySelectorAll('body *')) { const s = getComputedStyle(e); if ((s.position === 'fixed' || s.position === 'sticky') && !e.querySelector('svg image')) e.style.display = 'none'; } for (const e of document.querySelectorAll('.atvetel-sav')) e.style.display = 'none'; });
 // a lapok (a „Alaprajz” választó opciói) – az alaprajzi lapokon végigmenve
 const opciok = await p.evaluate(() => { const s = [...document.querySelectorAll('main select')].find((x) => [...x.options].some((o) => /oldal/.test(o.text))); return s ? [...s.options].filter((o) => o.value !== '-1').map((o) => ({ v: o.value, t: o.text })) : []; });
 const lapok = [];
@@ -48,6 +48,7 @@ for (const o of opciok) {
   // csak az alaprajzi lapok (ahol helyiség van)
   if (!adat.helyisegek && !adat.onellenorzes.length) continue;
   const n = lapok.length + 1;
+  await p.evaluate(() => { for (const e of document.querySelectorAll('.atvetel-sav')) e.style.display = 'none'; });
   const rajz = p.locator('main svg').filter({ has: p.locator('image') }).first();
   try { await rajz.screenshot({ path: `${ki}_lap${n}.png` }); } catch { await p.screenshot({ path: `${ki}_lap${n}.png` }); }
   lapok.push({ lap: o.t, ...adat });

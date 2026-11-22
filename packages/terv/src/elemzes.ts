@@ -567,16 +567,16 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
     }
   }
   halad?.('nyílászárók, határoló szerkezetek');
-  // nyitott tér: a helyiség körvonalának legfeljebb 30 %-án van fal vagy nyílás, miközben a lap többi helyiségét
-  // (területtel súlyozva) legalább 60 %-ban fal határolja – a pecsételt terület udvar, rakodótér, fedetlen tér
+  // nyitott tér: a helyiség körvonalának kevesebb mint felén van fal vagy nyílás, miközben a lap többi helyiségét
+  // (rajta kívül, területtel súlyozva) legalább 60 %-ban fal határolja – a pecsételt terület udvar, rakodótér, fedetlen tér
   // (a körvonala telekhatár, burkolatszél): külső tér, nem fűtött helyiség
   if (!auto) {
     const t = fedettsegSzamlalo(r);
     const arany = t.hatar.map((n, i) => (n ? t.fedett[i]! / n : 1));
     let sA = 0, sF = 0; magHelyisegek.forEach((h, i) => { const A = r.helyisegek[i]?.A ?? 0; if (A > 0 && !h.kezi) { sA += A; sF += A * arany[i]!; } });
-    const atlag = sA ? sF / sA : 0;
-    if (atlag >= 0.6) magHelyisegek.forEach((h, i) => {
-      if (h.kulter || h.kezi || (r.helyisegek[i]?.A ?? 0) < 4 || arany[i]! >= 0.3) return;
+    magHelyisegek.forEach((h, i) => {
+      const A = r.helyisegek[i]?.A ?? 0;
+      if (h.kulter || h.kezi || A < 4 || arany[i]! >= 0.5 || sA - A <= 0 || (sF - A * arany[i]!) / (sA - A) < 0.6) return;
       h.nyitott = true;
       e.figyelmeztetesek.push(`${h.kod ? h.kod + ' ' : ''}${h.nev}: a körvonala nagy részén (${Math.round((1 - arany[i]!) * 100)} %) nincs fal – nyitott (külső) térnek vettem. Ha zárt helyiség, állítsd át a besorolását.`);
     });
