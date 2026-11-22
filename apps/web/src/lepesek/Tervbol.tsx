@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { aiToken, aiTokenMent, svgKivagatPng, aiEllenoriz, type AiValasz } from '../terv/aiEllenorzes';
 import { zipPdfek } from '../terv/zipPdf';
+import { helyisegKeres, burokIgazit, falKeres, type AiJavitas } from '../terv/aiJavitas';
 import { ujId as ujIdT, type Projekt, type HelyisegKategoria, type Szerep as RrSzerep, SZEREP_ALAP } from '../modell';
 const sz2 = (x: number) => x.toLocaleString('hu-HU', { maximumFractionDigits: 1 });
 import { Szam, Valaszto, sz, MindJelolo } from '../ui';
@@ -114,7 +115,7 @@ const IRANY_SZIN: Record<number, string> = { 0: '#A16207', 90: '#2E6DB4', 180: '
 const IRANY_NEV: Record<number, string> = { 0: 'lapon fent', 90: 'lapon jobbra', 180: 'lapon lent', 270: 'lapon balra' };
 import { alaprajzFeldolgozHatter, pdfLapokHatter } from '../terv/hatter';
 import { elemAlakok } from '@terv/forrasAlak';
-import { AZ_TAJ, kulterRaszter, norm, futottRiK, padloigTetoter, pecsetPontok, kulsoKozelE, alapKijeloles, BEJARATI_H, burokNyilasok, eszakHomGy, homlokzatGy, nezetGy, homlokzatNezetTar, homlokzatRajzTar, burokAutoGy, burokAutoTar, nevFeliratok, vartTer, burok3dTar, burok3dCache, elemzesLap, burokFalGy, burokFalakAuto, ferdeModell, lapKategoriak, burokNyilasokPt, atvetelReszek, tervbolFuggo, homMagGy, type Kijeloles, type BurokFalAuto , tervFolyamat, SZINT_SOR, kerdesKulcs, nyilasMeretAlkalmaz, type ModellKezi } from '../terv/folyamat';
+import { AZ_TAJ, kulterRaszter, norm, futottRiK, padloigTetoter, pecsetPontok, kulsoKozelE, alapKijeloles, BEJARATI_H, burokNyilasok, eszakHomGy, homlokzatGy, nezetGy, homlokzatNezetTar, homlokzatRajzTar, burokAutoGy, burokAutoTar, nevFeliratok, vartTer, burok3dTar, burok3dCache, elemzesLap, burokFalGy, burokFalakAuto, ferdeModell, lapKategoriak, burokNyilasokPt, atvetelReszek, tervbolFuggo, homMagGy, type Kijeloles, type BurokFalAuto , tervFolyamat, SZINT_SOR, kerdesKulcs, nyilasMeretAlkalmaz, falPluszAlkalmaz, type ModellKezi } from '../terv/folyamat';
 export { tervbolFuggo } from '../terv/folyamat';
 
 export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modosit; ugrik: (n: 'helyisegek' | 'hatarolas' | 'retegrendek') => void }) {
@@ -209,7 +210,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   // az elemzések a kézzel átírt nyílásméretekkel (Kijeloles.nyMeret) – a lista, a 2D és a 3D nézet, az átvétel is ezt látja
   const elemzesek = useMemo(() => {
     const o: Record<number, AlaprajzFeldolgozas | string> = {};
-    for (const [k, v] of Object.entries(elemzesekNyers)) o[Number(k)] = typeof v === 'string' ? v : nyilasMeretAlkalmaz(v, kijelolesek[Number(k)]?.nyMeret);
+    for (const [k, v] of Object.entries(elemzesekNyers)) o[Number(k)] = typeof v === 'string' ? v : falPluszAlkalmaz(nyilasMeretAlkalmaz(v, kijelolesek[Number(k)]?.nyMeret), kijelolesek[Number(k)]?.falPlusz);
     return o;
   }, [elemzesekNyers, kijelolesek]);
   // a lakásonkénti / épületszintű jegyzék a másik szint helyiségeit is felsorolja: a más alaprajzlapon pecséttel
@@ -500,6 +501,50 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     } catch (e) { setAi({ fut: false, hiba: `AI-ellenőrzés: ${(e as Error)?.message ?? e}` }); }
   };
   const burokMent = (b: Poligon[] | undefined) => kjMod((k) => { const u = { ...k }; if (b) u.burok = b; else delete u.burok; return u; });
+  // az AI-ellenőrzés hibáinak javítási javaslata: az AI csak a hibát és a helyét adja, a javítást a program a rajz saját
+  // geometriájához igazítja (besorolás, hőburokél a fal külső síkjára, hiányzó fal a PDF két párhuzamos vonalából)
+  const [aiKesz, setAiKesz] = useState<Map<number, string>>(new Map());
+  const [aiVissza, setAiVissza] = useState<{ lap: number; kj: Kijeloles; db: number }[]>([]);
+  useEffect(() => { setAiKesz(new Map()); setAiVissza([]); }, [ai?.valasz]);
+  const aiJavitasok = useMemo((): (AiJavitas | null)[] => {
+    if (!ai?.valasz || !ai.kiv || !al?.r) return [];
+    const { nezet: kn, W, H } = ai.kiv; const tx = (x: number) => kn[0] + (x / W) * kn[2], ty = (y: number) => kn[1] + (y / H) * kn[3];
+    const nevek = helyisegek.map((h) => h.nev);
+    const SZNEV: Record<string, string> = { futott: 'fűtött', futetlen: 'fűtetlen', kulter: 'külső tér' };
+    return (ai.valasz.hibak ?? []).map((h): AiJavitas | null => {
+      if (h.besorolas && SZNEV[h.besorolas]) {
+        const hi = helyisegKeres(h.helyiseg, nevek);
+        if (hi >= 0 && szerep(hi) !== h.besorolas) return { tipus: 'besorolas', hi, szerep: h.besorolas as 'futott' | 'futetlen' | 'kulter', szoveg: `${helyisegek[hi]!.nev} → ${SZNEV[h.besorolas]}` };
+      }
+      if (!Array.isArray(h.hely) || h.hely.length !== 4 || !h.hely.every((v) => Number.isFinite(v))) return null;
+      const doboz: [number, number, number, number] = [tx(h.hely[0]!), ty(h.hely[1]!), tx(h.hely[2]!), ty(h.hely[3]!)];
+      if (h.tipus === 'burok_kifolyik' || h.tipus === 'burok_hianyzik') {
+        const b = burokIgazit(al.r!, burok, doboz, h.tipus === 'burok_kifolyik' ? 'be' : 'ki', aLap?.lap);
+        if (b) return { tipus: 'burok', burok: b, szoveg: 'a hőburok a jelölt helyen a fal külső síkjára' };
+      }
+      if (h.tipus === 'fal_hianyzik') {
+        const sav = aLap ? falKeres(aLap.lap, al.r!, doboz) : null;
+        if (sav) { const xs = sav.map((q) => q[0]), ys = sav.map((q) => q[1]); const v = Math.min(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) * al.r!.mPerPt;
+          return { tipus: 'fal', sav, szoveg: `fal a jelölt helyen a rajz két vonala közt (${Math.round(v * 100)} cm)` }; }
+      }
+      return null;
+    });
+  }, [ai, al, burok, helyisegek, kj]);
+  try { (globalThis as any).__aiAllapot = () => ({ kiv: ai?.kiv, burok, mPerPt: al?.r?.mPerPt, javitasok: aiJavitasok.map((j) => j?.tipus ?? null) }); } catch { /* */ }
+  const aiAlkalmaz = (j: number) => {
+    const jv = aiJavitasok[j]; if (!jv) return;
+    setAiVissza((v) => [...v, { lap: aIdx, kj, db: j }]);
+    if (jv.tipus === 'besorolas') setSzerep(jv.hi, jv.szerep);
+    else if (jv.tipus === 'burok') burokMent(jv.burok);
+    else kjMod((k) => ({ ...k, falPlusz: [...(k.falPlusz ?? []), jv.sav] }));
+    setAiKesz((s) => new Map(s).set(j, jv.szoveg));
+  };
+  const aiVisszavon = () => {
+    const u = aiVissza[aiVissza.length - 1]; if (!u) return;
+    kjModLap(u.lap, () => u.kj);
+    setAiVissza((v) => v.slice(0, -1));
+    setAiKesz((s) => { const t = new Map(s); t.delete(u.db); return t; });
+  };
   // húzás vége: ha a pont egy másik pontra került (fogási távolságon belül), kérdés: összevonjuk-e a kettőt
   const huzVege = () => {
     if (!huz) return;
@@ -1728,10 +1773,11 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
           </div>
           <h2>1. Helyiségek és tájolás</h2>
           <p class="halk">A helyiségpecsétekből (kód, név, burkolat, terület) és a helyiségjegyzékből. A színes vonalak a felismert külső falszakaszok a helyiségek belső (nettó) síkján, homlokzati irány szerint; a jelölők a nyílászárók.</p>
-          {onellenorzes.length > 0 && (
-            <div role="status" style={`margin-bottom:10px;padding:8px 10px;border-radius:6px;border:1px solid ${onellenorzes.some((j) => j.sulyos) ? '#FCA5A5' : '#FCD34D'};background:${onellenorzes.some((j) => j.sulyos) ? '#FEF2F2' : '#FFFBEB'}`}>
-              <strong>Önellenőrzés – ellenőrizd:</strong>
-              <ul style="margin:4px 0 0 18px;padding:0">{onellenorzes.map((j) => <li style={j.sulyos ? 'color:#991B1B' : ''}>{j.szoveg}</li>)}</ul>
+          {!!al?.r && (
+            <div role="status" style={`margin-bottom:10px;padding:8px 10px;border-radius:6px;border:1px solid ${onellenorzes.some((j) => j.sulyos) ? '#FCA5A5' : onellenorzes.length ? '#FCD34D' : '#BBF7D0'};background:${onellenorzes.some((j) => j.sulyos) ? '#FEF2F2' : onellenorzes.length ? '#FFFBEB' : '#F0FDF4'}`}>
+              {onellenorzes.length > 0 ? <><strong>Önellenőrzés – ellenőrizd:</strong>
+                <ul style="margin:4px 0 0 18px;padding:0">{onellenorzes.map((j) => <li style={j.sulyos ? 'color:#991B1B' : ''}>{j.szoveg}</li>)}</ul></>
+                : <strong>Önellenőrzés: nem találtam gyanús helyet.</strong>}
               <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
                 {aiTokenAll ? (
                   <button class="gomb halk-gomb" disabled={ai?.fut} onClick={() => void aiFuttat()} title="A rajz hőburok körüli kivágata (szövegmező nélkül) a felismert eredménnyel egy képfelismerő modellnek; a válasz itt jelenik meg.">{ai?.fut ? 'AI-ellenőrzés fut…' : 'AI-ellenőrzés (kép a felismeréssel)'}</button>
@@ -1745,7 +1791,13 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
               {ai?.hiba && <div class="hiba-doboz" style="margin-top:6px">{ai.hiba}</div>}
               {ai?.valasz && (
                 <div style="margin-top:8px;font-size:15px;line-height:1.45"><strong>AI:</strong> {ai.valasz.rendben ? 'a felismerés rendben van.' : `${ai.valasz.hibak?.length ?? 0} hiba (a rajzon számozott piros keret jelöli a helyét)`}{ai.valasz.epulet?.teto ? ` · tető: ${ai.valasz.epulet.teto}` : ''}
-                  <ol style="margin:4px 0 0 22px;padding:0">{(ai.valasz.hibak ?? []).map((h) => <li style="margin:3px 0">{h.leiras}{h.javaslat ? <><br /><span style="color:#374151">→ {h.javaslat}</span></> : ''}</li>)}</ol></div>
+                  <ol style="margin:4px 0 0 22px;padding:0">{(ai.valasz.hibak ?? []).map((h, j) => <li style="margin:3px 0">{h.leiras}{h.javaslat ? <><br /><span style="color:#374151">→ {h.javaslat}</span></> : ''}
+                    {aiKesz.has(j)
+                      ? <div style="margin-top:2px;color:#166534">✓ Alkalmazva: {aiKesz.get(j)}</div>
+                      : aiJavitasok[j] && <div style="margin-top:2px"><button class="gomb halk-gomb" onClick={() => aiAlkalmaz(j)}>Alkalmaz: {aiJavitasok[j]!.szoveg}</button></div>}
+                    {!aiKesz.has(j) && !aiJavitasok[j] && (h.tipus === 'burok_kifolyik' || h.tipus === 'burok_hianyzik' || h.tipus === 'fal_hianyzik') && <div class="halkabb" style="font-size:13px">Automatikusan nem javítható (a jelölt helyen nem találtam falat) – a „Hőburok szerkesztése” gombbal kézzel.</div>}
+                  </li>)}</ol>
+                  {aiVissza.some((u) => u.lap === aIdx) && <div style="margin-top:6px"><button class="link-gomb" onClick={aiVisszavon}>Az utolsó AI-javítás visszavonása</button></div>}</div>
               )}
               {ai?.nyers && <pre style="white-space:pre-wrap;font-size:14px">{ai.nyers}</pre>}
               {ai && !ai.fut && !ai.hiba && !ai.valasz && !ai.nyers && <div class="hiba-doboz" style="margin-top:6px">Az AI-ellenőrzés nem adott értelmezhető választ – próbáld újra.</div>}

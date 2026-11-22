@@ -4,7 +4,9 @@
  * modellnek. Csak a hőburok környéke megy ki (a lap szövegmezője – név, cím – nem); a felhasználó gombnyomására.
  */
 
-export interface AiHiba { tipus: string; leiras: string; hely?: [number, number, number, number]; javaslat?: string }
+export interface AiHiba { tipus: string; leiras: string; hely?: [number, number, number, number]; javaslat?: string;
+  /** A hibás besorolású helyiség neve (a kontextus helyiséglistájából) és a helyes besorolás. */
+  helyiseg?: string; besorolas?: 'futott' | 'futetlen' | 'kulter' }
 export interface AiValasz { rendben: boolean; hibak: AiHiba[]; epulet?: { szintek_szama?: number | null; teto?: string } }
 
 const TOKEN_KULCS = 'ekm-ai-token';

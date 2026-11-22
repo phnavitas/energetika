@@ -7,6 +7,7 @@ import { anyag } from '../katalogus';
 import { pecsetKinyer, type PecsetAdat } from '@terv/pecset';
 import type { SzurkeKep } from '@terv/autohelyiseg';
 import { eltolas, fedettArany } from '@terv/fedes';
+import { raszterFalPlusz } from './aiJavitas';
 import { burokAuto, burokFalak, burokMeres, burokTomeg, burokTomegKezi, csatlakozasok, elKornyezet, kulsoSikra, kulsoSraff, nyilasEl, bennE, type Poligon } from '@terv/burok';
 import type { TervNyilas } from '@terv/nyilaszarok';
 import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, eszakJavitas, eszakJavitasMent, type TervLap, type AlaprajzFeldolgozas } from '@terv/elemzes';
@@ -58,7 +59,20 @@ export interface Kijeloles { egysegek: Set<string>; kizartH: Set<number>; kat: R
    *  átírva): szélesség, magasság, mellvéd (m). */
   nyMeret?: Record<number, { szel: number; mag: number; pm: number | null; athidalo?: 'monolit' | 'eloregyartott' }>;
   /** Kézzel felvett helyiségek (pecsét nélküli zárt terület, pl. lépcső) – a lap újrafelismerésekor magként. */
-  plusz?: { x: number; y: number; nev: string }[] }
+  plusz?: { x: number; y: number; nev: string }[];
+  /** Kézi falsávok (pt; pl. az AI-ellenőrzés javaslatára a PDF két párhuzamos vonala közti sáv) – a raszter falaihoz adva. */
+  falPlusz?: Poligon[] }
+
+const falPluszGy = new WeakMap<AlaprajzFeldolgozas, { kulcs: string; a: AlaprajzFeldolgozas }>();
+/** Az elemzés a kézi falsávokkal (Kijeloles.falPlusz) – a raszter (és a 3D-s raszter) falai közé (változatlannál ugyanaz). */
+export function falPluszAlkalmaz(a: AlaprajzFeldolgozas, savok?: Poligon[]): AlaprajzFeldolgozas {
+  if (!savok?.length || !a.r) return a;
+  const kulcs = JSON.stringify(savok), c = falPluszGy.get(a); if (c?.kulcs === kulcs) return c.a;
+  const b: AlaprajzFeldolgozas = { ...a, r: raszterFalPlusz(a.r, savok), ...(a.r3d ? { r3d: raszterFalPlusz(a.r3d, savok) } : {}) };
+  const lap = elemzesLap.get(a); if (lap) elemzesLap.set(b, lap);
+  falPluszGy.set(a, { kulcs, a: b });
+  return b;
+}
 
 const nyMeretGy = new WeakMap<AlaprajzFeldolgozas, { kulcs: string; a: AlaprajzFeldolgozas }>();
 /** Az elemzés a kézzel átírt nyílásméretekkel (változatlan elemzésnél ugyanaz az objektum – a gyorsítótárak miatt). */

@@ -138,9 +138,13 @@ const AI_PROMPT = `Magyar építészeti alaprajz (PDF-ből) képét kapod, rajta
 - piros "nincs fal" címke: a hőburok ott nem falon fut.
 A kontextus JSON-ban a program saját jelzései és a helyiséglista.
 Feladat: nézd meg, hol hibás a felismerés (a hőburok kifolyik-e a falakon túl, kimarad-e fűtött rész, helyiség rosszul
-körülhatárolt-e, hiányzik-e fal vagy nyílás). Válaszolj CSAK JSON-nal:
-{"rendben": bool, "hibak": [{"tipus": "burok_kifolyik"|"burok_hianyzik"|"helyiseg_hibas"|"fal_hianyzik"|"nyilas_hianyzik"|"egyeb",
-"leiras": "rövid magyar mondat", "hely": [x0,y0,x1,y1] (a kép pixelei, ha meghatározható), "javaslat": "rövid magyar mondat"}],
+körülhatárolt-e, hiányzik-e fal vagy nyílás, rossz-e egy helyiség besorolása – pl. terasz, garázs, tároló fűtöttként).
+A "hely" a hiba helye a képen, pixelben, a lehető legszűkebben: a hőburok-hibánál a hibás burokszakasz és a helyes fal
+környéke együtt, hiányzó falnál maga a fal. Ha a hiba egy helyiség besorolása, add meg a "helyiseg" (pontosan a kontextus
+helyiséglistájában szereplő név) és a "besorolas" mezőt. Válaszolj CSAK JSON-nal:
+{"rendben": bool, "hibak": [{"tipus": "burok_kifolyik"|"burok_hianyzik"|"helyiseg_hibas"|"fal_hianyzik"|"nyilas_hianyzik"|"besorolas"|"egyeb",
+"leiras": "rövid magyar mondat", "hely": [x0,y0,x1,y1] (a kép pixelei, ha meghatározható), "javaslat": "rövid magyar mondat",
+"helyiseg": "név" (csak besorolási hibánál), "besorolas": "futott"|"futetlen"|"kulter" (csak besorolási hibánál)}],
 "epulet": {"szintek_szama": szám vagy null, "teto": "lapos"|"nyereg"|"konty"|"felnyereg"|"osszetett"|"nem latszik"}}`;
 
 async function aiEllenorzes(request, env, f) {
