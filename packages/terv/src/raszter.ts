@@ -403,7 +403,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
     }
   }
   let falVonal: Uint8Array | undefined;
-  let sraffMod = false; let sraffMaszk: Uint8Array | null = null; let sraffLab: { lab: Uint16Array; retegek: string[] } | null = null;
+  let csakSraff = false; let sraffMod = false; let sraffMaszk: Uint8Array | null = null; let sraffLab: { lab: Uint16Array; retegek: string[] } | null = null;
   // kitöltés nélkül, csak sraffozással rajzolt falak (pl. ArchiCAD PDF-export: a falréteg mintázata vékony ferde vonalak,
   // a falsík vonala külön szakasz): a sűrű, rövid, ferde vékony vonalak mezője a fal. Csak akkor, ha a kitöltésekből
   // alig van fal – a kitöltött falas rajzon a sraffozás amúgy is a falon belül van.
@@ -549,6 +549,8 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       const { tiszta, srPx, falPx } = M;
       if ((globalThis as any).SRDBG) console.log('SRDBG db', db, 'srMaxV', srMaxV, 'letra', letra.length, 'srPx', srPx, 'falPx', falPx, 'csakFolia', csakFolia);
       if (srPx > 1.5 * falPx) {
+        // (a falak kizárólag sraffal – kitöltés nélkül – rajzoltak)
+        csakSraff = srPx > 10 * falPx;
         for (let i = 0; i < w * h; i++) if (tiszta[i]) fal[i] = 1;
         darabok.push([x0, y0, x1, y1]);
         sraffMod = true; sraffMaszk = tiszta;
@@ -1227,11 +1229,11 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       else if (zar[i]) { helyCimke[i] = 0; gat[i] = 1; szabadKicsi[i] = 0; }
       else if (zonas.has(helyCimke[i]!)) helyCimke[i] = 0;
     }
-    // két zóna közti keskeny (≤ 0,6 m) rés a fal: a zóna a fal belső síkjáig tart. Sraffal rajzolt falú lapon (a sraffozás
-    // nélküli, csak a két síkjával rajzolt válaszfal / garázs és közlekedő közti fal nem lesz fal), ha a résben se fal, se
-    // nyílás nincs, és a rés legalább 1,5 m hosszú, a rés fal. (Kitöltéses falú lapon a rés a rajz szándéka – pl. nyitott
-    // tér, berendezés –, ott nem pótolunk.)
-    if (sraffMod) {
+    // két zóna közti keskeny (≤ 0,6 m) rés a fal: a zóna a fal belső síkjáig tart. Csak sraffal (kitöltés nélkül) rajzolt
+    // falú lapon (a sraffozás nélküli, két síkjával rajzolt válaszfal / garázs és közlekedő közti fal nem lesz fal), ha a
+    // résben se fal, se nyílás nincs, és a rés legalább 1,5 m hosszú, a rés fal. (Kitöltéses falú lapon a rés a rajz
+    // szándéka – nyitott tér, berendezés –, ott nem pótolunk.)
+    if (csakSraff) {
       const RF = Math.max(1, Math.round(0.6 / px));
       const res = (k0: number, lep: number, n: number) => {
         // k0: az első nem-zóna pixel, lep: lépésköz, n: a sor hossza a k0-tól (a rács széléig)
@@ -1360,9 +1362,11 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       }
       let legjobb = 0, db = 0;
       for (const [c, n] of szam) if (n > db) { legjobb = c; db = n; }
-      // (zónás helyiség – ArchiCAD-zóna – nem kapja meg a nyílásán túli zsebet: a zóna a helyiség teljes kiterjedése,
-      // az ajtón / üvegfalon túli tér – pl. pergolás terasz – nem része)
-      if (legjobb && db * px >= 0.3 && !zonaCimkek?.has(legjobb)) for (const q of komp) helyCimke[q] = legjobb;
+      // (csak sraffal rajzolt falú, zónás lapon a zónás helyiség nem kapja meg a nyílásán túli zsebet: a zóna a helyiség
+      // teljes kiterjedése, az ajtón / üvegfalon túli – pl. pergolás – terasz nem része; a kitöltéses falú lapon a zseb
+      // jellemzően a helyiség zóna nélküli része – szélfogó, előtér-fülke)
+      const nyitottZseb = csakSraff && !!zonaCimkek?.has(legjobb);
+      if (legjobb && db * px >= 0.3 && !nyitottZseb) for (const q of komp) helyCimke[q] = legjobb;
     }
   }
   const szivarog = magok.map(() => false);
