@@ -623,7 +623,7 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
   if (lapok.some((L) => L.kizart)) { falVastagJavit(falak, nyilasok); sarokZaras(falak, nyilasok); }
   if (opt.kulsoFalRetegrend?.length) kulsoFalRetegek(falak, fodemek, nyilasok, opt.kulsoFalRetegrend);
   if (lapok.some((L) => L.kizart)) falOsszefuz(falak, nyilasok, pillerek);
-  const koszoruk = opt.metszetElemek?.length || opt.attika ? koszoruKeres(szintek, falak, fodemek, opt.metszetElemek ?? [], opt.teto ? undefined : opt.attika) : [];
+  const koszoruk = opt.metszetElemek?.length || opt.attika ? koszoruKeres(szintek, falak, fodemek, opt.metszetElemek ?? [], opt.attika, !!opt.teto) : [];
   // áthidalók (Balázs, 2026-11-21: „Koszorú csak akkor jön le ablakig, ha monolit, amúgy elöregyártott kiváltók lesznek …
   // ablakra kattintva darabonként változtatható”): a koszorús szint teherhordó falainak nyílásai
   for (const k of koszoruk) {
@@ -1939,23 +1939,39 @@ function gerendaKeres(lapok: LapBemenet[], falak: Fal[], fodemek: Fodem[], koszo
  * (± 30 cm) esik, és a szint padlója fölött legalább 1,5 m-rel kezdődik; több jelölt közül a födém alsó síkjához
  * legközelebbi, azonos távolságnál a gyakoribb keresztmetszet. A koszorú a szint teherhordó falain fut.
  */
-function koszoruKeres(szintek: Szint[], falak: Fal[], fodemek: Fodem[], elemek: MetszetElem[], attGeom?: { magas: number; szel: number; zFelso: number }): Koszoru[] {
+function koszoruKeres(szintek: Szint[], falak: Fal[], fodemek: Fodem[], elemek: MetszetElem[], attGeom?: { magas: number; szel: number; zFelso: number }, vanMagasteto = false): Koszoru[] {
   // (a falazóelem rétege – „POROTHERM FAL 30”, tégla, pórusbeton – a fal metszete, nem koszorú)
   const NEM = /h[őo]szig|padl[óo]|tet[őo]|zsalu|alapoz|s[áa]valap|metszet kit|kieg[ée]sz|pill[ée]r|burkolat|f[öo]d[ée]m|porotherm|t[ée]gla|ker[áa]mia|falaz|ytong|p[óo]rusbeton|g[áa]zbeton/i;
   const ki: Koszoru[] = [];
   // ATTIKA a metszet geometriájából (lapostetős épület – magastető nélkül): a legfelső szint homlokzati teherhordó falain,
   // a falvastagsággal és a födém tetejétől mért magassággal (Balázs: „hossz-magasság-szélesség")
+  // (a geometriai attika szintje: amelyiknek a födéme tetején ül – a legfelsőn magastető nélkül az összes homlokzati
+  // teherhordó falon, alsóbb szinten a fölötte lévő szint körvonalán kívüli – lapostetős – falakon, ha rétegből nincs)
+  let attGeomSzint: string | null = null;
   if (attGeom && szintek.length) {
     const legf = szintek.reduce((p, q) => (q.z0 > p.z0 ? q : p));
-    const tf = falak.filter((f) => f.szint === legf.id && f.szerkezet === 'teherhordo' && f.burok === 'kulso');
-    if (tf.length) ki.push({ id: `A${legf.id}`, szint: legf.id, szel: attGeom.szel, magas: attGeom.magas, zFelso: attGeom.zFelso, reteg: 'attika (metszet geometriája)', falak: tf.map((f) => f.id), hossz: sz(tf.reduce((t, f) => t + f.hossz, 0), 2), fajta: 'attika' });
+    const alj = attGeom.zFelso - attGeom.magas;
+    const sz1 = szintek.find((q) => { const fd = fodemek.find((f) => f.alatt === q.id); const zt = fd ? fd.z : q.z0 + q.h; return Math.abs(zt - alj) <= 0.35; }) ?? (vanMagasteto ? null : legf);
+    if (sz1 === legf && !vanMagasteto) {
+      const tf = falak.filter((f) => f.szint === legf.id && f.szerkezet === 'teherhordo' && f.burok === 'kulso');
+      if (tf.length) ki.push({ id: `A${legf.id}`, szint: legf.id, szel: attGeom.szel, magas: attGeom.magas, zFelso: attGeom.zFelso, reteg: 'attika (metszet geometriája)', falak: tf.map((f) => f.id), hossz: sz(tf.reduce((t, f) => t + f.hossz, 0), 2), fajta: 'attika' });
+    } else if (sz1 && sz1 !== legf) attGeomSzint = sz1.id;
   }
   for (const sz0 of szintek) {
     const fd = fodemek.find((f) => f.alatt === sz0.id);
     const alja = fd ? fd.z - fd.vastag : sz0.z0 + sz0.h - 0.3;
     const jel = elemek.filter((e) => !NEM.test(e.reteg) && e.szel >= 0.2 && e.szel <= 0.5 && e.magas >= 0.15 && e.magas <= 0.8
       && Math.abs(e.zFelso - alja) <= 0.3 && e.zAlso >= sz0.z0 + 1.5);
-    if (!jel.length) continue;
+    if (!jel.length) {
+      // (rétegek nélkül is: a geometriai attika a fölötte lévő szint körvonalán kívüli teherhordó falakon)
+      if (attGeom && attGeomSzint === sz0.id) {
+        const felso = szintek.find((q) => q.z0 > sz0.z0 + 1);
+        const felsoPol = felso ? fodemek.find((f) => f.folott === felso.id)?.poligonok ?? [] : [];
+        const kint = falak.filter((f) => f.szint === sz0.id && f.szerkezet === 'teherhordo' && f.burok === 'kulso' && !felsoPol.some((pl) => pontBenne(pl, (f.a[0] + f.b[0]) / 2, (f.a[1] + f.b[1]) / 2, 0.3)));
+        if (kint.length && felsoPol.length) ki.push({ id: `A${sz0.id}`, szint: sz0.id, szel: attGeom.szel, magas: attGeom.magas, zFelso: attGeom.zFelso, reteg: 'attika (metszet geometriája)', falak: kint.map((f) => f.id), hossz: sz(kint.reduce((t, f) => t + f.hossz, 0), 2), fajta: 'attika' });
+      }
+      continue;
+    }
     const kulcs = (e: MetszetElem) => `${e.szel}|${e.magas}`;
     const db = (e: MetszetElem) => jel.filter((q) => kulcs(q) === kulcs(e)).length;
     // (a koszorú alapesetben 25–30 cm magas – Balázs, 2026-11-21: „koszorúnál alapszabály, hogy nem túl magas”: a
@@ -1970,7 +1986,8 @@ function koszoruKeres(szintek: Szint[], falak: Fal[], fodemek: Fodem[], elemek: 
     // attika: a koszorúra (± 5 cm) ülő, 30–100 cm magas, vasbeton / beton elem; a fölötte lévő szint körvonalán kívüli
     // (lapostetős) teherhordó falakon
     const att = elemek.filter((e) => /beton|\bvb\b/i.test(e.reteg) && !NEM.test(e.reteg) && e.szel >= 0.2 && e.szel <= 0.5 && e.magas >= 0.3 && e.magas <= 1 && Math.abs(e.zAlso - leg.zFelso) <= 0.05)
-      .sort((p, q) => db(q) - db(p))[0];
+      .sort((p, q) => db(q) - db(p))[0]
+      ?? (attGeom && attGeomSzint === sz0.id ? { szel: attGeom.szel, magas: attGeom.magas, zFelso: attGeom.zFelso, reteg: 'attika (metszet geometriája)' } as MetszetElem : undefined);
     const felso = szintek.find((q) => q.z0 > sz0.z0 + 1);
     const felsoPol = felso ? fodemek.find((f) => f.folott === felso.id)?.poligonok ?? [] : [];
     if (att && felsoPol.length) {
