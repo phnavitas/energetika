@@ -41,6 +41,52 @@ function terdfalAtmeno(lap: Lap, padlo: number): number | null {
   return jel[Math.floor((jel.length - 1) / 2)]!;
 }
 
+/**
+ * ATTIKA a metszet geometriájából (Balázs, 2026-11-22: „nem rétegként kell az attika, hanem hossz-magasság-szélesség"):
+ * lapostetőnél a legfelső födém szélén (± 1,2 m) álló, a födém tetején / alatta induló, annál 0,2–2 m-rel magasabbra
+ * nyúló függőleges kitöltés (fal). Magastetőnél (a legfelső födém fölött hosszú ferde vonal) nincs – ott az ilyen fal
+ * térdfal. A magasság a födém tetejétől, a szélesség a falvastagság (mediánok); a hossz az alaprajzból jön.
+ */
+export function attikaGeometria(lap: Lap): { magas: number; szel: number; zFelso: number; db: number } | null {
+  const lk = szintLekepezes(lap); if (!lk) return null;
+  const { z, mPt } = lk;
+  const fd = lap.utvonalak.filter((u) => u.muvelet !== 'stroke' && u.muvelet !== 'none' && !(u.reteg && (NEM.test(u.reteg) || SAV_NEM.test(u.reteg))));
+  const zT = (b: number[]) => Math.max(z(b[1]!), z(b[3]!)), zA = (b: number[]) => Math.min(z(b[1]!), z(b[3]!));
+  // födémsávok: ≥ 3 m széles, 0,12–0,6 m vastag kitöltések; a legfelső
+  const fodem = fd.filter((u) => (u.bbox[2] - u.bbox[0]) * mPt >= 3 && (u.bbox[3] - u.bbox[1]) * mPt >= 0.12 && (u.bbox[3] - u.bbox[1]) * mPt <= 0.6);
+  if (!fodem.length) return null;
+  const felso = fodem.reduce((p, q) => (zT(q.bbox) > zT(p.bbox) ? q : p));
+  const zf = zT(felso.bbox);
+  // magastető: a legfelső födém fölé emelkedő ferde vonalak (szarufa, tetősík) – együtt ≥ 4 m
+  let ferde = 0;
+  for (const u of lap.utvonalak) for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) {
+    const dx = Math.abs(p[i + 2]! - p[i]!) * mPt, dy = Math.abs(p[i + 3]! - p[i + 1]!) * mPt, L = Math.hypot(dx, dy);
+    if (L < 1 || dx < 0.2 || dy < 0.2) continue;
+    const a = (Math.atan2(dy, dx) * 180) / Math.PI; if (a < 8 || a > 75) continue;
+    if (Math.max(z(p[i + 1]!), z(p[i + 3]!)) > zf + 0.3 && Math.min(p[i]!, p[i + 2]!) < felso.bbox[2] + 2 / mPt && Math.max(p[i]!, p[i + 2]!) > felso.bbox[0] - 2 / mPt) ferde += L;
+  }
+  if (ferde >= 4) return null;
+  // függőleges falkitöltések oszlopba fűzve
+  const fl = fd.filter((u) => { const w = (u.bbox[2] - u.bbox[0]) * mPt; return w >= 0.1 && w <= 0.8 && (u.bbox[3] - u.bbox[1]) * mPt >= 0.1; })
+    .map((u) => [...u.bbox] as [number, number, number, number]).sort((a, b) => a[0] - b[0] || a[3] - b[3]);
+  const osz: [number, number, number, number][] = [];
+  for (const b of fl) {
+    const o = osz.find((c) => Math.min(c[2], b[2]) - Math.max(c[0], b[0]) > 0.5 * Math.min(c[2] - c[0], b[2] - b[0]) && (Math.abs(c[1] - b[3]) <= 0.05 / mPt || Math.abs(b[1] - c[3]) <= 0.05 / mPt || (b[1] < c[3] && b[3] > c[1])));
+    if (o) { o[0] = Math.min(o[0], b[0]); o[1] = Math.min(o[1], b[1]); o[2] = Math.max(o[2], b[2]); o[3] = Math.max(o[3], b[3]); } else osz.push(b);
+  }
+  const mag: number[] = [], szel: number[] = [], tet: number[] = [];
+  for (const c of osz) {
+    const cx = (c[0] + c[2]) / 2; const zt = zT(c), za = zA(c);
+    if (Math.min(Math.abs(cx - felso.bbox[0]), Math.abs(cx - felso.bbox[2])) * mPt > 1.2) continue;
+    if (za > zf + 0.1 || zt < zf + 0.2 || zt > zf + 2) continue;
+    mag.push(zt - zf); szel.push((c[2] - c[0]) * mPt); tet.push(zt);
+  }
+  if (!mag.length) return null;
+  const med = (l: number[]) => { const q = [...l].sort((a, b) => a - b); return q[Math.floor((q.length - 1) / 2)]!; };
+  const r2 = (v: number) => Math.round(v * 100) / 100;
+  return { magas: r2(med(mag)), szel: r2(med(szel)), zFelso: r2(med(tet)), db: mag.length };
+}
+
 function terdfalFodemre(lap: Lap, mPerPt: number): number | null {
   // kitöltés, vagy (a csak vonallal rajzoló irodáknál, pl. „_ÉPÜLET” réteg) zárt körvonal
   const zartE = (u: Utvonal) => u.pontok.some((p) => p.length >= 8 && Math.hypot(p[0]! - p[p.length - 2]!, p[1]! - p[p.length - 1]!) < 0.5) || u.zart.some(Boolean);

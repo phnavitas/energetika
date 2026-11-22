@@ -389,6 +389,8 @@ const terId = (lap: number, szint: string, ri: number) => `T${lap}.${szint}.${ri
  * Épületmodell a lapokból. A típusszintes lap minden szintjére ugyanaz a geometria kerül (más azonosítóval).
  */
 export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]; metszetElemek?: MetszetElem[];
+  /** A metszet geometriájából felismert attika (lapostetőnél: magasság a födém tetejétől, falvastagság; m). */
+  attika?: { magas: number; szel: number; zFelso: number };
   /** magastető: hajlás (fok), oromzatok lapirányonként (szélesség, m), ereszkiállás (m, alapból 0,5 – becsült) */
   teto?: MagastetoBe;
   /** A metszet külsőfal-rétegrendjei (kívülről befelé mindegy – a sorrend a táblázaté): ahol az alaprajzon mért fal
@@ -621,7 +623,7 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
   if (lapok.some((L) => L.kizart)) { falVastagJavit(falak, nyilasok); sarokZaras(falak, nyilasok); }
   if (opt.kulsoFalRetegrend?.length) kulsoFalRetegek(falak, fodemek, nyilasok, opt.kulsoFalRetegrend);
   if (lapok.some((L) => L.kizart)) falOsszefuz(falak, nyilasok, pillerek);
-  const koszoruk = opt.metszetElemek?.length ? koszoruKeres(szintek, falak, fodemek, opt.metszetElemek) : [];
+  const koszoruk = opt.metszetElemek?.length || opt.attika ? koszoruKeres(szintek, falak, fodemek, opt.metszetElemek ?? [], opt.teto ? undefined : opt.attika) : [];
   // áthidalók (Balázs, 2026-11-21: „Koszorú csak akkor jön le ablakig, ha monolit, amúgy elöregyártott kiváltók lesznek …
   // ablakra kattintva darabonként változtatható”): a koszorús szint teherhordó falainak nyílásai
   for (const k of koszoruk) {
@@ -1874,10 +1876,17 @@ function gerendaKeres(lapok: LapBemenet[], falak: Fal[], fodemek: Fodem[], koszo
  * (± 30 cm) esik, és a szint padlója fölött legalább 1,5 m-rel kezdődik; több jelölt közül a födém alsó síkjához
  * legközelebbi, azonos távolságnál a gyakoribb keresztmetszet. A koszorú a szint teherhordó falain fut.
  */
-function koszoruKeres(szintek: Szint[], falak: Fal[], fodemek: Fodem[], elemek: MetszetElem[]): Koszoru[] {
+function koszoruKeres(szintek: Szint[], falak: Fal[], fodemek: Fodem[], elemek: MetszetElem[], attGeom?: { magas: number; szel: number; zFelso: number }): Koszoru[] {
   // (a falazóelem rétege – „POROTHERM FAL 30”, tégla, pórusbeton – a fal metszete, nem koszorú)
   const NEM = /h[őo]szig|padl[óo]|tet[őo]|zsalu|alapoz|s[áa]valap|metszet kit|kieg[ée]sz|pill[ée]r|burkolat|f[öo]d[ée]m|porotherm|t[ée]gla|ker[áa]mia|falaz|ytong|p[óo]rusbeton|g[áa]zbeton/i;
   const ki: Koszoru[] = [];
+  // ATTIKA a metszet geometriájából (lapostetős épület – magastető nélkül): a legfelső szint homlokzati teherhordó falain,
+  // a falvastagsággal és a födém tetejétől mért magassággal (Balázs: „hossz-magasság-szélesség")
+  if (attGeom && szintek.length) {
+    const legf = szintek.reduce((p, q) => (q.z0 > p.z0 ? q : p));
+    const tf = falak.filter((f) => f.szint === legf.id && f.szerkezet === 'teherhordo' && f.burok === 'kulso');
+    if (tf.length) ki.push({ id: `A${legf.id}`, szint: legf.id, szel: attGeom.szel, magas: attGeom.magas, zFelso: attGeom.zFelso, reteg: 'attika (metszet geometriája)', falak: tf.map((f) => f.id), hossz: sz(tf.reduce((t, f) => t + f.hossz, 0), 2), fajta: 'attika' });
+  }
   for (const sz0 of szintek) {
     const fd = fodemek.find((f) => f.alatt === sz0.id);
     const alja = fd ? fd.z - fd.vastag : sz0.z0 + sz0.h - 0.3;

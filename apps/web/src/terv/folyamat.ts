@@ -17,7 +17,7 @@ import { homlokzatSziluettek, laposTetoSavok, magastetoLatszik, type HomlokzatSz
 import { homlokzatMellvedek, homlokzatElteresek, homlokzatRajzok, mertMagassagok, eszakHomlokzatbol, tetoAblakokHomlokzatrol, oromSzelessegek, type HomlokzatRajz, type MertMagassag } from '@terv/homlokzatIllesztes';
 import { nezetOszlopok } from '@terv/homlokzatProfil';
 import { tetoFelulnezet, type TetoFelulnezet } from '@terv/tetoFelulnezet';
-import { metszetElemek, ferdeTetoHossz, ereszKiallasok, ereszKiallas, belmagassagSavok, szintJelekLapokrol, type BelmagSavok } from '@terv/metszetGeom';
+import { metszetElemek, ferdeTetoHossz, ereszKiallasok, ereszKiallas, belmagassagSavok, szintJelekLapokrol, attikaGeometria, type BelmagSavok } from '@terv/metszetGeom';
 import { helyisegMagassagok, type HelyisegMagassag } from '@terv/magassag';
 import { epuletModell, type EpuletModell, type ModellReteg, type ModellRetegrend, type LapBemenet, type Szint as EpSzint, type TerKategoria } from '@terv/epulet';
 import { falMagassagModell, type HomlokzatNezetAdat } from '@terv/homlokzatModell';
@@ -991,7 +991,9 @@ export function tervFolyamat(S: FolyamatAllapot) {
     const kulsoFalRetegrend = (me?.blokkok ?? []).filter((b) => b.becsles.szerep === 'fal' && !b.becsles.kihagy).map((b) => ({ kod: b.rr.kod,
       retegek: b.retegek.filter((r) => !r.kimarad && r.dCm > 0).map((r) => ({ leiras: r.forras, vastag: r.dCm / 100, szigeteles: /hőszigetel/i.test(anyag(r.anyagId)?.kategoria ?? '') || /hőszigetel|\beps\b|\bxps\b|kőzetgyapot|üveggyapot/i.test(r.forras) })) }))
       .filter((x) => x.retegek.length >= 2);
-    const md = epuletModell(be, { fodemSavok: fodemSav, metszetElemek: mE.flatMap(({ li, e }) => e.kisElemek.map((q) => ({ ...q, lap: li }))), ...(teto ? { teto } : {}), ...(kulsoFalRetegrend.length ? { kulsoFalRetegrend } : {}) });
+    // attika a metszetek geometriájából (lapostetőnél; a legtöbb jelöltet adó metszet)
+    const attika = teto ? null : S.lapok.flatMap((l) => (l.szerep === 'metszet' ? [attikaGeometria(l.lap)] : [])).filter((x): x is NonNullable<typeof x> => !!x).sort((p, q) => q.db - p.db)[0] ?? null;
+    const md = epuletModell(be, { fodemSavok: fodemSav, metszetElemek: mE.flatMap(({ li, e }) => e.kisElemek.map((q) => ({ ...q, lap: li }))), ...(teto ? { teto } : {}), ...(attika ? { attika } : {}), ...(kulsoFalRetegrend.length ? { kulsoFalRetegrend } : {}) });
     const rr = modellRetegrendek();
     // a falak (jelmagyarázat szerinti) katalógusanyagai
     const anyagok: Record<string, NonNullable<ModellReteg['anyag']>> = {};

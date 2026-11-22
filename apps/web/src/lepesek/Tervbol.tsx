@@ -454,6 +454,29 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const burok = burokVazlat ?? osszevon?.b ?? kj.burok ?? burokFelismert;
   // a körvonal élei a valódi falsávhoz illesztve: belső sík, hossz, vastagság (a rajzolt / felismert vonal csak irány)
   const burokMert = useMemo(() => (al?.r && !burokVazlat ? burokMeres(al.r, burok) : []), [al, burok, burokVazlat]);
+  // ÖNELLENŐRZÉS (Balázs, 2026-11-22: „olyan algoritmus a végén, ami nagyrészt jól ismeri fel az épületet"): a felismerés
+  // a végén megvizsgálja a saját eredményét – ami gyanús, az itt, helyével együtt, ellenőrzésre jelölve
+  const onellenorzes = useMemo(() => {
+    const ki: { szoveg: string; sulyos: boolean }[] = [];
+    if (!al?.r) return ki;
+    const r = al.r;
+    // 1. hőburok fal nélkül
+    const nf = burokMert.flat().filter((e) => e.rajzolt >= 0.8 && e.lefedett < 0.3);
+    const nfL = nf.reduce((t, e) => t + e.rajzolt, 0), osszL = burokMert.flat().reduce((t, e) => t + e.rajzolt, 0);
+    if (nfL >= 1) ki.push({ sulyos: nfL >= 0.1 * osszL || nf.some((e) => e.rajzolt >= 3), szoveg: `A hőburok ${sz(nfL, 1)} m-en fal nélkül fut (${nf.length} él, piros a rajzon) – a hőburok ott a rajz vonalai (méretvonal, telekhatár, keret) mentén mehet: húzd a falra, vagy rajzold újra.` });
+    // 2. a hőburok a lap szélén / keretén
+    const lw = (aLap?.lap.szel ?? 0), lh = (aLap?.lap.mag ?? 0);
+    if (lw > 0 && burok.some((q) => q.some(([x, y]) => x < 0.03 * lw || x > 0.97 * lw || y < 0.03 * lh || y > 0.97 * lh)))
+      ki.push({ sulyos: true, szoveg: 'A hőburok a lap széléig / a rajzkeretig ér – a felismerés kifolyt a rajzból (északjel, keret, szövegmező is benne lehet).' });
+    // 3. helyiségek: a rajzi terület (raszter) és a felirat eltérése
+    const elt: string[] = [];
+    helyisegek.forEach((h, i) => { if (h.kulter) return; const ri = raszterIdx(i); if (ri < 0) { if (szerep(i) === 'futott') elt.push(`${h.nev} (nincs a rajzon)`); return; }
+      const Ar = r.helyisegek[ri]!.A; if (Math.abs(Ar - h.A) > Math.max(1, 0.2 * h.A)) elt.push(`${h.nev} ${sz(h.A, 1)} → ${sz(Ar, 1)} m²`); });
+    if (elt.length) ki.push({ sulyos: elt.length >= 3, szoveg: `${elt.length} helyiség rajzi területe érdemben eltér a feliratától (a fal / nyílás felismerése ott hibás lehet): ${elt.slice(0, 6).join('; ')}${elt.length > 6 ? ' …' : ''}.` });
+    // 4. lépték: a lapra írt és a méretláncok szerinti eltér
+    if ((al.e.figyelmeztetesek ?? []).some((f) => /kicsinyítve|nagyítva|méretláncokból kalibrálva/.test(f))) ki.push({ sulyos: false, szoveg: 'A lépték a méretláncokból kalibrálva (a lapra írt eltér, vagy nincs) – egy ismert méreten érdemes ellenőrizni.' });
+    return ki;
+  }, [al, burok, burokMert, helyisegek, kj]);
   const burokMent = (b: Poligon[] | undefined) => kjMod((k) => { const u = { ...k }; if (b) u.burok = b; else delete u.burok; return u; });
   // húzás vége: ha a pont egy másik pontra került (fogási távolságon belül), kérdés: összevonjuk-e a kettőt
   const huzVege = () => {
@@ -1670,6 +1693,12 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
           </div>
           <h2>1. Helyiségek és tájolás</h2>
           <p class="halk">A helyiségpecsétekből (kód, név, burkolat, terület) és a helyiségjegyzékből. A színes vonalak a felismert külső falszakaszok a helyiségek belső (nettó) síkján, homlokzati irány szerint; a jelölők a nyílászárók.</p>
+          {onellenorzes.length > 0 && (
+            <div role="status" style={`margin-bottom:10px;padding:8px 10px;border-radius:6px;border:1px solid ${onellenorzes.some((j) => j.sulyos) ? '#FCA5A5' : '#FCD34D'};background:${onellenorzes.some((j) => j.sulyos) ? '#FEF2F2' : '#FFFBEB'}`}>
+              <strong>Önellenőrzés – ellenőrizd:</strong>
+              <ul style="margin:4px 0 0 18px;padding:0">{onellenorzes.map((j) => <li style={j.sulyos ? 'color:#991B1B' : ''}>{j.szoveg}</li>)}</ul>
+            </div>
+          )}
           {(lapFigy.get(aIdx) ?? al.e.figyelmeztetesek).filter((f) => !(al.e.eszak && eszakJavitas(al.e.eszak.alairas) !== 0 && /északjel irányát/.test(f)) && !(/Északjelet nem találtam/.test(f) && eszakHom(al) !== null)).map((f) => <div class="figyelmeztetes" style="margin-bottom:8px">{f}</div>)}
           {(() => {
             // bizonytalan helyzetek, amelyekről a felhasználó dönt
