@@ -28,6 +28,8 @@ for (let i = 0; i < 400; i++) {
 }
 await v(1500);
 const ido = Math.round((Date.now() - t0) / 1000);
+const allapot = await p.evaluate(() => ({ halad: document.querySelector('.halad')?.textContent ?? null, hiba: [...document.querySelectorAll('.hiba-doboz')].map((d) => d.textContent).join(' | '), gombok: [...document.querySelectorAll('main button')].map((x) => x.textContent).filter((t) => /átvétel|Átvétel/.test(t ?? '')).slice(0, 5) }));
+if (process.env.VAKDBG) await p.screenshot({ path: `${ki}_allapot.png`, fullPage: false });
 // a lapok (a „Alaprajz” választó opciói) – az alaprajzi lapokon végigmenve
 const opciok = await p.evaluate(() => { const s = [...document.querySelectorAll('main select')].find((x) => [...x.options].some((o) => /oldal/.test(o.text))); return s ? [...s.options].filter((o) => o.value !== '-1').map((o) => ({ v: o.value, t: o.text })) : []; });
 const lapok = [];
@@ -50,7 +52,7 @@ for (const o of opciok) {
 }
 // 3D
 try { await p.locator('button', { hasText: /^3D$/ }).first().click(); await v(4000); await p.screenshot({ path: `${ki}_3d.png` }); } catch { /* */ }
-const ossz = { minta: path.basename(forras), ido, lapok, hibak,
+const ossz = { minta: path.basename(forras), ido, allapot, lapok, hibak,
   pont: lapok.reduce((t, l) => t + l.onellenorzes.filter((j) => j.sulyos).length * 3 + l.onellenorzes.filter((j) => !j.sulyos).length, 0) };
 fs.writeFileSync(`${ki}_vak.json`, JSON.stringify(ossz, null, 1));
 await b.close();
