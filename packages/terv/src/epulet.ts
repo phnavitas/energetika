@@ -1237,6 +1237,7 @@ function magastetoEpit(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], 
       // (az alsó szint körvonala: a padlója – a födémje a tetőtér alatt és a lapostetős részeken darabokban lehet)
       const nagy = (l: P2[][]) => l.sort((a, b) => Math.abs(teruletP(b)) - Math.abs(teruletP(a)))[0];
       const fdA = also ? nagy(fodemek.filter((f) => f.folott === also.id).flatMap((f) => f.poligonok)) ?? nagy(fodemek.filter((f) => f.alatt === also.id).flatMap((f) => f.poligonok)) : undefined;
+      if ((globalThis as { OROMDBG?: unknown }).OROMDBG) console.log('OROMDBG alsó szint jelölt', also?.id, fdA?.length, fdA ? Math.round(Math.abs(teruletP(fdA))) : null, Math.round(Math.abs(teruletP(pol))), JSON.stringify(fodemek.map((f) => [f.id, f.alatt, f.folott, f.poligonok.length])));
       if (also && fdA && fdA.length >= 4 && Math.abs(teruletP(fdA)) > 1.3 * Math.abs(teruletP(pol))) {
         const efA = ereszFelulnezetbol(kisLepcsoNelkul(fdA), t.felul, kiallas);
         if (efA?.kiterjesztes.length) {
@@ -1605,8 +1606,11 @@ function ereszFelulnezetbol(pol: P2[], sz0: [number, number, number, number][], 
   let fo = 0; for (let a = 0; a < 90; a++) { const v = hist[(a + 89) % 90]! + hist[a]! + hist[(a + 1) % 90]!; const b = hist[(fo + 89) % 90]! + hist[fo]! + hist[(fo + 1) % 90]!; if (v > b) fo = a; }
   // (a csúcs finomítása a szomszédos fokok súlyozott átlagával)
   const fW = hist[(fo + 89) % 90]! + hist[fo]! + hist[(fo + 1) % 90]!; let finom = fW > 0 ? fo + (hist[(fo + 1) % 90]! - hist[(fo + 89) % 90]!) / fW : fo;
+  // (pontosítás: a csúcs ± 3°-án belüli vonalak hossz szerint súlyozott eltérése – a ferde ereszlánc illesztéséhez
+  // 0,1°-on belül kell)
+  { let sw = 0, sd = 0; for (const [x0, y0, x1, y1] of sz0) { const L = Math.hypot(x1 - x0, y1 - y0); if (L < 0.5) continue; const a = (((Math.atan2(y1 - y0, x1 - x0) * 180) / Math.PI) % 90 + 90) % 90; let d = a - finom; d -= 90 * Math.round(d / 90); if (Math.abs(d) <= 3) { sw += L; sd += L * d; } } if (sw > 0) finom += sd / sw; }
   if (finom > 45) finom -= 90;
-  if (Math.abs(finom) < 1) finom = 0; // (tengelyre eső felülnézet: nincs utóforgatás)
+  if (Math.abs(finom) < 0.05) finom = 0; // (tengelyre eső felülnézet: nincs utóforgatás)
   let leg: (ReturnType<typeof ereszFelulnezetbolEgy> & object) | null = null;
   for (const k of [0, 1, 2, 3]) {
     const th = ((-finom + k * 90) * Math.PI) / 180;
@@ -1652,7 +1656,17 @@ function ereszFelulnezetbolEgy(pol: P2[], sz: [number, number, number, number][]
   const il = illik(best.T); const db = il.filter(Boolean).length;
   const dbg = (globalThis as { OROMDBG?: unknown }).OROMDBG;
   if (dbg) console.log('OROMDBG felulIllesztes', 'sarok', sarkok.length, 'vegek', vegek.length, 'illik', db, 'T', JSON.stringify(best.T.map((v) => Math.round(v * 100) / 100)), 'pol', JSON.stringify(pol.map((q) => q.map((v) => Math.round(v * 100) / 100))));
-  if (db < Math.max(3, 0.5 * sarkok.length)) return null;
+  // (kevés egyező saroknál – a tető a födémtől eltérő alakú: fedett terasz, bejárat, más szint – a felülnézet saját,
+  // a födémtől független ereszvonala dönt: ha zárt, és a födémet (≥ 97 %) lefedi, az illesztés elfogadható)
+  let Etv: P2[] | null = null;
+  if (db < Math.max(3, 0.5 * sarkok.length)) {
+    if (db < 3) return null;
+    const E0 = ereszKonturVonalakbol(vegek, sz);
+    if (dbg) console.log('OROMDBG saját ereszvonal', JSON.stringify(E0));
+    if (!E0) return null;
+    Etv = E0.map(([x, y]) => [x + best.T[0], y + best.T[1]] as P2);
+    if (!fediPol(Etv, pol)) return null;
+  }
   // élenként: a két végén lévő sarok kiállása
   const sIdx = new Map(sarkok.map((q, k) => [q.v, k] as const));
   const sarokS = (v: P2) => { const k = sIdx.get(v); return k === undefined ? null : il[k]?.s ?? null; };
@@ -1666,7 +1680,7 @@ function ereszFelulnezetbolEgy(pol: P2[], sz: [number, number, number, number][]
   // (gerinc, csúcs) mélyen az épület fölött. A végpontokból a derékszögű ereszvonal egyértelmű: egy vonalba eső
   // pontok sorban párosítva adják az éleket. A tetőt ez fedi – a födém körvonalán túli fedett terasz, bejárat is.
   if (dbg) console.log('OROMDBG vegek', JSON.stringify(vegek.filter((_, k) => k % 2 === 0).map(({ p, m }) => [p, m].map((q) => [Math.round((q[0] + best.T[0]) * 100) / 100, Math.round((q[1] + best.T[1]) * 100) / 100]))));
-  const E = ereszKonturVegpontokbol(vegek.map(({ p, m }) => ({ p: [p[0] + best.T[0], p[1] + best.T[1]] as P2, m: [m[0] + best.T[0], m[1] + best.T[1]] as P2 })), pol);
+  const E = Etv ?? ereszKonturVegpontokbol(vegek.map(({ p, m }) => ({ p: [p[0] + best.T[0], p[1] + best.T[1]] as P2, m: [m[0] + best.T[0], m[1] + best.T[1]] as P2 })), pol);
   if (dbg) console.log('OROMDBG eresz', JSON.stringify(E));
   if (E) {
     const k = kiallas ?? kiallas0;
@@ -1695,6 +1709,23 @@ export function ereszKonturVegpontokbol(vegek: { p: P2; m: P2 }[], pol: P2[]): P
     if (dp < -3) continue; // (messze kívül: nem ennek a tetőnek a vonala)
     if (!kulso.some((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) < 0.12)) kulso.push(p);
   }
+  const E = ortoLanc(kulso);
+  if (!E || !fediPol(E, pol)) return null;
+  return E;
+}
+
+/** A födém (legalább 97 %-ban) az ereszvonalon belül. */
+function fediPol(E: P2[], pol: P2[]): boolean {
+  let db = 0, be = 0; const xs = pol.map((q) => q[0]), ys = pol.map((q) => q[1]);
+  for (let x = Math.min(...xs); x <= Math.max(...xs); x += 0.25) for (let y = Math.min(...ys); y <= Math.max(...ys); y += 0.25) if (pontBenne(pol, x, y)) { db++; if (pontBenne(E, x, y)) be++; }
+  return db > 0 && be >= 0.97 * db;
+}
+
+/**
+ * Derékszögű zárt lánc a sarokpontokból: az egy vízszintes / függőleges vonalba esők (± 0,12 m) sorban párosítva adják
+ * az éleket (null: páratlan pontszám egy vonalon, vagy nem egyetlen zárt lánc).
+ */
+export function ortoLanc(kulso: P2[]): P2[] | null {
   if (kulso.length < 4 || kulso.length % 2) return null;
   const tol = 0.12;
   const csoport = (k: 0 | 1) => { const cs: number[][] = []; const idx = kulso.map((_, i) => i).sort((a, b) => kulso[a]![k] - kulso[b]![k]);
@@ -1706,18 +1737,31 @@ export function ereszKonturVegpontokbol(vegek: { p: P2; m: P2 }[], pol: P2[]): P
     for (let i = 0; i < cs.length; i += 2) { szomsz[cs[i]!]!.push(cs[i + 1]!); szomsz[cs[i + 1]!]!.push(cs[i]!); }
   }
   if (szomsz.some((l) => l.length !== 2)) return null;
-  // egyetlen zárt lánc
   const sor = [0]; let elozo = -1, akt = 0;
   for (let g = 0; g < kulso.length; g++) { const kov = szomsz[akt]![0] === elozo ? szomsz[akt]![1]! : szomsz[akt]![0]!; if (kov === 0) break; sor.push(kov); elozo = akt; akt = kov; }
   if (sor.length !== kulso.length) return null;
-  // (a pontok a közös vonalra igazítva)
   const E: P2[] = sor.map((i) => [...kulso[i]!] as P2);
   for (let i = 0; i < E.length; i++) { const a = E[i]!, b = E[(i + 1) % E.length]!; if (Math.abs(a[0] - b[0]) <= tol) { const x = (a[0] + b[0]) / 2; a[0] = x; b[0] = x; } else { const y = (a[1] + b[1]) / 2; a[1] = y; b[1] = y; } }
-  // a födém (legalább 97 %-ban) az ereszvonalon belül
-  let db = 0, be = 0; const xs = pol.map((q) => q[0]), ys = pol.map((q) => q[1]);
-  for (let x = Math.min(...xs); x <= Math.max(...xs); x += 0.25) for (let y = Math.min(...ys); y <= Math.max(...ys); y += 0.25) if (pontBenne(pol, x, y)) { db++; if (pontBenne(E, x, y)) be++; }
-  if (!db || be < 0.97 * db) return null;
   return E;
+}
+
+/**
+ * A felülnézet saját ereszvonala, a födémtől függetlenül: a 45°-os vonal (élgerinc, vápa) külső vége az, amelyiken túl
+ * (a vonal irányában 0,7 m-rel) kevesebb rajzi vonal van (a tetőn kívül nincs sraff, a gerincen túl a másik tetősík van).
+ */
+export function ereszKonturVonalakbol(vegek: { p: P2; m: P2 }[], sz: [number, number, number, number][]): P2[] | null {
+  const kozel = (x: number, y: number, r: number) => { let db = 0; for (const [x0, y0, x1, y1] of sz) { const dx = x1 - x0, dy = y1 - y0, l2 = dx * dx + dy * dy || 1;
+    const u = Math.max(0, Math.min(1, ((x - x0) * dx + (y - y0) * dy) / l2)); if (Math.hypot(x - x0 - u * dx, y - y0 - u * dy) <= r) db++; } return db; };
+  const kulso: P2[] = [];
+  for (let k = 0; k < vegek.length; k += 2) {
+    const { p, m } = vegek[k]!; const L = Math.hypot(p[0] - m[0], p[1] - m[1]); if (L < 0.7) continue;
+    const u: P2 = [(p[0] - m[0]) / L, (p[1] - m[1]) / L];
+    const np = kozel(p[0] + u[0] * 0.7, p[1] + u[1] * 0.7, 0.35), nm = kozel(m[0] - u[0] * 0.7, m[1] - u[1] * 0.7, 0.35);
+    // (a külső vég túloldala szinte üres – legfeljebb egy vonal: eresz / csatorna –, a belsőé nem)
+    const ki = np <= 1 && nm >= 2 ? p : nm <= 1 && np >= 2 ? m : null; if (!ki) continue;
+    if (!kulso.some((q) => Math.hypot(q[0] - ki[0], q[1] - ki[1]) < 0.12)) kulso.push(ki);
+  }
+  return ortoLanc(kulso);
 }
 const sz2 = (v: number) => Math.round(v * 1000) / 1000;
 
