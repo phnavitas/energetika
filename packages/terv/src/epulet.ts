@@ -1226,8 +1226,27 @@ function magastetoEpit(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], 
   let felulKiallas: number | undefined;
   const kiallasKezi = t.kiallasOldal && Object.keys(t.kiallasOldal).length ? t.kiallasOldal : undefined;
   if ((globalThis as { OROMDBG?: unknown }).OROMDBG) console.log('OROMDBG felul db', t.felul?.length ?? 0);
+  let zEreszAlso: number | undefined;
   if (t.felul?.length) {
-    const ef = ereszFelulnezetbol(pol, t.felul, kiallas);
+    let ef = ereszFelulnezetbol(pol, t.felul, kiallas);
+    // A tető az alsó szintet is fedheti (Vértesszőlős: a helyszínrajz tetője a teljes földszintet fedi +3,01-es
+    // ereszmagassággal, a tetőtér benne ül): ha a felülnézet ereszvonala a legfelső szint körvonalán nem rakható ki,
+    // de az alatta lévő szint körvonalán igen (és az érdemben nagyobb), a tető abból épül, az eresz az alsó szint tetején.
+    if (!ef?.kiterjesztes.length) {
+      const also = [...szintek].sort((a, b) => b.z0 - a.z0)[1];
+      // (az alsó szint körvonala: a padlója – a födémje a tetőtér alatt és a lapostetős részeken darabokban lehet)
+      const nagy = (l: P2[][]) => l.sort((a, b) => Math.abs(teruletP(b)) - Math.abs(teruletP(a)))[0];
+      const fdA = also ? nagy(fodemek.filter((f) => f.folott === also.id).flatMap((f) => f.poligonok)) ?? nagy(fodemek.filter((f) => f.alatt === also.id).flatMap((f) => f.poligonok)) : undefined;
+      if (also && fdA && fdA.length >= 4 && Math.abs(teruletP(fdA)) > 1.3 * Math.abs(teruletP(pol))) {
+        const efA = ereszFelulnezetbol(kisLepcsoNelkul(fdA), t.felul, kiallas);
+        if (efA?.kiterjesztes.length) {
+          ef = efA;
+          const kA = koszoruk.find((q) => q.szint === also.id && q.fajta !== 'attika');
+          zEreszAlso = sz(kA ? kA.zFelso : also.z0 + also.h, 2);
+          if ((globalThis as { OROMDBG?: unknown }).OROMDBG) console.log('OROMDBG felul alsó szint', also.id, zEreszAlso);
+        }
+      }
+    }
     if (ef) {
       // (a felülnézet élgerinc-/vápavégei – közvetlen mérés, minden saroknál – elsőbbséget kapnak a metszet egy-két
       // ereszénél és a szintjelpárból számoltnál; a kézi érték marad)
@@ -1239,7 +1258,7 @@ function magastetoEpit(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], 
   // kézi, oldalankénti kiállás: az oldal éleit a falsíktól (érték − kiállás)-sal kifelé (ill. befelé) toljuk
   if (kiallasKezi) pol = oldalKiallas(pol, kiallasKezi, kiallas);
   const k = koszoruk.find((q) => q.szint === fel.id && q.fajta !== 'attika');
-  const zEresz = sz(eg?.zEresz ?? (k ? k.zFelso : fel.z0 + fel.h), 2);
+  const zEresz = zEreszAlso ?? sz(eg?.zEresz ?? (k ? k.zFelso : fel.z0 + fel.h), 2);
   // lapostetős sávok: a körvonal ezekbe eső része lapostető, a maradék darabjai kapnak magastetőt (legalább 2 m széles,
   // 8 m²-es darabok; ha a sávok a körvonal 85 %-át fedik, nincs magastető)
   let darabok: P2[][] = [pol], lapos: P2[][] = [];
