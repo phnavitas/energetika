@@ -481,7 +481,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   }, [al, burok, burokMert, helyisegek, kj]);
   const [aiTokenAll, setAiTokenAll] = useState(() => !!aiToken());
   const [aiTokenBe, setAiTokenBe] = useState('');
-  const [ai, setAi] = useState<{ fut: boolean; valasz?: AiValasz | null; nyers?: string; hiba?: string } | null>(null);
+  const [ai, setAi] = useState<{ fut: boolean; valasz?: AiValasz | null; nyers?: string; hiba?: string; kiv?: { nezet: [number, number, number, number]; W: number; H: number } } | null>(null);
   useEffect(() => setAi(null), [aIdx]);
   const aiFuttat = async () => {
     const svg = document.querySelector('svg[aria-label="Az alaprajz a felismert elemekkel"]') as SVGSVGElement | null;
@@ -490,10 +490,13 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     try {
       const xs = burok.flat().map((q) => q[0]), ys = burok.flat().map((q) => q[1]), m = 3 / al.r.mPerPt;
       const x0 = Math.min(...xs) - m, y0 = Math.min(...ys) - m, x1 = Math.max(...xs) + m, y1 = Math.max(...ys) + m;
-      const kep = await svgKivagatPng(svg, [x0, y0, x1 - x0, y1 - y0]);
+      const kn: [number, number, number, number] = [x0, y0, x1 - x0, y1 - y0];
+      const kep = await svgKivagatPng(svg, kn);
+      // (a kép mérete – mint az svgKivagatPng-ben: a hosszabbik oldal 1600 képpont –; az AI „hely” képpontjai ebben)
+      const ar = kn[2] / kn[3]; const kiv = { nezet: kn, W: ar >= 1 ? 1600 : Math.round(1600 * ar), H: ar >= 1 ? Math.round(1600 / ar) : 1600 };
       const kontextus = { jelzesek: onellenorzes.map((j) => j.szoveg), helyisegek: helyisegek.map((h, i) => ({ nev: h.nev, A: h.A, rajzon: raszterIdx(i) >= 0 ? Math.round(al.r!.helyisegek[raszterIdx(i)]!.A * 10) / 10 : null, futott: szerep(i) === 'futott' })) };
       const v = await aiEllenoriz(kep, kontextus);
-      setAi({ fut: false, ...v });
+      setAi({ fut: false, ...v, kiv });
     } catch (e) { setAi({ fut: false, hiba: `AI-ellenőrzés: ${(e as Error)?.message ?? e}` }); }
   };
   const burokMent = (b: Poligon[] | undefined) => kjMod((k) => { const u = { ...k }; if (b) u.burok = b; else delete u.burok; return u; });
@@ -1658,6 +1661,19 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   <line x1={0} y1={0} x2={Math.sin(rad) * nyilHossz * 0.7} y2={-Math.cos(rad) * nyilHossz * 0.7} stroke="#B91C1C" stroke-width={nyilHossz * 0.08} />
                   <text x={Math.sin(rad) * nyilHossz * 0.95} y={-Math.cos(rad) * nyilHossz * 0.95 + nyilHossz * 0.12} font-size={nyilHossz * 0.35} text-anchor="middle" fill="#B91C1C" font-weight="700" font-family="system-ui">É</text>
                 </g>
+                {/* az AI-ellenőrzés által megjelölt helyek (a kivágat képpontjaiból lapkoordinátába) */}
+                {ai?.valasz && ai.kiv && (ai.valasz.hibak ?? []).map((h, j) => {
+                  if (!Array.isArray(h.hely) || h.hely.length !== 4 || !h.hely.every((v) => Number.isFinite(v))) return null;
+                  const { nezet: kn, W, H } = ai.kiv!; const tx = (x: number) => kn[0] + (x / W) * kn[2], ty = (y: number) => kn[1] + (y / H) * kn[3];
+                  const xa = tx(Math.min(h.hely[0]!, h.hely[2]!)), xb = tx(Math.max(h.hely[0]!, h.hely[2]!)), ya = ty(Math.min(h.hely[1]!, h.hely[3]!)), yb = ty(Math.max(h.hely[1]!, h.hely[3]!));
+                  return (
+                    <g style="pointer-events:none">
+                      <rect x={xa} y={ya} width={Math.max(xb - xa, 4 * fogo)} height={Math.max(yb - ya, 4 * fogo)} fill="rgba(220,38,38,0.08)" stroke="#DC2626" stroke-width={3} stroke-dasharray="8 5" vector-effect="non-scaling-stroke" />
+                      <circle cx={xa} cy={ya} r={11 * fogo} fill="#DC2626" />
+                      <text x={xa} y={ya + 4.5 * fogo} font-size={13 * fogo} text-anchor="middle" fill="#fff" font-weight="700" font-family="system-ui">{j + 1}</text>
+                    </g>
+                  );
+                })}
                 {kivElem && epMd && elemAlakok(epMd).filter((e) => e.id === kivElem && e.lap === aIdx).flatMap((e) => e.poligonok.map((p) => <polygon points={p.map((q) => q.join(',')).join(' ')} fill="rgba(249,115,22,.25)" stroke="#F97316" stroke-width={3} vector-effect="non-scaling-stroke" pointer-events="none" />))}
               </svg>
             </div>
@@ -1728,10 +1744,10 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
               </div>
               {ai?.hiba && <div class="hiba-doboz" style="margin-top:6px">{ai.hiba}</div>}
               {ai?.valasz && (
-                <div style="margin-top:6px"><strong>AI:</strong> {ai.valasz.rendben ? 'a felismerés rendben van.' : `${ai.valasz.hibak?.length ?? 0} hiba`}{ai.valasz.epulet?.teto ? ` · tető: ${ai.valasz.epulet.teto}` : ''}
-                  <ul style="margin:2px 0 0 18px;padding:0">{(ai.valasz.hibak ?? []).map((h) => <li>{h.leiras}{h.javaslat ? ` – ${h.javaslat}` : ''}</li>)}</ul></div>
+                <div style="margin-top:8px;font-size:15px;line-height:1.45"><strong>AI:</strong> {ai.valasz.rendben ? 'a felismerés rendben van.' : `${ai.valasz.hibak?.length ?? 0} hiba (a rajzon számozott piros keret jelöli a helyét)`}{ai.valasz.epulet?.teto ? ` · tető: ${ai.valasz.epulet.teto}` : ''}
+                  <ol style="margin:4px 0 0 22px;padding:0">{(ai.valasz.hibak ?? []).map((h) => <li style="margin:3px 0">{h.leiras}{h.javaslat ? <><br /><span style="color:#374151">→ {h.javaslat}</span></> : ''}</li>)}</ol></div>
               )}
-              {ai?.nyers && <pre style="white-space:pre-wrap;font-size:12px">{ai.nyers}</pre>}
+              {ai?.nyers && <pre style="white-space:pre-wrap;font-size:14px">{ai.nyers}</pre>}
               {ai && !ai.fut && !ai.hiba && !ai.valasz && !ai.nyers && <div class="hiba-doboz" style="margin-top:6px">Az AI-ellenőrzés nem adott értelmezhető választ – próbáld újra.</div>}
             </div>
           )}
