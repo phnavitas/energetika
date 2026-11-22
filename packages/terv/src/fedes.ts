@@ -9,11 +9,12 @@ import type { Raszter } from './raszter';
 const lapX = (r: Raszter, cx: number) => r.x0 + ((cx + 0.5) * r.px) / r.mPerPt;
 const lapY = (r: Raszter, cy: number) => r.y0 + ((cy + 0.5) * r.px) / r.mPerPt;
 
-/** Falak 0,5 m-es rácson (lapkoordinátában, pt) – az eltolás kereséséhez. */
+/** Falak 0,5 m-es rácson (lapkoordinátában, pt) – az eltolás kereséséhez (a zónák közti pótolt rés nélkül: az ismétlődő
+ * helyiségsor pótolt válaszfalai egy modullal eltolt illeszkedést is erősíthetnek). */
 function falRacs(r: Raszter, lepesPt: number): Set<number> {
   const s = new Set<number>();
   for (let cy = 0; cy < r.h; cy++) for (let cx = 0; cx < r.w; cx++) {
-    if (!r.fal[cy * r.w + cx]) continue;
+    if (!r.fal[cy * r.w + cx] || r.zonaRes?.[cy * r.w + cx]) continue;
     s.add(Math.round(lapX(r, cx) / lepesPt) * 100000 + Math.round(lapY(r, cy) / lepesPt));
   }
   return s;

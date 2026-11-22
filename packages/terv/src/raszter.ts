@@ -82,6 +82,8 @@ export interface Raszter {
   anyagStilus?: Uint16Array;
   /** Az anyagStilus stílusai (id − 1 szerint; kitöltésszín + sraffozottság + PDF-réteg). */
   anyagInfo?: { szin: string; sraff: boolean; retegek: Record<string, number> }[];
+  /** Zónás lapon a két zóna közti, falként lezárt rés pixelei (a szintek egymásra illesztése nem használja). */
+  zonaRes?: Uint8Array;
   /** Rétegzett lapon: a fal-, válaszfal- és hőszigetelés-fólia vonalai (pixelenként 1). */
   falVonal?: Uint8Array;
   /** 0 = nincs, 1 = külső tér, 2+i = i. helyiség */
@@ -1173,6 +1175,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   for (let i = 0; i < w * h; i++) if (helyCimke[i] === kpCimke) { helyCimke[i] = 0; kpTer[i] = 1; }
   szivargoPotlas(helyCimke, gat, magok, w, h, px, tr);
   let zonaCimkek: Set<number> | null = null;
+  let zonaRes: Uint8Array | undefined;
   if (b.zonaPoli?.some(Boolean)) {
     // zónás lap: a zónás helyiség pontosan a zóna (a fal belső síkjáig); a zónán belüli „fal” (bútor, burkolatvonal) nem fal
     const Z = new Int32Array(w * h); const t = new Uint8Array(w * h);
@@ -1226,6 +1229,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       return m;
     };
     const jelolt = new Uint8Array(w * h);
+    zonaRes = new Uint8Array(w * h);
     for (let y = 0; y < h; y++) for (let x = 1; x < w - 1; x++) { const i = y * w + x; if (Z[i - 1] && !Z[i]) x += Math.max(0, res(i, 1, w - x) - 1); }
     for (let x = 0; x < w; x++) for (let y = 1; y < h - 1; y++) { const i = y * w + x; if (Z[i - w] && !Z[i]) y += Math.max(0, res(i, w, h - y) - 1); }
     // (csak a hosszan – legalább 1,5 m-en át – üres rés fal: a rövid rés a két zóna közti ajtónyílás)
@@ -1236,7 +1240,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       for (let k = 0; k < komp.length; k++) { const q = komp[k]!, x = q % w, y = (q / w) | 0; if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y;
         for (const n of [x > 0 ? q - 1 : -1, x < w - 1 ? q + 1 : -1, q - w, q + w]) if (n >= 0 && n < w * h && jelolt[n] && !lat[n]) { lat[n] = 1; komp.push(n); } }
       if (Math.max(bx1 - bx0, by1 - by0) + 1 < minH) continue;
-      for (const q of komp) { fal[q] = 1; gat[q] = 1; helyCimke[q] = 0; szabadKicsi[q] = 0; }
+      for (const q of komp) { fal[q] = 1; gat[q] = 1; helyCimke[q] = 0; szabadKicsi[q] = 0; zonaRes[q] = 1; }
     }
   }
   if (sraffMod) {
@@ -1392,7 +1396,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   // valós hosszával; a túloldal az élről kifelé, a falon át haladva az első nem saját helyiség vagy a külső tér
   const zonaSz = b.zonaPoli?.some(Boolean) ? b.zonaPoli.map((pl, k) => (pl ? zonaSzakaszok(pl, k + 2, helyCimke, gat, fal, nyilas, w, h, px, mPerPt, tr, maxLep * px) : undefined)) : undefined;
   return {
-    w, h, px, x0, y0, mPerPt, fal, cimke: helyCimke, stilus, stilusInfo, anyagStilus, anyagInfo, ...(falVonal ? { falVonal } : {}), ...(retegesFal ? { reteges: true } : {}),
+    w, h, px, x0, y0, mPerPt, fal, cimke: helyCimke, stilus, stilusInfo, anyagStilus, anyagInfo, ...(falVonal ? { falVonal } : {}), ...(zonaRes ? { zonaRes } : {}), ...(retegesFal ? { reteges: true } : {}),
     nyilas, uvegfalak, ...(garazsKapuk.length ? { garazsKapuk } : {}),
     helyisegek: helyisegek.map((H, k) => ({
       A: H.A, szivarog: szivarog[k]!,
