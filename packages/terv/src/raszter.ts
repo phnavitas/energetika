@@ -1227,31 +1227,34 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       else if (zar[i]) { helyCimke[i] = 0; gat[i] = 1; szabadKicsi[i] = 0; }
       else if (zonas.has(helyCimke[i]!)) helyCimke[i] = 0;
     }
-    // két zóna közti keskeny (≤ 0,6 m) rés a fal: a zóna a fal belső síkjáig tart. Ha a résben se fal, se nyílás nincs,
-    // és a rés legalább 1,5 m hosszú
-    // (a falat a rajz csak a két síkjával, kitöltés nélkül adja – pl. válaszfal, garázs és közlekedő közti fal), a rés fal.
-    const RF = Math.max(1, Math.round(0.6 / px));
-    const res = (k0: number, lep: number, n: number) => {
-      // k0: az első nem-zóna pixel, lep: lépésköz, n: a sor hossza a k0-tól (a rács széléig)
-      let m = 0; while (m < n && m <= RF && !Z[k0 + m * lep]) m++;
-      if (m < 1 || m > RF || m >= n) return m;
-      for (let j = 0; j < m; j++) { const q = k0 + j * lep; if (fal[q] || nyilas[q]) return m; }
-      for (let j = 0; j < m; j++) jelolt[k0 + j * lep] = 1;
-      return m;
-    };
-    const jelolt = new Uint8Array(w * h);
-    zonaRes = new Uint8Array(w * h);
-    for (let y = 0; y < h; y++) for (let x = 1; x < w - 1; x++) { const i = y * w + x; if (Z[i - 1] && !Z[i]) x += Math.max(0, res(i, 1, w - x) - 1); }
-    for (let x = 0; x < w; x++) for (let y = 1; y < h - 1; y++) { const i = y * w + x; if (Z[i - w] && !Z[i]) y += Math.max(0, res(i, w, h - y) - 1); }
-    // (csak a hosszan – legalább 1,5 m-en át – üres rés fal: a rövid rés a két zóna közti ajtónyílás)
-    const lat = new Uint8Array(w * h), minH = 1.5 / px;
-    for (let i0 = 0; i0 < w * h; i0++) {
-      if (!jelolt[i0] || lat[i0]) continue;
-      const komp = [i0]; lat[i0] = 1; let bx0 = w, bx1 = 0, by0 = h, by1 = 0;
-      for (let k = 0; k < komp.length; k++) { const q = komp[k]!, x = q % w, y = (q / w) | 0; if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y;
-        for (const n of [x > 0 ? q - 1 : -1, x < w - 1 ? q + 1 : -1, q - w, q + w]) if (n >= 0 && n < w * h && jelolt[n] && !lat[n]) { lat[n] = 1; komp.push(n); } }
-      if (Math.max(bx1 - bx0, by1 - by0) + 1 < minH) continue;
-      for (const q of komp) { fal[q] = 1; gat[q] = 1; helyCimke[q] = 0; szabadKicsi[q] = 0; zonaRes[q] = 1; }
+    // két zóna közti keskeny (≤ 0,6 m) rés a fal: a zóna a fal belső síkjáig tart. Sraffal rajzolt falú lapon (a sraffozás
+    // nélküli, csak a két síkjával rajzolt válaszfal / garázs és közlekedő közti fal nem lesz fal), ha a résben se fal, se
+    // nyílás nincs, és a rés legalább 1,5 m hosszú, a rés fal. (Kitöltéses falú lapon a rés a rajz szándéka – pl. nyitott
+    // tér, berendezés –, ott nem pótolunk.)
+    if (sraffMod) {
+      const RF = Math.max(1, Math.round(0.6 / px));
+      const res = (k0: number, lep: number, n: number) => {
+        // k0: az első nem-zóna pixel, lep: lépésköz, n: a sor hossza a k0-tól (a rács széléig)
+        let m = 0; while (m < n && m <= RF && !Z[k0 + m * lep]) m++;
+        if (m < 1 || m > RF || m >= n) return m;
+        for (let j = 0; j < m; j++) { const q = k0 + j * lep; if (fal[q] || nyilas[q]) return m; }
+        for (let j = 0; j < m; j++) jelolt[k0 + j * lep] = 1;
+        return m;
+      };
+      const jelolt = new Uint8Array(w * h);
+      zonaRes = new Uint8Array(w * h);
+      for (let y = 0; y < h; y++) for (let x = 1; x < w - 1; x++) { const i = y * w + x; if (Z[i - 1] && !Z[i]) x += Math.max(0, res(i, 1, w - x) - 1); }
+      for (let x = 0; x < w; x++) for (let y = 1; y < h - 1; y++) { const i = y * w + x; if (Z[i - w] && !Z[i]) y += Math.max(0, res(i, w, h - y) - 1); }
+      // (csak a hosszan – legalább 1,5 m-en át – üres rés fal: a rövid rés a két zóna közti ajtónyílás)
+      const lat = new Uint8Array(w * h), minH = 1.5 / px;
+      for (let i0 = 0; i0 < w * h; i0++) {
+        if (!jelolt[i0] || lat[i0]) continue;
+        const komp = [i0]; lat[i0] = 1; let bx0 = w, bx1 = 0, by0 = h, by1 = 0;
+        for (let k = 0; k < komp.length; k++) { const q = komp[k]!, x = q % w, y = (q / w) | 0; if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y;
+          for (const n of [x > 0 ? q - 1 : -1, x < w - 1 ? q + 1 : -1, q - w, q + w]) if (n >= 0 && n < w * h && jelolt[n] && !lat[n]) { lat[n] = 1; komp.push(n); } }
+        if (Math.max(bx1 - bx0, by1 - by0) + 1 < minH) continue;
+        for (const q of komp) { fal[q] = 1; gat[q] = 1; helyCimke[q] = 0; szabadKicsi[q] = 0; zonaRes[q] = 1; }
+      }
     }
   }
   if (sraffMod) {

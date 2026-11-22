@@ -546,10 +546,11 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
       const p = pecsetEgyezes(rv, magHelyisegek);
       // az alapváltozattól csak egyértelmű javulásnál (≥ 3 százalékpont) térünk el – a hajszálnyi különbség zaj
       if (!leg || p > leg.p + 0.03) { leg = { r: rv, p }; legBeall = v; }
-      // zónás lap: a területegyezés telített – a lényegesen (≥ 15 százalékpont) jobb falfedettségű változat nyer
+      // zónás lap: a területegyezés telített – ha a választott változatban a helyiségek határának nagy része (60 %-a)
+      // fal nélküli, a lényegesen (≥ 15 százalékpont) jobb falfedettségű változat nyer
       else if (zonas && p >= leg.p - 0.01) {
         leg.f ??= falFedettseg(leg.r); const f = falFedettseg(rv);
-        if (f > leg.f + 0.15) { leg = { r: rv, p, f }; legBeall = v; }
+        if (leg.f < 0.4 && f > leg.f + 0.15) { leg = { r: rv, p, f }; legBeall = v; }
       }
     }
     r = leg!.r;
