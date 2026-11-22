@@ -818,7 +818,12 @@ export function kulsoSraff(r: Raszter): Uint8Array {
   };
   const fal = new Uint8Array(N); for (let k = 0; k < N; k++) fal[k] = r.fal[k] ? 1 : 0;
   const hatter = morf(fal, 0); const er = new Uint8Array(N); for (let k = 0; k < N; k++) er[k] = fal[k] && !hatter[k] ? 1 : 0;
-  const ny = morf(er, 1); for (let k = 0; k < N; k++) ny[k] = ny[k] && fal[k] ? 1 : 0;
+  // (a széles folt magjának kitöltési stílusai: a hozzá érő, más stílusú falsáv – a járda / kavicssáv / térkő mellett
+  // álló, szürkével kitöltött homlokzati fal – nem lesz külső felület; Tata-Kálvária: a teljes külső fal „sraff” volt)
+  const magSt = new Map<number, number>(); let magN = 0;
+  for (let k = 0; k < N; k++) if (er[k]) { magN++; const st = r.stilus?.[k] ?? 0; magSt.set(st, (magSt.get(st) ?? 0) + 1); }
+  const magStilus = new Set([...magSt.entries()].filter(([, n]) => n >= Math.max(20, 0.1 * magN)).map(([st]) => st));
+  const ny = morf(er, 1); for (let k = 0; k < N; k++) { const st = r.stilus?.[k] ?? 0; ny[k] = ny[k] && fal[k] && (magN < 20 || magStilus.has(st)) ? 1 : 0; }
   // keskenyebb külső sáv (épület körüli járda, kavicssáv): az a kitöltési stílus, amely sehol nem határos helyiséggel,
   // és a foltjai átlagosan 25 cm-nél szélesebbek (a hőszigetelés vékonyabb, a falazat helyiséggel határos)
   const db = new Map<number, number>(), kerul = new Map<number, number>(), helyMellett = new Map<number, number>();
