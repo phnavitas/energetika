@@ -472,6 +472,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
     // vonal, a végeik egy vonalban (a két falsík között). A padló-, csempe- és lépcsőrajzolat ritkább, az ablak
     // néhány vonala kevés; ezek a vonalak a ferde sraffal egyenrangúan számítanak.
     if (letra.length >= 20) {
+      const elfogadott: (typeof letra)[number][] = [];
       const RL = 0.3, li = new Map<string, number[]>();
       letra.forEach((q, i) => { const k = `${Math.floor(q[0] / RL)},${Math.floor(q[1] / RL)}`; const t = li.get(k); if (t) t.push(i); else li.set(k, [i]); });
       for (const [qx, qy, qs, ax, ay, bx, by, lab, L] of letra) {
@@ -487,6 +488,11 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
           }
         if (bal < 2 || jobb < 2) continue;
         // (a szomszédok sűrűsége: 20 cm-en belül oldalanként legalább 2 – ≤ 10 cm-es osztás)
+        elfogadott.push([qx, qy, qs, ax, ay, bx, by, lab, L]);
+      }
+      // a lap sraffozási stílusa: ha a ferde sraff az uralkodó (a létra-vonalak száma kisebb), a létra nem fal – a
+      // ferde sraffos rajzon a sűrű egyenes vonalsor berendezés (pados gőzkabin, törölközőszárító, lamella)
+      if (elfogadott.length >= db) for (const [qx, qy, qs, ax, ay, bx, by, lab, L] of elfogadott) {
         const [cax, cay] = tr(ax, ay), [cbx, cby] = tr(bx, by);
         const n = Math.max(1, Math.ceil(Math.hypot(cbx - cax, cby - cay) * 2));
         for (let k = 0; k <= n; k++) { const x = Math.round(cax + (cbx - cax) * k / n), y = Math.round(cay + (cby - cay) * k / n); if (x >= 0 && y >= 0 && x < w && y < h) { sr[y * w + x] = 1; if (lab) srLab[y * w + x] = lab; } }
