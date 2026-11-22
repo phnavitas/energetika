@@ -260,6 +260,26 @@ export function pecsetEgyezes(r: Raszter, hs: { A: number }[]): number {
 }
 
 /**
+ * A helyiségek határának falfedettsége (0…1): a helyiséghatár-cellák hányadánál van 10 cm-en belül fal vagy áthidalt
+ * nyílás a helyiségen kívül. Zónás (ArchiCAD-zóna) lapon a helyiségek kiterjedése a zónából jön, így a pecsétterület
+ * minden változatban egyezik – ott ez dönt: csak sraffozással (kitöltés nélkül) rajzolt falat a vektoros változat nem
+ * lát, a lapkép-„tinta” igen.
+ */
+export function falFedettseg(r: Raszter): number {
+  const { w, h } = r; const d = Math.max(1, Math.round(0.1 / r.px)); let hatar = 0, fedett = 0;
+  for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+    const k = y * w + x, c = r.cimke[k]!; if (c < 2) continue;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      if (r.cimke[k + dy * w + dx] === c) continue;
+      hatar++;
+      for (let t = 1; t <= d; t++) { const xx = x + dx * t, yy = y + dy * t; if (xx < 0 || yy < 0 || xx >= w || yy >= h) break; const q = yy * w + xx; if (r.fal[q] || r.nyilas[q]) { fedett++; break; } if (r.cimke[q]! >= 2 && r.cimke[q] !== c) break; }
+      break;
+    }
+  }
+  return hatar ? fedett / hatar : 0;
+}
+
+/**
  * Pecsét nélküli alaprajz + műszaki leírás helyiséglistája: a zárt terek a területük szerint (±12 %, egy-egy
  * párosítás, a legkisebb eltérés előre) kapják a lista kódját, nevét, burkolatát és területét. A párosítatlan zárt
  * terek (a rajz hiányos falai miatt több helyiség egy térben, vagy egy helyiség több részben) a falaik miatt a
@@ -507,14 +527,20 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
     const alap = { ...(kulsoPontok.length ? { kulsoPontok } : {}), ...(kapuk.length ? { kapuk } : {}), ...(zonaPoli?.some(Boolean) ? { zonaPoli } : {}), ...(garazsok.length ? { garazsok } : {}) };
     const valtozatok: RaszterBeallitas[] = [alap, { ...alap, ablaksor: false }, ...(tinta ? [{ ...alap, tinta }, { ...alap, tinta, ablaksor: false }] : [])];
     const vektoros: RaszterBeallitas[] = [{ ...alap, vektorFal: true }, ...(tinta ? [{ ...alap, tinta, vektorFal: true }] : [])];
-    let leg: { r: Raszter; p: number } | null = null; let legBeall: RaszterBeallitas | null = null;
+    let leg: { r: Raszter; p: number; f?: number } | null = null; let legBeall: RaszterBeallitas | null = null;
     const vDb = valtozatok.length + vektoros.length; let vK = 0;
+    const zonas = !!zonaPoli?.some(Boolean);
     for (const v of valtozatok) {
       halad?.(`falak és helyiségek felismerése – ${++vK}. / ${vDb} változat`);
       const rv = raszterEpit(lap, e.mPerPt, magok, v);
       const p = pecsetEgyezes(rv, magHelyisegek);
       // az alapváltozattól csak egyértelmű javulásnál (≥ 3 százalékpont) térünk el – a hajszálnyi különbség zaj
       if (!leg || p > leg.p + 0.03) { leg = { r: rv, p }; legBeall = v; }
+      // zónás lap: a területegyezés telített – a lényegesen (≥ 15 százalékpont) jobb falfedettségű változat nyer
+      else if (zonas && p >= leg.p - 0.01) {
+        leg.f ??= falFedettseg(leg.r); const f = falFedettseg(rv);
+        if (f > leg.f + 0.15) { leg = { r: rv, p, f }; legBeall = v; }
+      }
     }
     r = leg!.r;
     // vektoros falfelismerés (párhuzamos falsíkpár + metszeti jel) csak a 3D modellhez és a burokhoz: akkor, ha a

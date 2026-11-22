@@ -407,6 +407,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   // alig van fal – a kitöltött falas rajzon a sraffozás amúgy is a falon belül van.
   {
     const sr = new Uint8Array(w * h); let db = 0; const srSzeg: [number, number, number, number, number, number, number, number][] = [];
+    const letra: [number, number, number, number, number, number, number, number, number][] = [];
     // (a sraffvonal PDF-rétege pixelenként: a falmag és a mintázattal rajzolt hőszigetelés külön anyag a modellnek)
     const srRetegek: string[] = [], srLab = new Uint16Array(w * h);
     // rétegzett (ArchiCAD-fóliás) lapon, ha a falsraffozás a fal-, válaszfal- vagy hőszigetelés-fólián van (legalább
@@ -447,12 +448,39 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
         const dx = p[i + 2]! - p[i]!, dy = p[i + 3]! - p[i + 1]!; const l = Math.hypot(dx, dy) * mPerPt;
         if (l < 0.02 || l > 0.8) continue;
         const sz = ((Math.atan2(dy, dx) * 180 / Math.PI) % 180 + 180) % 180;
-        if (!((sz > 20 && sz < 70) || (sz > 110 && sz < 160))) continue;
+        if (!((sz > 20 && sz < 70) || (sz > 110 && sz < 160))) { if (l >= 0.05 && l <= 0.6) letra.push([(p[i]! + p[i + 2]!) / 2 * mPerPt, (p[i + 1]! + p[i + 3]!) / 2 * mPerPt, sz, p[i]!, p[i + 1]!, p[i + 2]!, p[i + 3]!, lab, l]); continue; }
         const [ax, ay] = tr(p[i]!, p[i + 1]!), [bx, by] = tr(p[i + 2]!, p[i + 3]!);
         const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) * 2));
         for (let k = 0; k <= n; k++) { const x = Math.round(ax + (bx - ax) * k / n), y = Math.round(ay + (by - ay) * k / n); if (x >= 0 && y >= 0 && x < w && y < h) { sr[y * w + x] = 1; if (lab) srLab[y * w + x] = lab; } }
         db++;
         if (l >= 0.1) srSzeg.push([(p[i]! + p[i + 2]!) / 2 * mPerPt, (p[i + 1]! + p[i + 3]!) / 2 * mPerPt, sz, p[i]!, p[i + 1]!, p[i + 2]!, p[i + 3]!, lab]);
+      }
+    }
+    // a falsíkra merőleges vagy közel tengelyirányú sraffozás (pl. falazat vízszintes vonalakkal, hőszigetelés lapos
+    // keresztsraffal): „létra” – legalább 5 egyforma hosszú, egymás mellett (≤ 10 cm-enként) párhuzamosan futó rövid
+    // vonal, a végeik egy vonalban (a két falsík között). A padló-, csempe- és lépcsőrajzolat ritkább, az ablak
+    // néhány vonala kevés; ezek a vonalak a ferde sraffal egyenrangúan számítanak.
+    if (letra.length >= 20) {
+      const RL = 0.3, li = new Map<string, number[]>();
+      letra.forEach((q, i) => { const k = `${Math.floor(q[0] / RL)},${Math.floor(q[1] / RL)}`; const t = li.get(k); if (t) t.push(i); else li.set(k, [i]); });
+      for (const [qx, qy, qs, ax, ay, bx, by, lab, L] of letra) {
+        const nx = -Math.sin(qs * Math.PI / 180), ny = Math.cos(qs * Math.PI / 180);
+        let bal = 0, jobb = 0;
+        for (let gx = Math.floor(qx / RL) - 1; gx <= Math.floor(qx / RL) + 1; gx++) for (let gy = Math.floor(qy / RL) - 1; gy <= Math.floor(qy / RL) + 1; gy++)
+          for (const j of li.get(`${gx},${gy}`) ?? []) {
+            const q = letra[j]!; let dsz = Math.abs(q[2] - qs); if (dsz > 90) dsz = 180 - dsz; if (dsz > 3) continue;
+            if (Math.abs(q[8] - L) > 0.15 * L + 0.01) continue;
+            const tx = (q[0] - qx) * ny - (q[1] - qy) * nx; if (Math.abs(tx) > 0.03 + 0.1 * L) continue;
+            const ds = (q[0] - qx) * nx + (q[1] - qy) * ny; const d = Math.abs(ds); if (d <= 0.005 || d > 0.2) continue;
+            if (ds > 0) jobb++; else bal++;
+          }
+        if (bal < 2 || jobb < 2) continue;
+        // (a szomszédok sűrűsége: 20 cm-en belül oldalanként legalább 2 – ≤ 10 cm-es osztás)
+        const [cax, cay] = tr(ax, ay), [cbx, cby] = tr(bx, by);
+        const n = Math.max(1, Math.ceil(Math.hypot(cbx - cax, cby - cay) * 2));
+        for (let k = 0; k <= n; k++) { const x = Math.round(cax + (cbx - cax) * k / n), y = Math.round(cay + (cby - cay) * k / n); if (x >= 0 && y >= 0 && x < w && y < h) { sr[y * w + x] = 1; if (lab) srLab[y * w + x] = lab; } }
+        db++;
+        if (L >= 0.1) srSzeg.push([qx, qy, qs, ax, ay, bx, by, lab]);
       }
     }
     if (db > 200) {
@@ -1124,9 +1152,10 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   const kpTer = new Uint8Array(w * h);
   for (let i = 0; i < w * h; i++) if (helyCimke[i] === kpCimke) { helyCimke[i] = 0; kpTer[i] = 1; }
   szivargoPotlas(helyCimke, gat, magok, w, h, px, tr);
+  let zonaZ: Int32Array | null = null;
   if (b.zonaPoli?.some(Boolean)) {
     // zónás lap: a zónás helyiség pontosan a zóna (a fal belső síkjáig); a zónán belüli „fal” (bútor, burkolatvonal) nem fal
-    const Z = new Int32Array(w * h); const t = new Uint8Array(w * h);
+    const Z = new Int32Array(w * h); const t = new Uint8Array(w * h); zonaZ = Z;
     // (a zóna befoglalóján belül – nagy lapon a teljes rács zónánkénti bejárása lassú)
     b.zonaPoli.forEach((pl, k) => {
       if (!pl) return;
@@ -1163,6 +1192,19 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       else if (zar[i]) { helyCimke[i] = 0; gat[i] = 1; szabadKicsi[i] = 0; }
       else if (zonas.has(helyCimke[i]!)) helyCimke[i] = 0;
     }
+    // két zóna közti keskeny (≤ 0,6 m) rés a fal: a zóna a fal belső síkjáig tart. Ha a résben se fal, se nyílás nincs
+    // (a falat a rajz csak a két síkjával, kitöltés nélkül adja – pl. válaszfal, garázs és közlekedő közti fal), a rés fal.
+    const RF = Math.max(1, Math.round(0.6 / px));
+    const res = (k0: number, lep: number, n: number) => {
+      // k0: az első nem-zóna pixel, lep: lépésköz, n: a sor hossza a k0-tól (a rács széléig)
+      let m = 0; while (m < n && m <= RF && !Z[k0 + m * lep]) m++;
+      if (m < 1 || m > RF || m >= n) return m;
+      for (let j = 0; j < m; j++) { const q = k0 + j * lep; if (fal[q] || nyilas[q]) return m; }
+      for (let j = 0; j < m; j++) { const q = k0 + j * lep; fal[q] = 1; gat[q] = 1; helyCimke[q] = 0; szabadKicsi[q] = 0; }
+      return m;
+    };
+    for (let y = 0; y < h; y++) for (let x = 1; x < w - 1; x++) { const i = y * w + x; if (Z[i - 1] && !Z[i]) x += Math.max(0, res(i, 1, w - x) - 1); }
+    for (let x = 0; x < w; x++) for (let y = 1; y < h - 1; y++) { const i = y * w + x; if (Z[i - w] && !Z[i]) y += Math.max(0, res(i, w, h - y) - 1); }
   }
   if (sraffMod) {
     // a rács széléig kifutó „helyiség” (pl. a pecsétje a külső térben van: fedett bejáró, kukatároló) a külső tér része
@@ -1268,6 +1310,20 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       let legjobb = 0, db = 0;
       for (const [c, n] of szam) if (n > db) { legjobb = c; db = n; }
       if (legjobb && db * px >= 0.3) for (const q of komp) helyCimke[q] = legjobb;
+    }
+  }
+  if (zonaZ) {
+    // zónás helyiség nem nő a zónán túl: a visszanövesztés / zsebhozzárendelés által a zónához sorolt, a zónán kívüli
+    // rész (pl. a nappali üvegajtaján át a pergolával körülzárt terasz) – a nagyobb (≥ 1 m²) összefüggő darab külső tér,
+    // a falmenti keskeny maradék címkézetlen
+    const Z = zonaZ; const zonas = new Set<number>(); b.zonaPoli!.forEach((pl, k) => { if (pl) zonas.add(2 + k); });
+    const latott3 = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+      const c = helyCimke[i]!; if (!zonas.has(c) || Z[i] === c || latott3[i]) continue;
+      const komp = [i]; latott3[i] = 1;
+      for (let k = 0; k < komp.length; k++) { const q = komp[k]!, x = q % w; for (const n of [x > 0 ? q - 1 : -1, x < w - 1 ? q + 1 : -1, q - w, q + w]) if (n >= 0 && n < w * h && !latott3[n] && zonas.has(helyCimke[n]!) && Z[n] !== helyCimke[n]) { latott3[n] = 1; komp.push(n); } }
+      const ki = komp.length * px * px >= 1 ? 1 : 0;
+      for (const q of komp) helyCimke[q] = ki;
     }
   }
   const szivarog = magok.map(() => false);

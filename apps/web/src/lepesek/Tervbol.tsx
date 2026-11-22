@@ -455,6 +455,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const burok = burokVazlat ?? osszevon?.b ?? kj.burok ?? burokFelismert;
   // a körvonal élei a valódi falsávhoz illesztve: belső sík, hossz, vastagság (a rajzolt / felismert vonal csak irány)
   const burokMert = useMemo(() => (al?.r && !burokVazlat ? burokMeres(al.r, burok) : []), [al, burok, burokVazlat]);
+  try { (globalThis as any).__burokMert = () => ({ felismert: burokFelismert, burok, mert: burokMert }); } catch { /* */ }
   // ÖNELLENŐRZÉS (Balázs, 2026-11-22: „olyan algoritmus a végén, ami nagyrészt jól ismeri fel az épületet"): a felismerés
   // a végén megvizsgálja a saját eredményét – ami gyanús, az itt, helyével együtt, ellenőrzésre jelölve
   const onellenorzes = useMemo(() => {
