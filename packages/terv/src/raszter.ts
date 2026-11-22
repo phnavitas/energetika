@@ -1172,10 +1172,10 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   const kpTer = new Uint8Array(w * h);
   for (let i = 0; i < w * h; i++) if (helyCimke[i] === kpCimke) { helyCimke[i] = 0; kpTer[i] = 1; }
   szivargoPotlas(helyCimke, gat, magok, w, h, px, tr);
-  let zonaZ: Int32Array | null = null;
+  let zonaCimkek: Set<number> | null = null;
   if (b.zonaPoli?.some(Boolean)) {
     // zónás lap: a zónás helyiség pontosan a zóna (a fal belső síkjáig); a zónán belüli „fal” (bútor, burkolatvonal) nem fal
-    const Z = new Int32Array(w * h); const t = new Uint8Array(w * h); zonaZ = Z;
+    const Z = new Int32Array(w * h); const t = new Uint8Array(w * h);
     // (a zóna befoglalóján belül – nagy lapon a teljes rács zónánkénti bejárása lassú)
     b.zonaPoli.forEach((pl, k) => {
       if (!pl) return;
@@ -1187,6 +1187,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       for (let y = by0; y <= by1; y++) for (let i = y * w + bx0, e = y * w + bx1; i <= e; i++) if (t[i]) { Z[i] = 2 + k; t[i] = 0; }
     });
     const zonas = new Set<number>(); b.zonaPoli.forEach((pl, k) => { if (pl) zonas.add(2 + k); });
+    zonaCimkek = zonas;
     // a zóna menti (≤ 0,6 m) sáv, ahol se fal, se nyílás nincs (a korábban a helyiséghez vagy a külső térhez sorolt rész):
     // a rajzon kitöltetlen falbelső (csak a fal síkjai vannak megrajzolva) – gát, a külső tér ne érjen a zóna széléig
     // (csak a zóna és a fal/nyílás vonala közé zárt pixel: egy tengelyirányban a zóna, az ellenkezőben fal vagy nyílás
@@ -1341,39 +1342,9 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       }
       let legjobb = 0, db = 0;
       for (const [c, n] of szam) if (n > db) { legjobb = c; db = n; }
-      if (legjobb && db * px >= 0.3) for (const q of komp) helyCimke[q] = legjobb;
-    }
-  }
-  if (zonaZ) {
-    // zónás helyiség nem nő a zónán túl a külső tér felé: a visszanövesztés / zsebhozzárendelés által a zónához sorolt,
-    // a zónán kívüli, a külső térrel érintkező rész (pl. a nappali üvegajtaján át a pergolával körülzárt terasz): a
-    // külső térrel közvetlenül érintkező nagyobb (≥ 1 m²) darab külső tér, a nyíláson át érintkező (terasz, légtér)
-    // és a falmenti keskeny maradék címkézetlen
-    const Z = zonaZ; const zonas = new Set<number>(); b.zonaPoli!.forEach((pl, k) => { if (pl) zonas.add(2 + k); });
-    const latott3 = new Uint8Array(w * h);
-    for (let i = 0; i < w * h; i++) {
-      const c = helyCimke[i]!; if (!zonas.has(c) || Z[i] === c || latott3[i]) continue;
-      const komp = [i]; latott3[i] = 1;
-      for (let k = 0; k < komp.length; k++) { const q = komp[k]!, x = q % w; for (const n of [x > 0 ? q - 1 : -1, x < w - 1 ? q + 1 : -1, q - w, q + w]) if (n >= 0 && n < w * h && !latott3[n] && zonas.has(helyCimke[n]!) && Z[n] !== helyCimke[n]) { latott3[n] = 1; komp.push(n); } }
-      // a darab a külső térrel érintkezik (közvetlenül, vagy egy ≤ 0,6 m-es áthidalt nyíláson át): a zónán kívüli
-      // rész külső tér (pl. pergolás terasz); különben belső zseb (lépcsőtér, akna) – marad a helyiségé
-      const lepN = Math.round(0.6 / px); let kulsoE = false;
-      for (const q of komp) {
-        const x = q % w, y = (q / w) | 0;
-        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-          let xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= w || yy >= h) { kulsoE = true; break; }
-          if (helyCimke[yy * w + xx] === 1) { kulsoE = true; break; }
-          if (!nyilas[yy * w + xx]) continue;
-          for (let k = 0; k < lepN && xx >= 0 && yy >= 0 && xx < w && yy < h && nyilas[yy * w + xx]; k++) { xx += dx; yy += dy; }
-          for (let j = 0; j < 4 && xx >= 0 && yy >= 0 && xx < w && yy < h && !helyCimke[yy * w + xx] && !gat[yy * w + xx]; j++) { xx += dx; yy += dy; }
-          if (xx < 0 || yy < 0 || xx >= w || yy >= h || helyCimke[yy * w + xx] === 1) { kulsoE = true; break; }
-        }
-        if (kulsoE) break;
-      }
-      if (!kulsoE) continue;
-      // (címkézetlen, nem külső tér: ha falakkal körülzárt – légtér, belső udvar –, a hőburok kitöltheti)
-      const ki = komp.length * px * px >= 1 && [...komp].some((q) => { const x = q % w; return [x > 0 ? q - 1 : -1, x < w - 1 ? q + 1 : -1, q - w, q + w].some((n) => n >= 0 && n < w * h && helyCimke[n] === 1); }) ? 1 : 0;
-      for (const q of komp) helyCimke[q] = ki;
+      // (zónás helyiség – ArchiCAD-zóna – nem kapja meg a nyílásán túli zsebet: a zóna a helyiség teljes kiterjedése,
+      // az ajtón / üvegfalon túli tér – pl. pergolás terasz – nem része)
+      if (legjobb && db * px >= 0.3 && !zonaCimkek?.has(legjobb)) for (const q of komp) helyCimke[q] = legjobb;
     }
   }
   const szivarog = magok.map(() => false);
