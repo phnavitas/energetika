@@ -124,9 +124,53 @@ async function tavhoFrissit(f, gyorsitotar) {
   return valasz;
 }
 
+/**
+ * AI-ELLENŐRZÉS (2026-11-22): a Tervből lépés önellenőrzése által megjelölt alaprajzi lap képe (a felismert hőburokkal,
+ * helyiségekkel a rajzon) egy képfelismerő modellnek, amely megmondja, hol hibás a felismerés. A kép a hőburok környéke
+ * (a szövegmező nélkül) – személyes adat ne menjen ki. Védelem: a kérés `x-ai-token` fejléce = env.AI_TOKEN (titok),
+ * az Anthropic kulcs env.ANTHROPIC_API_KEY (titok; `npx wrangler secret put …`). Kép ≤ 4 MB.
+ *   POST /api/ai-ellenorzes  { kep: base64 PNG, kontextus: { helyisegek, burok, jelzesek } }  →  { valasz: {...} }
+ */
+const AI_MODELL = 'claude-sonnet-5-5';
+const AI_PROMPT = `Magyar építészeti alaprajz (PDF-ből) képét kapod, rajta egy program által felismert eredménnyel:
+- narancs szaggatott vonal: a hőburok (a fűtött tér határa, a külső falak külső síkján kellene futnia),
+- színes kitöltés: a felismert helyiségek, feliratuk mellett a rajzi terület ("rajzon" = a felismert terület, ha eltér),
+- piros "nincs fal" címke: a hőburok ott nem falon fut.
+A kontextus JSON-ban a program saját jelzései és a helyiséglista.
+Feladat: nézd meg, hol hibás a felismerés (a hőburok kifolyik-e a falakon túl, kimarad-e fűtött rész, helyiség rosszul
+körülhatárolt-e, hiányzik-e fal vagy nyílás). Válaszolj CSAK JSON-nal:
+{"rendben": bool, "hibak": [{"tipus": "burok_kifolyik"|"burok_hianyzik"|"helyiseg_hibas"|"fal_hianyzik"|"nyilas_hianyzik"|"egyeb",
+"leiras": "rövid magyar mondat", "hely": [x0,y0,x1,y1] (a kép pixelei, ha meghatározható), "javaslat": "rövid magyar mondat"}],
+"epulet": {"szintek_szama": szám vagy null, "teto": "lapos"|"nyereg"|"konty"|"felnyereg"|"osszetett"|"nem latszik"}}`;
+
+async function aiEllenorzes(request, env, f) {
+  if (request.method !== 'POST') return json({ hiba: 'POST kérés kell.' }, 405);
+  if (!env.ANTHROPIC_API_KEY || !env.AI_TOKEN) return json({ hiba: 'Az AI-ellenőrzés nincs beállítva (ANTHROPIC_API_KEY, AI_TOKEN titok).' }, 503);
+  if (request.headers.get('x-ai-token') !== env.AI_TOKEN) return json({ hiba: 'Érvénytelen AI-token.' }, 403);
+  let be;
+  try { be = await request.json(); } catch { return json({ hiba: 'Érvénytelen JSON.' }, 400); }
+  const kep = typeof be?.kep === 'string' ? be.kep.replace(/^data:image\/png;base64,/, '') : '';
+  if (!kep || kep.length > 5_600_000) return json({ hiba: 'Hiányzó vagy túl nagy kép (≤ 4 MB PNG).' }, 400);
+  const kontextus = JSON.stringify(be.kontextus ?? {}).slice(0, 20000);
+  const v = await f('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({ model: env.AI_MODELL || AI_MODELL, max_tokens: 2000, messages: [{ role: 'user', content: [
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: kep } },
+      { type: 'text', text: `${AI_PROMPT}\n\nKontextus: ${kontextus}` }] }] }),
+  });
+  if (!v.ok) return json({ hiba: `Az AI-szolgáltatás hibát adott (${v.status}).`, reszlet: (await v.text()).slice(0, 500) }, 502);
+  const adat = await v.json();
+  const szoveg = (adat.content ?? []).filter((c) => c.type === 'text').map((c) => c.text).join('\n');
+  const m = /\{[\s\S]*\}/.exec(szoveg);
+  let valasz = null; try { valasz = m ? JSON.parse(m[0]) : null; } catch { /* */ }
+  return json({ valasz, nyers: valasz ? undefined : szoveg.slice(0, 4000), modell: adat.model, tokenek: adat.usage });
+}
+
 /** Kérés kezelése; a fetch-et paraméterként kapja, hogy tesztelhető legyen. */
 export async function kezel(request, env, f = fetch, gyorsitotar = null) {
   const url = new URL(request.url);
+  if (url.pathname === '/api/ai-ellenorzes') return aiEllenorzes(request, env, f);
   if (request.method !== 'GET') return json({ hiba: 'Csak GET kérés engedélyezett.' }, 405);
 
   if (url.pathname === '/api/pvgis') {

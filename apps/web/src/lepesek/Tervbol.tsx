@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { aiToken, aiTokenMent, svgKivagatPng, aiEllenoriz, type AiValasz } from '../terv/aiEllenorzes';
 import { zipPdfek } from '../terv/zipPdf';
 import { ujId as ujIdT, type Projekt, type HelyisegKategoria, type Szerep as RrSzerep, SZEREP_ALAP } from '../modell';
 const sz2 = (x: number) => x.toLocaleString('hu-HU', { maximumFractionDigits: 1 });
@@ -477,6 +478,22 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     if ((al.e.figyelmeztetesek ?? []).some((f) => /kicsinyítve|nagyítva|méretláncokból kalibrálva/.test(f))) ki.push({ sulyos: false, szoveg: 'A lépték a méretláncokból kalibrálva (a lapra írt eltér, vagy nincs) – egy ismert méreten érdemes ellenőrizni.' });
     return ki;
   }, [al, burok, burokMert, helyisegek, kj]);
+  const [aiTokenAll, setAiTokenAll] = useState(() => !!aiToken());
+  const [ai, setAi] = useState<{ fut: boolean; valasz?: AiValasz | null; nyers?: string; hiba?: string } | null>(null);
+  useEffect(() => setAi(null), [aIdx]);
+  const aiFuttat = async () => {
+    const svg = document.querySelector('svg[aria-label="Az alaprajz a felismert elemekkel"]') as SVGSVGElement | null;
+    if (!svg || !al?.r || !burok.length) { setAi({ fut: false, hiba: 'Nincs rajz / hőburok az ellenőrzéshez.' }); return; }
+    setAi({ fut: true });
+    try {
+      const xs = burok.flat().map((q) => q[0]), ys = burok.flat().map((q) => q[1]), m = 3 / al.r.mPerPt;
+      const x0 = Math.min(...xs) - m, y0 = Math.min(...ys) - m, x1 = Math.max(...xs) + m, y1 = Math.max(...ys) + m;
+      const kep = await svgKivagatPng(svg, [x0, y0, x1 - x0, y1 - y0]);
+      const kontextus = { jelzesek: onellenorzes.map((j) => j.szoveg), helyisegek: helyisegek.map((h, i) => ({ nev: h.nev, A: h.A, rajzon: raszterIdx(i) >= 0 ? Math.round(al.r!.helyisegek[raszterIdx(i)]!.A * 10) / 10 : null, futott: szerep(i) === 'futott' })) };
+      const v = await aiEllenoriz(kep, kontextus);
+      setAi({ fut: false, ...v });
+    } catch (e) { setAi({ fut: false, hiba: `AI-ellenőrzés: ${(e as Error)?.message ?? e}` }); }
+  };
   const burokMent = (b: Poligon[] | undefined) => kjMod((k) => { const u = { ...k }; if (b) u.burok = b; else delete u.burok; return u; });
   // húzás vége: ha a pont egy másik pontra került (fogási távolságon belül), kérdés: összevonjuk-e a kettőt
   const huzVege = () => {
@@ -1697,6 +1714,20 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             <div role="status" style={`margin-bottom:10px;padding:8px 10px;border-radius:6px;border:1px solid ${onellenorzes.some((j) => j.sulyos) ? '#FCA5A5' : '#FCD34D'};background:${onellenorzes.some((j) => j.sulyos) ? '#FEF2F2' : '#FFFBEB'}`}>
               <strong>Önellenőrzés – ellenőrizd:</strong>
               <ul style="margin:4px 0 0 18px;padding:0">{onellenorzes.map((j) => <li style={j.sulyos ? 'color:#991B1B' : ''}>{j.szoveg}</li>)}</ul>
+              <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+                {aiTokenAll ? (
+                  <button class="gomb halk-gomb" disabled={ai?.fut} onClick={() => void aiFuttat()} title="A rajz hőburok körüli kivágata (szövegmező nélkül) a felismert eredménnyel egy képfelismerő modellnek; a válasz itt jelenik meg.">{ai?.fut ? 'AI-ellenőrzés fut…' : 'AI-ellenőrzés (kép a felismeréssel)'}</button>
+                ) : (
+                  <label class="halkabb" style="display:inline-flex;gap:6px;align-items:center">AI-token: <input type="password" size={18} onChange={(e) => { const t = (e.target as HTMLInputElement).value.trim(); aiTokenMent(t); setAiTokenAll(!!t); }} /></label>
+                )}
+                {aiTokenAll && <button class="link-gomb halkabb" onClick={() => { aiTokenMent(''); setAiTokenAll(false); }}>token törlése</button>}
+              </div>
+              {ai?.hiba && <div class="hiba-doboz" style="margin-top:6px">{ai.hiba}</div>}
+              {ai?.valasz && (
+                <div style="margin-top:6px"><strong>AI:</strong> {ai.valasz.rendben ? 'a felismerés rendben van.' : `${ai.valasz.hibak.length} hiba`}{ai.valasz.epulet?.teto ? ` · tető: ${ai.valasz.epulet.teto}` : ''}
+                  <ul style="margin:2px 0 0 18px;padding:0">{ai.valasz.hibak.map((h) => <li>{h.leiras}{h.javaslat ? ` – ${h.javaslat}` : ''}</li>)}</ul></div>
+              )}
+              {ai?.nyers && <pre style="white-space:pre-wrap;font-size:12px">{ai.nyers}</pre>}
             </div>
           )}
           {(lapFigy.get(aIdx) ?? al.e.figyelmeztetesek).filter((f) => !(al.e.eszak && eszakJavitas(al.e.eszak.alairas) !== 0 && /északjel irányát/.test(f)) && !(/Északjelet nem találtam/.test(f) && eszakHom(al) !== null)).map((f) => <div class="figyelmeztetes" style="margin-bottom:8px">{f}</div>)}
