@@ -265,6 +265,8 @@ export function pecsetEgyezes(r: Raszter, hs: { A: number }[]): number {
  * minden változatban egyezik – ott ez dönt: csak sraffozással (kitöltés nélkül) rajzolt falat a vektoros változat nem
  * lát, a lapkép-„tinta” igen.
  */
+/** Zárt beltéri helyiség neve – ilyen nevű tér a hiányos falak ellenére sem nyitott (a fal felismerése hibázott). */
+const BELTER_NEV = /szoba|nappali|konyha|étkező|etkezo|fürdő|furdo|\bwc\b|háló|halo|előtér|eloter|előszoba|közlekedő|kozlekedo|folyosó|folyoso|iroda|gardrób|gardrob|kamra|tároló|tarolo|garázs|garazs|műhely|muhely|raktár|raktar|lépcső|lepcso|gépész|gepesz|kazán|kazan|mosó|moso|dolgozó|dolgozo|öltöző|oltozo|zuhany|szauna|terem|csarnok|üzem|uzem|labor|rendelő|rendelo|váró|varo|iroda|tanuló|tanulo|játszó|jatszo|spájz|spajz|pince|padlás|padlas/i;
 export function falFedettseg(r: Raszter): number {
   const t = fedettsegSzamlalo(r); let h = 0, f = 0; for (let i = 0; i < t.hatar.length; i++) { h += t.hatar[i]!; f += t.fedett[i]!; }
   return h ? f / h : 0;
@@ -277,8 +279,10 @@ export function fedettsegSzamlalo(r: Raszter): { hatar: number[]; fedett: number
     const k = y * w + x, c = r.cimke[k]!; if (c < 2 || c - 2 >= hatar.length) continue;
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
       if (r.cimke[k + dy * w + dx] === c) continue;
-      hatar[c - 2]!++;
-      for (let t = 1; t <= d; t++) { const xx = x + dx * t, yy = y + dy * t; if (xx < 0 || yy < 0 || xx >= w || yy >= h) break; const q = yy * w + xx; if (r.fal[q] || r.nyilas[q]) { fedett[c - 2]!++; break; } if (r.cimke[q]! >= 2 && r.cimke[q] !== c) break; }
+      // (a fal nélkül közvetlenül szomszédos helyiség – egybenyitott tér zónahatára – nem számít: csak a külső tér felé)
+      let fed = false, hely = false;
+      for (let t = 1; t <= d; t++) { const xx = x + dx * t, yy = y + dy * t; if (xx < 0 || yy < 0 || xx >= w || yy >= h) break; const q = yy * w + xx; if (r.fal[q] || r.nyilas[q]) { fed = true; break; } if (r.cimke[q]! >= 2 && r.cimke[q] !== c) { hely = true; break; } }
+      if (!hely) { hatar[c - 2]!++; if (fed) fedett[c - 2]!++; }
       break;
     }
   }
@@ -576,7 +580,7 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
     let sA = 0, sF = 0; magHelyisegek.forEach((h, i) => { const A = r.helyisegek[i]?.A ?? 0; if (A > 0 && !h.kezi) { sA += A; sF += A * arany[i]!; } });
     magHelyisegek.forEach((h, i) => {
       const A = r.helyisegek[i]?.A ?? 0;
-      if (h.kulter || h.kezi || A < 4 || arany[i]! >= 0.5 || sA - A <= 0 || (sF - A * arany[i]!) / (sA - A) < 0.6) return;
+      if (h.kulter || h.kezi || BELTER_NEV.test(h.nev) || A < 4 || arany[i]! >= 0.5 || sA - A <= 0 || (sF - A * arany[i]!) / (sA - A) < 0.6) return;
       h.nyitott = true;
       e.figyelmeztetesek.push(`${h.kod ? h.kod + ' ' : ''}${h.nev}: a körvonala nagy részén (${Math.round((1 - arany[i]!) * 100)} %) nincs fal – nyitott (külső) térnek vettem. Ha zárt helyiség, állítsd át a besorolását.`);
     });

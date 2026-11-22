@@ -490,9 +490,11 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
         // (a szomszédok sűrűsége: 20 cm-en belül oldalanként legalább 2 – ≤ 10 cm-es osztás)
         elfogadott.push([qx, qy, qs, ax, ay, bx, by, lab, L]);
       }
-      // a lap sraffozási stílusa: ha a ferde sraff az uralkodó (a létra-vonalak száma kisebb), a létra nem fal – a
+      // a lap sraffozási stílusa: csak ha a merőleges sraff az uralkodó (legalább kétszer annyi létra-vonal, mint ferde),
+      // a létra fal – a vegyes (pl. hullámvonalas hőszigetelésű) és a ferde sraffos rajzon a létra csak zaj; a
       // ferde sraffos rajzon a sűrű egyenes vonalsor berendezés (pados gőzkabin, törölközőszárító, lamella)
-      if (elfogadott.length >= db) for (const [qx, qy, qs, ax, ay, bx, by, lab, L] of elfogadott) {
+      if ((globalThis as any).SRDBG) console.log('LETRA elfogadott', elfogadott.length, 'ferde', db);
+      if (elfogadott.length >= 2 * db) for (const [qx, qy, qs, ax, ay, bx, by, lab, L] of elfogadott) {
         const [cax, cay] = tr(ax, ay), [cbx, cby] = tr(bx, by);
         const n = Math.max(1, Math.ceil(Math.hypot(cbx - cax, cby - cay) * 2));
         for (let k = 0; k <= n; k++) { const x = Math.round(cax + (cbx - cax) * k / n), y = Math.round(cay + (cby - cay) * k / n); if (x >= 0 && y >= 0 && x < w && y < h) { sr[y * w + x] = 1; if (lab) srLab[y * w + x] = lab; } }
@@ -1210,7 +1212,8 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       else if (zar[i]) { helyCimke[i] = 0; gat[i] = 1; szabadKicsi[i] = 0; }
       else if (zonas.has(helyCimke[i]!)) helyCimke[i] = 0;
     }
-    // két zóna közti keskeny (≤ 0,6 m) rés a fal: a zóna a fal belső síkjáig tart. Ha a résben se fal, se nyílás nincs
+    // két zóna közti keskeny (≤ 0,6 m) rés a fal: a zóna a fal belső síkjáig tart. Ha a résben se fal, se nyílás nincs,
+    // és a rés legalább 1,5 m hosszú
     // (a falat a rajz csak a két síkjával, kitöltés nélkül adja – pl. válaszfal, garázs és közlekedő közti fal), a rés fal.
     const RF = Math.max(1, Math.round(0.6 / px));
     const res = (k0: number, lep: number, n: number) => {
@@ -1218,11 +1221,22 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       let m = 0; while (m < n && m <= RF && !Z[k0 + m * lep]) m++;
       if (m < 1 || m > RF || m >= n) return m;
       for (let j = 0; j < m; j++) { const q = k0 + j * lep; if (fal[q] || nyilas[q]) return m; }
-      for (let j = 0; j < m; j++) { const q = k0 + j * lep; fal[q] = 1; gat[q] = 1; helyCimke[q] = 0; szabadKicsi[q] = 0; }
+      for (let j = 0; j < m; j++) jelolt[k0 + j * lep] = 1;
       return m;
     };
+    const jelolt = new Uint8Array(w * h);
     for (let y = 0; y < h; y++) for (let x = 1; x < w - 1; x++) { const i = y * w + x; if (Z[i - 1] && !Z[i]) x += Math.max(0, res(i, 1, w - x) - 1); }
     for (let x = 0; x < w; x++) for (let y = 1; y < h - 1; y++) { const i = y * w + x; if (Z[i - w] && !Z[i]) y += Math.max(0, res(i, w, h - y) - 1); }
+    // (csak a hosszan – legalább 1,5 m-en át – üres rés fal: a rövid rés a két zóna közti ajtónyílás)
+    const lat = new Uint8Array(w * h), minH = 1.5 / px;
+    for (let i0 = 0; i0 < w * h; i0++) {
+      if (!jelolt[i0] || lat[i0]) continue;
+      const komp = [i0]; lat[i0] = 1; let bx0 = w, bx1 = 0, by0 = h, by1 = 0;
+      for (let k = 0; k < komp.length; k++) { const q = komp[k]!, x = q % w, y = (q / w) | 0; if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y;
+        for (const n of [x > 0 ? q - 1 : -1, x < w - 1 ? q + 1 : -1, q - w, q + w]) if (n >= 0 && n < w * h && jelolt[n] && !lat[n]) { lat[n] = 1; komp.push(n); } }
+      if (Math.max(bx1 - bx0, by1 - by0) + 1 < minH) continue;
+      for (const q of komp) { fal[q] = 1; gat[q] = 1; helyCimke[q] = 0; szabadKicsi[q] = 0; }
+    }
   }
   if (sraffMod) {
     // a rács széléig kifutó „helyiség” (pl. a pecsétje a külső térben van: fedett bejáró, kukatároló) a külső tér része
