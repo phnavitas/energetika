@@ -473,6 +473,7 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
     // keresztsraffal): „létra” – legalább 5 egyforma hosszú, egymás mellett (≤ 10 cm-enként) párhuzamosan futó rövid
     // vonal, a végeik egy vonalban (a két falsík között). A padló-, csempe- és lépcsőrajzolat ritkább, az ablak
     // néhány vonala kevés; ezek a vonalak a ferde sraffal egyenrangúan számítanak.
+    let letraJo: (typeof letra)[number][] = [];
     if (letra.length >= 20) {
       const elfogadott: (typeof letra)[number][] = [];
       const RL = 0.3, li = new Map<string, number[]>();
@@ -492,19 +493,9 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
         // (a szomszédok sűrűsége: 20 cm-en belül oldalanként legalább 2 – ≤ 10 cm-es osztás)
         elfogadott.push([qx, qy, qs, ax, ay, bx, by, lab, L]);
       }
-      // a lap sraffozási stílusa: csak ha a merőleges sraff az uralkodó (legalább kétszer annyi létra-vonal, mint ferde),
-      // a létra fal – a vegyes (pl. hullámvonalas hőszigetelésű) és a ferde sraffos rajzon a létra csak zaj; a
-      // ferde sraffos rajzon a sűrű egyenes vonalsor berendezés (pados gőzkabin, törölközőszárító, lamella)
-      if ((globalThis as any).SRDBG) console.log('LETRA elfogadott', elfogadott.length, 'ferde', db);
-      if (elfogadott.length >= 2 * db) for (const [qx, qy, qs, ax, ay, bx, by, lab, L] of elfogadott) {
-        const [cax, cay] = tr(ax, ay), [cbx, cby] = tr(bx, by);
-        const n = Math.max(1, Math.ceil(Math.hypot(cbx - cax, cby - cay) * 2));
-        for (let k = 0; k <= n; k++) { const x = Math.round(cax + (cbx - cax) * k / n), y = Math.round(cay + (cby - cay) * k / n); if (x >= 0 && y >= 0 && x < w && y < h) { sr[y * w + x] = 1; if (lab) srLab[y * w + x] = lab; } }
-        db++;
-        if (L >= 0.1) srSzeg.push([qx, qy, qs, ax, ay, bx, by, lab]);
-      }
+      letraJo = elfogadott;
     }
-    if (db > 200) {
+    const mezo = () => {
       // a sraffvonalak jellemző (medián) távolsága: a párhuzamos szomszédig mért merőleges távolság
       // a sraffvonalak sávjának kitöltése vonalanként: a vonalat a párhuzamos szomszédjáig mért (≤ 0,3 m) távolság felével
       // vastagítjuk – a ritka (20–25 cm-es) falsraffozás is összefüggő sáv lesz, a magányos ferde vonal (méretjel) nem
@@ -536,6 +527,26 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
       const tiszta = tagit(szukit(zart, w, h, 1), w, h, 1);
       let falPx = 0, srPx = 0;
       for (let i = 0; i < w * h; i++) { if (fal[i]) falPx++; if (tiszta[i]) srPx++; }
+      return { tiszta, srPx, falPx };
+    };
+    // a ferde sraff mezője; ha a lap falai sraffal rajzoltak (a ferde sraff mezője falat ad), és a merőleges („létra”)
+    // sraff az uralkodó (legalább kétszer annyi létra-vonal, mint ferde), a létra-vonalakkal együtt újra. A kitöltéssel
+    // rajzolt falú lapon (a létra ott a kitöltés mintázata, burkolat) és a vegyes rajzon (hullámvonalas hőszigetelés,
+    // pados gőzkabin, törölközőszárító, lamella) a létra nem fal.
+    let M = db > 200 ? mezo() : null;
+    if ((globalThis as any).SRDBG) console.log('LETRA elfogadott', letraJo.length, 'ferde', db, 'ferde mező', M?.srPx, M?.falPx);
+    if (M && M.srPx > 1.5 * M.falPx && letraJo.length >= 2 * db) {
+      for (const [qx, qy, qs, ax, ay, bx, by, lab, L] of letraJo) {
+        const [cax, cay] = tr(ax, ay), [cbx, cby] = tr(bx, by);
+        const n = Math.max(1, Math.ceil(Math.hypot(cbx - cax, cby - cay) * 2));
+        for (let k = 0; k <= n; k++) { const x = Math.round(cax + (cbx - cax) * k / n), y = Math.round(cay + (cby - cay) * k / n); if (x >= 0 && y >= 0 && x < w && y < h) { sr[y * w + x] = 1; if (lab) srLab[y * w + x] = lab; } }
+        db++;
+        if (L >= 0.1) srSzeg.push([qx, qy, qs, ax, ay, bx, by, lab]);
+      }
+      if (db > 200) M = mezo();
+    }
+    if (M) {
+      const { tiszta, srPx, falPx } = M;
       if ((globalThis as any).SRDBG) console.log('SRDBG db', db, 'srMaxV', srMaxV, 'letra', letra.length, 'srPx', srPx, 'falPx', falPx, 'csakFolia', csakFolia);
       if (srPx > 1.5 * falPx) {
         for (let i = 0; i < w * h; i++) if (tiszta[i]) fal[i] = 1;
