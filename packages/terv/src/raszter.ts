@@ -1512,7 +1512,9 @@ function resZar(fal: Uint8Array, nyilas: Uint8Array, w: number, h: number, maxRe
         for (const [b, d] of [[b0 - 1, -1], [b1 + 1, 1]] as const) for (let q = 0; q < t; q++) { const bb = b + d * q; if (bb < 0 || bb >= H || !fal[idx(a, bb)]) return false; }
         return true; };
       const atmeno = (a: number, irany: number, b0: number, b1: number) => { for (let s = 0; s <= S; s++) { const aa = a + irany * s; if (aa < 0 || aa >= W || !fal[idx(aa, (b0 + b1) >> 1)]) return false; if (atmeno1(aa, b0, b1)) return true; } return false; };
-      const keresztfalak = (b0: number, b1: number) => atmeno(k0 - 1, -1, b0, b1) && atmeno(k1, 1, b0, b1);
+      // (csak falvastagságnál hosszabb résnél és ≥ 0,1 m-es sávnál: a kettős vonallal rajzolt fal két vonala közti köz, az
+      // ablakkeret vonalai közti hajszálsáv továbbra is záródik)
+      const keresztfalak = (b0: number, b1: number) => k1 - k0 > maxSav && b1 - b0 + 1 >= Math.max(3, Math.round(maxSav / 6)) && atmeno(k0 - 1, -1, b0, b1) && atmeno(k1, 1, b0, b1);
       savok.forEach(([b0, b1], k) => { if (!lepcso.has(k) && !fesztav(b0, b1) && !keresztfalak(b0, b1)) for (let b = b0; b <= b1; b++) for (let a = k0; a < k1; a++) nyilas[idx(a, b)] = 1; });
     }
   }
