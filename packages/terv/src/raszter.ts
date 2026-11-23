@@ -1505,8 +1505,10 @@ function resZar(fal: Uint8Array, nyilas: Uint8Array, w: number, h: number, maxRe
       // két keresztfal közti teljes fesztáv: a rés mindkét végén a horgonyfal a sáv mindkét oldalán tovább fut (a sávra
       // merőleges, átmenő fal – nem falvég, nem pillér). Ilyenkor a „sáv” a helyiség egy szelete, amelyet a rajzi elemek
       // (berendezés, tengelyvonal, burkolatjel) szabálytalanná tettek, ezért a szomszéd oszlopok fesztávja nem egyezik
-      // (a horgony lehet a keresztfalhoz tapadó berendezés-folt is: a keresztfalat a horgonytól kifelé 0,3 m-en belül keressük)
-      const t = Math.max(2, Math.round(keresztMin * 0.3)), S = Math.round(keresztMin * 0.6);
+      // (a horgony lehet a keresztfalhoz tapadó berendezés-folt is: a keresztfalat a horgonytól kifelé 0,3 m-en belül keressük;
+      // a keresztfal a sáv mindkét oldalán legalább 0,45 m-t fut tovább – a falvastagságon belül több sávra tört valódi
+      // nyílás pillérje ennél rövidebben lóg túl a sávon)
+      const t = Math.round(keresztMin * 0.9), S = Math.round(keresztMin * 0.6);
       const atmeno1 = (a: number, b0: number, b1: number) => {
         if (a < 0 || a >= W) return false;
         for (const [b, d] of [[b0 - 1, -1], [b1 + 1, 1]] as const) for (let q = 0; q < t; q++) { const bb = b + d * q; if (bb < 0 || bb >= H || !fal[idx(a, bb)]) return false; }
