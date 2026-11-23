@@ -114,7 +114,7 @@ const poligonTerulet = (q: [number, number][], mPerPt: number) => Math.abs(q.red
 const IRANY_SZIN: Record<number, string> = { 0: '#A16207', 90: '#2E6DB4', 180: '#15803D', 270: '#A21CAF' };
 const IRANY_NEV: Record<number, string> = { 0: 'lapon fent', 90: 'lapon jobbra', 180: 'lapon lent', 270: 'lapon balra' };
 import { alaprajzFeldolgozHatter, pdfLapokHatter } from '../terv/hatter';
-import { elemAlakok } from '@terv/forrasAlak';
+import { elemAlakok, modellLapPont } from '@terv/forrasAlak';
 import { AZ_TAJ, kulterRaszter, norm, futottRiK, padloigTetoter, pecsetPontok, kulsoKozelE, alapKijeloles, BEJARATI_H, burokNyilasok, eszakHomGy, homlokzatGy, nezetGy, homlokzatNezetTar, homlokzatRajzTar, burokAutoGy, burokAutoTar, nevFeliratok, vartTer, burok3dTar, burok3dCache, elemzesLap, burokFalGy, burokFalakAuto, ferdeModell, lapKategoriak, burokNyilasokPt, atvetelReszek, tervbolFuggo, homMagGy, type Kijeloles, type BurokFalAuto , tervFolyamat, SZINT_SOR, kerdesKulcs, nyilasMeretAlkalmaz, falPluszAlkalmaz, type ModellKezi } from '../terv/folyamat';
 export { tervbolFuggo } from '../terv/folyamat';
 
@@ -177,6 +177,11 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   /** A rajzon kattintással kiválasztott helyiség (a helyiséglistában kiemelve). */
   const [kivH, setKivH] = useState<number | null>(null);
   useEffect(() => setKivH(null), [aIdx]);
+  const zoomCel = useRef<number[] | null>(null);
+  /** a kért (lapkoordinátás) téglalapot a teljes nézet arányára bővíti – a rajz magassága ne ugorjon */
+  const aranyra = (c: number[]) => { const v0 = nezetRef.current.nezet0; const ar = v0[3]! / v0[2]!; let w = c[2]!, hh = c[3]!; if (hh / w > ar) w = hh / ar; else hh = w * ar;
+    return w >= v0[2]! ? null : [c[0]! + c[2]! / 2 - w / 2, c[1]! + c[3]! / 2 - hh / 2, w, hh]; };
+  useEffect(() => { setZoom(zoomCel.current ? aranyra(zoomCel.current) : null); zoomCel.current = null; }, [aIdx, nagyit]);
   /** Az alaprajz-ablak nézete: 2D (a rajz a felismert elemekkel) vagy 3D (a hőburok térben). */
   const [nezet3d, setNezet3d] = useState(false);
   // a 2D / 3D nézet görgetéskor a képernyő tetején marad (a listák alatta görgethetők, a nyílás, fal rákattintással ellenőrizhető)
@@ -450,6 +455,29 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const [osszevon, setOsszevon] = useState<{ b: Poligon[]; p: number; v: number; w: number } | null>(null);
   /** Húzás közben a fogott pont / él (kiemeléshez és az összevonáshoz). */
   const huzIdo = useRef(0);
+  // 2D nagyítás, mozgatás: görgő (a kurzor körül), húzás (nagyított nézetben vagy középső gombbal), két ujj, +/− gombok
+  const [zoom, setZoom] = useState<number[] | null>(null);
+  const nezetRef = useRef<{ nezet: number[]; nezet0: number[] }>({ nezet: [0, 0, 1, 1], nezet0: [0, 0, 1, 1] });
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const mozgat = useRef<{ ujjak: Map<number, { x: number; y: number }>; kezd?: { x: number; y: number; vb: number[] }; csip?: { d: number; mx: number; my: number; vb: number[] }; mozdult: boolean }>({ ujjak: new Map(), mozdult: false });
+  /** a nézet nagyítása f-szeresére a (lapkoordinátás) x, y pont körül; a teljes nézetnél kisebbre nem */
+  const zoomAllit = (f: number, x?: number, y?: number, vbAlap?: number[]) => {
+    const { nezet: v, nezet0: v0 } = nezetRef.current; const b = vbAlap ?? v;
+    const cx = x ?? b[0]! + b[2]! / 2, cy = y ?? b[1]! + b[3]! / 2;
+    const w = Math.min(v0[2]!, Math.max(v0[2]! / 60, b[2]! * f)), k = w / b[2]!;
+    if (w >= v0[2]! * 0.999) { setZoom(null); return; }
+    setZoom([cx - (cx - b[0]!) * k, cy - (cy - b[1]!) * k, b[2]! * k, b[3]! * k]);
+    void v;
+  };
+  const lapPont = (cx: number, cy: number) => { const svg = svgRef.current; const m = svg?.getScreenCTM(); if (!m) return null; const q = new DOMPoint(cx, cy).matrixTransform(m.inverse()); return { x: q.x, y: q.y }; };
+  useEffect(() => {
+    const svg = svgRef.current; if (!svg) return;
+    // (teljes nézetben a lefelé görgetés a lapot görgeti – nincs mit kicsinyíteni)
+    const gorgo = (e: WheelEvent) => { const { nezet: v, nezet0: v0 } = nezetRef.current; if (e.deltaY > 0 && v[2]! >= v0[2]! * 0.999) return;
+      e.preventDefault(); const q = lapPont(e.clientX, e.clientY); zoomAllit(Math.pow(1.2, Math.max(-3, Math.min(3, e.deltaY / 100))), q?.x, q?.y); };
+    svg.addEventListener('wheel', gorgo, { passive: false });
+    return () => svg.removeEventListener('wheel', gorgo);
+  });
   const [fogas, setFogas] = useState<{ x: number; y: number; tipus: 'pont' | 'el' } | null>(null);
   /** Kézi hőburok-rajzolás: a lerakott pontok (pt); null: nincs rajzolás. */
   const [rajzol, setRajzol] = useState<[number, number][] | null>(null);
@@ -718,6 +746,11 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   try { (globalThis as any).__szobaMag = () => alaprajzLapok.map(({ i }) => { const a = elemzesek[i]; if (typeof a !== 'object') return null; const v = szobaMagassag(i, a); return v ? { lap: i, tengely: v.tengely, hatarok: v.hatarok, savok: v.savok, helyisegek: [...v.magassag.entries()].map(([ri, h]) => [a.magHelyisegek[ri]?.kod, a.magHelyisegek[ri]?.nev, h]) } : null; }); } catch { /* */ }
   // a 3D-ben kijelölt elem (fal, nyílás, tér) – a 2D rajzon kiemelve (alakja a forráslapon)
   const [kivElem, setKivElem] = useState<string | null>(null);
+  // a 3D zártsági hibái: a kiválasztott (a 3D-ben kattintott / a listában) és az elrejtett („nem hiba”) helyek; a 2D-n mutatott hely
+  const [kivHiba, setKivHiba] = useState<number | null>(null);
+  const [hibaRejt, setHibaRejt] = useState<Set<string>>(new Set());
+  const [hibaPont, setHibaPont] = useState<{ lap: number; x: number; y: number; a?: [number, number]; b?: [number, number] } | null>(null);
+  const hibaKulcs = (h: { fajta: string; szint?: string; hely: [number, number] }) => `${h.fajta}|${h.szint ?? ''}|${Math.round(h.hely[0] * 10)}|${Math.round(h.hely[1] * 10)}`;
   const epMd = useMemo(() => { if (!nezet3d || modell3d !== 'teljes') return null; try { return epuletModellApp(); } catch { return null; } }, [nezet3d, modell3d, elemzesek, kijelolesek, bm, lapok, modellKezi]); // eslint-disable-line react-hooks/exhaustive-deps
   epMdRef.current = epMd;
   try { (globalThis as any).__burok3d = () => ({ belso: modellSzintek('belso'), kulso: modellSzintek('kulso') }); } catch { /* */ }
@@ -1170,7 +1203,9 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   }
 
   const vb = al?.r ? [al.r.x0, al.r.y0, al.r.w * al.r.px / al.r.mPerPt, al.r.h * al.r.px / al.r.mPerPt] : aLap ? [0, 0, aLap.lap.szel, aLap.lap.mag] : [0, 0, 1, 1];
-  const nezet = nagyit ? vb : aLap ? [0, 0, aLap.lap.szel, aLap.lap.mag] : vb;
+  const nezet0 = nagyit ? vb : aLap ? [0, 0, aLap.lap.szel, aLap.lap.mag] : vb;
+  const nezet = zoom ?? nezet0;
+  nezetRef.current = { nezet, nezet0 };
   // a fogópontok mérete képernyő-pixelben ~ (a nézet szélessége ~900 px-en)
   const fogo = (nezet[2] ?? 900) / 900;
   const nyilHossz = nezet[2]! * 0.05;
@@ -1344,15 +1379,33 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                 if (modell3d === 'teljes') {
                   const md = epMd;
                   if (!md || !md.falak.length) return <div class="kartya halkabb" style="padding:60px 16px 16px">{valto}A 3D modellhez a lap léptéke és a felismert falak kellenek (add meg a méretarányt).</div>;
-                  const hibak = (() => { try { return zartsagEllenoriz(md); } catch { return []; } })();
-                  return <div class="kartya" style="padding:56px 0 0;overflow:hidden;position:relative">{valto}<Epulet3D modell={md} hibak={hibak} kivNy={kivNy} onNyilas={(f) => { setKivNy(f); if (f && f.lap !== aIdx && f.lap >= 0) setAIdx(f.lap); }} onElem={(id) => { setKivElem(id); const e = id ? elemAlakok(md).find((x) => x.id === id) : undefined; if (e && e.lap !== aIdx) setAIdx(e.lap); }} magassag={Math.round(Math.min(760, Math.max(rogzit ? 300 : 420, (typeof window !== 'undefined' ? window.innerHeight : 800) * (rogzit ? 0.5 : 0.7))))} />{kivNyAdat && <NyilasMeretSzerk adat={kivNyAdat} allit={(x) => nyMeretAllit(kivNy!.lap, kivNy!.ny, x)} bezar={() => setKivNy(null)} />}
+                  const hibak = (() => { try { return zartsagEllenoriz(md); } catch { return []; } })().filter((h) => !hibaRejt.has(hibaKulcs(h)));
+                  // a hiba helye a 2D rajzon: a szint lapja, ±3 m-es nagyított nézet, piros jelöléssel
+                  const mutat = (h: (typeof hibak)[number]) => {
+                    const q = modellLapPont(md, h.hely, h.szint); if (!q) return;
+                    const A = h.a ? modellLapPont(md, h.a, h.szint) : null, B = h.b ? modellLapPont(md, h.b, h.szint) : null;
+                    const mp = (al?.r?.mPerPt ?? md.lapok?.find((k) => k.lap === q.lap)?.mPerPt ?? 0.0353), m = 1 / mp;
+                    const xs = [q.x, A?.x ?? q.x, B?.x ?? q.x], ys = [q.y, A?.y ?? q.y, B?.y ?? q.y];
+                    const x0 = Math.min(...xs) - 3 * m, x1 = Math.max(...xs) + 3 * m, y0 = Math.min(...ys) - 3 * m, y1 = Math.max(...ys) + 3 * m;
+                    const cel = [x0, y0, x1 - x0, y1 - y0];
+                    setHibaPont({ lap: q.lap, x: q.x, y: q.y, ...(A && B ? { a: [A.x, A.y] as [number, number], b: [B.x, B.y] as [number, number] } : {}) });
+                    if (q.lap !== aIdx) { zoomCel.current = cel; setAIdx(q.lap); } else setZoom(aranyra(cel));
+                    setNagyit(true); setNezet3d(false);
+                    // (a magas rajzon a jelölés a görgethető keret alján lehet – oda görgetünk)
+                    setTimeout(() => document.getElementById('hiba-2d')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 400);
+                  };
+                  return <div class="kartya" style="padding:56px 0 0;overflow:hidden;position:relative">{valto}<Epulet3D modell={md} hibak={hibak} onHiba={(i) => { setKivHiba(i); setTimeout(() => document.getElementById(`zh-${i}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 30); }} kivNy={kivNy} onNyilas={(f) => { setKivNy(f); if (f && f.lap !== aIdx && f.lap >= 0) setAIdx(f.lap); }} onElem={(id) => { setKivElem(id); const e = id ? elemAlakok(md).find((x) => x.id === id) : undefined; if (e && e.lap !== aIdx) setAIdx(e.lap); }} magassag={Math.round(Math.min(760, Math.max(rogzit ? 300 : 420, (typeof window !== 'undefined' ? window.innerHeight : 800) * (rogzit ? 0.5 : 0.7))))} />{kivNyAdat && <NyilasMeretSzerk adat={kivNyAdat} allit={(x) => nyMeretAllit(kivNy!.lap, kivNy!.ny, x)} bezar={() => setKivNy(null)} />}
                     {hibak.length > 0 && (
                       <div role="status" style="margin:0;padding:10px 14px;border-top:1px solid #FCA5A5;background:#FEF2F2">
                         <strong style="color:#B91C1C">A modell nem zárt – a beolvasás itt hiányos ({hibak.length} hely, a 3D-ben pirossal jelölve):</strong>
-                        <ul style="margin:6px 0 0 18px;padding:0;font-size:13px">{hibak.slice(0, 12).map((h) => <li>{h.leiras} <span class="halkabb">({h.szint ? `${szintNev(h.szint)}, ` : ''}x {String(Math.round(h.hely[0] * 10) / 10).replace('.', ',')} m, y {String(Math.round(h.hely[1] * 10) / 10).replace('.', ',')} m)</span></li>)}</ul>
+                        <div class="halkabb" style="font-size:12px;margin-top:2px">Kattints egy piros jelölésre a 3D-ben, vagy válassz a listából: „a rajzon” megmutatja a helyét az alaprajzon (ott javítható: fal, hőburok, helyiség besorolása); ha nem valódi hiba, elrejthető.</div>
+                        <ul style="margin:6px 0 0 18px;padding:0;font-size:13px">{hibak.slice(0, kivHiba !== null && kivHiba >= 12 ? kivHiba + 1 : 12).map((h, hi) => <li id={`zh-${hi}`} style={kivHiba === hi ? 'background:#FEE2E2;border-radius:4px;font-weight:600' : ''}>{h.leiras} <span class="halkabb">({h.szint ? `${szintNev(h.szint)}, ` : ''}x {String(Math.round(h.hely[0] * 10) / 10).replace('.', ',')} m, y {String(Math.round(h.hely[1] * 10) / 10).replace('.', ',')} m)</span>
+                          {' '}<button class="link-gomb" style="font-size:12px" onClick={() => { setKivHiba(hi); mutat(h); }}>a rajzon</button>
+                          {' · '}<button class="link-gomb" style="font-size:12px" onClick={() => { setHibaRejt((x) => new Set([...x, hibaKulcs(h)])); setKivHiba(null); }}>nem hiba – elrejtem</button></li>)}</ul>
                         {hibak.length > 12 && <div class="halkabb" style="font-size:13px">… és még {hibak.length - 12} hely.</div>}
                       </div>
                     )}
+                    {hibaRejt.size > 0 && <div class="halkabb" style="font-size:12px;padding:4px 14px">{hibaRejt.size} jelölést „nem hiba”-ként elrejtettél · <button class="link-gomb" style="font-size:12px" onClick={() => setHibaRejt(new Set())}>mind mutatása</button></div>}
                     {/* parametrikus javítás: a felismert tető és szintmagasságok felülírása – a modell és a mennyiségek újraszámolódnak */}
                     {(() => {
                       const mt = md.magasteto, MK = modellKezi;
@@ -1463,8 +1516,39 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   ))}
                 </div>
               )}
-              <svg viewBox={nezet.join(' ')} style={`display:block;width:100%;height:auto;background:#fff;${burokSzerk || rajzol ? 'touch-action:none;' : ''}${rajzol ? 'cursor:crosshair' : ''}`} role="img" aria-label="Az alaprajz a felismert elemekkel"
+              <div role="group" aria-label="Nagyítás" style="position:absolute;left:120px;top:10px;z-index:4;display:flex;gap:4px" onClick={(e) => e.stopPropagation()}>
+                {([['+', 'Nagyítás', () => zoomAllit(1 / 1.5)], ['−', 'Kicsinyítés', () => zoomAllit(1.5)], ['⤢', 'Teljes nézet', () => setZoom(null)]] as const).map(([t, cim, fn]) => (
+                  <button key={cim} class="gomb halk-gomb semleges" title={cim} aria-label={cim} style="min-width:34px;padding:4px 8px;font-size:16px;line-height:1;background:#fff" onClick={() => fn()}>{t}</button>
+                ))}
+              </div>
+              <svg ref={svgRef} viewBox={nezet.join(' ')} style={`display:block;width:100%;height:auto;background:#fff;${burokSzerk || rajzol || zoom ? 'touch-action:none;' : ''}${rajzol ? 'cursor:crosshair' : zoom && !burokSzerk ? 'cursor:grab' : ''}`} role="img" aria-label="Az alaprajz a felismert elemekkel"
+                onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
+                onPointerDown={(e) => {
+                  // mozgatás: nagyított nézetben bal gombbal / egy ujjal (a fogópontok maguk kezelik a húzást), középső gombbal mindig
+                  const mz = mozgat.current; mz.ujjak.set(e.pointerId, { x: e.clientX, y: e.clientY });
+                  if (mz.ujjak.size === 2) {
+                    const [a, b] = [...mz.ujjak.values()] as [{ x: number; y: number }, { x: number; y: number }];
+                    mz.csip = { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, vb: nezetRef.current.nezet }; mz.kezd = undefined; mz.mozdult = true; return;
+                  }
+                  if (e.button === 1 || (e.button === 0 && zoom)) { mz.kezd = { x: e.clientX, y: e.clientY, vb: nezet }; mz.mozdult = false; if (e.button === 1) e.preventDefault(); }
+                }}
                 onPointerMove={(e) => {
+                  const mz = mozgat.current;
+                  if (mz.ujjak.has(e.pointerId)) mz.ujjak.set(e.pointerId, { x: e.clientX, y: e.clientY });
+                  const svgE = e.currentTarget as SVGSVGElement; const pxPt = (mz.kezd?.vb ?? mz.csip?.vb ?? nezet)[2]! / Math.max(1, svgE.getBoundingClientRect().width);
+                  if (mz.csip && mz.ujjak.size === 2) {
+                    const [a, b] = [...mz.ujjak.values()] as [{ x: number; y: number }, { x: number; y: number }];
+                    const d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2; const c = mz.csip;
+                    const r = svgE.getBoundingClientRect(); const px0 = c.vb[0]! + (c.mx - r.left) * pxPt, py0 = c.vb[1]! + (c.my - r.top) * pxPt;
+                    const eltolt = [c.vb[0]! - (mx - c.mx) * pxPt, c.vb[1]! - (my - c.my) * pxPt, c.vb[2]!, c.vb[3]!];
+                    zoomAllit(c.d / Math.max(1, d), px0, py0, eltolt); return;
+                  }
+                  if (mz.kezd && !huz) {
+                    const dx = e.clientX - mz.kezd.x, dy = e.clientY - mz.kezd.y;
+                    if (!mz.mozdult && Math.hypot(dx, dy) < 5) return;
+                    if (!mz.mozdult) { mz.mozdult = true; svgE.setPointerCapture?.(e.pointerId); }
+                    const v = mz.kezd.vb; setZoom([v[0]! - dx * pxPt, v[1]! - dy * pxPt, v[2]!, v[3]!]); return;
+                  }
                   if (!huz) return;
                   const svg = e.currentTarget as SVGSVGElement; const m = svg.getScreenCTM(); if (!m) return;
                   const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
@@ -1544,7 +1628,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   setRajzol([...rajzol, [Math.round(pt.x * 10) / 10, Math.round(pt.y * 10) / 10]]);
                 }}
                 onDblClick={() => { if (rajzol && rajzol.length >= 3) { burokMent([...(kj.burok ?? burokFelismert), rajzol]); setRajzol(null); } }}
-                onPointerUp={() => huzVege()}
+                onPointerUp={(e) => { const mz = mozgat.current; mz.ujjak.delete(e.pointerId); if (mz.ujjak.size < 2) mz.csip = undefined; if (mz.kezd || mz.mozdult) { if (mz.mozdult) huzIdo.current = Date.now(); mz.kezd = undefined; mz.mozdult = false; } huzVege(); }}
+                onPointerCancel={(e) => { const mz = mozgat.current; mz.ujjak.delete(e.pointerId); mz.csip = undefined; mz.kezd = undefined; }}
                 onPointerLeave={() => huzVege()}>
                 <image href={aLap.kep} x={0} y={0} width={aLap.lap.szel} height={aLap.lap.mag} />
                 {al.r && (retegek.size > 0 || kivH !== null) && (() => {
@@ -1725,6 +1810,9 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                     </g>
                   );
                 })}
+                {hibaPont && hibaPont.lap === aIdx && (() => { const R = nezet[2]! * 0.02; return <g pointer-events="none">
+                  {hibaPont.a && hibaPont.b && <line x1={hibaPont.a[0]} y1={hibaPont.a[1]} x2={hibaPont.b[0]} y2={hibaPont.b[1]} stroke="#DC2626" stroke-width={8} stroke-opacity={0.6} vector-effect="non-scaling-stroke" stroke-linecap="round" />}
+                  <circle id="hiba-2d" cx={hibaPont.x} cy={hibaPont.y} r={R} fill="rgba(220,38,38,.18)" stroke="#DC2626" stroke-width={3} vector-effect="non-scaling-stroke" /></g>; })()}
                 {kivElem && epMd && elemAlakok(epMd).filter((e) => e.id === kivElem && e.lap === aIdx).flatMap((e) => e.poligonok.map((p) => <polygon points={p.map((q) => q.join(',')).join(' ')} fill="rgba(249,115,22,.25)" stroke="#F97316" stroke-width={3} vector-effect="non-scaling-stroke" pointer-events="none" />))}
               </svg>
             </div>

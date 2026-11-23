@@ -358,15 +358,15 @@ export function epuletElemek(modell: EpuletModell, opc: EpuletElemOpc = {}): Ele
 export function zartsagJelolok(modell: EpuletModell, hibak: readonly ZartsagHiba[]): THREE.Object3D[] {
   const jelolt = new THREE.MeshBasicMaterial({ color: 0xdc2626, transparent: true, opacity: 0.55, depthTest: false, side: THREE.DoubleSide });
   const ki: THREE.Object3D[] = [];
-  for (const hb of hibak) {
+  for (const [hi, hb] of hibak.entries()) {
     const sz0 = modell.szintek.find((q) => q.id === hb.szint); const z0 = sz0?.z0 ?? 0, hh = sz0?.h ?? 3;
     if (hb.a && hb.b && hb.fajta === 'fal') {
       const L = Math.hypot(hb.b[0] - hb.a[0], hb.b[1] - hb.a[1]); if (L < 0.05) continue;
       const m = new THREE.Mesh(new THREE.BoxGeometry(L, hh, 0.15), jelolt);
-      m.position.set((hb.a[0] + hb.b[0]) / 2, z0 + hh / 2, (hb.a[1] + hb.b[1]) / 2); m.rotation.y = -Math.atan2(hb.b[1] - hb.a[1], hb.b[0] - hb.a[0]); ki.push(m);
+      m.position.set((hb.a[0] + hb.b[0]) / 2, z0 + hh / 2, (hb.a[1] + hb.b[1]) / 2); m.rotation.y = -Math.atan2(hb.b[1] - hb.a[1], hb.b[0] - hb.a[0]); m.userData.jelolo = hi; ki.push(m);
     } else {
       const m = new THREE.Mesh(new THREE.SphereGeometry(0.45, 16, 12), jelolt);
-      m.position.set(hb.hely[0], z0 + hh + (hb.fajta === 'teto' ? 1.5 : 0.5), hb.hely[1]); ki.push(m);
+      m.position.set(hb.hely[0], z0 + hh + (hb.fajta === 'teto' ? 1.5 : 0.5), hb.hely[1]); m.userData.jelolo = hi; ki.push(m);
     }
   }
   return ki;

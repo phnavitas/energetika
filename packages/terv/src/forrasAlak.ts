@@ -52,6 +52,12 @@ export function elemAlakok(md: EpuletModell): ElemAlak[] {
   return ki;
 }
 
+/** A modell pontja (m) a szint lapján (pt) – a zártsági hiba megmutatásához a 2D rajzon. */
+export function modellLapPont(md: EpuletModell, p: P2, szint?: string | null): { lap: number; x: number; y: number } | null {
+  const k = keresKapcs(md.lapok ?? [], szint); if (!k) return null;
+  return { lap: k.lap, x: p[0] / k.mPerPt + k.o[0], y: p[1] / k.mPerPt + k.o[1] };
+}
+
 /** A lapon (pt) a ponthoz tartozó elemek – kattintásos kijelöléshez; a legkisebb területű (legbelső) elöl. */
 export function elemekPontban(alakok: ElemAlak[], lap: number, x: number, y: number): ElemAlak[] {
   const benne = (p: P2[]) => { let b = false; for (let i = 0, j = p.length - 1; i < p.length; j = i++) { const [xi, yi] = p[i]!, [xj, yj] = p[j]!; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) b = !b; } return b; };

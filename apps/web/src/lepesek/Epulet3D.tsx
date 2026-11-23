@@ -43,7 +43,9 @@ function hoburokMegj(e: Elem3D, hoburok: boolean, csakBurok: boolean): Megjelene
 }
 
 export type NyilasForras = { lap: number; ny: number };
-export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, onElem, hibak }: { modell: EpuletModell; magassag?: number;
+export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, onElem, hibak, onHiba }: { modell: EpuletModell; magassag?: number;
+  /** Kattintás egy zártsági hiba piros jelölésére (a hiba sorszáma a `hibak` listában). */
+  onHiba?: (i: number) => void;
   /** Kattintással kijelölt elem (fal, nyílás, tér) azonosítója – a 2D rajzon kiemeléshez. */
   onElem?: (id: string | null) => void;
   /** A zártság-ellenőrzés hibái: piros jelölés a modellben (hiányzó fal, rés, tetőhézag, fedetlen rész). */
@@ -79,10 +81,10 @@ export function Epulet3D({ modell, magassag = 600, kivNy, onNyilas, onElem, hiba
   }, [modell]);
 
   // a motor egyszer indul; a többi hatás csak állapotot állít rajta (a geometria csak a modell változásakor épül újra)
-  const hivas = useRef({ onElem, onNyilas }); hivas.current = { onElem, onNyilas };
+  const hivas = useRef({ onElem, onNyilas, onHiba }); hivas.current = { onElem, onNyilas, onHiba };
   useEffect(() => {
     const el = hely.current; if (!el) return;
-    const n = nezoNyit(el, { tipusok: EPULET_TIPUSOK, tipusBeall: tipusB, arnyekolas: ao, duplaKijelol: false,
+    const n = nezoNyit(el, { tipusok: EPULET_TIPUSOK, tipusBeall: tipusB, arnyekolas: ao, duplaKijelol: false, onJelolo: (i) => hivas.current.onHiba?.(i),
       onKatt: (id, e) => { setKijelolt(id); hivas.current.onElem?.(id);
         const a = e?.adat as EpuletForras | undefined; hivas.current.onNyilas?.(a?.fajta === 'nyilas' ? a.forras ?? null : null); } });
     nezo.current = n;

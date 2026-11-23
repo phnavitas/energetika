@@ -58,6 +58,8 @@ export interface NezoOpciok {
   megjelenes?: ((e: Elem3D) => Megjelenes | null) | null;
   /** Kattintás (mozdulat nélkül). ctrl: Ctrl/⌘/Shift lenyomva (többes kijelölés). */
   onKatt?: (id: string | null, e: Elem3D | null, opc: { ctrl: boolean }) => void;
+  /** Kattintás egy jelölőre (userData.jelolo: a jelölő sorszáma) – pl. a zártsági hiba leírásához. */
+  onJelolo?: (i: number) => void;
   /** Dupla kattintás után (az elemre közelítettünk, ill. üres helyen a teljes nézetre). */
   onDupla?: (id: string | null, e: Elem3D | null) => void;
   /** A kijelölés színe. */
@@ -68,7 +70,7 @@ export interface NezoOpciok {
   duplaKijelol?: boolean;
 }
 export interface Nezo {
-  /** Új elemlista (a kamera marad). jelolok: nem kattintható, mindenen átütő jelölések (pl. zártsági hibák). */
+  /** Új elemlista (a kamera marad). jelolok: mindenen átütő jelölések (pl. zártsági hibák); a userData.jelolo sorszámú kattintható (onJelolo). */
   elemek(l: Elem3D[], jelolok?: THREE.Object3D[]): void;
   /** A megjelenés újraszámolása (pl. a `megjelenes` függvény mögötti állapot változott). */
   frissit(): void;
@@ -281,7 +283,15 @@ export function nezoNyit(doboz: HTMLElement, opc: NezoOpciok): Nezo {
   const down = (e: PointerEvent) => { le = [e.clientX, e.clientY]; };
   const up = (e: PointerEvent) => {
     if (!le || e.button !== 0 || Math.hypot(e.clientX - le[0], e.clientY - le[1]) > 4) { le = null; return; }
-    le = null; const x = talal(e); opc.onKatt?.(x?.id ?? null, x, { ctrl: e.ctrlKey || e.metaKey || e.shiftKey });
+    le = null;
+    // a jelölők (mindenen átütnek) elsőbbséget kapnak
+    if (opc.onJelolo && jelGrp.children.length) {
+      const rr = renderer.domElement.getBoundingClientRect();
+      ray.setFromCamera(new THREE.Vector2(((e.clientX - rr.left) / rr.width) * 2 - 1, -((e.clientY - rr.top) / rr.height) * 2 + 1), cam);
+      const jh = ray.intersectObjects(jelGrp.children, true).find((h) => typeof h.object.userData.jelolo === 'number');
+      if (jh) { opc.onJelolo(jh.object.userData.jelolo as number); return; }
+    }
+    const x = talal(e); opc.onKatt?.(x?.id ?? null, x, { ctrl: e.ctrlKey || e.metaKey || e.shiftKey });
   };
   const dupla = (ev: MouseEvent) => {
     const x = talal(ev);
