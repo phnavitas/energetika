@@ -1208,7 +1208,26 @@ export function tetoUnio(reszek: T3[][][]): T3[][][] {
 function magastetoEpit(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], t: MagastetoBe, pillerek: Piller[] = []): Magasteto | null {
   const fel = [...szintek].sort((a, b) => b.z0 - a.z0)[0]; if (!fel || !(t.hajlas > 5)) return null;
   const fd = fodemek.find((f) => f.alatt === fel.id && f.id.startsWith('FT')) ?? fodemek.find((f) => f.folott === fel.id);
-  const pol0 = fd?.poligonok.slice().sort((a, b) => b.length - a.length)[0]; if (!pol0 || pol0.length < 4) return null;
+  // A legfelső szint több különálló épületrésze (ikerház, sorház, külön tömbök) mind kap tetőt (Balázs: „tetőket nem
+  // jól ismeri fel” – Tata, Nagy László u.: három egyforma tömbből csak egynek volt teteje). A fő rész a legtöbb csúcsú
+  // (a felülnézet ereszvonala ehhez illeszkedik); a többi rész felülnézet nélkül, a saját körvonalán.
+  const resz = (fd?.poligonok ?? []).filter((p) => p.length >= 4);
+  const fo = resz.slice().sort((a, b) => b.length - a.length)[0]; if (!fo) return null;
+  const Tfo = Math.abs(teruletP(fo));
+  const tobb = resz.filter((p) => p !== fo && Math.abs(teruletP(p)) >= Math.max(15, 0.15 * Tfo));
+  const m0 = magastetoEgy(szintek, fodemek, koszoruk, t, pillerek, fo);
+  if (!m0 || !tobb.length) return m0;
+  const { felul: _f, ...t2 } = t; void _f;
+  const mk = tobb.map((p) => magastetoEgy(szintek, fodemek, koszoruk, t2, pillerek, p)).filter((x): x is Magasteto => !!x);
+  if (!mk.length) return m0;
+  return { ...m0, haromszogek: [...m0.haromszogek, ...mk.flatMap((x) => x.haromszogek)],
+    tovabbiEresz: [...(m0.tovabbiEresz ?? []), ...mk.flatMap((x) => [x.eresz, ...(x.tovabbiEresz ?? [])])],
+    ...(m0.lapos || mk.some((x) => x.lapos) ? { lapos: [...(m0.lapos ?? []), ...mk.flatMap((x) => x.lapos ?? [])] } : {}),
+    ...(m0.fedett || mk.some((x) => x.fedett) ? { fedett: [...(m0.fedett ?? []), ...mk.flatMap((x) => x.fedett ?? [])] } : {}),
+    ...(m0.felteto || mk.some((x) => x.felteto) ? { felteto: [...(m0.felteto ?? []), ...mk.flatMap((x) => x.felteto ?? [])] } : {}) };
+}
+function magastetoEgy(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], t: MagastetoBe, pillerek: Piller[], pol0: P2[]): Magasteto | null {
+  const fel = [...szintek].sort((a, b) => b.z0 - a.z0)[0]; if (!fel) return null;
   const { pol: pol1, fedett } = fedettTerasz(pol0, pillerek.filter((p) => p.szint === fel.id && p.hely === 'szabad'));
   // az eresz (és kiírt kiállás híján a kiállás) a szintjelekből: a tetőtest külső szélessége a födém körvonalának
   // legkisebb szélessége (2°-onként forgatva)
