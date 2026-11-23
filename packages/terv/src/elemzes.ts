@@ -61,7 +61,18 @@ async function jpegUrl(c: Vaszon, q: number): Promise<string> {
 /** Munkaszálon a pdf.js „dokumentuma”: betűkészletek a munkaszál FontFaceSet-jébe, vásznak OffscreenCanvas-ként. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const munkaszalDok = (): any => ({ fonts: (globalThis as unknown as { fonts?: unknown }).fonts, createElement: (t: string) => { if (t === 'canvas') return new OffscreenCanvas(1, 1); throw new Error(`createElement(${t}) munkaszálon`); } });
-const docBeall = () => (typeof document === 'undefined' ? { ownerDocument: munkaszalDok() } : {});
+/**
+ * A pdf.js WebAssembly-dekódolói (JBIG2 / CCITT-fax, JPEG 2000, ICC) helye – nélkülük a pdf.js a lap tartalmát az első
+ * ilyen kép után elhagyja („ignoring errors during GetOperatorList”): a Ghostscripttel nyomtatott tervlapon a mintás
+ * (sraffozott) falkitöltés CCITT-maszkokból áll, és a lap kétharmada – a falak – hiányzott (Budai NA tetőtér,
+ * 2026-11-23). A fájlok a modul mellett, a pdfjs-wasm/ mappában (a build másolja); felülírható: globalThis.PDFJS_WASM_URL.
+ */
+export function pdfjsWasmUrl(): string | undefined {
+  const g = globalThis as { PDFJS_WASM_URL?: string }; if (g.PDFJS_WASM_URL) return g.PDFJS_WASM_URL;
+  // (a mappanév összefűzve: a Vite a szó szerinti new URL(…, import.meta.url) mintát fájlhivatkozásként kezelné)
+  try { return new URL('pdfjs-' + 'wasm/', import.meta.url).href; } catch { return undefined; }
+}
+const docBeall = () => { const wasmUrl = pdfjsWasmUrl(); return { ...(wasmUrl ? { wasmUrl } : {}), ...(typeof document === 'undefined' ? { ownerDocument: munkaszalDok() } : {}) }; };
 
 /**
  * A vászon szürkeárnyalatos, kicsinyített (≈ 600 px széles) másolata blokkátlagolással és 3×3-as simítással – a

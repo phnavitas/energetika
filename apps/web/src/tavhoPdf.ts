@@ -80,9 +80,9 @@ export function tavhoPdfElemez(lapok: TavhoPdfTetel[][]): TavhoPdfEredmeny {
 
 /** A PDF szövegelemei laponként (pdf.js). */
 export async function tavhoPdfOlvas(adat: ArrayBuffer): Promise<TavhoPdfEredmeny> {
-  const { pdfjsBetolt } = await import('@terv/elemzes');
-  const pdfjs = await pdfjsBetolt();
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(adat), verbosity: 0, isEvalSupported: false }).promise;
+  const { pdfjsBetolt, pdfjsWasmUrl } = await import('@terv/elemzes');
+  const pdfjs = await pdfjsBetolt(); const wasmUrl = pdfjsWasmUrl();
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(adat), verbosity: 0, isEvalSupported: false, ...(wasmUrl ? { wasmUrl } : {}) }).promise;
   const lapok: TavhoPdfTetel[][] = [];
   for (let i = 1; i <= doc.numPages; i++) {
     const c = await (await doc.getPage(i)).getTextContent();

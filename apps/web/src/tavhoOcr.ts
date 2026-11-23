@@ -181,9 +181,9 @@ async function tesseract(): Promise<{ szoveg: TWorker; szam: TWorker }> {
 
 /** A szkennelt PDF tényezőtáblázatának kiolvasása (cellánkénti OCR). */
 export async function tavhoOcr(adat: ArrayBuffer, halad?: (s: string) => void): Promise<TavhoPdfEredmeny & { ocr: true; tnm?: boolean }> {
-  const { pdfjsBetolt } = await import('@terv/elemzes');
-  const pdfjs = await pdfjsBetolt();
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(adat), verbosity: 0, isEvalSupported: false }).promise;
+  const { pdfjsBetolt, pdfjsWasmUrl } = await import('@terv/elemzes');
+  const pdfjs = await pdfjsBetolt(); const wasmUrl = pdfjsWasmUrl();
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(adat), verbosity: 0, isEvalSupported: false, ...(wasmUrl ? { wasmUrl } : {}) }).promise;
   const sorok: TavhoPdfSor[] = [];
   let tnm = false;
   for (let p = 1; p <= Math.min(doc.numPages, 3); p++) {
