@@ -23,9 +23,17 @@ koncentrálni, miután megvan a ház." Helyszínrajz és homlokzat szinte mindig
   helyiségek (fűtött / ismeretlen belső ↔ fűtetlen / külső tér), a falsávba eső cellákon a raszteres kontúr; a láncok
   szélső jelein kívüli falcella kint (szomszéd tűzfala); a pecsétes helyiség cellája és a zárt belső lyuk bent.
 - `folyamat.ts` `burokFelismertSik` / `racsBurok` – a felismert burok (2D, 3D, homlokzati falak) a rácskontúr, ha a
-  területe a raszteresétől −20 / +15 %-on belül van; belső méret: a falsávok belső síkja (`burokMeres`).
+  területe a raszteresétől −20 / +15 %-on belül van, az alak egyezik (metszet/unió ≥ 0,85) és a ház nem ferde falú
+  (a fal menti ferde élek ≤ 4 %); belső méret: a falsávok belső síkja (`burokMeres`).
+- `racsKontur`: két bent lévő cella közti fal (ill. a fal síkjai közti, a külső térrel összefolyt keskeny rés) bent.
+- Felülnézet: a tető kiválasztása a tető főirányában (elforgatott helyszínrajz) és a közeli tetőcsoportok egyesítésével
+  (`tetoCsoportValaszt`).
+- Magastető: a legfelső szint minden különálló tömbje kap tetőt (eddig csak a fő darab).
 
 ## Következő
+
+- a tető ereszvonala a felülnézet zárt körvonalából (a gerinc-/élgerinc-csoport befoglalójára vágva), az alaprajzi
+  kontúrtól függetlenül; alacsonyabb szintek saját teteje (földszinti szárny a tetőtér mellett);
 
 - tömegmodell a helyszínrajzból (épületfolt kiválasztása: a tervezett épület, méretben az alaprajzhoz illő) és a
   tetőfelülnézetből (tetősíkok gráfja → lapok, hajlás a metszetből) – mérés: tetőfelület a WinWatt-referenciákon;
