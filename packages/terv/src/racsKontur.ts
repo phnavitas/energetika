@@ -80,7 +80,7 @@ export function racsKontur(r: Raszter, lap: Lap, futott: ReadonlySet<number>, al
   // fal / nyílás (F); a fal nélküli részen a helyiségek döntenek, a falsávba eső cellán a raszteres kontúr
   const allapot = new Int8Array(nx * ny); // 1: bent, 0: kint, 2: falcella (eldöntendő)
   const belsoJellegu = new Uint8Array(nx * ny); // a fal nélküli rész többsége helyiség / zárt belső (nem külső tér, nem fűtetlen)
-  const falJellegu = new Uint8Array(nx * ny), kivulC = new Uint8Array(nx * ny);
+  const falJellegu = new Uint8Array(nx * ny), kivulC = new Uint8Array(nx * ny), helyisegNelkul = new Uint8Array(nx * ny);
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
     const gx0 = Math.max(0, Math.round(gxOf(X[i]!))), gx1 = Math.min(w, Math.round(gxOf(X[i + 1]!)));
     const gy0 = Math.max(0, Math.round(gyOf(Y[j]!))), gy1 = Math.min(h, Math.round(gyOf(Y[j + 1]!)));
@@ -98,6 +98,7 @@ export function racsKontur(r: Raszter, lap: Lap, futott: ReadonlySet<number>, al
     const kivul = X[i + 1]! <= lx0 + 0.01 * m || X[i]! >= lx1 - 0.01 * m || Y[j + 1]! <= ly0 + 0.01 * m || Y[j]! >= ly1 - 0.01 * m;
     if (H + N + U + Kk < 0.3 * T) falJellegu[j * nx + i] = 1;
     if (kivul) kivulC[j * nx + i] = 1;
+    if (!H && !U) helyisegNelkul[j * nx + i] = 1;
     if (H + N + U + Kk < 0.3 * T) allapot[j * nx + i] = kivul ? 0 : AM ? (A >= 0.5 * T ? 1 : 0) : 2;
     else if (H + N > U + Kk && (H > 0 || (AM && A >= 0.5 * T))) allapot[j * nx + i] = 1;
     else if (U >= Kk) allapot[j * nx + i] = 0;
@@ -137,6 +138,22 @@ export function racsKontur(r: Raszter, lap: Lap, futott: ReadonlySet<number>, al
     for (let k = 0; k < nx * ny; k++) if (!allapot[k] && !falJellegu[k] && !elert[k] && belsoJellegu[k]) { allapot[k] = 1; toltott.push(k); }
     for (const k of toltott) { const i = k % nx, j = (k / nx) | 0;
       for (const [a, b] of [[i - 1, j], [i + 1, j], [i, j - 1], [i, j + 1]] as const) { if (a < 0 || b < 0 || a >= nx || b >= ny) continue; const u = b * nx + a; if (!allapot[u] && falJellegu[u] && !kivulC[u]) allapot[u] = 1; } }
+  }
+  // belső fal: a kint lévő falcella (nem a láncokon kívül), amelynek két szemközti oldalán bent lévő cella van – két
+  // fűtött rész közti fal (a raszteres kontúr a vastag belső falnál kettévághatja a házat); a sorban álló falcellák
+  // (a ház teljes mélységén átmenő fal) együtt: a sor két végén kell bent lévő cellának lennie
+  for (let valt = true; valt;) {
+    valt = false;
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const k = j * nx + i; if (allapot[k] || kivulC[k] || !falJellegu[k] && !helyisegNelkul[k]) continue;
+      const bent = (a: number, b: number) => a >= 0 && b >= 0 && a < nx && b < ny && allapot[b * nx + a] === 1;
+      // (a fal két síkja közti, a raszterben a külső térrel összefolyt rés – pl. kirajzolatlan hőszigetelés – is fal: a
+      // helyiség nélküli, a fal irányára merőlegesen legfeljebb 0,6 m széles cella)
+      const fal = (q: number, a: number, b: number, vizsz: boolean) => !kivulC[q] && (falJellegu[q] || helyisegNelkul[q] && (vizsz ? X[a + 1]! - X[a]! : Y[b + 1]! - Y[b]!) <= 0.6 * m);
+      // (a szomszédos falcellákon át legfeljebb 2 cellán belül)
+      const ir = (di: number, dj: number) => { for (let s = 1; s <= 3; s++) { const a = i + di * s, b = j + dj * s; if (bent(a, b)) return true; if (a < 0 || b < 0 || a >= nx || b >= ny) return false; if (!fal(b * nx + a, a, b, di !== 0)) return false; } return false; };
+      if ((fal(k, i, j, true) && ir(-1, 0) && ir(1, 0)) || (fal(k, i, j, false) && ir(0, -1) && ir(0, 1))) { allapot[k] = 1; valt = true; }
+    }
   }
   // kontúr a cellarácson (irányított határélek, a bent lévő cella bal oldalán)
   const kontur = (all: Int8Array): Poligon[] => {

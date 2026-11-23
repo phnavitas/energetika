@@ -17,6 +17,9 @@ export interface TetoFelulnezet {
   vegek: { hely: [number, number]; irany: number; fajta: 'konty' | 'orom'; csoport: number }[];
   /** összefüggő tetők (pl. a szomszéd épületeké is): befoglaló (pt) */
   csoportok: { x0: number; y0: number; x1: number; y1: number }[];
+  /** csoportonként a kiterjedést adó pontok (pt): a gerinc / élgerinc végei, nyeregtetőnél az eresz sarkai – az elforgatott
+   * (a tető főirányú) befoglalóhoz */
+  pontok: [number, number][][];
   /** a felismert gerincek és élgerincek (lapkoordináta, pt) – megjelenítéshez */
   gerincek: [number, number, number, number][];
   elgerincek: [number, number, number, number][];
@@ -125,12 +128,14 @@ export function tetoFelulnezet(lap: Lap): TetoFelulnezet | null {
   for (const [r, c] of csopId) csopId.set(r, ujId.get(uj[c]!)!);
   for (const v of vegek) { const i = elemek.findIndex((e) => Math.hypot(e.x0 - v.hely[0], e.y0 - v.hely[1]) <= tol || Math.hypot(e.x1 - v.hely[0], e.y1 - v.hely[1]) <= tol); v.csoport = i >= 0 ? csopId.get(gy(i))! : -1; }
   const ki = (s: Sz) => [s.x0, s.y0, s.x1, s.y1] as [number, number, number, number];
-  const eredm: TetoFelulnezet = { tengely, konty, orom, vegek, csoportok, gerincek: [...gerincek].map(ki), elgerincek: [...elgerincek].map(ki) };
+  const pontok: [number, number][][] = csoportok.map(() => []);
+  elemek.forEach((e, i) => { const c = csopId.get(gy(i)); if (c !== undefined) pontok[c]!.push([e.x0, e.y0], [e.x1, e.y1]); });
+  const eredm: TetoFelulnezet = { tengely, konty, orom, vegek, csoportok, pontok, gerincek: [...gerincek].map(ki), elgerincek: [...elgerincek].map(ki) };
   // (a kontyos tetők mellett a lapon lévő nyeregtetők is – a kontyos csoportokkal nem átfedők)
   const ny = nyeregteto(sz);
   if (ny) for (const [k, b] of ny.csoportok.entries()) {
     if (csoportok.some((c) => c.x0 < b.x1 && b.x0 < c.x1 && c.y0 < b.y1 && b.y0 < c.y1)) continue;
-    const id = eredm.csoportok.length; eredm.csoportok.push(b);
+    const id = eredm.csoportok.length; eredm.csoportok.push(b); eredm.pontok.push(ny.pontok[k]!);
     for (const v of ny.vegek) if (v.csoport === k) { eredm.vegek.push({ ...v, csoport: id }); eredm.orom++; }
     eredm.gerincek.push(...ny.gerincek.filter((g) => Math.min(g[0], g[2]) >= b.x0 - 1 && Math.max(g[0], g[2]) <= b.x1 + 1 && Math.min(g[1], g[3]) >= b.y0 - 1 && Math.max(g[1], g[3]) <= b.y1 + 1));
   }
@@ -147,7 +152,7 @@ export function tetoFelulnezet(lap: Lap): TetoFelulnezet | null {
 function nyeregteto(sz: Sz[]): TetoFelulnezet | null {
   const tol = 2;
   const jel = sz.filter((s) => s.L >= 30);
-  const talalt: { g: Sz; b: { x0: number; y0: number; x1: number; y1: number }; a: number }[] = [];
+  const talalt: { g: Sz; b: { x0: number; y0: number; x1: number; y1: number }; a: number; P: [number, number][] }[] = [];
   for (const g of jel) {
     const ux = (g.x1 - g.x0) / g.L, uy = (g.y1 - g.y0) / g.L, nx = -uy, ny = ux;
     const dPk: number[] = [], dNk: number[] = [];
@@ -189,7 +194,7 @@ function nyeregteto(sz: Sz[]): TetoFelulnezet | null {
     const b = { x0: Math.min(...P.map((q) => q[0]!)), y0: Math.min(...P.map((q) => q[1]!)), x1: Math.max(...P.map((q) => q[0]!)), y1: Math.max(...P.map((q) => q[1]!)) };
     // (ugyanaz a tető – más gerincjelölttel – csak egyszer)
     if (talalt.some((t) => Math.abs(t.b.x0 - b.x0) < 3 && Math.abs(t.b.y0 - b.y0) < 3 && Math.abs(t.b.x1 - b.x1) < 3 && Math.abs(t.b.y1 - b.y1) < 3)) continue;
-    talalt.push({ g, b, a: g.a });
+    talalt.push({ g, b, a: g.a, P: P as [number, number][] });
   }
   if (!talalt.length) return null;
   const vegek: TetoFelulnezet['vegek'] = [];
@@ -197,5 +202,34 @@ function nyeregteto(sz: Sz[]): TetoFelulnezet | null {
     const ir = ((Math.atan2(g.y1 - g.y0, g.x1 - g.x0) * 180) / Math.PI + 360) % 360;
     vegek.push({ hely: [g.x1, g.y1], irany: ir, fajta: 'orom', csoport: i }, { hely: [g.x0, g.y0], irany: (ir + 180) % 360, fajta: 'orom', csoport: i });
   });
-  return { tengely: Math.round(((talalt[0]!.a % 90) + 90) % 90), konty: 0, orom: vegek.length, vegek, csoportok: talalt.map((t) => t.b), gerincek: talalt.map(({ g }) => [g.x0, g.y0, g.x1, g.y1] as [number, number, number, number]), elgerincek: [] };
+  return { tengely: Math.round(((talalt[0]!.a % 90) + 90) % 90), konty: 0, orom: vegek.length, vegek, csoportok: talalt.map((t) => t.b), pontok: talalt.map((t) => t.P), gerincek: talalt.map(({ g }) => [g.x0, g.y0, g.x1, g.y1] as [number, number, number, number]), elgerincek: [] };
+}
+
+/**
+ * Az alaprajzi épülethez (befoglaló méretei m-ben, csökkenő sorrendben) illő tető a felülnézeten: az egyes tetőcsoportok és
+ * a közeli (≤ 1,5 m) csoportok egyesítései közül az, amelynek a tető főirányában vett befoglalója (ereszkiállással,
+ * ~ 0,8 m) a legjobban egyezik – az egy tető több csoportra eshet (L, T alak, két gerinc), és a helyszínrajzon a ház
+ * elforgatva is állhat. A csoportok indexei, a befoglaló közepe (pt) és mérete (m, a főirányban), az eltérés aránya.
+ */
+export function tetoCsoportValaszt(t: TetoFelulnezet, mPt: number, meret: [number, number], tures = 0.2): { csoportok: number[]; kozep: [number, number]; W: number; H: number; hiba: number; szog: number } | null {
+  const th = (-t.tengely * Math.PI) / 180, c = Math.cos(th), s = Math.sin(th);
+  const bb = t.pontok.map((P) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const [x, y] of P) { const u = x * c - y * s, v = x * s + y * c; x0 = Math.min(x0, u); x1 = Math.max(x1, u); y0 = Math.min(y0, v); y1 = Math.max(y1, v); } return [x0, y0, x1, y1] as [number, number, number, number]; });
+  const n = bb.length; if (!n) return null;
+  const apa = bb.map((_, i) => i); const gy = (i: number): number => (apa[i] === i ? i : (apa[i] = gy(apa[i]!)));
+  const tav = 1.5 / mPt;
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) { const a = bb[i]!, b = bb[j]!; if (a[0] - tav < b[2] && b[0] - tav < a[2] && a[1] - tav < b[3] && b[1] - tav < a[3]) apa[gy(i)] = gy(j); }
+  const jeloltek: number[][] = bb.map((_, i) => [i]);
+  const kl = new Map<number, number[]>(); bb.forEach((_, i) => { const r = gy(i); (kl.get(r) ?? kl.set(r, []).get(r)!).push(i); });
+  for (const l of kl.values()) if (l.length > 1) jeloltek.push(l);
+  let leg: ReturnType<typeof tetoCsoportValaszt> = null;
+  for (const cs of jeloltek) {
+    const b = cs.reduce((q, i) => [Math.min(q[0], bb[i]![0]), Math.min(q[1], bb[i]![1]), Math.max(q[2], bb[i]![2]), Math.max(q[3], bb[i]![3])] as [number, number, number, number], [Infinity, Infinity, -Infinity, -Infinity] as [number, number, number, number]);
+    const W = (b[2] - b[0]) * mPt, H = (b[3] - b[1]) * mPt; const m = [W, H].sort((p, q) => q - p);
+    const hiba = Math.max(Math.abs(m[0]! - meret[0] - 0.8) / meret[0], Math.abs(m[1]! - meret[1] - 0.8) / meret[1]);
+    if (hiba > tures || (leg && hiba >= leg.hiba)) continue;
+    const u = (b[0] + b[2]) / 2, v = (b[1] + b[3]) / 2;
+    // (vissza a lap koordinátáiba: az elforgatás inverze)
+    leg = { csoportok: cs, kozep: [u * c + v * s, -u * s + v * c], W, H, hiba, szog: t.tengely };
+  }
+  return leg;
 }

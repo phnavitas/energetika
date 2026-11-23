@@ -18,7 +18,7 @@ import type { Raszter, FalSzakasz } from '@terv/raszter';
 import { homlokzatSziluettek, laposTetoSavok, magastetoLatszik, type HomlokzatSziluett, type TetoSav } from '@terv/tetoReszek';
 import { homlokzatMellvedek, homlokzatElteresek, homlokzatRajzok, mertMagassagok, eszakHomlokzatbol, tetoAblakokHomlokzatrol, oromSzelessegek, type HomlokzatRajz, type MertMagassag } from '@terv/homlokzatIllesztes';
 import { nezetOszlopok } from '@terv/homlokzatProfil';
-import { tetoFelulnezet, type TetoFelulnezet } from '@terv/tetoFelulnezet';
+import { tetoCsoportValaszt, tetoFelulnezet, type TetoFelulnezet } from '@terv/tetoFelulnezet';
 import { metszetElemek, ferdeTetoHossz, ereszKiallasok, ereszKiallas, belmagassagSavok, szintJelekLapokrol, attikaGeometria, type BelmagSavok } from '@terv/metszetGeom';
 import { helyisegMagassagok, type HelyisegMagassag } from '@terv/magassag';
 import { epuletModell, type EpuletModell, type ModellReteg, type ModellRetegrend, type LapBemenet, type Szint as EpSzint, type TerKategoria } from '@terv/epulet';
@@ -314,7 +314,38 @@ export function racsBurok(r: NonNullable<AlaprajzFeldolgozas['r']>, lap: Lap, fu
   if (!rk) return null;
   const T = (ps: Poligon[]) => ps.reduce((s0, p) => s0 + Math.abs(terulet(p)), 0) * r.mPerPt * r.mPerPt;
   const at = T(tomeg), ar = T(rk.pol);
-  return ar >= 0.8 * at && ar <= 1.15 * at ? rk.pol : null;
+  if (!(ar >= 0.8 * at && ar <= 1.15 * at)) return null;
+  // ferde falú ház (a tengelyirányútól eltérő élek a kerület 4 %-ánál többet tesznek ki): a rács lépcsőzné a ferde falat
+  // (csak a valódi ferde fal számít: az él mentén falpixel fut – a raszter hibájából eredő ferde él nem fal mentén megy)
+  let kerulet = 0, ferde = 0;
+  for (const p of tomeg) p.forEach((q, k) => { const u = p[(k + 1) % p.length]!; const dx = Math.abs(u[0] - q[0]), dy = Math.abs(u[1] - q[1]), L = Math.hypot(dx, dy); kerulet += L; if (Math.min(dx, dy) > 0.05 * L && L * r.mPerPt >= 0.8 && falMenti(r, q, u) >= 0.6) ferde += L; });
+  if (ferde > 0.04 * kerulet) return null;
+  // az alak is egyezzen (metszet / unió ≥ 0,85): a rács a ház síkjait pontosítja, nem rajzol más házat
+  return metszetArany(tomeg, rk.pol, 0.15 / r.mPerPt) >= 0.85 ? rk.pol : null;
+}
+/** Az él (pt) mentén, valamelyik oldalán 0,05–0,25 m-re a falpixelek aránya. */
+function falMenti(r: NonNullable<AlaprajzFeldolgozas['r']>, a: [number, number], b: [number, number]): number {
+  const L = Math.hypot(b[0] - a[0], b[1] - a[1]); const nx = -(b[1] - a[1]) / L, ny = (b[0] - a[0]) / L;
+  const n = Math.max(4, Math.round(L * r.mPerPt / 0.1)); let j = [0, 0];
+  for (let i = 0; i < n; i++) {
+    const t = (i + 0.5) / n, x = a[0] + (b[0] - a[0]) * t, y = a[1] + (b[1] - a[1]) * t;
+    [-1, 1].forEach((o, oi) => { for (const d of [0.05, 0.12, 0.2, 0.25]) { const px = x + o * nx * d / r.mPerPt, py = y + o * ny * d / r.mPerPt; const gx = Math.floor((px - r.x0) * r.mPerPt / r.px), gy = Math.floor((py - r.y0) * r.mPerPt / r.px); if (gx >= 0 && gy >= 0 && gx < r.w && gy < r.h && r.fal[gy * r.w + gx]) { j[oi]!++; break; } } });
+  }
+  return Math.max(j[0]!, j[1]!) / n;
+}
+function belul(ps: Poligon[], x: number, y: number): boolean {
+  let b = false;
+  for (const p of ps) for (let i = 0, j = p.length - 1; i < p.length; j = i++) { const [xi, yi] = p[i]!, [xj, yj] = p[j]!; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) b = !b; }
+  return b;
+}
+/** Két sokszöghalmaz metszetének és uniójának aránya (lépés: a mintavétel rácsa, pt). */
+function metszetArany(a: Poligon[], b: Poligon[], lepes: number): number {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const p of [...a, ...b]) for (const [x, y] of p) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  const st = Math.max(lepes, (x1 - x0) / 300, (y1 - y0) / 300);
+  let m = 0, u = 0;
+  for (let y = y0 + st / 2; y < y1; y += st) for (let x = x0 + st / 2; x < x1; x += st) { const ba = belul(a, x, y), bb = belul(b, x, y); if (ba && bb) m++; if (ba || bb) u++; }
+  return u ? m / u : 0;
 }
 /** Az elemzés forráslapja (a burok-zsebek megnevező feliratához). */
 export const elemzesLap = new WeakMap<AlaprajzFeldolgozas, Lap>();
@@ -807,14 +838,14 @@ export function tervFolyamat(S: FolyamatAllapot) {
       if (t === undefined) { try { t = tetoFelulnezet(l.lap); } catch { t = null; } tetoFelulGy.set(l.lap, t); }
       const M = meretaranyKeres(l.lap.szovegek, l.lap.utvonalak); if (!t || !M) continue;
       const mPt = (25.4 / 72 / 1000) * M;
-      // (a tetővonalak befoglalója az ereszig ér – az alaprajzi kiterjedésnél ereszkiállással nagyobb)
-      let leg = null as { c: number; hiba: number } | null;
-      t.csoportok.forEach((b, c) => { const m = [(b.x1 - b.x0) * mPt, (b.y1 - b.y0) * mPt].sort((p, q) => q - p); const hiba = Math.max(Math.abs(m[0]! - meret[0]! - 0.8) / meret[0]!, Math.abs(m[1]! - meret[1]! - 0.8) / meret[1]!); if (hiba <= 0.2 && (!leg || hiba < leg.hiba)) leg = { c, hiba }; });
-      if (!leg) continue;
-      const legC = leg.c;
+      // (a tetővonalak befoglalója az ereszig ér – az alaprajzi kiterjedésnél ereszkiállással nagyobb; a tető főirányában,
+      // a közeli csoportok egyesítésével is – tetoCsoportValaszt)
+      const sel = tetoCsoportValaszt(t, mPt, meret as [number, number]);
+      if (!sel) continue;
+      const legCs = new Set(sel.csoportok);
       const eszakHs = (() => { let e: ReturnType<typeof eszakjelKeres> = null; try { e = eszakjelKeres(l.lap); } catch { e = null; } return e && !e.bizonytalan ? norm(e.szog) : null; })();
       const ki = new Map<number, 'konty' | 'orom'>(), vegyes = new Set<number>();
-      for (const v of t.vegek) { if (v.csoport !== legC) continue;
+      for (const v of t.vegek) { if (!legCs.has(v.csoport)) continue;
         const lapIr = (v.irany + 90) % 360; // (a lapon: 0 = fel, órajárás szerint)
         const ir = (Math.round(norm(eszakHs === null ? lapIr : lapIr - eszakHs + eszak) / 90) * 90) % 360;
         if (ki.has(ir) && ki.get(ir) !== v.fajta) vegyes.add(ir); ki.set(ir, v.fajta); }
@@ -842,22 +873,24 @@ export function tervFolyamat(S: FolyamatAllapot) {
       if (t === undefined) { try { t = tetoFelulnezet(l.lap); } catch { t = null; } tetoFelulGy.set(l.lap, t); }
       const M = meretaranyKeres(l.lap.szovegek, l.lap.utvonalak); if (!t || !M) continue;
       const mPt = (25.4 / 72 / 1000) * M;
-      let leg = null as { c: number; hiba: number } | null;
-      t.csoportok.forEach((b, c) => { const m = [(b.x1 - b.x0) * mPt, (b.y1 - b.y0) * mPt].sort((p, q) => q - p); const hiba = Math.max(Math.abs(m[0]! - meret[0]! - 0.8) / meret[0]!, Math.abs(m[1]! - meret[1]! - 0.8) / meret[1]!); if (hiba <= 0.2 && (!leg || hiba < leg.hiba)) leg = { c, hiba }; });
-      if (!leg) continue;
-      const b = t.csoportok[(leg as { c: number }).c]!;
+      const sel = tetoCsoportValaszt(t, mPt, meret as [number, number]);
+      if (!sel) continue;
       const eszakHs = (() => { let e: ReturnType<typeof eszakjelKeres> = null; try { e = eszakjelKeres(l.lap); } catch { e = null; } return e && !e.bizonytalan ? norm(e.szog) : null; })();
       // (a felülnézeti lap iránya a modell lapirányába: az óramutató szerint eszak − eszakHs fokkal)
       const th = ((eszakHs === null ? 0 : eszak - eszakHs) * Math.PI) / 180, co = Math.cos(th), si = Math.sin(th);
-      const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2, mg = 4 / mPt;
+      const [cx, cy] = sel.kozep, mg = 4 / mPt;
+      // (a kiválasztott tető befoglalója a tető főirányában: a vonal közepe a befoglalón + 4 m-en belül)
+      const tf = (-sel.szog * Math.PI) / 180, tc = Math.cos(tf), ts = Math.sin(tf), hx = sel.W / 2 / mPt + mg, hy = sel.H / 2 / mPt + mg;
+      const benne = (x: number, y: number) => { const dx = x - cx, dy = y - cy; return Math.abs(dx * tc - dy * ts) <= hx && Math.abs(dx * ts + dy * tc) <= hy; };
+      const R = Math.hypot(hx, hy);
       const P = (x: number, y: number): [number, number] => { const dx = (x - cx) * mPt, dy = (y - cy) * mPt; return [dx * co - dy * si, dx * si + dy * co]; };
       const sz: [number, number, number, number][] = [];
       for (const u of l.lap.utvonalak) {
-        if (u.muvelet === 'none' || u.bbox[2] < b.x0 - mg || u.bbox[0] > b.x1 + mg || u.bbox[3] < b.y0 - mg || u.bbox[1] > b.y1 + mg) continue;
-        for (const p of u.pontok) for (let k = 0; k + 3 < p.length; k += 2) { const L = Math.hypot(p[k + 2]! - p[k]!, p[k + 3]! - p[k + 1]!) * mPt; if (L < 0.5) continue; sz.push([...P(p[k]!, p[k + 1]!), ...P(p[k + 2]!, p[k + 3]!)]); }
+        if (u.muvelet === 'none' || u.bbox[2] < cx - R || u.bbox[0] > cx + R || u.bbox[3] < cy - R || u.bbox[1] > cy + R) continue;
+        for (const p of u.pontok) for (let k = 0; k + 3 < p.length; k += 2) { const L = Math.hypot(p[k + 2]! - p[k]!, p[k + 3]! - p[k + 1]!) * mPt; if (L < 0.5 || !benne((p[k]! + p[k + 2]!) / 2, (p[k + 1]! + p[k + 3]!) / 2)) continue; sz.push([...P(p[k]!, p[k + 1]!), ...P(p[k + 2]!, p[k + 3]!)]); }
       }
       if (sz.length < 4) continue;
-      return { sz, W: (b.x1 - b.x0) * mPt, H: (b.y1 - b.y0) * mPt };
+      return { sz, W: sel.W, H: sel.H };
     }
     return null;
   }
