@@ -1174,6 +1174,91 @@ export function burokTomegKezi(r: Raszter, burok: Poligon[], futetlen: ReadonlyS
 }
 
 /**
+ * Az eltolt él végén maradt „fog” levágása: két egymást követő rövid (< 0,6 m), egymásra merőleges él, amelyet két hosszú,
+ * egymásra merőleges él fog közre (sarokba szorult falvastagságnyi kiugrás vagy bemélyedés) – a sarok a két hosszú él
+ * egyenesének metszése lesz. Csak a módosítással keletkezett fogat (legalább egy csúcsára `uj` igaz) – a rajz valódi
+ * lépcsői maradnak. (`m`: 1 m a körvonal egységében.)
+ */
+export function fogSimit(p: [number, number][], m: number, uj: (v: [number, number]) => boolean): [number, number][] {
+  const rovid = 0.6 * m, hosszu = 0.6 * m;
+  const hossz = (a: [number, number], b: [number, number]) => Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const fugg = (a: [number, number], b: [number, number]) => Math.abs(b[0] - a[0]) < 1e-6 * m + 0.02 * hossz(a, b);
+  for (let kor = 0; kor < 4 && p.length > 4; kor++) {
+    let volt = false;
+    for (let j = 0; j < p.length && p.length > 4; j++) {
+      const n = p.length, A = p[(j - 1 + n) % n]!, B = p[j]!, C = p[(j + 1) % n]!, D = p[(j + 2) % n]!, E = p[(j + 3) % n]!;
+      if (hossz(B, C) >= rovid || hossz(C, D) >= rovid || hossz(A, B) < hosszu || hossz(D, E) < hosszu) continue;
+      if (!uj(B) && !uj(C) && !uj(D)) continue;
+      const ab = fugg(A, B), de = fugg(D, E); if (ab === de) continue; // a két hosszú él merőleges
+      const X: [number, number] = ab ? [B[0], D[1]] : [D[0], B[1]];
+      // B, C, D helyett X (a körbejárás sorrendjében)
+      const k = [j, (j + 1) % n, (j + 2) % n].sort((u, v) => v - u);
+      const hely = j - k.filter((t) => t < j).length;
+      for (const t of k) p.splice(t, 1);
+      p.splice(hely, 0, X);
+      volt = true; break;
+    }
+    if (!volt) break;
+  }
+  return p;
+}
+
+/**
+ * A hőburok falon kívülre lógó részének levágása (kattintás a kilógó részre): a kattintott ponttól a burkon belül, falat,
+ * nyílást és helyiséget nem érintve elárasztott terület (pl. a támfal és a pincefal közti akna, a falon túli járda) kimarad,
+ * a hozzá csak vékony (≤ 0,3 m) fallal kapcsolódó maradék (a támfal) is; az új körvonal a fal külső síkján fut.
+ * null: a pont nem burkon belüli, helyiségen és falon kívüli terület, vagy a levágás a burok felénél többet vinne el.
+ */
+export function burokLevag(r: Raszter, burok: Poligon[], x: number, y: number): Poligon[] | null {
+  const { w, h } = r; const N = w * h; const M = new Uint8Array(N);
+  for (const p of burok) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const [px, py] of p) { x0 = Math.min(x0, px); x1 = Math.max(x1, px); y0 = Math.min(y0, py); y1 = Math.max(y1, py); }
+    const gx0 = Math.max(0, Math.floor(((x0 - r.x0) * r.mPerPt) / r.px)), gx1 = Math.min(w - 1, Math.ceil(((x1 - r.x0) * r.mPerPt) / r.px));
+    const gy0 = Math.max(0, Math.floor(((y0 - r.y0) * r.mPerPt) / r.px)), gy1 = Math.min(h - 1, Math.ceil(((y1 - r.y0) * r.mPerPt) / r.px));
+    for (let gy = gy0; gy <= gy1; gy++) for (let gx = gx0; gx <= gx1; gx++) if (!M[gy * w + gx] && bennE(p, lapX(r, gx + 0.5), lapY(r, gy + 0.5))) M[gy * w + gx] = 1;
+  }
+  // (a nyíláscella is átjárható, ha az összefüggő nyílásfolt nem érint helyiséget – a kilógó sávot tagoló áthidalás; a
+  // helyiség falában lévő ablak, ajtó nem)
+  const nyKomp = new Int32Array(N).fill(-1); const nyHely: boolean[] = [];
+  for (let i = 0; i < N; i++) {
+    if (!r.nyilas[i] || nyKomp[i] >= 0) continue; const id = nyHely.length; let hely = false; const qq = [i]; nyKomp[i] = id;
+    for (let t = 0; t < qq.length; t++) { const a = qq[t]!, ax = a % w; for (const n of [ax > 0 ? a - 1 : -1, ax < w - 1 ? a + 1 : -1, a - w, a + w]) { if (n < 0 || n >= N) continue; if (r.cimke[n]! >= 2) hely = true; if (r.nyilas[n] && nyKomp[n] < 0) { nyKomp[n] = id; qq.push(n); } } }
+    nyHely.push(hely);
+  }
+  const szabad = (k: number) => M[k] === 1 && !r.fal[k] && r.cimke[k]! < 2 && (!r.nyilas[k] || !nyHely[nyKomp[k]!]);
+  // a kezdőcella: a kattintás helye, vagy a legközelebbi szabad cella 0,1 m-en belül (a kattintás nyílásvonalra esett)
+  const cx = Math.floor(((x - r.x0) * r.mPerPt) / r.px), cy = Math.floor(((y - r.y0) * r.mPerPt) / r.px);
+  let kezd = -1; const Rk = Math.max(1, Math.round(0.1 / r.px));
+  for (let d = 0; d <= Rk && kezd < 0; d++) for (let dy = -d; dy <= d && kezd < 0; dy++) for (let dx = -d; dx <= d; dx++) {
+    const gx = cx + dx, gy = cy + dy; if (gx < 0 || gy < 0 || gx >= w || gy >= h) continue; if (szabad(gy * w + gx)) { kezd = gy * w + gx; break; }
+  }
+  if (kezd < 0) return null;
+  const Z = new Uint8Array(N); const q = [kezd]; Z[kezd] = 1;
+  for (let t = 0; t < q.length; t++) { const a = q[t]!, ax = a % w; for (const n of [ax > 0 ? a - 1 : -1, ax < w - 1 ? a + 1 : -1, a - w, a + w]) if (n >= 0 && n < N && !Z[n] && szabad(n)) { Z[n] = 1; q.push(n); } }
+  let mDb = 0; for (let k = 0; k < N; k++) if (M[k]) mDb++;
+  if (q.length * 2 > mDb) return null;
+  for (let k = 0; k < N; k++) if (Z[k]) M[k] = 0;
+  // a levágott rész túloldalán maradt vékony falsáv (támfal) le: nyitás 0,15 m-rel (a vastag tömeg marad)
+  const R = Math.max(1, Math.round(0.15 / r.px));
+  const er = tagitR(M, w, h, R, 0); const E = new Uint8Array(N); for (let k = 0; k < N; k++) E[k] = M[k] && !er[k] ? 1 : 0;
+  const D = tagitR(E, w, h, R, 1); for (let k = 0; k < N; k++) M[k] = M[k] && D[k] ? 1 : 0;
+  // csak a helyiséget tartalmazó összefüggő részek maradnak
+  const lat = new Uint8Array(N);
+  for (let i = 0; i < N; i++) {
+    if (!M[i] || lat[i]) continue; const qq = [i]; lat[i] = 1; let hely = false;
+    for (let t = 0; t < qq.length; t++) { const a = qq[t]!, ax = a % w; if (r.cimke[a]! >= 2) hely = true; for (const n of [ax > 0 ? a - 1 : -1, ax < w - 1 ? a + 1 : -1, a - w, a + w]) if (n >= 0 && n < N && M[n] && !lat[n]) { lat[n] = 1; qq.push(n); } }
+    if (!hely) for (const a of qq) M[a] = 0;
+  }
+  const ki = maszkKorvonal(r, M, false, fulkeFalVedo(r));
+  // a levágás szélén maradt falvastagságnyi fog (a régi körvonal lépcsője) is le: csak a levágott rész 0,25 m-es környezetében
+  const Rz = Math.max(1, Math.round(0.25 / r.px)); const zKor = tagitR(Z, w, h, Rz, 1);
+  const zKozel = (v: [number, number]) => { const gx = Math.round(((v[0] - r.x0) * r.mPerPt) / r.px), gy = Math.round(((v[1] - r.y0) * r.mPerPt) / r.px);
+    for (const [dx, dy] of [[0, 0], [-1, 0], [0, -1], [-1, -1]]) { const xx = gx + dx, yy = gy + dy; if (xx >= 0 && yy >= 0 && xx < w && yy < h && zKor[yy * w + xx]) return true; } return false; };
+  const sim = ki.map((p) => fogSimit(p.map((v) => [v[0], v[1]] as [number, number]), 1 / r.mPerPt, zKozel));
+  return sim.length ? sim : null;
+}
+
+/**
  * A külső körvonal fülkesimításához: a nagyobb (> 1,5 m²) beugrás, amelynek az alja fal (a beugrás alján, befelé
  * 0,1–0,25 m-en fal- vagy nyílászárócella – nem rácslépcső), valódi fülke (bejárati fülke, loggia): nem tölthető ki.
  */

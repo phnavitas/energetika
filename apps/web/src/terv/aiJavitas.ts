@@ -9,7 +9,7 @@
  *  - hiányzó fal: a jelölt helyen a PDF két párhuzamos (8–70 cm-re futó) vonala közti sáv kézi falként (Kijeloles.falPlusz).
  * Mindegyik a felhasználó „Alkalmaz” gombjára, visszavonhatóan.
  */
-import { bennE, type Poligon } from '@terv/burok';
+import { bennE, fogSimit, type Poligon } from '@terv/burok';
 import type { Raszter } from '@terv/raszter';
 import type { Lap } from '@terv/kinyeres';
 
@@ -139,35 +139,6 @@ export function burokIgazit(r: Raszter, burok: Poligon[], doboz: [number, number
     .filter((v, k, arr) => k === 0 || Math.hypot(v[0] - arr[k - 1]![0], v[1] - arr[k - 1]![1]) > 0.01));
   const regi = new Set(burok.flat().map(([x, y]) => `${Math.round(x * 10) / 10},${Math.round(y * 10) / 10}`));
   return kerek.map((pp) => fogSimit(pp, m, (v) => !regi.has(`${v[0]},${v[1]}`)));
-}
-
-/**
- * Az eltolt él végén maradt „fog” levágása: két egymást követő rövid (< 0,6 m), egymásra merőleges él, amelyet két hosszú,
- * egymásra merőleges él fog közre (sarokba szorult falvastagságnyi kiugrás vagy bemélyedés) – a sarok a két hosszú él
- * egyenesének metszése lesz. Csak az igazítással keletkezett fogat (legalább egy csúcsa új) – a rajz valódi lépcsői maradnak.
- */
-function fogSimit(p: [number, number][], m: number, uj: (v: [number, number]) => boolean): [number, number][] {
-  const rovid = 0.6 * m, hosszu = 0.6 * m;
-  const hossz = (a: [number, number], b: [number, number]) => Math.hypot(b[0] - a[0], b[1] - a[1]);
-  const fugg = (a: [number, number], b: [number, number]) => Math.abs(b[0] - a[0]) < 1e-6 * m + 0.02 * hossz(a, b);
-  for (let kor = 0; kor < 4 && p.length > 4; kor++) {
-    let volt = false;
-    for (let j = 0; j < p.length && p.length > 4; j++) {
-      const n = p.length, A = p[(j - 1 + n) % n]!, B = p[j]!, C = p[(j + 1) % n]!, D = p[(j + 2) % n]!, E = p[(j + 3) % n]!;
-      if (hossz(B, C) >= rovid || hossz(C, D) >= rovid || hossz(A, B) < hosszu || hossz(D, E) < hosszu) continue;
-      if (!uj(B) && !uj(C) && !uj(D)) continue;
-      const ab = fugg(A, B), de = fugg(D, E); if (ab === de) continue; // a két hosszú él merőleges
-      const X: [number, number] = ab ? [B[0], D[1]] : [D[0], B[1]];
-      // B, C, D helyett X (a körbejárás sorrendjében)
-      const k = [j, (j + 1) % n, (j + 2) % n].sort((u, v) => v - u);
-      const hely = j - k.filter((t) => t < j).length;
-      for (const t of k) p.splice(t, 1);
-      p.splice(hely, 0, X);
-      volt = true; break;
-    }
-    if (!volt) break;
-  }
-  return p;
 }
 
 /**

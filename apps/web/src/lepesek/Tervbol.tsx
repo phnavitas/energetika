@@ -11,7 +11,7 @@ import { pecsetKinyer, type PecsetAdat } from '@terv/pecset';
 import { HomlokzatEllenorzes } from './TervHomlokzat';
 import type { SzurkeKep } from '@terv/autohelyiseg';
 import { eltolas, fedettArany } from '@terv/fedes';
-import { burokAuto, burokFalak, burokMeres, burokTomeg, csatlakozasok, elKornyezet, kulsoSikra, kulsoSraff, nyilasEl, bennE, type Poligon } from '@terv/burok';
+import { burokAuto, burokFalak, burokMeres, burokTomeg, csatlakozasok, elKornyezet, kulsoSikra, kulsoSraff, nyilasEl, bennE, burokLevag, type Poligon } from '@terv/burok';
 import type { TervNyilas } from '@terv/nyilaszarok';
 import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, eszakJavitas, eszakJavitasMent, type TervLap, type AlaprajzFeldolgozas } from '@terv/elemzes';
 import { egtaj, jegyzekenKivul, pecsetBelmagassag, jegyzekSorok, szintekCimbol, szintNev } from '@terv/alaprajz';
@@ -436,7 +436,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     return { ...k, kizartH: kizart, kulterH: kulter, kat: kt };
   }); };
   /** A rajzon kattintással megnyitott besorolás-menü (a rajz-konténerhez viszonyított helyen). */
-  const [menu, setMenu] = useState<{ i: number; x: number; y: number; kulcsok?: string[]; px?: number; py?: number } | null>(null);
+  const [menu, setMenu] = useState<{ i: number; x: number; y: number; kulcsok?: string[]; px?: number; py?: number; levag?: Poligon[] | null } | null>(null);
   useEffect(() => setMenu(null), [aIdx]);
   // hőburok-körvonal: a felismert (fűtött helyiségek összevonva), vagy a felhasználó által szerkesztett
   const futottKulcs = al ? [...futottRiK(al, kj)].sort((a, b) => a - b).join(',') : '';
@@ -1417,7 +1417,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                           {(() => { const el = md.nyilasok.filter((n) => n.homlokzat !== undefined); if (!el.length) return null; const cm = (v: number) => String(Math.round(v * 100));
                             const cs = new Map<string, { db: number; n: (typeof el)[number] }>(); for (const n of el) { const h = n.homlokzat; const k = `${cm(n.szel)}/${cm(n.mag)} ${n.fajta === 'ablak' ? 'ablak' : 'erkélyajtó'} (${szintNev(n.szint)}): ${h ? `a homlokzaton ${cm(h.szel)}/${cm(h.mag)}` : 'a homlokzaton nincs a helyén keret'}`; const c = cs.get(k); if (c) c.db++; else cs.set(k, { db: 1, n }); }
                             return <div role="status" style="font-size:13px;margin-top:6px;color:#B45309">A homlokzati rajz szerint {el.length} nyílászáró mérete vagy helye nem egyezik az alaprajzi feliratával – ellenőrizd (kattintásra kijelöli): {[...cs].slice(0, 10).map(([k, { db, n }], j) => <>{j > 0 && '; '}<a href="#" onClick={(e) => { e.preventDefault(); if (n.forras) { setKivNy({ lap: n.forras.lap, ny: n.forras.ny }); if (n.forras.lap !== aIdx && n.forras.lap >= 0) setAIdx(n.forras.lap); } }}>{db > 1 ? `${db} × ` : ''}{k}</a></>)}{cs.size > 10 ? ' …' : ''}.</div>; })()}
-                          <div class="halkabb" style="font-size:13px;margin-top:6px">A körvonal (falak, födémek, tető alaprajza) a 2D nézetben a „Hőburok szerkesztése” gombbal javítható: pont húzása, beszúrása (kattintás az élre), törlése (dupla kattintás), él eltolása (a fehér négyzet húzása).</div>
+                          <div class="halkabb" style="font-size:13px;margin-top:6px">A körvonal (falak, födémek, tető alaprajza) a 2D nézetben a „Hőburok szerkesztése” gombbal javítható: pont húzása, beszúrása (kattintás az élre), törlése (dupla kattintás), él eltolása (a fehér négyzet húzása). A falon kívülre lógó részre kattintva az levágható.</div>
                         </details>
                       );
                     })()}</div>;
@@ -1443,6 +1443,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                     <button role="menuitem" class="link-gomb" key={nev} style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:6px 8px;border-radius:6px"
                       onClick={() => { const p = { x: menu.px!, y: menu.py! }; setMenu(null); pluszFelvesz(nev, p.x, p.y); }}><span style={`display:inline-block;width:14px;height:14px;border-radius:3px;background:${SZEREP_SZIN.futott}`} /> {cimke}</button>
                   ))}
+                  {menu.levag && <button role="menuitem" class="link-gomb" style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:6px 8px;border-radius:6px"
+                    onClick={() => { burokMent(menu.levag!); setMenu(null); }}><span style="display:inline-block;width:14px;height:14px;border-radius:3px;border:2px dashed #F97316" /> Levágás a hőburokból – a falon kívüli rész</button>}
                   {menu.kulcsok.length > 0 && ([['kulter', 'Kültér – a mellette lévő falak külső falak', '#22C55E', true], ['nem', 'Fűtött / szomszéd tér – nem hőátadó fal', '#9CA3AF', false]] as const).map(([k0, nev, szin, be]) => {
                     const aktiv = be === menu.kulcsok!.every((kk) => kj.ismKulso?.has(kk));
                     return <button role="menuitemradio" aria-checked={aktiv} class="link-gomb" key={k0} style={`display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:6px 8px;border-radius:6px;${aktiv ? 'background:#F3F4F6;font-weight:700' : ''}`}
@@ -1528,7 +1530,9 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                     else if ((c === 0 || (c === 1 && burok.some((p) => bennE(p, pt.x, pt.y)))) && hely && cx >= 0 && cy >= 0 && cx < r.w && cy < r.h && !r.fal[cy * r.w + cx]) {
                       // (a hőburkon belüli, a külső térhez szivárgó vagy zárt, pecsét nélküli terület is – pl. lépcső)
                       const kulcsok = c === 0 ? teruletKulcsok(r, cx, cy) : [];
-                      setMenu({ i: -1, kulcsok, px: pt.x, py: pt.y, ...hely });
+                      // a hőburkon belüli, falon kívüli (helyiség nélküli) rész levágható
+                      const levag = burok.some((p) => bennE(p, pt.x, pt.y)) ? burokLevag(r, burok, pt.x, pt.y) : null;
+                      setMenu({ i: -1, kulcsok, px: pt.x, py: pt.y, levag, ...hely });
                     } else setMenu(null);
                     // a helyiséglista sora kiemelve; csak a lista saját görgetősávja mozdul (a lap nem ugrik)
                     if (i >= 0) setTimeout(() => { const sor = document.getElementById(`hs-sor-${i}`); const g = sor?.closest('.tabla-gorgeto') as HTMLElement | null; if (sor && g && g.scrollHeight > g.clientHeight) g.scrollTop = Math.max(0, sor.offsetTop - g.clientHeight / 2); }, 30);
@@ -1619,6 +1623,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                     </g>
                   );
                 })}
+                {/* a levágás előnézete: a falon kívüli rész nélküli körvonal (a menü nyitva) */}
+                {menu?.levag && menu.levag.map((q, pi) => <polygon key={`lv${pi}`} points={q.map(([x, y]) => `${x},${y}`).join(' ')} fill="none" stroke="#16A34A" stroke-width={4} stroke-dasharray="10 6" vector-effect="non-scaling-stroke" pointer-events="none" />)}
                 {/* hőburok: vastag vonal; szerkesztéskor a csúcsok húzhatók, az élfelezőkkel új pont szúrható be, dupla kattintás törli a csúcsot */}
                 {(retegek.has('burok') || rajzol || huz) && burok.map((q, pi) => (
                   <g>
