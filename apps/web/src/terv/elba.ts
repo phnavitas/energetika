@@ -13,11 +13,13 @@ import type { EpuletModell } from '@terv/epulet';
 import { elemAlakok, type ElemAlak } from '@terv/forrasAlak';
 import { homlokzatiAnyagok, jelmagyarazat, type HomlokzatiAnyag, type JelmagyarazatTetel } from '@terv/jelmagyarazat';
 import { alapAllapot, elemzesLap, tervFolyamat, type FolyamatAllapot } from './folyamat';
+import { zipPdfek } from './zipPdf';
 
 export type { EpuletModell } from '@terv/epulet';
 export type { ZartsagHiba } from '@terv/zartsag';
 export type { ElemAlak } from '@terv/forrasAlak';
 export { elemekPontban } from '@terv/forrasAlak';
+export { zipPdfek } from './zipPdf';
 export { lapNezo, type LapNezo, type LapNezoBemenet } from './elbaNezo';
 
 export interface PdfbolEpuletEredmeny {
@@ -41,13 +43,21 @@ export interface PdfbolEpuletEredmeny {
 }
 
 /**
- * PDF-fájlokból (File vagy { name, arrayBuffer() }) az épületmodell.
+ * PDF-fájlokból (File vagy { name, arrayBuffer() }; ZIP is – a benne lévő PDF-ek) az épületmodell.
  * opciok.allapot: felülírható döntések – lapSzerep (lapindex → 'alaprajz' | 'metszet' | 'homlokzat' | 'leiras' | 'egyeb'; a
  * lapindex a visszaadott `lapok` sorrendje: fájlonként, oldalanként), szintKi (lapindex → szintkódok), bm (belmagasság) stb.
  */
 export async function pdfbolEpulet(fajlok: (File | { name: string; type?: string; arrayBuffer(): Promise<ArrayBuffer> })[],
   opciok: { halad?: (arany: number, szoveg: string) => void; allapot?: Partial<FolyamatAllapot> & { lapSzerep?: Record<number, TervLap['szerep']> } } = {}): Promise<PdfbolEpuletEredmeny> {
   const lapok: TervLap[] = [], figyelmeztetes: string[] = [];
+  // (ZIP-ben érkező tervlapok: a .pdf bejegyzések kibontva, a ZIP-en belüli név szerinti sorrendben)
+  const kibontott: typeof fajlok = [];
+  for (const f of fajlok) {
+    if (!/\.zip$/i.test(f.name)) { kibontott.push(f); continue; }
+    try { const l = await zipPdfek(new Blob([await f.arrayBuffer()])); if (!l.length) figyelmeztetes.push(`${f.name}: a ZIP-ben nincs PDF`); kibontott.push(...l); }
+    catch (e) { figyelmeztetes.push(`${f.name}: a ZIP nem bontható ki (${(e as Error).message})`); }
+  }
+  fajlok = kibontott;
   for (const [fi, f] of fajlok.entries()) {
     try {
       const ll = await pdfLapok(f as File, 2000, (k, o) => opciok.halad?.((fi + (o ? k / o : 0)) / fajlok.length * 0.6, `${f.name}${o > 1 ? ` (${k}/${o}. oldal)` : ''}`));
