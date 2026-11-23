@@ -125,8 +125,13 @@ export function lapSzerep(lap: Lap, fajlnev = '', tobbLapos = false): { szerep: 
   // többlapos PDF: a fájlnév az egész dokumentumé (pl. „Tervdokumentáció”, „Alaprajzok”) – a lap saját címe és
   // tartalma dönt, a fájlnév csak utolsó tartalék
   const fNev = fajta(fajlnev.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ').normalize('NFC'));
-  // tetőfelülnézet (akár „Tetőfelülnézet alaprajz” címmel): a tető alaprajza, nem szint – a tetőformához
-  if (/tetőfelülnézet|tetofelulnezet|tető felülnézet/i.test(cim)) return { szerep: 'egyeb', cim };
+  // tetőfelülnézet / tetőalaprajz (akár „Tetőfelülnézet alaprajz” címmel): a tető alaprajza, nem szint – a tetőformához.
+  // A cím vagy a fájlnév („MV-02_TE_Teto_felulnezet”) szerint; a „tetőtéri” / „tetőszinti alaprajz” szint, nem tető. A
+  // cím „Tetőfelülnézet”-tel kezdődik (a tetőformát kereső lépések erre szűrnek).
+  const tetoRx = /tet[őoö]\s*fel[üu]ln[ée]zet|tet[őoö]\s*alaprajz/i;
+  const fnT = fn.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ');
+  if (tetoRx.test(cim) || (!fajta(cim) || /metszet/i.test(cim)) && tetoRx.test(fnT) && !/metszet|homlokzat/i.test(fnT))
+    return { szerep: 'egyeb', cim: /fel[üu]ln[ée]zet/i.test(cim) ? cim : `Tetőfelülnézet${cim && !/metszet/i.test(cim) ? ` · ${cim}` : ''}` };
   const f = fajta(cim) ?? (tobbLapos ? null : fNev);
   if (f) return { szerep: f, cim: cim || fajlnev.replace(/\.pdf$/i, '') };
   // helyszínrajz: nem alaprajz (a telek terület-feliratai miatt sem)
