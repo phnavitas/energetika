@@ -446,7 +446,8 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   // hőburok-körvonal: a felismert (fűtött helyiségek összevonva), vagy a felhasználó által szerkesztett
   const futottKulcs = al ? [...futottRiK(al, kj)].sort((a, b) => a - b).join(',') : '';
   // a megjelenített (és szerkesztésre átadott) hőburok a fal külső síkján: hőszigetelés külső felülete / vastag fal külső síkja
-  const burokFelismert = useMemo(() => (al?.r ? burokTomeg(al.r, futottRiK(al, kj), aLap ? nevFeliratok(aLap.lap) : undefined, vartTer(al)) : []), [al, futottKulcs]);
+  // (a felismert hőburok: a méretláncok rácsán, ha a láncok a házat körbefogják – különben a raszteres kontúr)
+  const burokFelismert = useMemo(() => (al?.r ? burok3dCache(aIdx, al.r, futottRiK(al, kj), aLap?.lap, al, false) : []), [al, futottKulcs]);
   const [burokVazlat, setBurokVazlat] = useState<Poligon[] | null>(null);
   const [burokSzerk, setBurokSzerk] = useState(false);
   /** Húzás: a p. körvonal v. pontja; `el`: a v → v+1 él párhuzamos eltolása (a kezdőpont és az eredeti körvonal). */

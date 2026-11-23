@@ -8,7 +8,8 @@ import { pecsetKinyer, type PecsetAdat } from '@terv/pecset';
 import type { SzurkeKep } from '@terv/autohelyiseg';
 import { eltolas, fedettArany } from '@terv/fedes';
 import { raszterFalPlusz } from './aiJavitas';
-import { burokAuto, burokFalak, burokMeres, burokTomeg, burokTomegKezi, csatlakozasok, elKornyezet, kulsoSikra, kulsoSraff, nyilasEl, bennE, type Poligon } from '@terv/burok';
+import { burokAuto, burokFalak, burokMeres, burokTomeg, burokTomegKezi, csatlakozasok, elKornyezet, kulsoSikra, kulsoSraff, nyilasEl, bennE, terulet, type Poligon } from '@terv/burok';
+import { racsKontur } from '@terv/racsKontur';
 import type { TervNyilas } from '@terv/nyilaszarok';
 import { pdfLapok, alaprajzFeldolgoz, metszetFeldolgoz, eszakJavitas, eszakJavitasMent, type TervLap, type AlaprajzFeldolgozas } from '@terv/elemzes';
 import { egtaj, eszakjelKeres, jegyzekenKivul, pecsetBelmagassag, jegyzekSorok, szintekCimbol, szintJelekbol, szintNev, meretaranyKeres } from '@terv/alaprajz';
@@ -288,8 +289,32 @@ export const burok3dTar = new Map<string, Poligon[]>();
 export function burok3dCache(i: number, r: NonNullable<AlaprajzFeldolgozas['r']>, fut: Set<number>, lap?: Lap, a?: AlaprajzFeldolgozas, belso = false): Poligon[] {
   const kulcs = `${i}|${r.w}x${r.h}|${a?.r3d === r ? 'v' : ''}|${[...fut].sort((a, b) => a - b).join(',')}|${belso ? 'b' : 'k'}`;
   // belső méret: a helyiségek széle (a fal belső síkja); külső méret: a fal / hőszigetelés külső síkja
-  let v = burok3dTar.get(kulcs); if (!v) { v = belso ? burokAuto(r, fut, lap ? nevFeliratok(lap) : undefined, a ? vartTer(a) : undefined) : burokTomeg(r, fut, lap ? nevFeliratok(lap) : undefined, a ? vartTer(a) : undefined); burok3dTar.set(kulcs, v); }
+  let v = burok3dTar.get(kulcs); if (!v) { v = burokFelismertSik(r, fut, lap, a, belso); burok3dTar.set(kulcs, v); }
   return v;
+}
+/**
+ * A felismert hőburok (gyorstár nélkül): a méretlánc-rács kontúrja, ha van – külső méretnél maga, belső méretnél a
+ * falsávok belső síkja –; különben a raszteres (külső: tömeg, belső: helyiségek széle).
+ */
+export function burokFelismertSik(r: NonNullable<AlaprajzFeldolgozas['r']>, fut: Set<number>, lap: Lap | undefined, a: AlaprajzFeldolgozas | undefined, belso: boolean): Poligon[] {
+  const tomeg = burokTomeg(r, fut, lap ? nevFeliratok(lap) : undefined, a ? vartTer(a) : undefined);
+  const rk = lap && a ? racsBurok(r, lap, fut, tomeg, a) : null;
+  if (rk) return belso ? burokMeres(r, rk).map((els) => els.map((e) => e.belso[0])) : rk;
+  return belso ? burokAuto(r, fut, lap ? nevFeliratok(lap) : undefined, a ? vartTer(a) : undefined) : tomeg;
+}
+/**
+ * A hőburok a méretláncok rácsán (racsKontur): a raszteres kontúr (tömeg) mellett, ha a méretláncok a házat körbefogják,
+ * és a rácskontúr területe a raszteresétől legfeljebb −20 / +15 %-kal tér el (különben a láncok nem a házra
+ * vonatkoznak, vagy a raszter nagyon hibás – a raszteres marad).
+ */
+export function racsBurok(r: NonNullable<AlaprajzFeldolgozas['r']>, lap: Lap, fut: Set<number>, tomeg: Poligon[], a: AlaprajzFeldolgozas): Poligon[] | null {
+  if (!tomeg.length || (globalThis as { NORACS?: boolean }).NORACS) return null;
+  const pecs = a.magHelyisegek.flatMap((h, i) => (fut.has(i) ? [h.mutato ?? h] : []));
+  let rk: ReturnType<typeof racsKontur> = null; try { rk = racsKontur(r, lap, fut, tomeg, pecs); } catch { rk = null; }
+  if (!rk) return null;
+  const T = (ps: Poligon[]) => ps.reduce((s0, p) => s0 + Math.abs(terulet(p)), 0) * r.mPerPt * r.mPerPt;
+  const at = T(tomeg), ar = T(rk.pol);
+  return ar >= 0.8 * at && ar <= 1.15 * at ? rk.pol : null;
 }
 /** Az elemzés forráslapja (a burok-zsebek megnevező feliratához). */
 export const elemzesLap = new WeakMap<AlaprajzFeldolgozas, Lap>();
@@ -305,7 +330,7 @@ export function burokFalakAuto(a: AlaprajzFeldolgozas, k: Kijeloles): BurokFalAu
   let gy = burokFalGy.get(a); if (!gy) { gy = new Map(); burokFalGy.set(a, gy); }
   if (gy.has(kulcs)) return gy.get(kulcs)!;
   const lap = elemzesLap.get(a);
-  const pol = burokAuto(r, fut, lap ? nevFeliratok(lap) : undefined, vartTer(a));
+  const pol = burokFelismertSik(r, fut, lap, a, true);
   const v: BurokFalAuto = { falak: new Map(), futetlen: new Map() };
   if (pol.length) {
     // az épületmodell (egy szint) hőburokfalai: a fal belső síkja a csatlakozó belső falak nélkül; a külső tér felé
