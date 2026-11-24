@@ -460,22 +460,41 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   const [zoom, setZoom] = useState<number[] | null>(null);
   const nezetRef = useRef<{ nezet: number[]; nezet0: number[] }>({ nezet: [0, 0, 1, 1], nezet0: [0, 0, 1, 1] });
   const svgRef = useRef<SVGSVGElement | null>(null);
-  const mozgat = useRef<{ ujjak: Map<number, { x: number; y: number }>; kezd?: { x: number; y: number; vb: number[] }; csip?: { d: number; mx: number; my: number; vb: number[] }; mozdult: boolean }>({ ujjak: new Map(), mozdult: false });
+  const mozgat = useRef<{ ujjak: Map<number, { x: number; y: number }>; kezd?: { x: number; y: number; vb: number[]; inv?: DOMMatrix }; csip?: { d: number; mx: number; my: number; vb: number[]; inv?: DOMMatrix }; mozdult: boolean }>({ ujjak: new Map(), mozdult: false });
   /** a nézet nagyítása f-szeresére a (lapkoordinátás) x, y pont körül; a teljes nézetnél kisebbre nem */
   const zoomAllit = (f: number, x?: number, y?: number, vbAlap?: number[]) => {
     const { nezet: v, nezet0: v0 } = nezetRef.current; const b = vbAlap ?? v;
     const cx = x ?? b[0]! + b[2]! / 2, cy = y ?? b[1]! + b[3]! / 2;
     const w = Math.min(v0[2]!, Math.max(v0[2]! / 60, b[2]! * f)), k = w / b[2]!;
-    if (w >= v0[2]! * 0.999) { setZoom(null); return; }
-    setZoom([cx - (cx - b[0]!) * k, cy - (cy - b[1]!) * k, b[2]! * k, b[3]! * k]);
+    // (a ref azonnal frissül: a két renderelés közé eső görgő-események is az új nézetből lépnek tovább)
+    if (w >= v0[2]! * 0.999) { nezetRef.current = { nezet: v0, nezet0: v0 }; setZoom(null); return; }
+    const u = [cx - (cx - b[0]!) * k, cy - (cy - b[1]!) * k, b[2]! * k, b[3]! * k]; nezetRef.current = { nezet: u, nezet0: v0 }; setZoom(u);
     void v;
   };
+  /** a képernyőpont a lapon – a kezdéskor rögzített (inverz) képernyő-mátrixszal; a preserveAspectRatio-t is tudja */
+  const lapon = (inv: DOMMatrix | undefined, cx: number, cy: number) => { if (!inv) return null; const q = new DOMPoint(cx, cy).matrixTransform(inv); return [q.x, q.y] as const; };
+  const gorgoUtolso = useRef(0);
+  const [gorgoTipp, setGorgoTipp] = useState(false);
+  const gorgoTippIdo = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lapPont = (cx: number, cy: number) => { const svg = svgRef.current; const m = svg?.getScreenCTM(); if (!m) return null; const q = new DOMPoint(cx, cy).matrixTransform(m.inverse()); return { x: q.x, y: q.y }; };
   useEffect(() => {
     const svg = svgRef.current; if (!svg) return;
-    // (teljes nézetben a lefelé görgetés a lapot görgeti – nincs mit kicsinyíteni)
-    const gorgo = (e: WheelEvent) => { const { nezet: v, nezet0: v0 } = nezetRef.current; if (e.deltaY > 0 && v[2]! >= v0[2]! * 0.999) return;
-      e.preventDefault(); const q = lapPont(e.clientX, e.clientY); zoomAllit(Math.pow(1.2, Math.max(-3, Math.min(3, e.deltaY / 100))), q?.x, q?.y); };
+    // Egyértelmű szabály: teljes nézetben a görgő a LAPOT görgeti (mindkét irányban), a Ctrl / ⌘ + görgő és a touchpados
+    // csippentés (ctrlKey) nagyít; nagyított nézetben a görgő mindig a rajzot nagyítja. (Ha épp görgővel értünk vissza a
+    // teljes nézetre, a következő ~0,4 s még nagyítás marad – ne görgesse el alóla a lapot.)
+    const gorgo = (e: WheelEvent) => {
+      const { nezet: v, nezet0: v0 } = nezetRef.current; const teljes = v[2]! >= v0[2]! * 0.999;
+      const most = performance.now();
+      if (teljes && !e.ctrlKey && !e.metaKey && most - gorgoUtolso.current > 400) {
+        if (e.deltaY < 0) { setGorgoTipp(true); if (gorgoTippIdo.current) clearTimeout(gorgoTippIdo.current); gorgoTippIdo.current = setTimeout(() => setGorgoTipp(false), 1600); }
+        return;
+      }
+      e.preventDefault(); gorgoUtolso.current = most;
+      // a görgetés egysége: px (0), sor (1), oldal (2); folytonos lépés – a touchpad apró lépései is simák
+      const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? svg.clientHeight || 600 : 1);
+      const f = Math.exp(Math.max(-400, Math.min(400, dy)) * (e.ctrlKey && Math.abs(dy) < 50 ? 0.01 : 0.0015));
+      const q = lapPont(e.clientX, e.clientY); zoomAllit(f, q?.x, q?.y);
+    };
     svg.addEventListener('wheel', gorgo, { passive: false });
     return () => svg.removeEventListener('wheel', gorgo);
   });
@@ -1522,6 +1541,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   <button key={cim} class="gomb halk-gomb semleges" title={cim} aria-label={cim} style="min-width:34px;padding:4px 8px;font-size:16px;line-height:1;background:#fff" onClick={() => fn()}>{t}</button>
                 ))}
               </div>
+              {gorgoTipp && <div role="status" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:5;pointer-events:none;background:rgba(17,24,39,.82);color:#fff;padding:8px 14px;border-radius:8px;font-size:14px">Nagyítás: Ctrl + görgő, csippentés vagy a + gomb</div>}
               <svg ref={svgRef} viewBox={nezet.join(' ')} style={`display:block;width:100%;height:auto;background:#fff;${burokSzerk || rajzol || zoom ? 'touch-action:none;' : ''}${rajzol ? 'cursor:crosshair' : zoom && !burokSzerk ? 'cursor:grab' : ''}`} role="img" aria-label="Az alaprajz a felismert elemekkel"
                 onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
                 onPointerDown={(e) => {
@@ -1529,26 +1549,29 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                   const mz = mozgat.current; mz.ujjak.set(e.pointerId, { x: e.clientX, y: e.clientY });
                   if (mz.ujjak.size === 2) {
                     const [a, b] = [...mz.ujjak.values()] as [{ x: number; y: number }, { x: number; y: number }];
-                    mz.csip = { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, vb: nezetRef.current.nezet }; mz.kezd = undefined; mz.mozdult = true; return;
+                    mz.csip = { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, vb: nezetRef.current.nezet, inv: (e.currentTarget as SVGSVGElement).getScreenCTM()?.inverse() }; mz.kezd = undefined; mz.mozdult = true; return;
                   }
-                  if (e.button === 1 || (e.button === 0 && zoom)) { mz.kezd = { x: e.clientX, y: e.clientY, vb: nezet }; mz.mozdult = false; if (e.button === 1) e.preventDefault(); }
+                  if (e.button === 1 || (e.button === 0 && zoom)) { mz.kezd = { x: e.clientX, y: e.clientY, vb: nezet, inv: (e.currentTarget as SVGSVGElement).getScreenCTM()?.inverse() }; mz.mozdult = false; if (e.button === 1) e.preventDefault(); }
                 }}
                 onPointerMove={(e) => {
                   const mz = mozgat.current;
                   if (mz.ujjak.has(e.pointerId)) mz.ujjak.set(e.pointerId, { x: e.clientX, y: e.clientY });
-                  const svgE = e.currentTarget as SVGSVGElement; const pxPt = (mz.kezd?.vb ?? mz.csip?.vb ?? nezet)[2]! / Math.max(1, svgE.getBoundingClientRect().width);
+                  const svgE = e.currentTarget as SVGSVGElement;
+                  // (a lapkoordináták a kezdéskori képernyő-mátrixszal: a kezdő és az aktuális pont különbsége a pontos eltolás)
                   if (mz.csip && mz.ujjak.size === 2) {
                     const [a, b] = [...mz.ujjak.values()] as [{ x: number; y: number }, { x: number; y: number }];
                     const d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2; const c = mz.csip;
-                    const r = svgE.getBoundingClientRect(); const px0 = c.vb[0]! + (c.mx - r.left) * pxPt, py0 = c.vb[1]! + (c.my - r.top) * pxPt;
-                    const eltolt = [c.vb[0]! - (mx - c.mx) * pxPt, c.vb[1]! - (my - c.my) * pxPt, c.vb[2]!, c.vb[3]!];
-                    zoomAllit(c.d / Math.max(1, d), px0, py0, eltolt); return;
+                    const p0 = lapon(c.inv, c.mx, c.my), p1 = lapon(c.inv, mx, my); if (!p0 || !p1) return;
+                    const eltolt = [c.vb[0]! - (p1[0] - p0[0]), c.vb[1]! - (p1[1] - p0[1]), c.vb[2]!, c.vb[3]!];
+                    zoomAllit(c.d / Math.max(1, d), p0[0], p0[1], eltolt); return;
                   }
                   if (mz.kezd && !huz) {
                     const dx = e.clientX - mz.kezd.x, dy = e.clientY - mz.kezd.y;
                     if (!mz.mozdult && Math.hypot(dx, dy) < 5) return;
                     if (!mz.mozdult) { mz.mozdult = true; svgE.setPointerCapture?.(e.pointerId); }
-                    const v = mz.kezd.vb; setZoom([v[0]! - dx * pxPt, v[1]! - dy * pxPt, v[2]!, v[3]!]); return;
+                    const p0 = lapon(mz.kezd.inv, mz.kezd.x, mz.kezd.y), p1 = lapon(mz.kezd.inv, e.clientX, e.clientY); if (!p0 || !p1) return;
+                    const v = mz.kezd.vb, u = [v[0]! - (p1[0] - p0[0]), v[1]! - (p1[1] - p0[1]), v[2]!, v[3]!];
+                    nezetRef.current = { nezet: u, nezet0: nezetRef.current.nezet0 }; setZoom(u); return;
                   }
                   if (!huz) return;
                   const svg = e.currentTarget as SVGSVGElement; const m = svg.getScreenCTM(); if (!m) return;

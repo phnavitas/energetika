@@ -255,9 +255,14 @@ export function nezoNyit(doboz: HTMLElement, opc: NezoOpciok): Nezo {
     } catch { composer = null; }
   }
   let kerve = false, el = true;
+  // mozgatás közben gyors rajzolás (GTAO nélkül); az utolsó mozdulat után ~180 ms-mal jön a teljes minőségű kép.
+  // (a görgős nagyítás eseményenként küld start/end-et → az időzítő zárja le)
+  let mozog = false, csend: ReturnType<typeof setTimeout> | null = null;
+  ctl.addEventListener('start', () => { mozog = true; if (csend) { clearTimeout(csend); csend = null; } });
+  ctl.addEventListener('end', () => { if (csend) clearTimeout(csend); csend = setTimeout(() => { csend = null; mozog = false; kell(); }, 180); });
   function rajzol() { kerve = false; if (!el) return;
     // (a kijelölés átütő rétege és a jelölők a GTAO normál/mélység menetéből kimaradnak)
-    if (composer) { atut.visible = false; jelGrp.visible = false; composer.render(); atut.visible = true; jelGrp.visible = true;
+    if (composer && !mozog) { atut.visible = false; jelGrp.visible = false; composer.render(); atut.visible = true; jelGrp.visible = true;
       renderer.autoClear = false; renderer.clearDepth(); renderer.render(atut, cam); renderer.render(jelGrp, cam); renderer.autoClear = true; }
     else renderer.render(scene, cam);
   }
@@ -338,7 +343,7 @@ export function nezoNyit(doboz: HTMLElement, opc: NezoOpciok): Nezo {
     doboz: doboz3,
     kep() { rajzol(); return renderer.domElement.toDataURL('image/png'); },
     elemLista: () => lista,
-    bezar() { el = false; ro?.disconnect(); composer?.dispose(); ctl.dispose();
+    bezar() { el = false; if (csend) clearTimeout(csend); ro?.disconnect(); composer?.dispose(); ctl.dispose();
       renderer.domElement.removeEventListener('pointerdown', down); renderer.domElement.removeEventListener('pointerup', up); renderer.domElement.removeEventListener('dblclick', dupla);
       for (const q of hal) { q.m.geometry.dispose(); q.el?.geometry.dispose(); }
       for (const m of anyagok.values()) m.dispose(); for (const m of elAnyagok.values()) m.dispose();
