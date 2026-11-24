@@ -71,3 +71,10 @@ tengelyvonal pontvonal) és `tengelyIllesztes` (közös jelekből s = ±1 tükr�
 - Biogáz: tetőfelülnézet 9/9 + 9/9, metszet 9/9, helyszínrajz 9/9 + 5/5 (90°-kal elforgatva), homlokzat részben
   (egy lapon 4 nézet – nézetenként kell bontani).
 - PeterLacke: az alaprajz el van forgatva a lapon (≈ 71°) – a ferde tengelyekhez a jelek irányát kell kezelni.
+
+### Összesítés a 12 helyszínrajzos mintán (2026-11-24, `tools/illesztes/lapok.mts`)
+
+Lapok (a mintánként legtöbb tengelyjelű alaprajzhoz): tengely 17, méretlánc 11, geometria 22, nincs 26.
+Tengelyes terv (Biogáz, PeterLacke, 40 lakásos): minden lap illeszkedik. A hiányzók: Malom és Kacsa 12 lapja (se
+tengely, se homlokzati lánc, a szintek egymáshoz sincsenek illesztve), metszetek léptékfelirat / betűjel nélkül
+(Balatonlelle, Tata-Fazekas), Tb-barlang (lejtős telek: a mintakontúr a garázsszint).
