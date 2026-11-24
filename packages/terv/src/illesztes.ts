@@ -371,60 +371,88 @@ export function lancEgyezes(A: number[], B: number[], tures = 0.03): { pont: num
 }
 
 /**
- * Tengelyjelek: körben (görbe, 4–16 mm átmérőjű, közel kör alakú útvonal) álló egy-két karakteres felirat (A, B', 12);
- * a tengely iránya a jel középpontján átmenő, legalább 2 m hosszú egyenes (függőleges 'v' vagy vízszintes 'h' a lapon);
- * hely: függőleges tengelynél az x, vízszintesnél az y (m, a lap koordinátáiban).
+ * Tengelyjelek: körben (görbe, 4–16 mm átmérőjű, közel kör alakú útvonal) álló egy-két karakteres felirat (A, B', 12).
+ * A tengely iránya (szog: a tengelyvonal iránya, fok, [0, 180)) a jel párjából (ugyanaz a jel a tengely két végén),
+ * különben a család (számok / betűk) többi jelének elrendezéséből (egy sorban álló jelek tengelyei merőlegesek a sorra) –
+ * a tengelyvonal pontvonal, egyetlen hosszú szakasza ritkán van. Elforgatott alaprajzon ferde. hely: a tengely helye a
+ * normálisa mentén (m): n = (sin szog, −cos szog); sor: a jel helye a tengely mentén (a nézetek szétválasztásához).
+ * csalad: 'szam' | 'betu'.
  */
-export interface Tengelyjel { jel: string; x: number; y: number; irany: 'v' | 'h' | null; hely: number }
+export interface Tengelyjel { jel: string; x: number; y: number; csalad: string; szog: number | null; hely: number; sor: number }
 export function tengelyjelek(lap: Lap, mPt: number): Tengelyjel[] {
   const kor = lap.utvonalak.filter((u) => { if (!u.gorbe || u.muvelet === 'none') return false; const w = u.bbox[2] - u.bbox[0], h = u.bbox[3] - u.bbox[1]; return w >= 11 && w <= 45 && Math.abs(w - h) <= 0.15 * w; });
   if (!kor.length) return [];
-  const V: { x: number; y0: number; y1: number }[] = [], H: { y: number; x0: number; x1: number }[] = [];
-  for (const u of lap.utvonalak) { if (u.muvelet === 'none' || u.muvelet === 'fill') continue;
-    for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) { const dx = Math.abs(p[i + 2]! - p[i]!), dy = Math.abs(p[i + 3]! - p[i + 1]!);
-      if (dy * mPt >= 2 && dx < 0.01 * dy) V.push({ x: (p[i]! + p[i + 2]!) / 2, y0: Math.min(p[i + 1]!, p[i + 3]!), y1: Math.max(p[i + 1]!, p[i + 3]!) });
-      else if (dx * mPt >= 2 && dy < 0.01 * dx) H.push({ y: (p[i + 1]! + p[i + 3]!) / 2, x0: Math.min(p[i]!, p[i + 2]!), x1: Math.max(p[i]!, p[i + 2]!) }); } }
   const ki: Tengelyjel[] = [];
   for (const t of lap.szovegek) {
     const s = t.s.trim(); if (!/^([A-Z]{1,2}|\d{1,2})['’]?$/.test(s)) continue;
     const a = (t.szog * Math.PI) / 180, cx = t.x + Math.cos(a) * t.szel / 2, cy = t.y - Math.sin(a) * t.szel / 2 - (t.meret || 2) / 2;
     const k = kor.find((u) => cx >= u.bbox[0] && cx <= u.bbox[2] && cy >= u.bbox[1] && cy <= u.bbox[3]); if (!k) continue;
-    const kx = (k.bbox[0] + k.bbox[2]) / 2, ky = (k.bbox[1] + k.bbox[3]) / 2, r = (k.bbox[2] - k.bbox[0]) / 2;
-    // a tengelyvonal: a kör középpontjának vonalában, a körtől kifelé (a körhöz ér vagy belemetsz)
-    const v = V.some((q) => Math.abs(q.x - kx) <= 0.15 * r && (Math.abs(q.y0 - (ky + r)) <= 1.5 * r || Math.abs(q.y1 - (ky - r)) <= 1.5 * r || (q.y0 <= ky && q.y1 >= ky)));
-    const h = H.some((q) => Math.abs(q.y - ky) <= 0.15 * r && (Math.abs(q.x0 - (kx + r)) <= 1.5 * r || Math.abs(q.x1 - (kx - r)) <= 1.5 * r || (q.x0 <= kx && q.x1 >= kx)));
-    const irany = v && !h ? 'v' : h && !v ? 'h' : null;
-    if (ki.some((q) => q.jel === s.replace('’', "'") && Math.hypot(q.x - kx * mPt, q.y - ky * mPt) < 0.5)) continue;
-    ki.push({ jel: s.replace('’', "'"), x: kx * mPt, y: ky * mPt, irany, hely: irany === 'h' ? ky * mPt : kx * mPt });
+    const kx = ((k.bbox[0] + k.bbox[2]) / 2) * mPt, ky = ((k.bbox[1] + k.bbox[3]) / 2) * mPt;
+    const jel = s.replace('’', "'");
+    if (ki.some((q) => q.jel === jel && Math.hypot(q.x - kx, q.y - ky) < 0.5)) continue;
+    // (család: számok / betűk és a kör mérete – az ajtó-, ablakjelek, helyiségszámok köre más méretű)
+    ki.push({ jel, x: kx, y: ky, csalad: `${/^\d/.test(jel) ? 'szam' : 'betu'}${Math.round((k.bbox[2] - k.bbox[0]) / 2)}`, szog: null, hely: 0, sor: 0 });
   }
-  // (a tengelyvonal gyakran szaggatott – pontvonal –, egyetlen hosszú szakasza nincs: az irány a jelek elrendezéséből)
-  // ugyanaz a jel két helyen (a tengely két végén): a kettőt összekötő irány; különben a család (számok / betűk) többi
-  // jele: egy sorban (azonos y) állnak → függőleges tengelyek, egy oszlopban → vízszintesek
-  const csalad = (j: string) => (/^\d/.test(j) ? 'szam' : 'betu');
-  for (const t of ki) {
-    if (t.irany) continue;
-    const par = ki.find((q) => q !== t && q.jel === t.jel && Math.hypot(q.x - t.x, q.y - t.y) > 2);
-    if (par) { t.irany = Math.abs(par.x - t.x) < Math.abs(par.y - t.y) ? 'v' : 'h'; continue; }
+  const mod180 = (d: number) => ((d % 180) + 180) % 180;
+  const szogKozep = (l: number[]) => { // irányok (mod 180) átlaga: a duplázott szög vektoros átlaga
+    let c = 0, si = 0; for (const d of l) { c += Math.cos((d * Math.PI) / 90); si += Math.sin((d * Math.PI) / 90); } return mod180((Math.atan2(si, c) * 90) / Math.PI); };
+  for (const cs of new Set(ki.map((t) => t.csalad))) {
+    const l = ki.filter((t) => t.csalad === cs); if (!l.length) continue;
+    // 1) az elrendezés: a különböző jelek közti irányok közül a leggyakoribb (a sorban állók a sor irányát adják; egy
+    // lapon több nézet sorai is ugyanabba az irányba futnak) – a tengely erre merőleges
+    let szog: number | null = null;
+    if (l.length >= 2) {
+      const ir: number[] = []; for (let i = 0; i < l.length; i++) for (let j = i + 1; j < l.length; j++) if (l[i]!.jel !== l[j]!.jel) ir.push(mod180((Math.atan2(l[j]!.y - l[i]!.y, l[j]!.x - l[i]!.x) * 180) / Math.PI));
+      const h = new Map<number, number[]>(); for (const d of ir) { const k = Math.round(d / 3) % 60; (h.get(k) ?? h.set(k, []).get(k)!).push(d); }
+      const leg = [...h.entries()].map(([k, v]) => [...v, ...(h.get((k + 1) % 60) ?? []), ...(h.get((k + 59) % 60) ?? [])]).sort((p, q) => q.length - p.length)[0];
+      if (leg && leg.length >= Math.max(1, 0.3 * ir.length)) szog = mod180(szogKozep(leg) + 90);
+    }
+    // 2) különben a jelpárok (ugyanaz a jel a tengely két végén) iránya
+    if (szog === null) {
+      const par: number[] = [];
+      for (const t of l) for (const q of l) if (q !== t && q.jel === t.jel && Math.hypot(q.x - t.x, q.y - t.y) > 2 && t.x + t.y < q.x + q.y) par.push(mod180((Math.atan2(q.y - t.y, q.x - t.x) * 180) / Math.PI));
+      if (par.length) szog = szogKozep(par);
+    }
+    if (szog === null) continue;
+    // (a lap tengelyirányához 2°-on belül: pontosan függőleges / vízszintes)
+    for (const c of [0, 90]) if (Math.min(Math.abs(szog - c), 180 - Math.abs(szog - c)) <= 2) szog = c;
+    const r = (szog * Math.PI) / 180, nx = Math.sin(r), ny = -Math.cos(r);
+    for (const t of l) { t.szog = szog; t.hely = t.x * nx + t.y * ny; t.sor = t.x * Math.cos(r) + t.y * Math.sin(r); }
   }
-  for (const cs of ['szam', 'betu']) {
-    const l = ki.filter((t) => csalad(t.jel) === cs); if (l.length < 2) continue;
-    const sorban = l.filter((t) => l.some((q) => q !== t && q.jel !== t.jel && Math.abs(q.y - t.y) < 0.3)).length, oszlopban = l.filter((t) => l.some((q) => q !== t && q.jel !== t.jel && Math.abs(q.x - t.x) < 0.3)).length;
-    const ir: 'v' | 'h' | null = sorban > 1.5 * oszlopban ? 'v' : oszlopban > 1.5 * sorban ? 'h' : null;
-    for (const t of l) if (!t.irany && ir) t.irany = ir;
-  }
-  for (const t of ki) t.hely = t.irany === 'h' ? t.y : t.x;
-  return ki;
+  return ki.filter((t) => t.szog !== null);
 }
 
 /**
- * Két lap tengelyjeleinek illesztése egy irányban: a B lap jeleinek helye = s · (az A lap azonos jelű tengelyének helye) + o
- * (s = ±1: tükrözés). Az A lap egy tengelycsaládja (irany: 'v' / 'h') és a B lap egy családja; a közös jelekből a
- * legtöbb (± 0,1 m-en belül) egyezést adó s, o. Null, ha kettőnél kevesebb a közös jel.
+ * A lap tengelyjeleinek csoportjai: családonként és soronként (a tengely mentén 1 m-nél nagyobb hézag új sor) – egy
+ * lapon több nézet (homlokzatok, metszetek) jelei külön sorban állnak; az alaprajz egy családja a két végén két sor.
  */
-export function tengelyIllesztes(A: Tengelyjel[], B: Tengelyjel[], iranyA: 'v' | 'h', iranyB: 'v' | 'h'): { s: 1 | -1; o: number; db: number; kozos: number } | null {
-  const a = new Map<string, number[]>(); for (const t of A) if (t.irany === iranyA) (a.get(t.jel) ?? a.set(t.jel, []).get(t.jel)!).push(t.hely);
-  const b = new Map<string, number[]>(); for (const t of B) if (t.irany === iranyB) (b.get(t.jel) ?? b.set(t.jel, []).get(t.jel)!).push(t.hely);
-  // (egy jel egy lapon több helyen is lehet – a tengely két végén ugyanott: a medián)
+export function tengelyCsoportok(T: Tengelyjel[]): Tengelyjel[][] {
+  const ki: Tengelyjel[][] = [];
+  // (egy sorban egymás mellett álló nézetek: ha egy jel ismétlődik, a sor a legnagyobb hézagnál kettéválik)
+  const bont = (g: Tengelyjel[]) => {
+    const jelek = g.map((t) => t.jel);
+    if (new Set(jelek).size === jelek.length || g.length < 4) { ki.push(g); return; }
+    const r = [...g].sort((p, q) => p.hely - q.hely); let k = 1, h = -1;
+    for (let i = 1; i < r.length; i++) { const d = r[i]!.hely - r[i - 1]!.hely; if (d > h) { h = d; k = i; } }
+    bont(r.slice(0, k)); bont(r.slice(k));
+  };
+  for (const cs of new Set(T.map((t) => t.csalad))) {
+    const l = T.filter((t) => t.csalad === cs).sort((p, q) => p.sor - q.sor);
+    let akt: Tengelyjel[] = [];
+    for (const t of l) { if (akt.length && t.sor - akt[akt.length - 1]!.sor > 1) { bont(akt); akt = []; } akt.push(t); }
+    if (akt.length) bont(akt);
+  }
+  return ki.filter((g) => g.length >= 2);
+}
+
+/**
+ * Két tengelyjel-csoport illesztése: a B jeleinek helye = s · (az A azonos jelű tengelyének helye) + o (s = ±1:
+ * tükrözés); a közös jelekből a legtöbb (± 0,1 m-en belül) egyezést adó s, o. Null, ha kettőnél kevesebb az egyezés.
+ */
+export function tengelyIllesztes(A: Tengelyjel[], B: Tengelyjel[]): { s: 1 | -1; o: number; db: number; kozos: number } | null {
+  const a = new Map<string, number[]>(); for (const t of A) (a.get(t.jel) ?? a.set(t.jel, []).get(t.jel)!).push(t.hely);
+  const b = new Map<string, number[]>(); for (const t of B) (b.get(t.jel) ?? b.set(t.jel, []).get(t.jel)!).push(t.hely);
+  // (egy jel egy csoportban több helyen is lehet – a tengely két végén ugyanott: a medián)
   const med = (l: number[]) => { const q = [...l].sort((x, y) => x - y); return q[q.length >> 1]!; };
   const parok: [number, number][] = []; for (const [j, l] of a) { const m = b.get(j); if (m) parok.push([med(l), med(m)]); }
   if (parok.length < 2) return null;
