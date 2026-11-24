@@ -6,6 +6,7 @@ import { lapKinyer, type Lap } from './kinyeres';
 import { alaprajzElemez, meretaranyKeres, kulterNev, szintekCimbol, eszakjelKeres, jegyzekSorok, jegyzekCsoportok, type AlaprajzEredmeny, type TervHelyiseg } from './alaprajz';
 import { retegSzures } from './retegek';
 import { rajzpecsetTeglalap, pecsetKeretNelkul } from './rajzpecset';
+import { lapOsztalyozas, tisztaLap } from './lapTisztitas';
 import { pdfZonakNyers, zonakSzur, poliTer, poliBenne, belsoPont } from './zonak';
 import { raszterEpit, type Raszter, type RaszterBeallitas } from './raszter';
 import { gepkocsik } from './gepkocsi';
@@ -419,6 +420,14 @@ function kepMaszk<K extends { w: number; h: number; ptPx: number; adat: Uint8Arr
   for (let y = y0; y <= y1; y++) adat.fill(255, y * k.w + x0, y * k.w + x1 + 1);
   return { ...k, adat };
 }
+/** A lapkép kitakarása a dobozon (pt) kívül. */
+function kepKivulMaszk<K extends { w: number; h: number; ptPx: number; adat: Uint8Array }>(k: K | undefined, t: [number, number, number, number]): K | undefined {
+  if (!k) return k;
+  const adat = k.adat.slice();
+  const x0 = Math.max(0, Math.floor(t[0] * k.ptPx)), x1 = Math.min(k.w - 1, Math.ceil(t[2] * k.ptPx)), y0 = Math.max(0, Math.floor(t[1] * k.ptPx)), y1 = Math.min(k.h - 1, Math.ceil(t[3] * k.ptPx));
+  for (let y = 0; y < k.h; y++) { if (y < y0 || y > y1) adat.fill(255, y * k.w, (y + 1) * k.w); else { adat.fill(255, y * k.w, y * k.w + x0); adat.fill(255, y * k.w + x1 + 1, (y + 1) * k.w); } }
+  return { ...k, adat };
+}
 /** Kézzel felvett helyiség (a rajzon pecsét nélküli, zárt terület – pl. lépcső): a kattintás helye (lapkoordináta) és neve. */
 export interface PluszHelyiseg { x: number; y: number; nev: string }
 export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: SzurkeKep, tinta0?: TintaKep, leirasJegyzek?: TervHelyiseg[], plusz?: PluszHelyiseg[],
@@ -431,10 +440,23 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
   const reteges = lap1 !== lap0;
   // a rajzpecsét (feliratmező) táblázata és a lapkeret nem fal, nem helyiség: vonalaik nélkül, a lapképen kitakarva
   const pr = rajzpecsetTeglalap(lap1);
-  const lap = pecsetKeretNelkul(lap1, pr);
-  const tinta = reteges ? undefined : kepMaszk(tinta0, pr);
+  const lapPK = pecsetKeretNelkul(lap1, pr);
+  let tinta = reteges ? undefined : kepMaszk(tinta0, pr);
   szurke = kepMaszk(szurke, pr);
+  // laptisztítás (Balázs, 2026-11-24: „ezeket ki kell venni a felismerésből, mert zavart okoznak”): az épületdobozon
+  // (a külső méretláncok szélső jelei, a helyiségpecsétek) kívüli vonalak, feliratok – burkolat, növényzet, telekhatár,
+  // jelmagyarázat –, az északjel és a méretvonalak nélkül; a lapképen a dobozon kívüli rész kitakarva
+  let lap = lapPK; let e0: AlaprajzEredmeny | null = null;
+  const mPt0 = (() => { const M = meretarany && meretarany > 0 ? meretarany : meretaranyKeres(lapPK.szovegek, lapPK.utvonalak); return M ? (25.4 / 72) / 1000 * M : null; })();
+  if (mPt0 && !(globalThis as { NOTISZTIT?: boolean }).NOTISZTIT) {
+    e0 = alaprajzElemez(lapPK);
+    const pp = e0.helyisegek.filter((h) => h.forras === 'pecset').map((h) => [h.x, h.y] as [number, number]);
+    const t = lapOsztalyozas(lapPK, mPt0, pp);
+    if (t.doboz) { lap = tisztaLap(lapPK, t); tinta = kepKivulMaszk(tinta, t.doboz); szurke = kepKivulMaszk(szurke, t.doboz); }
+  }
   const e = alaprajzElemez(lap);
+  // (az északjel a tisztított lapról kimaradt: a tisztítás előtti elemzésből)
+  if (e0 && lap !== lapPK) { e.eszak = e0.eszak; e.figyelmeztetesek = [...e.figyelmeztetesek.filter((x) => !/északjel/i.test(x)), ...e0.figyelmeztetesek.filter((x) => /északjel/i.test(x))]; }
   if (meretarany && meretarany > 0) { e.meretarany = meretarany; e.mPerPt = (25.4 / 72) / 1000 * meretarany; }
   // lépték nélküli lap (pl. kicsinyített típusalaprajz): a méretláncokból becsülve
   if (!e.mPerPt) { const M = meretaranyKotabol(lap.szovegek, lap.utvonalak); if (M) { e.meretarany = M; e.mPerPt = (25.4 / 72) / 1000 * M; e.figyelmeztetesek = e.figyelmeztetesek.filter((x) => !/méretarányt nem találtam/.test(x)); e.figyelmeztetesek.push(`A lépték a méretláncokból becsülve: M = 1:${M}. Ellenőrizd, szükség esetén add meg kézzel.`); } }

@@ -71,7 +71,7 @@ export function rajzpecsetTeglalap(lap: Lap): [number, number, number, number] |
  * A lap a rajzpecsét vonalai / kitöltései és a lapkeret nélkül (a feliratok maradnak – a méretarány, a lapcím onnan is
  * olvasható). Lapkeret: a lap ≥ 70 %-án átfutó, a lapszélhez 6 %-on belül eső vízszintes / függőleges vonal.
  */
-function keretE(b: [number, number, number, number], W: number, H: number): boolean {
+export function keretE(b: [number, number, number, number], W: number, H: number): boolean {
   const w = b[2] - b[0], h = b[3] - b[1];
   if (w >= 0.7 * W && h < 0.06 * H && (b[1] < 0.06 * H || b[3] > 0.94 * H)) return true;
   if (h >= 0.7 * H && w < 0.06 * W && (b[0] < 0.06 * W || b[2] > 0.94 * W)) return true;
