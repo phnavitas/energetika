@@ -27,6 +27,7 @@ import { metszetElemek, ferdeTetoHossz, ereszKiallasok, ereszKiallas } from '@te
 import { epuletModell, type EpuletModell, type LapBemenet, type Szint as EpSzint, type TerKategoria } from '@terv/epulet';
 import { falMagassagModell, type HomlokzatNezetAdat } from '@terv/homlokzatModell';
 import { vonalIndex, keretek, homlokzatIrany, homlokzatCimek } from '@terv/homlokzat';
+import { lapokIllesztese, referenciaLap, type LapIllesztesEredmeny } from '@terv/lapIllesztes';
 import type { Lap } from '@terv/kinyeres';
 
 type Modosit = (f: (q: Projekt) => void) => void;
@@ -445,6 +446,25 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
   useEffect(() => setMenu(null), [aIdx]);
   // hőburok-körvonal: a felismert (fűtött helyiségek összevonva), vagy a felhasználó által szerkesztett
   const futottKulcs = al ? [...futottRiK(al, kj)].sort((a, b) => a - b).join(',') : '';
+  // a tervlapok illesztése a referencia-alaprajzhoz (Balázs, 2026-11-24: „a többi rajzot is illeszteni kell, utána
+  // értelmezhető”) – gombra (a helyszínrajz mintaillesztése másodpercekig tarthat)
+  const [illesztes, setIllesztes] = useState<{ ref: number; e: LapIllesztesEredmeny[] } | null>(null);
+  const [illFut, setIllFut] = useState(false);
+  const illSzerep = (l: TervLap) => (l.szerep === 'egyeb' && /helysz[íi]nrajz/i.test(`${l.cim} ${l.fajl}`) ? 'helyszinrajz' : l.szerep === 'egyeb' && /tet[őoö]\s*fel[üu]ln[ée]zet|tet[őoö]\s*alaprajz/i.test(`${l.cim} ${l.fajl}`) ? 'teto' : l.szerep);
+  const illesztesFuttat = () => {
+    setIllFut(true);
+    setTimeout(() => {
+      try {
+        const be = lapok.map((l) => ({ lap: l.lap, szerep: illSzerep(l), cim: l.cim, fajl: l.fajl }));
+        const ref = referenciaLap(be);
+        const a = ref >= 0 ? elemzesek[ref] : undefined;
+        if (ref < 0 || typeof a !== 'object' || !a) { setIllesztes(null); return; }
+        const r = a.r3d ?? a.r;
+        const kontur = a.r ? burok3dCache(ref, a.r, futottRiK(a, kijeloles(ref, a)), lapok[ref]?.lap, a, false) : [];
+        setIllesztes({ ref, e: lapokIllesztese(be, ref, r ?? null, kontur as [number, number][][], a.e.eszak ? a.e.eszak.szog : null) });
+      } finally { setIllFut(false); }
+    }, 30);
+  };
   // a megjelenített (és szerkesztésre átadott) hőburok a fal külső síkján: hőszigetelés külső felülete / vastag fal külső síkja
   // (a felismert hőburok: a méretláncok rácsán, ha a láncok a házat körbefogják – különben a raszteres kontúr)
   const burokFelismert = useMemo(() => (al?.r ? burok3dCache(aIdx, al.r, futottRiK(al, kj), aLap?.lap, al, false) : []), [al, futottKulcs]);
@@ -1281,6 +1301,25 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                 ))}
               </tbody>
             </table>
+            {lapok.length > 1 && (
+              <details class="kartya" style="margin-top:12px;padding:10px 12px">
+                <summary><strong>Rajzok illesztése</strong> <span class="halkabb">– melyik tervlap illeszkedik az alaprajzhoz (tengelyjel, méretlánc vagy geometria szerint)</span></summary>
+                <div class="gombsor" style="margin-top:8px">
+                  <button class="gomb kis-gomb" disabled={illFut} onClick={illesztesFuttat}>{illFut ? 'Illesztés folyamatban…' : illesztes ? 'Újraellenőrzés' : 'Illesztés ellenőrzése'}</button>
+                  {illesztes && <span class="halkabb">{illesztes.e.filter((x) => x.modszer && x.modszer !== 'referencia').length} / {illesztes.e.filter((x, i) => x.modszer !== 'referencia' && ['alaprajz', 'helyszinrajz', 'homlokzat', 'metszet', 'teto'].includes(illSzerep(lapok[i]!))).length} lap illeszkedik</span>}
+                </div>
+                {illesztes && (
+                  <table class="tabla" style="margin-top:6px" aria-label="Tervlapok illesztése">
+                    <tbody>
+                      {lapok.map((l, i) => { const x = illesztes.e[i]; const sz0 = illSzerep(l); if (!x || (!x.modszer && !['alaprajz', 'helyszinrajz', 'homlokzat', 'metszet', 'teto'].includes(sz0))) return null;
+                        const nev = { alaprajz: 'alaprajz', helyszinrajz: 'helyszínrajz', homlokzat: 'homlokzat', metszet: 'metszet', teto: 'tetőfelülnézet' }[sz0 as 'alaprajz'] ?? sz0;
+                        const jel = x.modszer === 'referencia' ? <span class="jel jo">referencia</span> : x.modszer === 'tengely' ? <span class="jel jo">tengelyjelek</span> : x.modszer === 'lanc' ? <span class="jel jo">méretlánc</span> : x.modszer === 'geometria' ? <span class="jel figy">geometria</span> : <span class="jel rossz">nem illeszkedik</span>;
+                        return <tr><td>{l.cim || l.fajl}</td><td class="halkabb">{nev}</td><td style="white-space:nowrap">{jel}</td><td class="halkabb">{x.reszlet}</td></tr>; })}
+                    </tbody>
+                  </table>
+                )}
+              </details>
+            )}
             {(() => {
               // szintenként: a kijelölt (átvételre jelölt) lapok fűtött / lakótéren belüli helyiségei lakásonként
               const sorok: { szint: string; lap: string; egyseg: string; A: number }[] = [];
