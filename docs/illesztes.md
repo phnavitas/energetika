@@ -61,3 +61,13 @@ A rajzokat a tervező saját jelei kötik össze; a felismert kontúr csak ellen
    7/7, Kecsked homlokzatok – az alaprajz oldallánca megmondja, melyik homlokzat). A kisebb házak homlokzatán gyakran
    nincs vízszintes lánc.
 3. **Geometria** (kontúr / szélesség / sarkok) – ahol se tengely, se lánc nincs (Komló, Malom és Kacsa homlokzatai).
+
+### Tengelyjeles illesztés – eredmény (2026-11-24)
+
+`tengelyjelek` (kör + felirat; az irány a jel párjából, ill. a család – számok / betűk – elrendezéséből, mert a
+tengelyvonal pontvonal) és `tengelyIllesztes` (közös jelekből s = ±1 tükrözés és o eltolás, ± 0,1 m):
+- 40 lakásos: mind a 3 további alaprajz (13/14, 7/8), AA metszet 7/7, BB metszet 16/16, mind a 4 homlokzat (7/7, 7/7,
+  16/16, 16/16) – a tükrözés előjele megadja, melyik oldalról nézünk (ÉK ↔ DNy, DK ↔ ÉNy ellentétes előjelű).
+- Biogáz: tetőfelülnézet 9/9 + 9/9, metszet 9/9, helyszínrajz 9/9 + 5/5 (90°-kal elforgatva), homlokzat részben
+  (egy lapon 4 nézet – nézetenként kell bontani).
+- PeterLacke: az alaprajz el van forgatva a lapon (≈ 71°) – a ferde tengelyekhez a jelek irányát kell kezelni.
