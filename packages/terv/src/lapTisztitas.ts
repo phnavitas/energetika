@@ -142,13 +142,12 @@ export function lapOsztalyozas(lap: Lap, mPt: number, pecsetPontok: [number, num
 /**
  * A lap a felismeréshez: a lapkeret, a pecsét, az északjel, a dobozon kívüli növényzet, burkolat és külső vonalak
  * nélkül. A méretláncok maradnak – a nyílások szélét, a falvastagságot a felismerés a láncokból is olvassa (a lapképen a
- * dobozon kívüli láncok így is kitakarva). A dobozon kívüli feliratok közül a 3 m-en belüliek maradnak (nyílás-, ajtó-,
- * szintjelek a homlokzat előtt); a távolabbiak (utcanév, jelmagyarázat, táblázat) nem.
+ * dobozon kívüli láncok így is kitakarva). A feliratok – az északjel betűje kivételével – maradnak: a pecsét
+ * méretaránya, a helyiségjegyzék, a lakásjelek a dobozon kívül is adatot hordoznak (a vonalakkal ellentétben nem
+ * zavarják a fal- és helyiségfelismerést).
  */
-export function tisztaLap(lap: Lap, t: LapTisztitas, mPt: number): Lap {
-  const d = t.doboz, m3 = 3 / mPt;
-  const kozel = (x: number, y: number) => !d || (x >= d[0] - m3 && x <= d[2] + m3 && y >= d[1] - m3 && y <= d[3] + m3);
+export function tisztaLap(lap: Lap, t: LapTisztitas, _mPt?: number): Lap {
   return { ...lap,
     utvonalak: lap.utvonalak.filter((_, i) => t.utvonal[i] === 'epulet' || t.utvonal[i] === 'meretvonal'),
-    szovegek: lap.szovegek.filter((q, i) => t.szoveg[i] === 'epulet' || t.szoveg[i] === 'meretvonal' || t.szoveg[i] === 'kulso' && kozel(q.x, q.y)) };
+    szovegek: lap.szovegek.filter((_, i) => t.szoveg[i] !== 'eszakjel') };
 }
