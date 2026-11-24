@@ -11,6 +11,7 @@
  * kontúrt kifelé tolt változataival is próbáljuk. Felirat, tetőfelismerés nem kell hozzá.
  */
 import type { Lap } from './kinyeres';
+import { rajzpecsetTeglalap, keretE } from './rajzpecset';
 
 export type P2 = [number, number];
 
@@ -154,8 +155,11 @@ export function helyszinIllesztes(lap: Lap, kontur: P2[][], mPt: number): Helysz
 export interface HomlokzatNezet { y: number; a: number; b: number; fx: number[] }
 export function homlokzatNezetek(lap: Lap, mPt: number, metszet = false): HomlokzatNezet[] {
   const Hs: { y: number; x0: number; x1: number }[] = [], V: { x: number; y0: number; y1: number }[] = [];
+  // (laptisztítás: a lapkeret, a rajzpecsét és a görbe – fa, bokor – vonalai nélkül)
+  const pr = rajzpecsetTeglalap(lap);
   for (const u of lap.utvonalak) {
     if (u.muvelet === 'none' || u.gorbe) continue; const [bx0, by0, bx1, by1] = u.bbox; if (bx1 - bx0 > 0.8 * lap.szel || by1 - by0 > 0.8 * lap.mag) continue;
+    if (keretE(u.bbox, lap.szel, lap.mag) || pr && bx0 >= pr[0] && bx1 <= pr[2] && by0 >= pr[1] && by1 <= pr[3]) continue;
     for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) {
       const dx = Math.abs(p[i + 2]! - p[i]!) * mPt, dy = Math.abs(p[i + 3]! - p[i + 1]!) * mPt;
       if (dx >= 0.3 && dy < 0.01 * dx) Hs.push({ y: ((p[i + 1]! + p[i + 3]!) / 2) * mPt, x0: Math.min(p[i]!, p[i + 2]!) * mPt, x1: Math.max(p[i]!, p[i + 2]!) * mPt });
