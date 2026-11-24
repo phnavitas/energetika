@@ -285,3 +285,34 @@ export function homlokzatLapIllesztes(lap: Lap, mPt: number, kontur: P2[][], nyi
   }
   return ki.sort((p, q) => q.talalat - p.talalat);
 }
+
+const AZ_CIM: Record<string, number> = { 'É': 0, 'ÉK': 45, 'K': 90, 'DK': 135, 'D': 180, 'DNy': 225, 'Ny': 270, 'ÉNy': 315 };
+export interface HomlokzatIll { cim: string; az: number; irany: number; nezet: HomlokzatNezet; o: number; L: number; szelElteres: number; sarok: number; nulla: number | null }
+
+/**
+ * Feliratos homlokzati nézetek illesztése: a felirat (É, DK …) égtája és az alaprajz északja adja a nézés irányát
+ * (a néző oldala a lapon: az + észak, 90°-ra kerekítve); a nézet a felirathoz legközelebbi, a vetület szélességével
+ * (± 6 %) egyező terepvonalas nézet; vízszintes hely: a falak bal széle (a látható sarkok egyezése finomít); magasság: a
+ * nézet ±0,00 feliratának helye (m, a lap y-a), ha van.
+ */
+export function homlokzatCimesIllesztes(lap: Lap, mPt: number, kontur: P2[][], eszakSzog: number, cimek: { x: number; y: number; t: string }[]): HomlokzatIll[] {
+  const nz = homlokzatNezetek(lap, mPt);
+  const ki: HomlokzatIll[] = [];
+  for (const c of cimek) {
+    const az = AZ_CIM[c.t]; if (az === undefined) continue;
+    const irany = ((Math.round(((az + eszakSzog) % 360) / 90) * 90) % 360 + 360) % 360;
+    const jelolt = nz.map((n) => ({ n, il: homlokzatNezetIllesztes(n, kontur).find((q) => q.irany === irany) })).filter((q) => q.il);
+    if (!jelolt.length) continue;
+    const cx = c.x * mPt, cy = c.y * mPt;
+    // (a felirat a nézet alatt vagy fölött, a vízszintes kiterjedésén belül / közelében: a legközelebbi)
+    const tav = (n: HomlokzatNezet) => Math.max(0, n.a - cx, cx - n.b) + Math.abs(cy - n.y) * 0.5;
+    jelolt.sort((p, q) => tav(p.n) - tav(q.n));
+    const { n, il } = jelolt[0]!;
+    if (tav(n) > 25) continue;
+    const all = kontur.flat(); const L = Math.max(...all.map(([x, y]) => irany === 0 ? -x : irany === 180 ? x : irany === 90 ? -y : y)) - Math.min(...all.map(([x, y]) => irany === 0 ? -x : irany === 180 ? x : irany === 90 ? -y : y));
+    // ±0,00 a nézet sávjában
+    const nul = lap.szovegek.filter((t) => /[±]\s*0[,.]00/.test(t.s) || /^\+?\s*0[,.]000?$/.test(t.s.trim())).map((t) => ({ x: t.x * mPt, y: t.y * mPt })).filter((t) => t.x >= n.a - 4 && t.x <= n.b + 4 && t.y >= n.y - 4 && t.y <= n.y + 1).sort((p, q) => Math.abs(p.y - n.y) - Math.abs(q.y - n.y))[0];
+    ki.push({ cim: c.t, az, irany, nezet: n, o: n.a, L, szelElteres: il!.szelesseg, sarok: il!.pont, nulla: nul ? nul.y : null });
+  }
+  return ki;
+}
