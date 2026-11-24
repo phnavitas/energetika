@@ -483,3 +483,34 @@ export function tengelyIllesztes(A: Tengelyjel[], B: Tengelyjel[]): { s: 1 | -1;
   }
   return leg && leg.db >= 2 ? leg : null;
 }
+
+/**
+ * Metszet ↔ alaprajz a falsíkok mintájával (ahol a metszeten nincs vízszintes méretlánc): a metszésvonal mentén az
+ * alaprajzi falak síkjai (a vonal menti helyek, m) és a metszeti lap ≥ 1,5 m-es függőlegesei (falmetszetek síkjai).
+ * Egyenes és tükrözött irányban, a legtöbb (± 5 cm-en belül, egymást függőlegesen átfedő) egyezés. Visszaad: o (a
+ * metszeti x = o + u), tukor, db / N.
+ */
+export function falsikIllesztes(lap: Lap, mPt: number, sikok: number[]): { o: number; tukor: boolean; db: number; N: number } | null {
+  if (sikok.length < 3) return null;
+  const pr = rajzpecsetTeglalap(lap);
+  const V: { x: number; y0: number; y1: number }[] = [];
+  for (const u of lap.utvonalak) {
+    if (u.muvelet === 'none' || u.gorbe || keretE(u.bbox, lap.szel, lap.mag)) continue;
+    if (pr && u.bbox[0] >= pr[0] && u.bbox[2] <= pr[2] && u.bbox[1] >= pr[1] && u.bbox[3] <= pr[3]) continue;
+    for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) { const dx = Math.abs(p[i + 2]! - p[i]!) * mPt, dy = Math.abs(p[i + 3]! - p[i + 1]!) * mPt; if (dy >= 1.5 && dx < 0.01 * dy) V.push({ x: ((p[i]! + p[i + 2]!) / 2) * mPt, y0: Math.min(p[i + 1]!, p[i + 3]!) * mPt, y1: Math.max(p[i + 1]!, p[i + 3]!) * mPt }); }
+  }
+  if (V.length < 3) return null;
+  V.sort((a, b) => a.x - b.x); const xs = V.map((v) => v.x);
+  const kozel = (x: number) => { let lo = 0, hi = xs.length; while (lo < hi) { const m = (lo + hi) >> 1; if (xs[m]! < x - 0.05) lo = m + 1; else hi = m; } const r: number[] = []; for (let i = lo; i < xs.length && xs[i]! <= x + 0.05; i++) r.push(i); return r; };
+  const s0 = Math.min(...sikok); const U = sikok.map((x) => x - s0).sort((a, b) => a - b); const W = U[U.length - 1]!;
+  let leg: { o: number; tukor: boolean; db: number; N: number } | null = null;
+  for (const tukor of [false, true]) {
+    const UU = tukor ? U.map((u) => W - u).sort((a, b) => a - b) : U;
+    for (const a of V) {
+      const o = a.x - UU[0]!; let db = 0;
+      for (const u of UU) if (kozel(o + u).some((k) => Math.min(V[k]!.y1, a.y1) - Math.max(V[k]!.y0, a.y0) > 0.5)) db++;
+      if (!leg || db > leg.db) leg = { o, tukor, db, N: UU.length };
+    }
+  }
+  return leg;
+}

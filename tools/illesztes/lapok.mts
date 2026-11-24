@@ -44,6 +44,18 @@ for (const l of lapok) {
         for (const M of l.M ? [l.M] : [50, 100, 200]) { const mp = 25.4 / 72 / 1000 * M; if (I.homlokzatNezetek(l.lap, mp, true).some((n) => Math.abs((n.b - n.a) - W) / W <= 0.08)) { db++; break; } }
       } if (db) break; }
     if (db) g = `${db} metszésvonal szélességgel`;
+    // falsík-minta: a metszésvonal mentén az alaprajzi falak síkjai a metszet függőlegesein (≥ 70 %)
+    if (!g) for (const a of alapok) { const LK = (e.lapok ?? []).find((q: any) => lapok[q.lap] === a); if (!LK) continue;
+      const falak = e.falak.filter((f: any) => !LK.szintek?.[0] || f.szint === LK.szintek[0]);
+      for (const v of I.metszesVonalak(a.lap, [...new Set(betuk)], LK.mPerPt)) {
+        const A = [v.a[0] * LK.mPerPt + LK.o[0], v.a[1] * LK.mPerPt + LK.o[1]], B = [v.b[0] * LK.mPerPt + LK.o[0], v.b[1] * LK.mPerPt + LK.o[1]];
+        const Lc = Math.hypot(B[0]! - A[0]!, B[1]! - A[1]!), ux = (B[0]! - A[0]!) / Lc, uy = (B[1]! - A[1]!) / Lc; const sik: number[] = [];
+        for (const f of falak) { const ex = f.b[0] - f.a[0], ey = f.b[1] - f.a[1]; const d = ux * ey - uy * ex; if (Math.abs(d) < 1e-9) continue;
+          const s2 = ((f.a[0] - A[0]!) * ey - (f.a[1] - A[1]!) * ex) / d, r = ((f.a[0] - A[0]!) * uy - (f.a[1] - A[1]!) * ux) / d; if (r < 0 || r > 1) continue;
+          const fel = (f.vastag ?? 0.3) / 2 / (Math.abs(d) / Math.hypot(ex, ey)); sik.push(s2 - fel, s2 + fel); }
+        for (const M of l.M ? [l.M] : [50, 100]) { const r = I.falsikIllesztes(l.lap, 25.4 / 72 / 1000 * M, sik); if (r && r.db / r.N >= 0.7) { g = `falsík-minta ${r.db}/${r.N}${l.M ? '' : ` (1:${M})`}`; break; } }
+        if (g) break; }
+      if (g) break; }
   }
   if (g) { ossz.geometria!++; sor.push(`  ${l.sz.padEnd(9)} ${l.f.slice(0, 30).padEnd(30)} GEOMETRIA (${g})`); continue; }
   ossz.nincs!++; sor.push(`  ${l.sz.padEnd(9)} ${l.f.slice(0, 30).padEnd(30)} –`);

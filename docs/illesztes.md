@@ -78,3 +78,12 @@ Lapok (a mintánként legtöbb tengelyjelű alaprajzhoz): tengely 17, méretlán
 Tengelyes terv (Biogáz, PeterLacke, 40 lakásos): minden lap illeszkedik. A hiányzók: Malom és Kacsa 12 lapja (se
 tengely, se homlokzati lánc, a szintek egymáshoz sincsenek illesztve), metszetek léptékfelirat / betűjel nélkül
 (Balatonlelle, Tata-Fazekas), Tb-barlang (lejtős telek: a mintakontúr a garázsszint).
+
+### Maradék illesztése (2026-11-24 este)
+
+- Metszetjelek a címből általánosan („c - c metszet”, „A/1-A/1 Keresztmetszet”) – `metszetJelek`.
+- Falsík-minta (`falsikIllesztes`): ahol a metszeten nincs vízszintes lánc, a metszésvonal menti alaprajzi falsíkok a
+  metszet függőlegesein (≥ 70 %, egyenes / tükrözött irányban; ismeretlen léptéknél 1:50 / 1:100).
+- Összesen (12 minta, 78 lap): tengely 17, lánc 11, geometria 37, nincs 13 (előtte 50 / 76 illesztve, most 65 / 78).
+  Illesztetlen: Malom és Kacsa 5 lapja, Tb-barlang 3, Dad 2, Kecsked A-A, Komló C-C, Szárliget betűjel nélküli
+  metszetlapja.
