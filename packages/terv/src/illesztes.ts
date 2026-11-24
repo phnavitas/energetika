@@ -319,13 +319,29 @@ export function homlokzatCimesIllesztes(lap: Lap, mPt: number, kontur: P2[][], e
 }
 
 /**
+ * A metszetlap metszeteinek jele a címükből: „A-A metszet”, „c - c metszet”, „A/1-A/1 Keresztmetszet” → A, c, A/1 (a
+ * két oldalon ugyanaz a jel, utána „metszet” – a lapszám, „E-05”, nem).
+ */
+export function metszetJelek(lap: Lap): { jel: string; x: number; y: number }[] {
+  const ki: { jel: string; x: number; y: number }[] = [];
+  for (const t of lap.szovegek) {
+    const m = t.s.trim().match(/^([A-Za-z]{1,2}(?:\/\d{1,2})?|\d{1,2})\s*[-–]\s*([A-Za-z]{1,2}(?:\/\d{1,2})?|\d{1,2})(?:\s+.*)?$/);
+    if (!m || m[1]!.toLowerCase() !== m[2]!.toLowerCase()) continue;
+    if (!/metszet/i.test(t.s) && !(/^[A-Z]{1,2}$/.test(m[1]!) && t.s.trim().length <= 7)) continue;
+    ki.push({ jel: m[1]!, x: t.x, y: t.y });
+  }
+  return ki;
+}
+
+/**
  * Metszésvonalak az alaprajzi lapon: a metszetek betűjele (A, B …) a lapon legalább kétszer, egymástól legtávolabbi
  * két előfordulása a metszésvonal két vége (a vonal a kettőn át fut). pt-ben.
  */
 export function metszesVonalak(lap: Lap, betuk: string[], mPt: number): { betu: string; a: P2; b: P2 }[] {
   const ki: { betu: string; a: P2; b: P2 }[] = [];
   for (const b of betuk) {
-    const t = lap.szovegek.filter((q) => q.s.trim() === b);
+    const nb = b.replace(/\s/g, '').toLowerCase();
+    const t = lap.szovegek.filter((q) => q.s.replace(/\s/g, '').toLowerCase() === nb);
     if (t.length < 2) continue;
     const kp = (q: (typeof t)[number]): P2 => { const a = (q.szog * Math.PI) / 180; return [q.x + Math.cos(a) * q.szel / 2, q.y - Math.sin(a) * q.szel / 2]; };
     let leg: { d: number; a: P2; b: P2 } | null = null;

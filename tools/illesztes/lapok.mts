@@ -35,7 +35,7 @@ for (const l of lapok) {
   if (l.sz === 'helysz') { const r = I.helyszinIllesztes(l.lap, konturNagy, l.mPt); if (r && r.talalat >= 0.8) g = `helyszín ${(r.talalat * 100).toFixed(0)}%`; }
   if (l.sz === 'homlokzat') { const r = I.homlokzatCimesIllesztes(l.lap, l.mPt, konturMind, eszak ?? 0, homlokzatCimek(l.lap)); if (r.length) g = `${r.length} feliratos nézet`; }
   if (l.sz === 'metszet') {
-    const betuk = l.lap.szovegek.map((t: any) => t.s.trim().match(/^([A-Z0-9]{1,2})\s*[-–]\s*\1\b/)?.[1]).filter(Boolean) as string[];
+    const betuk = I.metszetJelek(l.lap).map((q) => q.jel);
     let db = 0;
     for (const a of alapok) { const LK = (e.lapok ?? []).find((q: any) => lapok[q.lap] === a); if (!LK) continue;
       for (const v of I.metszesVonalak(a.lap, [...new Set(betuk)], LK.mPerPt)) {
