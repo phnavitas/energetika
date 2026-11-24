@@ -1,4 +1,5 @@
-import { lapBe } from '/tmp/sp/lapbe.mts';
+// Használat (apps/web-ből): npx tsx --tsconfig tsconfig.json ../../tools/illesztes/lapok.mts <mintamappa> <futás_epulet.json>
+import { lapBe } from './lapbe.mts';
 import { lapSzerep } from '../../packages/terv/src/elemzes.ts';
 import { meretaranyKeres, eszakjelKeres } from '../../packages/terv/src/alaprajz.ts';
 import { meretlancok } from '../../packages/terv/src/meretlanc.ts';
