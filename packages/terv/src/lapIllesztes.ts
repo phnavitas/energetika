@@ -18,22 +18,6 @@ export interface IllBeLap { lap: Lap; szerep: string; cim?: string; fajl?: strin
 
 const lepteke = (lap: Lap): { M: number | null; mPt: number } => { const M = meretaranyKeres(lap.szovegek, lap.utvonalak); return { M, mPt: (25.4 / 72 / 1000) * (M ?? 100) }; };
 
-/** A raszter falsíkjai az a→b vonal mentén (m, az a-tól): a falpixel-futások két vége. a, b: a lapon, pt-ben. */
-export function falsikokRaszterbol(r: Raszter, a: [number, number], b: [number, number]): number[] {
-  const mPt = r.mPerPt, L = Math.hypot(b[0] - a[0], b[1] - a[1]) * mPt; if (L < 0.5) return [];
-  const n = Math.ceil(L / (r.px / 2)); const ki: number[] = []; let elozo = false;
-  for (let i = 0; i <= n; i++) {
-    const t = i / n, x = a[0] + (b[0] - a[0]) * t, y = a[1] + (b[1] - a[1]) * t;
-    const gx = Math.floor(((x - r.x0) * mPt) / r.px), gy = Math.floor(((y - r.y0) * mPt) / r.px);
-    const f = gx >= 0 && gy >= 0 && gx < r.w && gy < r.h && !!r.fal[gy * r.w + gx];
-    if (f !== elozo) ki.push(t * L);
-    elozo = f;
-  }
-  // (a 10 cm-nél keskenyebb futás – vonal, nem fal – kimarad)
-  const sik: number[] = []; for (let i = 0; i + 1 < ki.length; i += 2) if (ki[i + 1]! - ki[i]! >= 0.1) sik.push(ki[i]!, ki[i + 1]!);
-  return sik;
-}
-
 /**
  * lapok: a projekt összes lapja; ref: a referencia alaprajzi lap indexe; refR: a referencia raszterje (falak);
  * kontur: a ház külső körvonala a referencia lapján (pt); eszak: az alaprajz északja (fok) vagy null.
@@ -57,18 +41,13 @@ export function lapokIllesztese(lapok: IllBeLap[], ref: number, refR: Raszter | 
       // 2) méretláncok (azonos teljes hossz, egyező belső jelek)
       let lc = 0; for (const q of d.L) { if (l.szerep !== 'helyszinrajz' && l.szerep !== 'alaprajz' && q.fg) continue; if (alapok.some((a) => adat[a]!.L.some((r) => { const m = I.lancEgyezes(r.J, q.J); return !!m && m.db >= 1 && m.pont >= 0.99; }))) lc++; }
       if (lc) return { modszer: 'lanc', reszlet: `${lc} egyező méretlánc` };
-      // 3) geometria
-      if (l.szerep === 'helyszinrajz' && konturM.length) { const r = I.helyszinIllesztes(l.lap, konturM, d.mPt); if (r && r.talalat >= 0.8) return { modszer: 'geometria', reszlet: `a kontúr a helyszínrajzon (${Math.round(r.talalat * 100)} %)` }; }
-      if (l.szerep === 'homlokzat' && konturM.length) { const r = I.homlokzatCimesIllesztes(l.lap, d.mPt, konturM, eszak ?? 0, homlokzatCimek(l.lap)); if (r.length) return { modszer: 'geometria', reszlet: `${r.length} feliratos nézet (szélesség, sarkok)` }; }
-      if (l.szerep === 'metszet' && refR) {
-        const jelek = [...new Set(I.metszetJelek(l.lap).map((q) => q.jel))];
-        for (const v of I.metszesVonalak(R.lap, jelek, refMPt)) {
-          const sik = falsikokRaszterbol(refR, v.a, v.b);
-          if (sik.length >= 2) { const W = sik[sik.length - 1]! - sik[0]!;
-            for (const M of d.M ? [d.M] : [50, 100, 200]) { const mp = (25.4 / 72 / 1000) * M; if (I.homlokzatNezetek(l.lap, mp, true).some((n) => Math.abs(n.b - n.a - W) / W <= 0.08)) return { modszer: 'geometria', reszlet: `${v.betu}–${v.betu}: a metszésvonal menti szélesség` }; } }
-          for (const M of d.M ? [d.M] : [50, 100]) { const r = I.falsikIllesztes(l.lap, (25.4 / 72 / 1000) * M, sik); if (r && r.db / r.N >= 0.7) return { modszer: 'geometria', reszlet: `${v.betu}–${v.betu}: falsíkok ${r.db}/${r.N}` }; }
-        }
-      }
+      // 3) geometria – csak ahol a negatív kontroll (másik minta alaprajzával) szerint a módszer megkülönböztet
+      // (2026-11-24, 12 minta, saját / idegen): helyszín-kontúr ≥ 0,95 → 8 / 12 saját, 0 / 132 idegen (0,8-nál 17 %
+      // idegen is „illeszkedett”); feliratos homlokzat, ha a látható sarkok ≥ 95 %-a egyezik → 7 / 24, 1 / 264
+      // (sarok nélkül 30 % idegen). A metszet szélessége (47 % idegen) és a falsík-minta (idegen is 1,0) nem bizonyít:
+      // metszetet csak tengelyjel / méretlánc illeszt.
+      if (l.szerep === 'helyszinrajz' && konturM.length) { const r = I.helyszinIllesztes(l.lap, konturM, d.mPt); if (r && r.talalat >= 0.95) return { modszer: 'geometria', reszlet: `a kontúr a helyszínrajzon (${Math.round(r.talalat * 100)} %)` }; }
+      if (l.szerep === 'homlokzat' && konturM.length) { const r = I.homlokzatCimesIllesztes(l.lap, d.mPt, konturM, eszak ?? 0, homlokzatCimek(l.lap)).filter((q) => q.sarok >= 0.95); if (r.length) return { modszer: 'geometria', reszlet: `${r.length} feliratos nézet (szélesség, sarkok)` }; }
     } catch { /* */ }
     return { modszer: null, reszlet: '' };
   });

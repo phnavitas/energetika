@@ -32,9 +32,9 @@ for (const l of lapok) {
   if (lc) { ossz.lanc!++; sor.push(`  ${l.sz.padEnd(9)} ${l.f.slice(0, 30).padEnd(30)} LÁNC (${lc} lánc)`); continue; }
   // 3) geometria
   let g = '';
-  if (l.sz === 'helysz') { const r = I.helyszinIllesztes(l.lap, konturNagy, l.mPt); if (r && r.talalat >= 0.8) g = `helyszín ${(r.talalat * 100).toFixed(0)}%`; }
-  if (l.sz === 'homlokzat') { const r = I.homlokzatCimesIllesztes(l.lap, l.mPt, konturMind, eszak ?? 0, homlokzatCimek(l.lap)); if (r.length) g = `${r.length} feliratos nézet`; }
-  if (l.sz === 'metszet') {
+  if (l.sz === 'helysz') { const r = I.helyszinIllesztes(l.lap, konturNagy, l.mPt); if (r && r.talalat >= 0.95) g = `helyszín ${(r.talalat * 100).toFixed(0)}%`; }
+  if (l.sz === 'homlokzat') { const r = I.homlokzatCimesIllesztes(l.lap, l.mPt, konturMind, eszak ?? 0, homlokzatCimek(l.lap)).filter((q) => q.sarok >= 0.95); if (r.length) g = `${r.length} feliratos nézet`; }
+  if (l.sz === 'metszet' && process.env.METSZET_GEOM) { // (negatív kontroll szerint nem bizonyít – csak kísérletnek)
     const betuk = I.metszetJelek(l.lap).map((q) => q.jel);
     let db = 0;
     for (const a of alapok) { const LK = (e.lapok ?? []).find((q: any) => lapok[q.lap] === a); if (!LK) continue;

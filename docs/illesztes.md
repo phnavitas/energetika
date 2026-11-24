@@ -87,3 +87,24 @@ tengely, se homlokzati lánc, a szintek egymáshoz sincsenek illesztve), metszet
 - Összesen (12 minta, 78 lap): tengely 17, lánc 11, geometria 37, nincs 13 (előtte 50 / 76 illesztve, most 65 / 78).
   Illesztetlen: Malom és Kacsa 5 lapja, Tb-barlang 3, Dad 2, Kecsked A-A, Komló C-C, Szárliget betűjel nélküli
   metszetlapja.
+
+### Negatív kontroll (2026-11-24 késő este) – mi bizonyít és mi nem
+
+Minden módszert lefuttattam a lap SAJÁT mintájának és a többi 11 minta (IDEGEN) alaprajzi adataival
+(`/tmp`-s próba, a módszer: ugyanaz a lap, más épület kontúrja / láncai / tengelyei). Ami idegennel is illeszkedik,
+az nem bizonyíték.
+
+| módszer | saját | idegen |
+|---|---|---|
+| tengelyjelek | 16 / 76 | 10 / 836 (≈ 1 %) |
+| méretlánc | 14 / 76 | 9 / 836 (≈ 1 %) |
+| helyszín-kontúr, találat ≥ 0,8 | 10 / 12 | 23 / 132 (17 %) |
+| helyszín-kontúr, ≥ 0,95 | 8 / 12 | 0 / 132 |
+| homlokzat: felirat + szélesség | 16 / 24 | 79 / 264 (30 %) |
+| homlokzat: + látható sarkok ≥ 95 % | 7 / 24 | 1 / 264 |
+| metszet: szélesség a metszésvonal mentén (± 8 %) | 17 / 29 | 151 / 319 (47 %) |
+| metszet: falsík-minta | – | idegen is 1,0 – nem különböztet |
+
+Következmény: a geometriai küszöbök szigorítva, a metszetek geometriai illesztése kikapcsolva. Az ellenőrzött
+eredmény a 12 mintán (78 lap): tengely 17, lánc 11, geometria 11 → **39 / 78** (a korábbi 65 / 78-ból 26 nem volt
+bizonyított). Tengelyjeles terveken (Biogáz, PeterLacke, 40 lakásos) továbbra is minden lap illeszkedik.
