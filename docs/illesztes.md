@@ -37,3 +37,13 @@ részben, Tb-barlang bizonytalan (találat 63 %).
 - Következtetés: a nézet irányát a homlokzati felirat (É, D, K, Ny, ÉK …) adja – szabványos, minden terven ott van –,
   a nézési irány szerinti szélesség és a földi sarkok a vízszintes helyet, a ±0,00 jel a magasságot; a nyílásminta csak
   ellenőrzés. A felirat nélküli nézet: a szélesség szerinti két irány közül a sarokminta dönt, különben kérdés.
+
+## Metszet ↔ alaprajz – első lépés (2026-11-24)
+
+- `metszesVonalak`: a metszetlapok címeinek betűjelei (A-A, B-B …) az alaprajzon; a betű két legtávolabbi előfordulása
+  a metszésvonal két vége. 6 mintán a vonalak megvannak (Biogáz, Dad, Kecsked, Komló, PeterLacke, Tb-barlang).
+- `metszesKontur`: a vonal és a kontúr metszéspontjai → a metszetben látszó épületszélesség és a falsíkok helye.
+- A metszeti nézet: a terepvonalat keresztező ≥ 2 m-es függőlegesek (falmetszet az alapozásig) – `homlokzatNezetek(…, true)`;
+  a betű címéhez legközelebbi, a húrral (± 8 %) egyező szélességű nézet. Ismeretlen léptékű metszetlapnál az 1:50 /
+  1:100 / 1:200 közül az, amelyiknél van egyező nézet (Komló A-A: 1:50).
+- Állás: 15 metszésvonalból 8-hoz van illeszkedő nézet.

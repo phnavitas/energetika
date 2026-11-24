@@ -146,13 +146,13 @@ export function helyszinIllesztes(lap: Lap, kontur: P2[][], mPt: number): Helysz
 }
 
 /**
- * Homlokzati nézetek a lapon (felirattól függetlenül): a terepvonal (≥ 6 m-es vízszintes, darabokban is – 3 m-es
+ * Homlokzati (metszet = true: metszeti) nézetek a lapon (felirattól függetlenül): a terepvonal (≥ 6 m-es vízszintes, darabokban is – 3 m-es
  * résig összefűzve) fölött a földig érő, legalább 2 m magas függőlegesek (falsarok, falsík) adják a ház falainak
  * vízszintes kiterjedését [a, b] a lapon (m). A fák, bokrok görbék – kimaradnak; a lapkeret és a pecsét hosszú vonalai is.
  * A függőlegesek helye (fx) a sarkok illesztéséhez.
  */
 export interface HomlokzatNezet { y: number; a: number; b: number; fx: number[] }
-export function homlokzatNezetek(lap: Lap, mPt: number): HomlokzatNezet[] {
+export function homlokzatNezetek(lap: Lap, mPt: number, metszet = false): HomlokzatNezet[] {
   const Hs: { y: number; x0: number; x1: number }[] = [], V: { x: number; y0: number; y1: number }[] = [];
   for (const u of lap.utvonalak) {
     if (u.muvelet === 'none' || u.gorbe) continue; const [bx0, by0, bx1, by1] = u.bbox; if (bx1 - bx0 > 0.8 * lap.szel || by1 - by0 > 0.8 * lap.mag) continue;
@@ -168,7 +168,8 @@ export function homlokzatNezetek(lap: Lap, mPt: number): HomlokzatNezet[] {
   const ki: HomlokzatNezet[] = [];
   for (const g of G) {
     if (g.x1 - g.x0 < 6) continue;
-    const fv = V.filter((v) => v.x >= g.x0 - 0.1 && v.x <= g.x1 + 0.1 && v.y1 >= g.y - 0.6 && v.y1 <= g.y + 0.05 && v.y1 - v.y0 >= 2.0);
+    // (metszetben a falmetszet a terepvonalon át az alapozásig fut: a terepet keresztező függőleges is)
+    const fv = V.filter((v) => v.x >= g.x0 - 0.1 && v.x <= g.x1 + 0.1 && v.y1 >= g.y - 0.6 && (v.y1 <= g.y + 0.05 || metszet && v.y0 <= g.y - 2.0 && v.y1 <= g.y + 3) && Math.min(v.y1, g.y) - v.y0 >= 2.0);
     if (fv.length < 2) continue;
     const a = Math.min(...fv.map((v) => v.x)), b = Math.max(...fv.map((v) => v.x));
     if (b - a < 2) continue;
@@ -315,4 +316,33 @@ export function homlokzatCimesIllesztes(lap: Lap, mPt: number, kontur: P2[][], e
     ki.push({ cim: c.t, az, irany, nezet: n, o: n.a, L, szelElteres: il!.szelesseg, sarok: il!.pont, nulla: nul ? nul.y : null });
   }
   return ki;
+}
+
+/**
+ * Metszésvonalak az alaprajzi lapon: a metszetek betűjele (A, B …) a lapon legalább kétszer, egymástól legtávolabbi
+ * két előfordulása a metszésvonal két vége (a vonal a kettőn át fut). pt-ben.
+ */
+export function metszesVonalak(lap: Lap, betuk: string[], mPt: number): { betu: string; a: P2; b: P2 }[] {
+  const ki: { betu: string; a: P2; b: P2 }[] = [];
+  for (const b of betuk) {
+    const t = lap.szovegek.filter((q) => q.s.trim() === b);
+    if (t.length < 2) continue;
+    const kp = (q: (typeof t)[number]): P2 => { const a = (q.szog * Math.PI) / 180; return [q.x + Math.cos(a) * q.szel / 2, q.y - Math.sin(a) * q.szel / 2]; };
+    let leg: { d: number; a: P2; b: P2 } | null = null;
+    for (let i = 0; i < t.length; i++) for (let j = i + 1; j < t.length; j++) { const A = kp(t[i]!), B = kp(t[j]!); const d = Math.hypot(A[0] - B[0], A[1] - B[1]); if (!leg || d > leg.d) leg = { d, a: A, b: B }; }
+    if (leg && leg.d * mPt >= 3) ki.push({ betu: b, a: leg.a, b: leg.b });
+  }
+  return ki;
+}
+
+/** A metszésvonal (modell, m) és a kontúr metszéspontjai a vonal mentén (m, az a végtől), növekvő. */
+export function metszesKontur(a: P2, b: P2, kontur: P2[][]): number[] {
+  const L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < 1e-9) return [];
+  const ux = (b[0] - a[0]) / L, uy = (b[1] - a[1]) / L; const t: number[] = [];
+  for (const p of kontur) for (let i = 0; i < p.length; i++) {
+    const P = p[i]!, Q = p[(i + 1) % p.length]!; const ex = Q[0] - P[0], ey = Q[1] - P[1]; const d = ux * ey - uy * ex; if (Math.abs(d) < 1e-12) continue;
+    const s = ((P[0] - a[0]) * ey - (P[1] - a[1]) * ex) / d, r = ((P[0] - a[0]) * uy - (P[1] - a[1]) * ux) / d;
+    if (r >= 0 && r < 1) t.push(s);
+  }
+  return t.sort((p, q) => p - q);
 }
