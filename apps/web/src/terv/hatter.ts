@@ -2,6 +2,9 @@
 // felszabadulnak). Ha a worker nem indítható (pl. tartalombiztonsági szabály), szinkron tartalék.
 import AlaprajzWorker from './alaprajz.worker?worker&inline';
 import OlvasoWorker from './olvaso.worker?worker';
+import IllesztesWorker from './illesztes.worker?worker';
+import { lapokIllesztese, referenciaLap, type IllBeLap, type LapIllesztesEredmeny } from '@terv/lapIllesztes';
+import { burokFelismertSik } from './folyamat';
 import { alaprajzFeldolgoz, pdfLapok, type AlaprajzFeldolgozas, type TervLap } from '@terv/elemzes';
 
 let workerHibas = false;
@@ -63,5 +66,43 @@ export async function pdfLapokHatter(f: File, kepSzel = 2000, halad?: (kesz: num
     };
     w.onerror = (ev) => { if (kesz) return; ev.preventDefault?.(); console.warn('PDF-olvasó munkaszál leállt:', ev.message); tartalek(false); };
     try { w.postMessage({ id, f, kepSzel }); } catch { tartalek(true); }
+  });
+}
+
+/**
+ * A tervlapok illesztése háttérszálon. `kell(ref)`: a referencia lap feldolgozása, a futtatott helyiségek és az észak; a
+ * hőburok-kontúr a munkaszálon készül. Ha a munkaszál nem indítható, a fő szálon fut (a felület ilyenkor megakad).
+ */
+export async function lapokIllesztesHatter(lapok: IllBeLap[], kell: (ref: number) => { a: AlaprajzFeldolgozas; fut: Set<number>; eszak: number | null } | null): Promise<{ ref: number; e: LapIllesztesEredmeny[] } | null> {
+  const fo = () => {
+    const ref = referenciaLap(lapok); const k = ref >= 0 ? kell(ref) : null; if (!k) return null;
+    const kontur = k.a.r ? (burokFelismertSik(k.a.r, k.fut, lapok[ref]?.lap, k.a, false) as [number, number][][]) : [];
+    return { ref, e: lapokIllesztese(lapok, ref, k.a.r3d ?? k.a.r ?? null, kontur, k.eszak) };
+  };
+  if (typeof Worker === 'undefined') return fo();
+  let w: Worker;
+  try { w = new IllesztesWorker(); } catch { return fo(); }
+  const id = ++sorszam;
+  return new Promise((ok, hiba) => {
+    let kesz = false, ref = -1;
+    const vege = () => { kesz = true; w.terminate(); };
+    const tartalek = () => { vege(); try { ok(fo()); } catch (err) { hiba(err as Error); } };
+    w.onmessage = (e: MessageEvent<{ id: number; ref?: number; e?: LapIllesztesEredmeny[]; hiba?: string }>) => {
+      if (e.data.id !== id || kesz) return;
+      if (e.data.ref !== undefined) {
+        ref = e.data.ref; const k = ref >= 0 ? kell(ref) : null; if (!k) { vege(); ok(null); return; }
+        try { w.postMessage({ id, a: k.a, fut: [...k.fut], eszak: k.eszak }); } catch { tartalek(); }
+        return;
+      }
+      vege(); if (e.data.e) ok({ ref, e: e.data.e }); else hiba(new Error(e.data.hiba ?? 'Az illesztés nem sikerült.'));
+    };
+    w.onerror = (ev) => { if (kesz) return; ev.preventDefault?.(); tartalek(); };
+    // (a lapok egyenként, képkockák között: egy nagy üzenet másolása is megakasztaná a felületet)
+    (async () => {
+      try {
+        for (let i = 0; i < lapok.length; i++) { if (kesz) return; w.postMessage({ id, i, lap: lapok[i] }); await new Promise((r) => setTimeout(r, 0)); }
+        w.postMessage({ id, kesz: true });
+      } catch { if (!kesz) tartalek(); }
+    })();
   });
 }
