@@ -139,7 +139,16 @@ export function lapOsztalyozas(lap: Lap, mPt: number, pecsetPontok: [number, num
   return { utvonal, szoveg, doboz, pecset: pr, eszakjel: eszak };
 }
 
-/** A lap csak az épület elemeivel (a felismeréshez). */
-export function tisztaLap(lap: Lap, t: LapTisztitas): Lap {
-  return { ...lap, utvonalak: lap.utvonalak.filter((_, i) => t.utvonal[i] === 'epulet'), szovegek: lap.szovegek.filter((_, i) => t.szoveg[i] === 'epulet' || t.szoveg[i] === 'meretvonal') };
+/**
+ * A lap a felismeréshez: a lapkeret, a pecsét, az északjel, a dobozon kívüli növényzet, burkolat és külső vonalak
+ * nélkül. A méretláncok maradnak – a nyílások szélét, a falvastagságot a felismerés a láncokból is olvassa (a lapképen a
+ * dobozon kívüli láncok így is kitakarva). A dobozon kívüli feliratok közül a 3 m-en belüliek maradnak (nyílás-, ajtó-,
+ * szintjelek a homlokzat előtt); a távolabbiak (utcanév, jelmagyarázat, táblázat) nem.
+ */
+export function tisztaLap(lap: Lap, t: LapTisztitas, mPt: number): Lap {
+  const d = t.doboz, m3 = 3 / mPt;
+  const kozel = (x: number, y: number) => !d || (x >= d[0] - m3 && x <= d[2] + m3 && y >= d[1] - m3 && y <= d[3] + m3);
+  return { ...lap,
+    utvonalak: lap.utvonalak.filter((_, i) => t.utvonal[i] === 'epulet' || t.utvonal[i] === 'meretvonal'),
+    szovegek: lap.szovegek.filter((q, i) => t.szoveg[i] === 'epulet' || t.szoveg[i] === 'meretvonal' || t.szoveg[i] === 'kulso' && kozel(q.x, q.y)) };
 }

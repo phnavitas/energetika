@@ -452,7 +452,7 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
     e0 = alaprajzElemez(lapPK);
     const pp = e0.helyisegek.filter((h) => h.forras === 'pecset').map((h) => [h.x, h.y] as [number, number]);
     const t = lapOsztalyozas(lapPK, mPt0, pp);
-    if (t.doboz) { lap = tisztaLap(lapPK, t); tinta = kepKivulMaszk(tinta, t.doboz); szurke = kepKivulMaszk(szurke, t.doboz); }
+    if (t.doboz) { lap = tisztaLap(lapPK, t, mPt0); tinta = kepKivulMaszk(tinta, t.doboz); szurke = kepKivulMaszk(szurke, t.doboz); }
   }
   const e = alaprajzElemez(lap);
   // (az északjel a tisztított lapról kimaradt: a tisztítás előtti elemzésből)
