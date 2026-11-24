@@ -25,3 +25,15 @@ Forgatás: a helyszínrajz főirányai − a kontúr főiránya, + k·90°; elto
 Mérés (a 12 helyszínrajzos mintán, 2026-11-24): 10 helyes elhelyezés (Balatonlelle, Biogáz, Hatvan, Kecsked, Komló –
 45°-ban elforgatva –, Malom és Kacsa, PeterLacke, Szárliget, 40 lakásos, Tata-Fazekas), Dad a kifolyt kontúrral
 részben, Tb-barlang bizonytalan (találat 63 %).
+
+## Homlokzat ↔ alaprajz – próbák (2026-11-24)
+
+- `homlokzatNezetek`: terepvonal (≥ 6 m, darabokban is) fölött a földig érő ≥ 2 m-es függőlegesek → a falak
+  vízszintes kiterjedése. Egyszerű háznál jó (Szárliget: mind a 4 nézet 0,3–1 % szélességeltéréssel, Hatvan, 40 lakásos),
+  összetett / burkolatmintás homlokzatnál sok hamis jelölt.
+- `homlokzatLapIllesztes`: a várt rajzolat (látható sarkok, a néző felé néző nyílások szélei) irány szerinti
+  távolságtérképen, a teljes lapon; a sűrű mintázat (kőburkolat, cserépsor) miatt a pontos és az elcsúsztatott helyzet
+  találati arányának különbsége (kontraszt) a pontszám. Így sem elég megkülönböztető (Komló: a burkolat mindenhol talál).
+- Következtetés: a nézet irányát a homlokzati felirat (É, D, K, Ny, ÉK …) adja – szabványos, minden terven ott van –,
+  a nézési irány szerinti szélesség és a földi sarkok a vízszintes helyet, a ±0,00 jel a magasságot; a nyílásminta csak
+  ellenőrzés. A felirat nélküli nézet: a szélesség szerinti két irány közül a sarokminta dönt, különben kérdés.

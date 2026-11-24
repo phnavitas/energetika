@@ -144,3 +144,144 @@ export function helyszinIllesztes(lap: Lap, kontur: P2[][], mPt: number): Helysz
   // vissza: a modell p → lap q (pt): q = (R·(p − c) + t) / mPt
   return { szog: b.szog, tx: (b.tx - (cx * c - cy * s)) / mPt, ty: (b.ty - (cx * s + cy * c)) / mPt, mPt, eltolas: b.d, atlag: b.e, talalat: jo / Math.max(1, ne), masodik };
 }
+
+/**
+ * Homlokzati nézetek a lapon (felirattól függetlenül): a terepvonal (≥ 6 m-es vízszintes, darabokban is – 3 m-es
+ * résig összefűzve) fölött a földig érő, legalább 2 m magas függőlegesek (falsarok, falsík) adják a ház falainak
+ * vízszintes kiterjedését [a, b] a lapon (m). A fák, bokrok görbék – kimaradnak; a lapkeret és a pecsét hosszú vonalai is.
+ * A függőlegesek helye (fx) a sarkok illesztéséhez.
+ */
+export interface HomlokzatNezet { y: number; a: number; b: number; fx: number[] }
+export function homlokzatNezetek(lap: Lap, mPt: number): HomlokzatNezet[] {
+  const Hs: { y: number; x0: number; x1: number }[] = [], V: { x: number; y0: number; y1: number }[] = [];
+  for (const u of lap.utvonalak) {
+    if (u.muvelet === 'none' || u.gorbe) continue; const [bx0, by0, bx1, by1] = u.bbox; if (bx1 - bx0 > 0.8 * lap.szel || by1 - by0 > 0.8 * lap.mag) continue;
+    for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) {
+      const dx = Math.abs(p[i + 2]! - p[i]!) * mPt, dy = Math.abs(p[i + 3]! - p[i + 1]!) * mPt;
+      if (dx >= 0.3 && dy < 0.01 * dx) Hs.push({ y: ((p[i + 1]! + p[i + 3]!) / 2) * mPt, x0: Math.min(p[i]!, p[i + 2]!) * mPt, x1: Math.max(p[i]!, p[i + 2]!) * mPt });
+      if (dy >= 0.3 && dx < 0.01 * dy) V.push({ x: ((p[i]! + p[i + 2]!) / 2) * mPt, y0: Math.min(p[i + 1]!, p[i + 3]!) * mPt, y1: Math.max(p[i + 1]!, p[i + 3]!) * mPt });
+    }
+  }
+  Hs.sort((a, b) => a.y - b.y || a.x0 - b.x0);
+  const G: { y: number; x0: number; x1: number }[] = [];
+  for (const h of Hs) { const g = G.find((q) => Math.abs(q.y - h.y) <= 0.03 && h.x0 <= q.x1 + 3 && h.x1 >= q.x0 - 3); if (g) { g.x0 = Math.min(g.x0, h.x0); g.x1 = Math.max(g.x1, h.x1); } else G.push({ ...h }); }
+  const ki: HomlokzatNezet[] = [];
+  for (const g of G) {
+    if (g.x1 - g.x0 < 6) continue;
+    const fv = V.filter((v) => v.x >= g.x0 - 0.1 && v.x <= g.x1 + 0.1 && v.y1 >= g.y - 0.6 && v.y1 <= g.y + 0.05 && v.y1 - v.y0 >= 2.0);
+    if (fv.length < 2) continue;
+    const a = Math.min(...fv.map((v) => v.x)), b = Math.max(...fv.map((v) => v.x));
+    if (b - a < 2) continue;
+    // (egymáshoz közeli – ugyanazon nézet több terepvonala – közül az alsó)
+    const fx = [...new Set(fv.map((v) => Math.round(v.x * 20) / 20))].sort((p, q) => p - q);
+    const r = ki.findIndex((q) => Math.abs(q.a - a) < 0.3 && Math.abs(q.b - b) < 0.3 && Math.abs(q.y - g.y) < 1.5);
+    if (r >= 0) { if (g.y > ki[r]!.y) ki[r] = { y: g.y, a, b, fx }; } else ki.push({ y: g.y, a, b, fx });
+  }
+  return ki;
+}
+
+/**
+ * Egy homlokzati nézet illesztése a kontúrhoz: a négy nézési irány (a néző a lap alja / teteje / bal / jobb széle felől)
+ * közül az, amelyiknél a kontúr látható sarkainak vetülete a nézet függőlegeseire esik, és a szélesség egyezik.
+ * irany: a néző oldala a modell lapirányában (0: fent – a néző a −y felől, 90: jobb, 180: lent, 270: bal); o: a nézet
+ * x-e = o + u (u a kontúr vetülete a néző jobb keze felé, a bal szélső pont 0); pont: 0–1.
+ */
+export function homlokzatNezetIllesztes(nz: HomlokzatNezet, kontur: P2[][]): { irany: number; o: number; pont: number; szelesseg: number }[] {
+  const elek = kontur.flatMap((p) => p.map((a, i) => [a, p[(i + 1) % p.length]!] as [P2, P2]));
+  const lathato = (x: number, y: number, v: P2) => { const px = x + v[0] * 0.05, py = y + v[1] * 0.05, qx = x + v[0] * 1000, qy = y + v[1] * 1000;
+    for (const [a, b] of elek) { const d = (qx - px) * (b[1] - a[1]) - (qy - py) * (b[0] - a[0]); if (Math.abs(d) < 1e-12) continue; const t = ((a[0] - px) * (b[1] - a[1]) - (a[1] - py) * (b[0] - a[0])) / d, u = ((a[0] - px) * (qy - py) - (a[1] - py) * (qx - px)) / d; if (t > 0 && t < 1 && u > 1e-6 && u < 1 - 1e-6) return false; } return true; };
+  // a néző a v irányban áll; a nézet jobbra mutató tengelye j (képernyő-koordinátában, y lefelé: a −y felé néző jobb keze +x)
+  const nezok: { irany: number; v: P2; j: P2 }[] = [{ irany: 180, v: [0, 1], j: [1, 0] }, { irany: 0, v: [0, -1], j: [-1, 0] }, { irany: 270, v: [-1, 0], j: [0, 1] }, { irany: 90, v: [1, 0], j: [0, -1] }];
+  const W = nz.b - nz.a, ki: { irany: number; o: number; pont: number; szelesseg: number }[] = [];
+  for (const n of nezok) {
+    const all = kontur.flat().map(([x, y]) => x * n.j[0] + y * n.j[1]); const u0 = Math.min(...all), L = Math.max(...all) - u0;
+    const sz = Math.abs(W - L) / L; if (sz > 0.06) continue;
+    const U = [...new Set(kontur.flat().filter(([x, y]) => lathato(x, y, n.v)).map(([x, y]) => Math.round((x * n.j[0] + y * n.j[1] - u0) * 20) / 20))].sort((p, q) => p - q);
+    // a nézet bal széle a kontúr bal szélső pontja; a belső sarkok a függőlegeseken (± 0,12 m)
+    const o = nz.a; let db = 0; for (const u of U) if (nz.fx.some((x) => Math.abs(x - (o + u)) <= 0.12)) db++;
+    ki.push({ irany: n.irany, o, pont: 0.5 * (1 - sz / 0.06) + 0.5 * (U.length ? db / U.length : 0), szelesseg: sz });
+  }
+  return ki.sort((p, q) => q.pont - p.pont);
+}
+
+/** A lap vonalainak irány szerinti távolságtérképei (12 irányosztály, 15°-onként; cella: res m). */
+export function iranyTerkepek(lap: Lap, mPt: number, maxCella = 1.5e6) {
+  const sz: [number, number, number, number][] = [];
+  for (const u of lap.utvonalak) {
+    if (u.muvelet === 'none') continue; const [bx0, by0, bx1, by1] = u.bbox; if (bx1 - bx0 > 0.8 * lap.szel || by1 - by0 > 0.8 * lap.mag) continue;
+    for (const p of u.pontok) for (let i = 0; i + 3 < p.length; i += 2) { const L = Math.hypot(p[i + 2]! - p[i]!, p[i + 3]! - p[i + 1]!) * mPt; if (L >= 0.1) sz.push([p[i]! * mPt, p[i + 1]! * mPt, p[i + 2]! * mPt, p[i + 3]! * mPt]); }
+  }
+  const W = lap.szel * mPt, H = lap.mag * mPt, NB = 12;
+  const res = Math.max(0.05, Math.sqrt((W * H) / maxCella));
+  const w = Math.ceil(W / res) + 1, h = Math.ceil(H / res) + 1;
+  const vonalak = Array.from({ length: NB }, () => new Uint8Array(w * h));
+  for (const [x0, y0, x1, y1] of sz) {
+    const a = ((Math.atan2(y1 - y0, x1 - x0) * 180) / Math.PI % 180 + 180) % 180, bin = Math.floor(a / (180 / NB)) % NB;
+    const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / (res / 2)));
+    for (let k = 0; k <= n; k++) { const x = Math.round((x0 + (x1 - x0) * k / n) / res), y = Math.round((y0 + (y1 - y0) * k / n) / res); if (x >= 0 && y >= 0 && x < w && y < h) vonalak[bin]![y * w + x] = 1; }
+  }
+  const TT = vonalak.map((v) => tavTerkep(w, h, v));
+  const LEVAG = 1.0;
+  const tav = (x: number, y: number, a: number) => { const gx = Math.round(x / res), gy = Math.round(y / res); if (gx < 0 || gy < 0 || gx >= w || gy >= h) return LEVAG;
+    const f = ((a % 180) + 180) % 180 / (180 / NB), b0 = Math.floor(f) % NB, b1 = (f - Math.floor(f) < 0.5 ? b0 - 1 + NB : b0 + 1) % NB;
+    return Math.min(LEVAG, TT[b0]![gy * w + gx]! * res, TT[b1]![gy * w + gx]! * res); };
+  return { W, H, res, tav, LEVAG };
+}
+
+/** Az alaprajzi modell egy homlokzati nyílása (a falon: a kezdő végtől t m-re, szel széles; z: parapet és magasság). */
+export interface IllNyilas { a: P2; b: P2; t: number; szel: number; z0: number; mag: number }
+
+/**
+ * Homlokzati lap illesztése az alaprajzhoz: a négy nézési irányból várt rajzolat – a látható sarkok függőlegesei
+ * (a terep fölött 0,3–2,3 m) és a néző felé néző falak nyílásainak szélei (függőleges oldalak, vízszintes alsó-felső él) –
+ * mintaként a lap vonalai között (irány szerinti távolságtérkép). Eltolás: a lap teljes területén (vízszintesen és
+ * függőlegesen – a ±0,00 helye). Irányonként a legjobb, egymástól ≥ 5 m-re lévő elhelyezések.
+ * Visszaad: irany (a néző oldala, mint homlokzatNezetIllesztes), ox (a nézet x-e = ox + u), oy (a lap y-a = oy − z),
+ * atlag (m), talalat (a mintapontok ≤ 0,1 m-es aránya).
+ */
+export function homlokzatLapIllesztes(lap: Lap, mPt: number, kontur: P2[][], nyilasok: IllNyilas[]): { irany: number; ox: number; oy: number; atlag: number; talalat: number }[] {
+  const T = iranyTerkepek(lap, mPt);
+  const elek = kontur.flatMap((p) => p.map((a, i) => [a, p[(i + 1) % p.length]!] as [P2, P2]));
+  const benne = (x: number, y: number) => { let b = false; for (const p of kontur) for (let i = 0, j = p.length - 1; i < p.length; j = i++) { const [xi, yi] = p[i]!, [xj, yj] = p[j]!; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) b = !b; } return b; };
+  const lathato = (x: number, y: number, v: P2) => { const px = x + v[0] * 0.05, py = y + v[1] * 0.05, qx = x + v[0] * 1000, qy = y + v[1] * 1000;
+    for (const [a, b] of elek) { const d = (qx - px) * (b[1] - a[1]) - (qy - py) * (b[0] - a[0]); if (Math.abs(d) < 1e-12) continue; const t = ((a[0] - px) * (b[1] - a[1]) - (a[1] - py) * (b[0] - a[0])) / d, u = ((a[0] - px) * (qy - py) - (a[1] - py) * (qx - px)) / d; if (t > 0 && t < 1 && u > 1e-6 && u < 1 - 1e-6) return false; } return true; };
+  const nezok: { irany: number; v: P2; j: P2 }[] = [{ irany: 180, v: [0, 1], j: [1, 0] }, { irany: 0, v: [0, -1], j: [-1, 0] }, { irany: 270, v: [-1, 0], j: [0, 1] }, { irany: 90, v: [1, 0], j: [0, -1] }];
+  const ki: { irany: number; ox: number; oy: number; atlag: number; talalat: number }[] = [];
+  for (const n of nezok) {
+    const all = kontur.flat().map(([x, y]) => x * n.j[0] + y * n.j[1]); const u0 = Math.min(...all);
+    // mintapontok: [u, z, irány (0: vízszintes, 90: függőleges)]
+    const M: [number, number, number][] = [];
+    const U = [...new Set(kontur.flat().filter(([x, y]) => lathato(x, y, n.v)).map(([x, y]) => Math.round((x * n.j[0] + y * n.j[1] - u0) * 20) / 20))];
+    for (const u of U) for (let z = 0.3; z <= 2.3; z += 0.25) M.push([u, z, 90]);
+    for (const ny of nyilasok) {
+      const dx = ny.b[0] - ny.a[0], dy = ny.b[1] - ny.a[1], L = Math.hypot(dx, dy); if (L < 0.1) continue;
+      const nx = -dy / L, nyy = dx / L; if (Math.abs(nx * n.v[0] + nyy * n.v[1]) < 0.9) continue;
+      const mx = (ny.a[0] + ny.b[0]) / 2 + n.v[0] * 0.5, my = (ny.a[1] + ny.b[1]) / 2 + n.v[1] * 0.5; if (benne(mx, my)) continue;
+      const p0: P2 = [ny.a[0] + (dx / L) * ny.t, ny.a[1] + (dy / L) * ny.t], p1: P2 = [ny.a[0] + (dx / L) * (ny.t + ny.szel), ny.a[1] + (dy / L) * (ny.t + ny.szel)];
+      // (a nyílás a néző felől látszik: a középpontjából a néző felé induló sugár nem metszi a kontúrt)
+      if (!lathato((p0[0] + p1[0]) / 2 + n.v[0] * 0.3, (p0[1] + p1[1]) / 2 + n.v[1] * 0.3, n.v)) continue;
+      const ua = p0[0] * n.j[0] + p0[1] * n.j[1] - u0, ub = p1[0] * n.j[0] + p1[1] * n.j[1] - u0, ul = Math.min(ua, ub), ur = Math.max(ua, ub);
+      for (let z = ny.z0 + 0.1; z <= ny.z0 + ny.mag - 0.1; z += 0.2) { M.push([ul, z, 90]); M.push([ur, z, 90]); }
+      for (let u = ul + 0.1; u <= ur - 0.1; u += 0.2) { M.push([u, ny.z0 + ny.mag, 0]); if (ny.z0 > 0.2) M.push([u, ny.z0, 0]); }
+    }
+    if (M.length < 20) continue;
+    const ertek = (ox: number, oy: number, kihagy = 1) => { let t = 0, c = 0; for (let i = 0; i < M.length; i += kihagy) { const [u, z, a] = M[i]!; t += T.tav(ox + u, oy - z, a); c++; } return t / c; };
+    const rk = Math.max(1, Math.floor(M.length / 80));
+    const jel: { ox: number; oy: number; e: number }[] = [];
+    for (let oy = 2; oy < T.H; oy += 0.5) for (let ox = -2; ox < T.W; ox += 0.5) { const e = ertek(ox, oy, rk); if (e < 0.45) jel.push({ ox, oy, e }); }
+    jel.sort((p, q) => p.e - q.e);
+    const leg: { ox: number; oy: number; e: number }[] = [];
+    for (const j of jel) { if (leg.length >= 25) break; if (leg.every((q) => Math.hypot(q.ox - j.ox, q.oy - j.oy) >= 3)) leg.push(j); }
+    // a találati arány a pontos helyen, és a 0,35 m-rel elcsúsztatott helyeken (háttér): a sűrű mintázatú (burkolat,
+    // cserépsor, sraff) felületen a minta bárhol „talál” – a kontraszt (pontos − háttér) dönt
+    const arany = (ox: number, oy: number) => { let jo = 0; for (const [u, z, a] of M) if (T.tav(ox + u, oy - z, a) <= 0.08) jo++; return jo / M.length; };
+    for (const j0 of leg) {
+      let b = { ...j0, e: Infinity };
+      for (let dy = -0.5; dy <= 0.501; dy += 0.05) for (let dx = -0.5; dx <= 0.501; dx += 0.05) { const e = ertek(j0.ox + dx, j0.oy + dy); if (e < b.e) b = { ox: j0.ox + dx, oy: j0.oy + dy, e }; }
+      const t = arany(b.ox, b.oy);
+      const hatter = [[0.35, 0], [-0.35, 0], [0, 0.35], [0, -0.35]].reduce((s0, [dx, dy]) => s0 + arany(b.ox + dx!, b.oy + dy!), 0) / 4;
+      ki.push({ irany: n.irany, ox: b.ox, oy: b.oy, atlag: b.e, talalat: t - hatter });
+    }
+  }
+  return ki.sort((p, q) => q.talalat - p.talalat);
+}
