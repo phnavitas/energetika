@@ -47,3 +47,17 @@ részben, Tb-barlang bizonytalan (találat 63 %).
   a betű címéhez legközelebbi, a húrral (± 8 %) egyező szélességű nézet. Ismeretlen léptékű metszetlapnál az 1:50 /
   1:100 / 1:200 közül az, amelyiknél van egyező nézet (Komló A-A: 1:50).
 - Állás: 15 metszésvonalból 8-hoz van illeszkedő nézet.
+
+## Rajzra írt horgonyok (2026-11-24, Balázs: „nézzük tovább így”)
+
+A rajzokat a tervező saját jelei kötik össze; a felismert kontúr csak ellenőrzés. Sorrend:
+
+1. **Tengelyjelek** (körben betű / szám, a tengelyvonallal): a nagyobb terveken minden lapon ott vannak, ugyanazzal a
+   jelöléssel – PeterLacke (alaprajz, metszet, homlokzat), 40 lakásos (alaprajzok, AA / BB metszet, mind a 4 homlokzat),
+   Biogáz (alaprajz, tetőfelülnézet, metszet, homlokzat, helyszínrajz). Két azonos jelű tengely helye a két lapon egyértelműen
+   adja az eltolást és a tükrözést, a jelek sorrendje az irányt – északjel és homlokzati felirat nélkül is.
+2. **Méretláncok**: azonos teljes hossz (± 3 cm) és a belső jelek egyezése (egyenes / fordított irányban, összevont
+   tagokkal is) – `lancEgyezes`. Ahol a lap láncot hordoz, az egyezés éles (Biogáz metszet–alaprajz 7/7, Dad metszet
+   7/7, Kecsked homlokzatok – az alaprajz oldallánca megmondja, melyik homlokzat). A kisebb házak homlokzatán gyakran
+   nincs vízszintes lánc.
+3. **Geometria** (kontúr / szélesség / sarkok) – ahol se tengely, se lánc nincs (Komló, Malom és Kacsa homlokzatai).

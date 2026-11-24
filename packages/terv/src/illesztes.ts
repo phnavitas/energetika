@@ -346,3 +346,26 @@ export function metszesKontur(a: P2, b: P2, kontur: P2[][]): number[] {
   }
   return t.sort((p, q) => p - q);
 }
+
+/**
+ * MÉRETLÁNCOK ÖSSZEVETÉSE (Balázs, 2026-11-24: „nézzük tovább így” – a rajzokat a tervező saját méretei kötik össze,
+ * nem a felismert kontúr): két lánc jelei (a lánc menti helyek, m, növekvő) – azonos teljes hossz (± 3 cm) mellett a
+ * belső jelek egyezése egyenes és fordított irányban. pont: az egyező belső jelek aránya a kevesebb belső jelű láncéhoz
+ * (a részletesebb lánc jelei a másikét tartalmazhatják – összevont tagok); a két vég mindig egyezik.
+ */
+export function lancEgyezes(A: number[], B: number[], tures = 0.03): { pont: number; forditott: boolean; db: number } | null {
+  if (A.length < 2 || B.length < 2) return null;
+  const LA = A[A.length - 1]! - A[0]!, LB = B[B.length - 1]! - B[0]!;
+  if (Math.abs(LA - LB) > Math.max(tures, 0.002 * LA)) return null;
+  const a = A.map((x) => x - A[0]!), b0 = B.map((x) => x - B[0]!);
+  let leg: { pont: number; forditott: boolean; db: number } | null = null;
+  for (const forditott of [false, true]) {
+    const b = forditott ? b0.map((x) => LB - x).reverse() : b0;
+    const ia = a.slice(1, -1), ib = b.slice(1, -1);
+    const db = ib.filter((x) => ia.some((y) => Math.abs(x - y) <= tures)).length;
+    const n = Math.min(ia.length, ib.length);
+    const pont = n ? db / n : 0.5; // (belső jel nélkül csak a hossz egyezik)
+    if (!leg || pont > leg.pont || (pont === leg.pont && db > leg.db)) leg = { pont, forditott, db };
+  }
+  return leg;
+}
