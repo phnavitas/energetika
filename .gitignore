@@ -10,3 +10,4 @@ apps/web/dist-base
 apps/web/dist-hamis
 apps/web/dist-hamis2
 __pycache__/
+apps/web/dist-*
