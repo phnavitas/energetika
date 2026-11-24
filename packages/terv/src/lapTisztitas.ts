@@ -36,10 +36,10 @@ const benne = (a: Doboz, b: Doboz) => a[0] >= b[0] && a[2] <= b[2] && a[1] >= b[
 
 /**
  * Az épületdoboz a méretláncokból: a vízszintes láncok közül a leghosszabbnak legalább 40 %-át elérők szélső jelei adják az
- * x-, a függőlegeseké az y-kiterjedést; a doboz a helyiségpecsétekre (pecsetPontok) 1 m-rel bővül. Null, ha nincs mindkét
+ * x-, a függőlegeseké az y-kiterjedést; a doboz a helyiségpecsétekre (pecsetPontok: x, y, terület) √A + 1 m-rel bővül. Null, ha nincs mindkét
  * irányban lánc.
  */
-export function epuletDoboz(lap: Lap, mPt: number, pecsetPontok: [number, number][] = []): Doboz | null {
+export function epuletDoboz(lap: Lap, mPt: number, pecsetPontok: ([number, number] | [number, number, number])[] = []): Doboz | null {
   const L = meretlancok(lap, mPt).map((l) => ({ fg: l.fuggo, c: l.c, a: l.jelek[0]!, b: l.jelek[l.jelek.length - 1]! })).filter((l) => (l.b - l.a) * mPt >= 2);
   const v = L.filter((l) => !l.fg), f = L.filter((l) => l.fg);
   if (!v.length || !f.length) return null;
@@ -47,8 +47,8 @@ export function epuletDoboz(lap: Lap, mPt: number, pecsetPontok: [number, number
   const vh = v.filter((l) => l.b - l.a >= 0.4 * vMax), fh = f.filter((l) => l.b - l.a >= 0.4 * fMax);
   let d: Doboz = [Math.min(...vh.map((l) => l.a)), Math.min(...fh.map((l) => l.a)), Math.max(...vh.map((l) => l.b)), Math.max(...fh.map((l) => l.b))];
   // (a láncok vonala a házon kívül fut: ha egy hosszú vízszintes lánc a dobozon belül esik, az belső lánc – nem baj)
-  const m1 = 1 / mPt;
-  for (const [x, y] of pecsetPontok) d = [Math.min(d[0], x - m1), Math.min(d[1], y - m1), Math.max(d[2], x + m1), Math.max(d[3], y + m1)];
+  // (a pecsét köré a helyiség várható kiterjedése: √A + 1 m – a láncokon kívül eső szárny, raktár helyisége is bent marad)
+  for (const [x, y, A] of pecsetPontok) { const r = (Math.sqrt(Math.max(0, A ?? 0)) + 1) / mPt; d = [Math.min(d[0], x - r), Math.min(d[1], y - r), Math.max(d[2], x + r), Math.max(d[3], y + r)]; }
   if ((d[2] - d[0]) * mPt < 3 || (d[3] - d[1]) * mPt < 3) return null;
   return d;
 }
@@ -57,7 +57,7 @@ export function epuletDoboz(lap: Lap, mPt: number, pecsetPontok: [number, number
  * A lap elemeinek osztályozása. mPt: a lap léptéke (m/pt); pecsetPontok: a helyiségpecsétek helye (pt) – a dobozt
  * bővítik. A doboz körüli tűrés 0,5 m (vakolat, hőszigetelés, párkány, lábazat).
  */
-export function lapOsztalyozas(lap: Lap, mPt: number, pecsetPontok: [number, number][] = []): LapTisztitas {
+export function lapOsztalyozas(lap: Lap, mPt: number, pecsetPontok: ([number, number] | [number, number, number])[] = []): LapTisztitas {
   const W = lap.szel, H = lap.mag;
   const pr = rajzpecsetTeglalap(lap);
   const utvonal: LapOsztaly[] = lap.utvonalak.map(() => 'epulet');

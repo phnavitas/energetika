@@ -450,7 +450,7 @@ export function alaprajzFeldolgoz(lap0: Lap, meretarany?: number, szurke?: Szurk
   const mPt0 = (() => { const M = meretarany && meretarany > 0 ? meretarany : meretaranyKeres(lapPK.szovegek, lapPK.utvonalak); return M ? (25.4 / 72) / 1000 * M : null; })();
   if (mPt0 && !(globalThis as { NOTISZTIT?: boolean }).NOTISZTIT) {
     e0 = alaprajzElemez(lapPK);
-    const pp = e0.helyisegek.filter((h) => h.forras === 'pecset').map((h) => [h.x, h.y] as [number, number]);
+    const pp = e0.helyisegek.filter((h) => h.forras === 'pecset').map((h) => [h.x, h.y, h.A] as [number, number, number]);
     const t = lapOsztalyozas(lapPK, mPt0, pp);
     if (t.doboz) { lap = tisztaLap(lapPK, t, mPt0); tinta = kepKivulMaszk(tinta, t.doboz); szurke = kepKivulMaszk(szurke, t.doboz); }
   }
