@@ -42,6 +42,7 @@ export function lapNezo(hely: HTMLElement, e: LapNezoBemenet, opc: { lap?: numbe
   const vbAllit = () => svg.setAttribute('viewBox', vb.join(' '));
   const alap = () => { const k = e.lapKepek[lap]; if (!k) return; const r = gyoker.getBoundingClientRect(); const ar = r.width && r.height ? r.width / r.height : k.szel / k.mag; const w = Math.max(k.szel, k.mag * ar), h = w / ar; vb = [(k.szel - w) / 2, (k.mag - h) / 2, w, h]; vbAllit(); };
   const rajzol = (ujLap = false) => {
+    if (ujLap) sajat = false;
     svg.replaceChildren(); const k = e.lapKepek[lap]; if (!k) return;
     valaszto.value = String(lap);
     const img = document.createElementNS(NS, 'image'); img.setAttribute('href', k.kep); img.setAttribute('x', '0'); img.setAttribute('y', '0'); img.setAttribute('width', String(k.szel)); img.setAttribute('height', String(k.mag)); svg.append(img);
@@ -59,22 +60,64 @@ export function lapNezo(hely: HTMLElement, e: LapNezoBemenet, opc: { lap?: numbe
     cimke.textContent = a ? `${NEV[a.tipus]} · ${a.id}${a.szint ? ` · ${a.szint}` : ''}` : '';
     if (ujLap) alap(); else vbAllit();
   };
-  // nagyítás, mozgatás, kijelölés
-  const lapPont = (ev: { clientX: number; clientY: number }) => { const r = svg.getBoundingClientRect(); return [vb[0]! + (ev.clientX - r.left) / r.width * vb[2]!, vb[1]! + (ev.clientY - r.top) / r.height * vb[3]!] as [number, number]; };
-  svg.addEventListener('wheel', (ev) => { ev.preventDefault(); const [x, y] = lapPont(ev); const f = ev.deltaY > 0 ? 1.15 : 1 / 1.15; vb = [x - (x - vb[0]!) * f, y - (y - vb[1]!) * f, vb[2]! * f, vb[3]! * f]; vbAllit(); }, { passive: false });
-  let le: { x: number; y: number; vb: number[] } | null = null, mozgott = false;
-  svg.addEventListener('pointerdown', (ev) => { le = { x: ev.clientX, y: ev.clientY, vb: [...vb] }; mozgott = false; svg.setPointerCapture(ev.pointerId); });
-  svg.addEventListener('pointermove', (ev) => { if (!le) return; const dx = ev.clientX - le.x, dy = ev.clientY - le.y; if (Math.hypot(dx, dy) > 4) mozgott = true; if (!mozgott) return; svg.style.cursor = 'grabbing'; const r = svg.getBoundingClientRect(); vb = [le.vb[0]! - dx / r.width * le.vb[2]!, le.vb[1]! - dy / r.height * le.vb[3]!, le.vb[2]!, le.vb[3]!]; vbAllit(); });
+  // nagyítás, mozgatás, kijelölés – a lapkoordináták mindig a képernyő-mátrixból (getScreenCTM: a preserveAspectRatio-t is tudja)
+  let sajat = false; // a felhasználó nagyított / mozgatott: méretváltozáskor ezt a nézetet tartjuk meg
+  const inv = () => svg.getScreenCTM()?.inverse() ?? null;
+  const pontM = (m: DOMMatrix | null, cx: number, cy: number): [number, number] | null => { if (!m) return null; const q = new DOMPoint(cx, cy).matrixTransform(m); return [q.x, q.y]; };
+  const lapPont = (ev: { clientX: number; clientY: number }) => pontM(inv(), ev.clientX, ev.clientY) ?? [vb[0]!, vb[1]!];
+  /** f-szeres nézetméret az (x, y) lappont körül, a b nézetből; a lapnál 3×-nál távolabb és 1/80-nál közelebb nem */
+  const nagyit = (f: number, x: number, y: number, b = vb) => {
+    const k = e.lapKepek[lap]; const max = k ? Math.max(k.szel, k.mag) * 3 : Infinity, min = k ? Math.max(k.szel, k.mag) / 80 : 0;
+    const w = Math.min(max, Math.max(min, b[2]! * f)), q = w / b[2]!;
+    vb = [x - (x - b[0]!) * q, y - (y - b[1]!) * q, b[2]! * q, b[3]! * q]; sajat = true; vbAllit();
+  };
+  svg.addEventListener('wheel', (ev) => {
+    ev.preventDefault(); const [x, y] = lapPont(ev);
+    // folytonos lépés (a touchpad apró lépései is simák); sor- / oldalegységű görgőnél átváltva
+    const dy = ev.deltaY * (ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? svg.clientHeight || 600 : 1);
+    nagyit(Math.exp(Math.max(-400, Math.min(400, dy)) * (ev.ctrlKey && Math.abs(dy) < 50 ? 0.01 : 0.0015)), x, y);
+  }, { passive: false });
+  const ujjak = new Map<number, { x: number; y: number }>();
+  let le: { x: number; y: number; vb: number[]; m: DOMMatrix | null } | null = null, mozgott = false;
+  let csip: { d: number; mx: number; my: number; vb: number[]; m: DOMMatrix | null } | null = null;
+  const ket = () => { const [a, b] = [...ujjak.values()] as [{ x: number; y: number }, { x: number; y: number }]; return { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }; };
+  svg.addEventListener('pointerdown', (ev) => {
+    ujjak.set(ev.pointerId, { x: ev.clientX, y: ev.clientY }); svg.setPointerCapture(ev.pointerId);
+    if (ujjak.size === 2) { csip = { ...ket(), vb: [...vb], m: inv() }; le = null; mozgott = true; return; }
+    le = { x: ev.clientX, y: ev.clientY, vb: [...vb], m: inv() }; mozgott = false;
+  });
+  svg.addEventListener('pointermove', (ev) => {
+    if (ujjak.has(ev.pointerId)) ujjak.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (csip && ujjak.size === 2) {
+      // csippentés: a kezdő középpont lappontja az aktuális középpont alá kerül, a nagyítás az ujjak távolságának aránya
+      const k = ket(), p0 = pontM(csip.m, csip.mx, csip.my), p1 = pontM(csip.m, k.mx, k.my); if (!p0 || !p1) return;
+      nagyit(csip.d / Math.max(1, k.d), p0[0], p0[1], [csip.vb[0]! - (p1[0] - p0[0]), csip.vb[1]! - (p1[1] - p0[1]), csip.vb[2]!, csip.vb[3]!]); return;
+    }
+    if (!le) return; const dx = ev.clientX - le.x, dy = ev.clientY - le.y; if (Math.hypot(dx, dy) > 4) mozgott = true; if (!mozgott) return;
+    svg.style.cursor = 'grabbing';
+    const p0 = pontM(le.m, le.x, le.y), p1 = pontM(le.m, ev.clientX, ev.clientY); if (!p0 || !p1) return;
+    vb = [le.vb[0]! - (p1[0] - p0[0]), le.vb[1]! - (p1[1] - p0[1]), le.vb[2]!, le.vb[3]!]; sajat = true; vbAllit();
+  });
+  const fel = (ev: PointerEvent) => { ujjak.delete(ev.pointerId); if (ujjak.size < 2) csip = null; };
+  svg.addEventListener('pointercancel', (ev) => { fel(ev); le = null; });
   svg.addEventListener('pointerup', (ev) => {
-    svg.style.cursor = 'grab'; const kat = le && !mozgott; le = null; if (!kat) return;
+    fel(ev); svg.style.cursor = 'grab'; const kat = le && !mozgott; le = null; if (!kat) return;
     const [x, y] = lapPont(ev);
     // (helyiség csak akkor, ha a ponton nincs más elem – a fal, nyílás elöl)
     const t = elemekPontban(e.elemAlakok.filter((a) => mutat.has(a.tipus)), lap, x, y);
     const a = t.find((q) => q.tipus !== 'ter') ?? t[0];
     kiv = a?.id ?? null; rajzol(); opc.onKijeloles?.(kiv, a);
   });
-  svg.addEventListener('dblclick', () => alap());
-  const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => alap()) : null; ro?.observe(gyoker);
+  svg.addEventListener('dblclick', () => { sajat = false; alap(); });
+  // Méretváltozáskor: amíg a felhasználó nem nagyított, a teljes lap; utána a nézet közepe és mértéke (lap-egység / képpont) marad.
+  let meret = [0, 0];
+  const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => {
+    const r = gyoker.getBoundingClientRect(); if (!r.width || !r.height) return;
+    const [w0, h0] = meret; meret = [r.width, r.height]; if (w0 === r.width && h0 === r.height) return;
+    if (!sajat || !w0 || !h0) { alap(); return; }
+    const s = vb[2]! / w0, cx = vb[0]! + vb[2]! / 2, cy = vb[1]! + vb[3]! / 2, w = r.width * s, h = r.height * s;
+    vb = [cx - w / 2, cy - h / 2, w, h]; vbAllit();
+  }) : null; ro?.observe(gyoker);
   rajzol(true);
   return {
     lapra: (i) => { lap = i; rajzol(true); },
