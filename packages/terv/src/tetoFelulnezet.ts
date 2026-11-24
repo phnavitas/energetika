@@ -211,7 +211,7 @@ function nyeregteto(sz: Sz[]): TetoFelulnezet | null {
  * ~ 0,8 m) a legjobban egyezik – az egy tető több csoportra eshet (L, T alak, két gerinc), és a helyszínrajzon a ház
  * elforgatva is állhat. A csoportok indexei, a befoglaló közepe (pt) és mérete (m, a főirányban), az eltérés aránya.
  */
-export function tetoCsoportValaszt(t: TetoFelulnezet, mPt: number, meret: [number, number], tures = 0.2, feliratok?: { s: string; x: number; y: number }[]): { csoportok: number[]; kozep: [number, number]; W: number; H: number; hiba: number; szog: number } | null {
+export function tetoCsoportValaszt(t: TetoFelulnezet, mPt: number, meret: [number, number], tures = 0.2, feliratok?: { s: string; x: number; y: number; szel?: number; szog?: number }[]): { csoportok: number[]; kozep: [number, number]; W: number; H: number; hiba: number; szog: number } | null {
   const th = (-t.tengely * Math.PI) / 180, c = Math.cos(th), s = Math.sin(th);
   const bb = t.pontok.map((P) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const [x, y] of P) { const u = x * c - y * s, v = x * s + y * c; x0 = Math.min(x0, u); x1 = Math.max(x1, u); y0 = Math.min(y0, v); y1 = Math.max(y1, v); } return [x0, y0, x1, y1] as [number, number, number, number]; });
   const n = bb.length; if (!n) return null;
@@ -232,7 +232,8 @@ export function tetoCsoportValaszt(t: TetoFelulnezet, mPt: number, meret: [numbe
     const W = (b[2] - b[0]) * mPt, H = (b[3] - b[1]) * mPt; const m = [W, H].sort((p, q) => q - p);
     const hiba = Math.max(Math.abs(m[0]! - meret[0] - 0.8) / meret[0], Math.abs(m[1]! - meret[1] - 0.8) / meret[1]);
     const mg = 0.5 / mPt;
-    const fel = (feliratok ?? []).filter((q) => { const u = q.x * c - q.y * s, v = q.x * s + q.y * c; return u >= b[0] - mg && u <= b[2] + mg && v >= b[1] - mg && v <= b[3] + mg; }).map((q) => q.s).join(' ');
+    // (a felirat közepe: a kezdőpontból a szöveg irányában a szélesség felével)
+    const fel = (feliratok ?? []).filter((q) => { const a = ((q.szog ?? 0) * Math.PI) / 180, qx = q.x + Math.cos(a) * (q.szel ?? 0) / 2, qy = q.y - Math.sin(a) * (q.szel ?? 0) / 2; const u = qx * c - qy * s, v = qx * s + qy * c; return u >= b[0] - mg && u <= b[2] + mg && v >= b[1] - mg && v <= b[3] + mg; }).map((q) => q.s).join(' ');
     const meglevo = /megl[ée]v[őo]|szomsz[ée]d|bontand/i.test(fel), tervezett = !meglevo && /tervezett|lak[óo][ée]p[üu]let|lak[óo]h[áa]z|csal[áa]di\s*h[áa]z|[úu]j\s+[ée]p[üu]let/i.test(fel);
     if (meglevo && !/tervezett/i.test(fel)) continue;
     const egyetlen = klaszterDb === 1 && cs.length === n;
