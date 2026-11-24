@@ -840,7 +840,7 @@ export function tervFolyamat(S: FolyamatAllapot) {
       const mPt = (25.4 / 72 / 1000) * M;
       // (a tetővonalak befoglalója az ereszig ér – az alaprajzi kiterjedésnél ereszkiállással nagyobb; a tető főirányában,
       // a közeli csoportok egyesítésével is – tetoCsoportValaszt)
-      const sel = tetoCsoportValaszt(t, mPt, meret as [number, number]);
+      const sel = tetoCsoportValaszt(t, mPt, meret as [number, number], 0.2, l.lap.szovegek);
       if (!sel) continue;
       const legCs = new Set(sel.csoportok);
       const eszakHs = (() => { let e: ReturnType<typeof eszakjelKeres> = null; try { e = eszakjelKeres(l.lap); } catch { e = null; } return e && !e.bizonytalan ? norm(e.szog) : null; })();
@@ -873,7 +873,7 @@ export function tervFolyamat(S: FolyamatAllapot) {
       if (t === undefined) { try { t = tetoFelulnezet(l.lap); } catch { t = null; } tetoFelulGy.set(l.lap, t); }
       const M = meretaranyKeres(l.lap.szovegek, l.lap.utvonalak); if (!t || !M) continue;
       const mPt = (25.4 / 72 / 1000) * M;
-      const sel = tetoCsoportValaszt(t, mPt, meret as [number, number]);
+      const sel = tetoCsoportValaszt(t, mPt, meret as [number, number], 0.2, l.lap.szovegek);
       if (!sel) continue;
       const eszakHs = (() => { let e: ReturnType<typeof eszakjelKeres> = null; try { e = eszakjelKeres(l.lap); } catch { e = null; } return e && !e.bizonytalan ? norm(e.szog) : null; })();
       // (a felülnézeti lap iránya a modell lapirányába: az óramutató szerint eszak − eszakHs fokkal)

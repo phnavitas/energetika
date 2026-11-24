@@ -1682,9 +1682,11 @@ function ereszFelulnezetbolEgy(pol: P2[], sz: [number, number, number, number][]
     if (db < 3) return null;
     const E0 = ereszKonturVonalakbol(vegek, sz);
     if (dbg) console.log('OROMDBG saját ereszvonal', JSON.stringify(E0));
-    if (!E0) return null;
-    Etv = E0.map(([x, y]) => [x + best.T[0], y + best.T[1]] as P2);
-    if (!fediPol(Etv, pol)) return null;
+    // (legalább 4 egyező saroknál a saját ereszvonal híján is elfogadható: a födém egy része – ferde fal, kis kiugrás –
+    // a raszterben pontatlan, a sarkok többsége nem illik; az ereszvonal ilyenkor az élgerinc-végpontokból – a födémet
+    // fednie kell, különben a födém körvonala marad, csak a kiállás jön a felülnézetből)
+    if (!E0 && db < 4) return null;
+    if (E0) { Etv = E0.map(([x, y]) => [x + best.T[0], y + best.T[1]] as P2); if (!fediPol(Etv, pol)) { if (db < 4) return null; Etv = null; } }
   }
   // élenként: a két végén lévő sarok kiállása
   const sIdx = new Map(sarkok.map((q, k) => [q.v, k] as const));

@@ -211,7 +211,7 @@ function nyeregteto(sz: Sz[]): TetoFelulnezet | null {
  * ~ 0,8 m) a legjobban egyezik – az egy tető több csoportra eshet (L, T alak, két gerinc), és a helyszínrajzon a ház
  * elforgatva is állhat. A csoportok indexei, a befoglaló közepe (pt) és mérete (m, a főirányban), az eltérés aránya.
  */
-export function tetoCsoportValaszt(t: TetoFelulnezet, mPt: number, meret: [number, number], tures = 0.2): { csoportok: number[]; kozep: [number, number]; W: number; H: number; hiba: number; szog: number } | null {
+export function tetoCsoportValaszt(t: TetoFelulnezet, mPt: number, meret: [number, number], tures = 0.2, feliratok?: { s: string; x: number; y: number }[]): { csoportok: number[]; kozep: [number, number]; W: number; H: number; hiba: number; szog: number } | null {
   const th = (-t.tengely * Math.PI) / 180, c = Math.cos(th), s = Math.sin(th);
   const bb = t.pontok.map((P) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const [x, y] of P) { const u = x * c - y * s, v = x * s + y * c; x0 = Math.min(x0, u); x1 = Math.max(x1, u); y0 = Math.min(y0, v); y1 = Math.max(y1, v); } return [x0, y0, x1, y1] as [number, number, number, number]; });
   const n = bb.length; if (!n) return null;
@@ -221,15 +221,29 @@ export function tetoCsoportValaszt(t: TetoFelulnezet, mPt: number, meret: [numbe
   const jeloltek: number[][] = bb.map((_, i) => [i]);
   const kl = new Map<number, number[]>(); bb.forEach((_, i) => { const r = gy(i); (kl.get(r) ?? kl.set(r, []).get(r)!).push(i); });
   for (const l of kl.values()) if (l.length > 1) jeloltek.push(l);
-  let leg: ReturnType<typeof tetoCsoportValaszt> = null;
+  // A tervezett épület jele a helyszínrajzon: felirat a tetőn („tervezett”, „lakóépület”, „lakóház”, „családi ház”); a
+  // „meglévő”, „szomszéd” feliratú tető nem a tervezett. A felirattal jelölt – ill. a lapon egyetlen – tető az alaprajzi
+  // befoglalótól jobban is eltérhet (a földszinti lapostetős szárny, a garázs nincs a magastető alatt; a raszteres kontúr
+  // kifolyhat): tűrés 0,35.
+  const klaszterDb = kl.size;
+  let leg: (ReturnType<typeof tetoCsoportValaszt> & { pont: number }) | null = null;
   for (const cs of jeloltek) {
     const b = cs.reduce((q, i) => [Math.min(q[0], bb[i]![0]), Math.min(q[1], bb[i]![1]), Math.max(q[2], bb[i]![2]), Math.max(q[3], bb[i]![3])] as [number, number, number, number], [Infinity, Infinity, -Infinity, -Infinity] as [number, number, number, number]);
     const W = (b[2] - b[0]) * mPt, H = (b[3] - b[1]) * mPt; const m = [W, H].sort((p, q) => q - p);
     const hiba = Math.max(Math.abs(m[0]! - meret[0] - 0.8) / meret[0], Math.abs(m[1]! - meret[1] - 0.8) / meret[1]);
-    if (hiba > tures || (leg && hiba >= leg.hiba)) continue;
+    const mg = 0.5 / mPt;
+    const fel = (feliratok ?? []).filter((q) => { const u = q.x * c - q.y * s, v = q.x * s + q.y * c; return u >= b[0] - mg && u <= b[2] + mg && v >= b[1] - mg && v <= b[3] + mg; }).map((q) => q.s).join(' ');
+    const meglevo = /megl[ée]v[őo]|szomsz[ée]d|bontand/i.test(fel), tervezett = !meglevo && /tervezett|lak[óo][ée]p[üu]let|lak[óo]h[áa]z|csal[áa]di\s*h[áa]z|[úu]j\s+[ée]p[üu]let/i.test(fel);
+    if (meglevo && !/tervezett/i.test(fel)) continue;
+    const egyetlen = klaszterDb === 1 && cs.length === n;
+    const tur = tervezett || egyetlen ? Math.max(tures, 0.35) : tures;
+    const pont = hiba - (tervezett ? 0.15 : 0);
+    if (hiba > tur || (leg && pont >= leg.pont)) continue;
     const u = (b[0] + b[2]) / 2, v = (b[1] + b[3]) / 2;
     // (vissza a lap koordinátáiba: az elforgatás inverze)
-    leg = { csoportok: cs, kozep: [u * c + v * s, -u * s + v * c], W, H, hiba, szog: t.tengely };
+    leg = { csoportok: cs, kozep: [u * c + v * s, -u * s + v * c], W, H, hiba, szog: t.tengely, pont };
   }
-  return leg;
+  if (!leg) return null;
+  const { pont: _p, ...ki } = leg; void _p;
+  return ki;
 }
