@@ -460,14 +460,19 @@ export function szintJelekLapokrol(lapok: { lap: Lap; homlokzat: boolean }[]): S
  * (W / 2 + kiállás) · tg(hajlás), 0,2–1,2 m-es kiállással (a kiírt kiállás, ill. 0,5 m körül a legjobb; a közel azonos
  * jók közül a több lapon kiírt pár). Az eresz a homlokzaton is kiírt jel (a tetőszél – csatorna – magassága).
  */
-export function ereszGerincJelekbol(jelek: SzintJelDb[], hajlas: number, W: number, zMin: number, kiallas?: number): { zEresz: number; gerinc: number; kiallas: number } | null {
+export function ereszGerincJelekbol(jelek: SzintJelDb[], hajlas: number, W: number | [number, number], zMin: number, kiallas?: number): { zEresz: number; gerinc: number; kiallas: number } | null {
   const db = new Map(jelek.map((j) => [j.v, j.db]));
   const jel = jelek.filter((j) => j.db >= 2);
-  const tg = Math.tan((hajlas * Math.PI) / 180); if (!(tg > 0) || !(W > 2)) return null;
+  // W: a tetőtest szélessége – vagy tartomány (a szárny szélessége … a legnagyobb beírt kör átmérője: bevágásos, L / T
+  // alakú körvonalnál a kettő közt van a valódi; 2026-11-25, Oroszlány / Dad)
+  const [W0, W1] = typeof W === 'number' ? [W, W] : W;
+  const tg = Math.tan((hajlas * Math.PI) / 180); if (!(tg > 0) || !(W1 > 2)) return null;
   const jo: { e: number; g: number; k: number; d: number }[] = [];
+  const kp = kiallas ?? 0.5;
   const keres = (ej: SzintJelDb[]) => { for (const E of ej) { const e = E.v; if (e < zMin || !E.hom) continue; for (const { v: g } of jel) { if (g < e + 1) continue;
-    const k = (g - e) / tg - W / 2; if (k < 0.2 || k > 1.2) continue;
-    jo.push({ e, g, k, d: Math.abs(k - (kiallas ?? 0.5)) }); } } };
+    const lo = Math.max(0.2, (g - e) / tg - W1 / 2), hi = Math.min(1.2, (g - e) / tg - W0 / 2); if (lo > hi) continue;
+    const k = Math.max(lo, Math.min(hi, kp));
+    jo.push({ e, g, k, d: Math.abs(k - kp) }); } } };
   keres(jel);
   // (a homlokzaton egyszer írt eresz – a többi nézeten nincs kótázva –, a legalább kétszer szereplő gerinccel: Tata-Nyárfa
   // +4,77 / +7,60)

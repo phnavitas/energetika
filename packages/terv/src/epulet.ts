@@ -219,6 +219,8 @@ export interface Magasteto { szint: string; hajlas: number; kiallas: number; kia
 export interface MagastetoBe { hajlas: number; orom?: Record<number, number>; kiallas?: number;
   /** (belső) a fő épületrész eresze – a további részek ezt öröklik, ha a szintjelekből nincs saját párjuk */
   zEreszFo?: number;
+  /** a hajlást a felhasználó adta meg – a szintjelekkel való ellentmondás miatt sem vetjük el */
+  hajlasKezi?: boolean;
   /** A metszet- és homlokzatlapok szintjelei: az eresz és a gerinc a hajlással és a tetőtest szélességével összeférő
    *  jelpárból (ereszGerincJelekbol) – az eresz magassága és (kiírt kiállás híján) a kiállás. */
   szintJelek?: SzintJelDb[];
@@ -248,6 +250,8 @@ export interface Koszoru { id: string; szint: string; szel: number; magas: numbe
   athidaloMonolit?: true }
 
 export interface EpuletModell { szintek: Szint[]; terek: Ter[]; falak: Fal[]; nyilasok: Nyilas[]; fodemek: Fodem[]; vizszintes: VizszintesBurok[]; tetok: TetoGeom[]; lefedes?: FalLefedes[]; pillerek?: Piller[]; koszoruk?: Koszoru[]; gerendak?: Gerenda[]; alapozas?: Alapozas[]; magasteto?: Magasteto;
+  /** A felismert hajlású magastető gerince a homlokzatok legmagasabb szintjelénél 2 m-nél magasabb lett volna – elvetve. */
+  magastetoElvetve?: { modell: number; jel: number };
   /** Az alaprajzi lapok és a modell kapcsolata (visszakeresés a rajzon): a lap sorszáma, a rá eső szintek, és a
    *  modell → lap leképezés: pt = (x / mPerPt + o[0], y / mPerPt + o[1]) (lapkoordináta, bal felső origó, y lefelé). */
   lapok?: LapKapcsolat[];
@@ -640,7 +644,11 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
   }
   for (const fd of fodemek) if (fd.lapos) fd.lapos.attika = sz(koszoruk.filter((k) => k.fajta === 'attika' && k.szint === fd.alatt).reduce((t, k) => t + k.hossz, 0), 2);
   const gerendak = gerendaKeres(lapok, falak, fodemek, koszoruk);
-  const magasteto = opt.teto ? magastetoEpit(szintek, fodemek, koszoruk, opt.teto, pillerek) : null;
+  let magasteto = opt.teto ? magastetoEpit(szintek, fodemek, koszoruk, opt.teto, pillerek) : null;
+  // A homlokzatok szintjelei fölé 2 m-nél többel nyúló magastető nem a tervé – a hajlás felismerése téves (RSP: lapostetős,
+  // attikás csarnok, egy 45°-os metszetvonalból 60 × 28 m-es kontyolt tető, gerince 16,65 m a +6,31 helyett): nincs magastető.
+  let magastetoElvetve: { modell: number; jel: number } | undefined;
+  if (magasteto?.gerincTul && !opt.teto?.hajlasKezi && magasteto.gerincTul.modell - magasteto.gerincTul.jel > 2) { magastetoElvetve = magasteto.gerincTul; magasteto = null; }
   if (magasteto) oromFalak(falak, szintek, magasteto);
   if (magasteto && lapok.some((L) => L.kizart)) felzaroFalak(falak, szintek, fodemek, magasteto);
   if (lapok.some((L) => L.kizart)) nyilasFalban(falak, nyilasok, szintek);
@@ -650,7 +658,7 @@ export function epuletModell(lapok: LapBemenet[], opt: { fodemSavok?: FodemSav[]
   const lapKapcs: LapKapcsolat[] = lapok.flatMap((L) => { const p0 = L.m(0, 0), p1 = L.m(1, 0), p2 = L.m(0, 1), mpp = p1[0] - p0[0];
     if (!(mpp > 0) || Math.abs(p1[1] - p0[1]) > 1e-9 * mpp || Math.abs(p2[0] - p0[0]) > 1e-9 * mpp || Math.abs(p2[1] - p0[1] - mpp) > 1e-9 * mpp) return [];
     return [{ lap: L.lap, szintek: L.szintek.map((x) => x.id), mPerPt: mpp, o: [-p0[0] / mpp, -p0[1] / mpp] as P2 }]; });
-  return { szintek, terek, falak, nyilasok, fodemek, vizszintes: vizszintesBurok(szintek, terek, lapok, fodemek), tetok, lefedes, ...(lapKapcs.length ? { lapok: lapKapcs } : {}), ...(pillerek.length ? { pillerek } : {}), ...(koszoruk.length ? { koszoruk } : {}), ...(gerendak.length ? { gerendak } : {}), ...(alapozas.length ? { alapozas } : {}), ...(magasteto ? { magasteto } : {}) };
+  return { szintek, terek, falak, nyilasok, fodemek, vizszintes: vizszintesBurok(szintek, terek, lapok, fodemek), tetok, lefedes, ...(lapKapcs.length ? { lapok: lapKapcs } : {}), ...(pillerek.length ? { pillerek } : {}), ...(koszoruk.length ? { koszoruk } : {}), ...(gerendak.length ? { gerendak } : {}), ...(alapozas.length ? { alapozas } : {}), ...(magasteto ? { magasteto } : {}), ...(magastetoElvetve ? { magastetoElvetve } : {}) };
 }
 
 
@@ -948,11 +956,13 @@ function nevVastag(n?: string): number | undefined {
  * rács) a leggyakoribb érték. Téglalapon a rövidebb oldal fele; L / T alakon a szárny szélességének fele (a sarokcsatlakozás
  * nagyobb beírt köre csak kis terület – a legnagyobb beírt kör ott túlbecsülne: Dad 4,37 m a 3,45 helyett).
  */
-export function szarnyFelSzelesseg(pol: P2[]): number {
-  if (pol.length < 3) return 0;
+export function szarnyFelSzelesseg(pol: P2[]): number { return szarnySzelessegek(pol).mod; }
+/** mod: a szárny félszélessége (lásd fent); max: a legnagyobb beírt kör sugara. */
+export function szarnySzelessegek(pol: P2[]): { mod: number; max: number } {
+  if (pol.length < 3) return { mod: 0, max: 0 };
   const xs = pol.map((p) => p[0]), ys = pol.map((p) => p[1]); const x0 = Math.min(...xs), y0 = Math.min(...ys);
   const st = 0.1, w = Math.max(1, Math.ceil((Math.max(...xs) - x0) / st)), h = Math.max(1, Math.ceil((Math.max(...ys) - y0) / st));
-  if (w * h > 400000) return szarnyFelSzelesseg(pol.map(([x, y]) => [x / 2, y / 2] as P2)) * 2; // (nagyon nagy körvonal: durvább rács)
+  if (w * h > 400000) { const r = szarnySzelessegek(pol.map(([x, y]) => [x / 2, y / 2] as P2)); return { mod: r.mod * 2, max: r.max * 2 }; } // (nagyon nagy körvonal: durvább rács)
   const D = new Float32Array(w * h);
   for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
     const x = x0 + (i + 0.5) * st, y = y0 + (j + 0.5) * st; if (!pontBenne(pol, x, y)) continue;
@@ -967,10 +977,10 @@ export function szarnyFelSzelesseg(pol: P2[]): number {
     if (csucs) { const k = Math.round(d / 0.1); hiszt.set(k, (hiszt.get(k) ?? 0) + 1); csucsok.push(d); }
   }
   let leg = -1, db = -1; for (const [k, n] of hiszt) if (n > db || (n === db && k > leg)) { leg = k; db = n; }
-  if (leg < 0) return max;
+  if (leg < 0) return { mod: max, max };
   // (a leggyakoribb osztály ± 0,1 m-én belüli gerincpontok átlaga – a 0,1 m-es osztályozás kerekítése nélkül)
   const kozel = csucsok.filter((d) => Math.abs(d - leg * 0.1) <= 0.1);
-  return kozel.reduce((t, d) => t + d, 0) / kozel.length;
+  return { mod: kozel.reduce((t, d) => t + d, 0) / kozel.length, max };
 }
 function pontBenne(pl: P2[], x: number, y: number, tol = 0): boolean {
   let be = false;
@@ -1279,11 +1289,14 @@ function magastetoEgy(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], t
   // szélessége (szarnyFelSzelesseg) – a gerinc az eresz fölött tg(hajlás) · (fél szélesség + kiállás). (2026-11-25: eddig a
   // körvonal legkisebb vetületi szélessége volt – L / T alakú háznál ez a teljes kiterjedés: Tata-Fazekas 17,3 m a ~6,3
   // helyett, így egyetlen eresz–gerinc jelpár sem fért össze, és az eresz 1,5 m-rel magasabbra került)
-  const W = 2 * szarnyFelSzelesseg(pol1);
+  const SZ = szarnySzelessegek(pol1); const W: [number, number] = [2 * SZ.mod, 2 * SZ.max];
   // (tetőtéri szinten az eresz a térdfal magasságában – a padló fölött akár 0,5–2 m-rel –, teljes szint fölött a szint
   // belmagasságán felül; Tata-Nyárfa: tetőtér +2,79, eresz +4,77)
-  const eg = t.szintJelek?.length ? ereszGerincJelekbol(t.szintJelek, t.hajlas, W, fel.z0 + (fel.kod === 'T' ? 0.3 : Math.min(fel.belmag, 2.2)), t.kiallas) : null;
-  if ((globalThis as { OROMDBG?: unknown }).OROMDBG) console.log('OROMDBG szintjelek', fel.id, fel.z0, 'W', W.toFixed(2), 'hajlás', t.hajlas, JSON.stringify(t.szintJelek), '→', JSON.stringify(eg));
+  // (először a szárny szélességével; ha így egy pár sem fér össze – bevágásos körvonal, Oroszlány –, a szárny és a legnagyobb
+  // beírt kör közti tartománnyal)
+  const zMinE = fel.z0 + (fel.kod === 'T' ? 0.3 : Math.min(fel.belmag, 2.2));
+  const eg = t.szintJelek?.length ? (ereszGerincJelekbol(t.szintJelek, t.hajlas, W[0], zMinE, t.kiallas) ?? ereszGerincJelekbol(t.szintJelek, t.hajlas, W, zMinE, t.kiallas)) : null;
+  if ((globalThis as { OROMDBG?: unknown }).OROMDBG) console.log('OROMDBG szintjelek', fel.id, fel.z0, 'W', W.map((v) => v.toFixed(2)).join('…'), 'hajlás', t.hajlas, JSON.stringify(t.szintJelek), '→', JSON.stringify(eg));
   let kiallas = t.kiallas ?? eg?.kiallas ?? 0.5;
   const sarok = sarokTerasz(kisLepcsoNelkul(pol1), pillerek.filter((p) => p.szint === fel.id && p.hely === 'szabad'));
   fedett.push(...sarok.fedett);
