@@ -12,8 +12,9 @@ import { meretlancok } from './meretlanc';
 import { homlokzatCimek } from './homlokzat';
 import * as I from './illesztes';
 
-export type IllModszer = 'referencia' | 'tengely' | 'lanc' | 'geometria' | null;
-export interface LapIllesztesEredmeny { modszer: IllModszer; reszlet: string }
+export type IllModszer = 'referencia' | 'tengely' | 'lanc' | 'geometria' | 'szint' | null;
+/** szint: a függőlegesen illesztett nézetek (z = a − y · mPt a lapon) – metszeten, homlokzaton. */
+export interface LapIllesztesEredmeny { modszer: IllModszer; reszlet: string; szint?: I.SzintNezet[] }
 export interface IllBeLap { lap: Lap; szerep: string; cim?: string; fajl?: string }
 
 const lepteke = (lap: Lap): { M: number | null; mPt: number } => { const M = meretaranyKeres(lap.szovegek, lap.utvonalak); return { M, mPt: (25.4 / 72 / 1000) * (M ?? 100) }; };
@@ -30,7 +31,7 @@ export function lapokIllesztese(lapok: IllBeLap[], ref: number, refR: Raszter | 
   lapok.forEach((l, i) => { if (!kell(i)) return; const d = adat[i]!; try { d.T = I.tengelyjelek(l.lap, i === ref ? refMPt : d.mPt); d.L = meretlancok(l.lap, i === ref ? refMPt : d.mPt).map((q) => ({ fg: q.fuggo, J: q.jelek.map((j) => j * (i === ref ? refMPt : d.mPt)) })).filter((q) => q.J[q.J.length - 1]! - q.J[0]! >= 3); } catch { /* */ } });
   const refT = adat[ref]!.T, refCs = [...new Set(refT.map((q) => q.csalad))];
   const alapok = lapok.map((l, i) => i).filter((i) => lapok[i]!.szerep === 'alaprajz');
-  return lapok.map((l, i): LapIllesztesEredmeny => {
+  const elso = lapok.map((l, i): LapIllesztesEredmeny => {
     if (i === ref) return { modszer: 'referencia', reszlet: 'ehhez illeszkedik a többi lap' };
     if (!kell(i)) return { modszer: null, reszlet: '' };
     const d = adat[i]!;
@@ -51,6 +52,25 @@ export function lapokIllesztese(lapok: IllBeLap[], ref: number, refR: Raszter | 
     } catch { /* */ }
     return { modszer: null, reszlet: '' };
   });
+  // 4) SZINTJELEK – metszet, homlokzat: függőleges illesztés, az épülethez kötve (negatív kontroll, 12 minta, saját / idegen):
+  //    ≥ 2 közös szint az alaprajzok szintfeliratival → 13 / 53, 4 / 583 idegen; ≥ 8 közös szint a már illesztett
+  //    lapokéval → 32 / 53, 0 / 583 idegen. (A ±0,00 körüli, 10 cm alatti szintek nem számítanak.)
+  const alapSzint = alapok.flatMap((a) => I.szintjelek(lapok[a]!.lap).map((q) => q.z));
+  const nez = lapok.map((l, i) => (['metszet', 'homlokzat'].includes(l.szerep) ? I.szintNezetek(l.lap, adat[i]!.M) : []));
+  nez.forEach((n, i) => { if (n.length && elso[i]!.modszer) elso[i]!.szint = n; });
+  for (let kor = 0; kor < 3; kor++) {
+    let valt = false;
+    lapok.forEach((l, i) => {
+      if (elso[i]!.modszer || !nez[i]!.length) return;
+      const Z = nez[i]!.flatMap((n) => n.z);
+      const kA = I.szintKozos(Z, alapSzint);
+      const illZ = lapok.flatMap((_, j) => (j !== i && elso[j]!.modszer ? nez[j]!.flatMap((n) => n.z) : []));
+      const kL = I.szintKozos(Z, illZ);
+      if (kA >= 2 || kL >= 8) { elso[i] = { modszer: 'szint', reszlet: `magasság: ${nez[i]!.length} nézet szintjelekkel; ${kA >= 2 ? `${kA} közös szint az alaprajzzal` : `${kL} közös szint az illesztett lapokkal`}`, szint: nez[i] }; valt = true; }
+    });
+    if (!valt) break;
+  }
+  return elso;
 }
 
 /** A referencia alaprajz: a legtöbb tengelyjelű (egyezésnél az első) alaprajzi lap. */

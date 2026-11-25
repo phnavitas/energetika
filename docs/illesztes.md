@@ -108,3 +108,22 @@ az nem bizonyíték.
 Következmény: a geometriai küszöbök szigorítva, a metszetek geometriai illesztése kikapcsolva. Az ellenőrzött
 eredmény a 12 mintán (78 lap): tengely 17, lánc 11, geometria 11 → **39 / 78** (a korábbi 65 / 78-ból 26 nem volt
 bizonyított). Tengelyjeles terveken (Biogáz, PeterLacke, 40 lakásos) továbbra is minden lap illeszkedik.
+
+### Szintjelek – a metszetek és homlokzatok függőleges illesztése (2026-11-25)
+
+Az előjeles szintfeliratok (±0,00, +2,70, −0,45) egy nézeten belül egy egyenesre esnek: z + y · mPt = állandó. Ahol
+≥ 3 különböző szint ugyanarra az állandóra esik (3 cm), az egy függőlegesen illesztett nézet (z = a − y · mPt) –
+`szintjelek`, `szintNezetek`, `szintKozos` (illesztes.ts). Az épülethez kötés a közös szintekkel (a ±0,00 körüli,
+10 cm alatti értékek nem számítanak). Negatív kontroll (53 metszet / homlokzat, saját / idegen):
+
+| feltétel | saját | idegen |
+|---|---|---|
+| ≥ 2 közös szint az alaprajzok szintfeliratival | 13 / 53 | 4 / 583 (0,7 %) |
+| ≥ 8 közös szint a projekt többi lapjával | 32 / 53 | 0 / 583 (idegen legfeljebb 7) |
+
+Az alkalmazásban: ≥ 2 közös az alaprajzzal, vagy ≥ 8 a már illesztett lapokkal (láncolva, legfeljebb 3 kör).
+Eredmény a 12 mintán (78 lap): tengely 17, lánc 11, geometria 11, **szint 18** → **57 / 78**. A szint csak a
+MAGASSÁGOT illeszti (a vízszintes helyet nem) – a jelvény „szintjelek (magasság)”.
+Nem illeszkedik még: Komló metszetei (nincs szövegként szintfelirat), Tb-barlang (2 metszet, 2 homlokzat, helyszín),
+tata metszetek (3), Balatonlelle (2 metszet, 1 homlokzat), Szárliget metszet + K–Ny homlokzat, Hatvan homlokzat,
+3 helyszínrajz, Malom É-i homlokzat.

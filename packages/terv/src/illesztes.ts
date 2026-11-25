@@ -514,3 +514,35 @@ export function falsikIllesztes(lap: Lap, mPt: number, sikok: number[]): { o: nu
   }
   return leg;
 }
+
+/*
+ * SZINTJELEK (2026-11-25) – a metszet / homlokzat függőleges illesztése: az előjeles szintfeliratok (±0,00, +2,70,
+ * −0,45) a lapon egy nézeten belül egy egyenesre esnek: z + y · mPt = állandó (y lefelé nő). Ahol legalább három
+ * különböző szint ugyanarra az állandóra esik (3 cm-en belül), az egy függőlegesen illesztett nézet: a lap bármely
+ * pontjának magassága z = a − y · mPt. Az épülethez kötést a közös szintek adják (alaprajz szintfeliratai, ill. a már
+ * illesztett lapok szintjei) – a negatív kontroll a docs/illesztes.md-ben.
+ */
+const SZINT_RE = /^\s*(±|\+\/-|\+|-|–)\s*(\d{1,2})[,.](\d{2,3})\s*(m)?\s*$/;
+export interface Szintjel { z: number; x: number; y: number }
+export function szintjelek(lap: Lap): Szintjel[] {
+  return lap.szovegek.flatMap((q) => { const r = SZINT_RE.exec(q.s); if (!r) return []; const v = +(r[2] + '.' + r[3]); return [{ z: r[1] === '-' || r[1] === '–' ? -v : v, x: q.x, y: q.y }]; });
+}
+export interface SzintNezet { a: number; mPt: number; z: number[] }
+/** A függőlegesen illesztett nézetek (≥ 3 különböző szint egy egyenesen). M: a lap léptéke, ha ismert. */
+export function szintNezetek(lap: Lap, M: number | null): SzintNezet[] {
+  const J = szintjelek(lap); const ki: SzintNezet[] = [];
+  for (const Mx of M ? [M] : [50, 100]) {
+    const mPt = (25.4 / 72 / 1000) * Mx;
+    const A = J.map((j) => ({ z: j.z, a: j.z + j.y * mPt })).sort((p, q) => p.a - q.a);
+    const K: { a: number; z: number[] }[] = [];
+    for (const j of A) { const k = K.find((q) => Math.abs(q.a - j.a) <= 0.03); if (k) { k.a = (k.a * k.z.length + j.a) / (k.z.length + 1); k.z.push(j.z); } else K.push({ a: j.a, z: [j.z] }); }
+    for (const k of K) { const z = [...new Set(k.z.map((v) => Math.round(v * 100) / 100))].sort((p, q) => p - q); if (z.length >= 3) ki.push({ a: k.a, mPt, z }); }
+  }
+  return ki;
+}
+/** Közös szintek száma (cm-re egyezők; a ±0,00 körüli, |z| < min értékek nem számítanak – azok minden tervben vannak). */
+export function szintKozos(A: Iterable<number>, B: Iterable<number>, min = 0.1): number {
+  const b = new Set([...B].map((v) => Math.round(v * 100))); let n = 0;
+  for (const v of new Set([...A].map((x) => Math.round(x * 100)))) if (Math.abs(v) >= min * 100 && b.has(v)) n++;
+  return n;
+}

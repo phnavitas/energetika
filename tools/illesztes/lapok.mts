@@ -20,16 +20,17 @@ const ref = [...alapok].sort((a, b) => b.T.length - a.T.length)[0];
 const refCs = [...new Set(ref.T.map((q: any) => q.csalad))] as string[];
 let eszak: number | null = null; for (const a of alapok) { const ej = eszakjelKeres(a.lap); if (ej) { eszak = ej.szog; break; } }
 const metszetBetuk = [...new Set(lapok.filter((l) => l.sz === 'metszet').flatMap((l) => l.lap.szovegek.map((t: any) => t.s.trim().match(/^([A-Z0-9]{1,2})\s*[-–]\s*\1\b/)?.[1]).filter(Boolean)))];
-const ossz: Record<string, number> = { tengely: 0, lanc: 0, geometria: 0, nincs: 0 };
+const ossz: Record<string, number> = { tengely: 0, lanc: 0, geometria: 0, szint: 0, nincs: 0 };
+const ill = new Set<any>([ref]); const nincsL: any[] = [];
 const sor: string[] = [];
 for (const l of lapok) {
   if (l === ref || !['alaprajz', 'helysz', 'homlokzat', 'metszet'].includes(l.sz) && !/tet[őo]/i.test(l.f)) continue;
   // 1) tengely
   let t = 0; for (const g of I.tengelyCsoportok(l.T)) { if (refCs.some((c) => I.tengelyIllesztes(ref.T.filter((q: any) => q.csalad === c), g))) t++; }
-  if (t) { ossz.tengely!++; sor.push(`  ${l.sz.padEnd(9)} ${l.f.slice(0, 30).padEnd(30)} TENGELY (${t} csoport)`); continue; }
+  if (t) { ill.add(l); ossz.tengely!++; sor.push(`  ${l.sz.padEnd(9)} ${l.f.slice(0, 30).padEnd(30)} TENGELY (${t} csoport)`); continue; }
   // 2) lánc (belső jel is egyezik)
   let lc = 0; for (const q of l.L) { if (l.sz !== 'helysz' && l.sz !== 'alaprajz' && q.fg) continue; for (const a of alapok) if (a.L.some((r: any) => { const m = I.lancEgyezes(r.J, q.J); return m && m.db >= 1 && m.pont >= 0.99; })) { lc++; break; } }
-  if (lc) { ossz.lanc!++; sor.push(`  ${l.sz.padEnd(9)} ${l.f.slice(0, 30).padEnd(30)} LÁNC (${lc} lánc)`); continue; }
+  if (lc) { ill.add(l); ossz.lanc!++; sor.push(`  ${l.sz.padEnd(9)} ${l.f.slice(0, 30).padEnd(30)} LÁNC (${lc} lánc)`); continue; }
   // 3) geometria
   let g = '';
   if (l.sz === 'helysz') { const r = I.helyszinIllesztes(l.lap, konturNagy, l.mPt); if (r && r.talalat >= 0.95) g = `helyszín ${(r.talalat * 100).toFixed(0)}%`; }
@@ -57,7 +58,16 @@ for (const l of lapok) {
         if (g) break; }
       if (g) break; }
   }
-  if (g) { ossz.geometria!++; sor.push(`  ${l.sz.padEnd(9)} ${l.f.slice(0, 30).padEnd(30)} GEOMETRIA (${g})`); continue; }
-  ossz.nincs!++; sor.push(`  ${l.sz.padEnd(9)} ${l.f.slice(0, 30).padEnd(30)} –`);
+  if (g) { ill.add(l); ossz.geometria!++; sor.push(`  ${l.sz.padEnd(9)} ${l.f.slice(0, 30).padEnd(30)} GEOMETRIA (${g})`); continue; }
+  nincsL.push(l);
 }
+// 4) szintjelek (metszet, homlokzat): ≥ 2 közös szint az alaprajzokkal, vagy ≥ 8 a már illesztett lapokkal
+const alapSzint = alapok.flatMap((a) => I.szintjelek(a.lap).map((q) => q.z));
+const nez = new Map<any, I.SzintNezet[]>(); for (const l of lapok) if (['metszet', 'homlokzat'].includes(l.sz)) nez.set(l, I.szintNezetek(l.lap, l.M));
+for (let kor = 0; kor < 3; kor++) { let valt = false;
+  for (const l of nincsL) { if (ill.has(l) || !nez.get(l)?.length) continue; const Z = nez.get(l)!.flatMap((n) => n.z);
+    const kA = I.szintKozos(Z, alapSzint), kL = I.szintKozos(Z, [...ill].flatMap((q) => (nez.get(q) ?? []).flatMap((n) => n.z)));
+    if (kA >= 2 || kL >= 8) { ill.add(l); l.szint = `${nez.get(l)!.length} nézet; ${kA} közös az alaprajzzal, ${kL} az illesztett lapokkal`; valt = true; } }
+  if (!valt) break; }
+for (const l of nincsL) { if (l.szint) { ossz.szint!++; sor.push(`  ${l.sz.padEnd(9)} ${l.f.slice(0, 30).padEnd(30)} SZINT (${l.szint})`); } else { ossz.nincs!++; sor.push(`  ${l.sz.padEnd(9)} ${l.f.slice(0, 30).padEnd(30)} –`); } }
 console.log(dir.split('/').pop(), JSON.stringify(ossz)); console.log(sor.join('\n'));

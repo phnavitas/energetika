@@ -1317,7 +1317,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
             </table>
             {lapok.length > 1 && (
               <details class="kartya" style="margin-top:12px;padding:10px 12px">
-                <summary><strong>Rajzok illesztése</strong> <span class="halkabb">– melyik tervlap illeszkedik az alaprajzhoz (tengelyjel, méretlánc vagy geometria szerint)</span></summary>
+                <summary><strong>Rajzok illesztése</strong> <span class="halkabb">– melyik tervlap illeszkedik az alaprajzhoz (tengelyjel, méretlánc, geometria vagy szintjelek szerint)</span></summary>
                 <div class="gombsor" style="margin-top:8px">
                   <button class="gomb kis-gomb" disabled={illFut} onClick={illesztesFuttat}>{illFut ? 'Illesztés folyamatban…' : illesztes ? 'Újraellenőrzés' : 'Illesztés ellenőrzése'}</button>
                   {illesztes && <span class="halkabb">{illesztes.e.filter((x) => x.modszer && x.modszer !== 'referencia').length} / {illesztes.e.filter((x, i) => x.modszer !== 'referencia' && ['alaprajz', 'helyszinrajz', 'homlokzat', 'metszet', 'teto'].includes(illSzerep(lapok[i]!))).length} lap illeszkedik</span>}
@@ -1327,7 +1327,7 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
                     <tbody>
                       {lapok.map((l, i) => { const x = illesztes.e[i]; const sz0 = illSzerep(l); if (!x || (!x.modszer && !['alaprajz', 'helyszinrajz', 'homlokzat', 'metszet', 'teto'].includes(sz0))) return null;
                         const nev = { alaprajz: 'alaprajz', helyszinrajz: 'helyszínrajz', homlokzat: 'homlokzat', metszet: 'metszet', teto: 'tetőfelülnézet' }[sz0 as 'alaprajz'] ?? sz0;
-                        const jel = x.modszer === 'referencia' ? <span class="jel jo">referencia</span> : x.modszer === 'tengely' ? <span class="jel jo">tengelyjelek</span> : x.modszer === 'lanc' ? <span class="jel jo">méretlánc</span> : x.modszer === 'geometria' ? <span class="jel figy">geometria</span> : <span class="jel rossz">nem illeszkedik</span>;
+                        const jel = x.modszer === 'referencia' ? <span class="jel jo">referencia</span> : x.modszer === 'tengely' ? <span class="jel jo">tengelyjelek</span> : x.modszer === 'lanc' ? <span class="jel jo">méretlánc</span> : x.modszer === 'geometria' ? <span class="jel figy">geometria</span> : x.modszer === 'szint' ? <span class="jel figy">szintjelek (magasság)</span> : <span class="jel rossz">nem illeszkedik</span>;
                         return <tr><td>{l.cim || l.fajl}</td><td class="halkabb">{nev}</td><td style="white-space:nowrap">{jel}</td><td class="halkabb">{x.reszlet}</td></tr>; })}
                     </tbody>
                   </table>
