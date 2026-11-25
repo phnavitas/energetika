@@ -217,6 +217,8 @@ export interface Magasteto { szint: string; hajlas: number; kiallas: number; kia
  *  lapostetős sávok (modellkoordináta, m: 'x' – az x ∈ [a, b] sáv, 'y' – az y ∈ [a, b] sáv; a homlokzatokról –
  *  tetoReszek.laposTetoSavok –, ill. kézzel): ezeken a szint körvonalának része lapostetős, a többi kap magastetőt. */
 export interface MagastetoBe { hajlas: number; orom?: Record<number, number>; kiallas?: number;
+  /** (belső) a fő épületrész eresze – a további részek ezt öröklik, ha a szintjelekből nincs saját párjuk */
+  zEreszFo?: number;
   /** A metszet- és homlokzatlapok szintjelei: az eresz és a gerinc a hajlással és a tetőtest szélességével összeférő
    *  jelpárból (ereszGerincJelekbol) – az eresz magassága és (kiírt kiállás híján) a kiállás. */
   szintJelek?: SzintJelDb[];
@@ -1260,7 +1262,9 @@ function magastetoEpitResz(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru
   const m0 = magastetoEgy(szintek, fodemek, koszoruk, t, pillerek, fo);
   if (!m0 || !tobb.length) return m0;
   const { felul: _f, ...t2 } = t; void _f;
-  const mk = tobb.map((p) => magastetoEgy(szintek, fodemek, koszoruk, t2, pillerek, p)).filter((x): x is Magasteto => !!x);
+  // (2026-11-25, Malom: a második tömbnek nem volt saját eresz–gerinc jelpárja, így a koszorúra (+5,48) került az eresze
+  // a fő rész +4,11-e helyett – a gerince 11,26 m lett a rajz 9,51-e helyett)
+  const mk = tobb.map((p) => magastetoEgy(szintek, fodemek, koszoruk, { ...t2, zEreszFo: m0.zEresz }, pillerek, p)).filter((x): x is Magasteto => !!x);
   if (!mk.length) return m0;
   return { ...m0, haromszogek: [...m0.haromszogek, ...mk.flatMap((x) => x.haromszogek)],
     tovabbiEresz: [...(m0.tovabbiEresz ?? []), ...mk.flatMap((x) => [x.eresz, ...(x.tovabbiEresz ?? [])])],
@@ -1322,7 +1326,8 @@ function magastetoEgy(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], t
   // kézi, oldalankénti kiállás: az oldal éleit a falsíktól (érték − kiállás)-sal kifelé (ill. befelé) toljuk
   if (kiallasKezi) pol = oldalKiallas(pol, kiallasKezi, kiallas);
   const k = koszoruk.find((q) => q.szint === fel.id && q.fajta !== 'attika');
-  const zEresz = zEreszAlso ?? sz(eg?.zEresz ?? (k ? k.zFelso : fel.z0 + fel.h), 2);
+  // (a további épületrész saját jelpár híján a fő rész ereszét örökli – ugyanaz a legfelső szint; a koszorú csak utána)
+  const zEresz = zEreszAlso ?? sz(eg?.zEresz ?? t.zEreszFo ?? (k ? k.zFelso : fel.z0 + fel.h), 2);
   // lapostetős sávok: a körvonal ezekbe eső része lapostető, a maradék darabjai kapnak magastetőt (legalább 2 m széles,
   // 8 m²-es darabok; ha a sávok a körvonal 85 %-át fedik, nincs magastető)
   let darabok: P2[][] = [pol], lapos: P2[][] = [];
