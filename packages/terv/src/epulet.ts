@@ -203,6 +203,8 @@ export interface Magasteto { szint: string; hajlas: number; kiallas: number; kia
   fedett?: P2[][];
   /** A kért oromfal(ak)kal a tetőfelület nem állítható elő (átfedő síkok) – oromfal nélkül (kontyolva) számolva. */
   oromElvetve?: boolean;
+  /** A modell gerince a homlokzatok legmagasabb (≥ 2×) szintjelénél 0,3 m-nél magasabb – a tetőforma ellenőrizendő. */
+  gerincTul?: { modell: number; jel: number };
   /** A szint körvonalának lapostetős részei (a magastető ezeken kívül); több magastetős darabnál a további darabok ereszvonala. */
   lapos?: P2[][]; tovabbiEresz?: P2[][];
   /** A féltetős részek (alaprajz, hajlás, a lejtés lapiránya) – a háromszögeik a `haromszogek` közt; az alsó élük az
@@ -939,6 +941,35 @@ function nevVastag(n?: string): number | undefined {
   return sz.length ? sz[sz.length - 1]! / 100 : undefined;
 }
 /** Pont a sokszögben (vagy a határától legfeljebb tol távolságra). */
+/**
+ * A tetőtest „szárnyának” félszélessége (m): a körvonal belső távolságtérképének gerincpontjain (helyi maximumok, 0,1 m-es
+ * rács) a leggyakoribb érték. Téglalapon a rövidebb oldal fele; L / T alakon a szárny szélességének fele (a sarokcsatlakozás
+ * nagyobb beírt köre csak kis terület – a legnagyobb beírt kör ott túlbecsülne: Dad 4,37 m a 3,45 helyett).
+ */
+export function szarnyFelSzelesseg(pol: P2[]): number {
+  if (pol.length < 3) return 0;
+  const xs = pol.map((p) => p[0]), ys = pol.map((p) => p[1]); const x0 = Math.min(...xs), y0 = Math.min(...ys);
+  const st = 0.1, w = Math.max(1, Math.ceil((Math.max(...xs) - x0) / st)), h = Math.max(1, Math.ceil((Math.max(...ys) - y0) / st));
+  if (w * h > 400000) return szarnyFelSzelesseg(pol.map(([x, y]) => [x / 2, y / 2] as P2)) * 2; // (nagyon nagy körvonal: durvább rács)
+  const D = new Float32Array(w * h);
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+    const x = x0 + (i + 0.5) * st, y = y0 + (j + 0.5) * st; if (!pontBenne(pol, x, y)) continue;
+    let d = Infinity; for (let a = 0, b = pol.length - 1; a < pol.length; b = a++) { const [ax, ay] = pol[b]!, [bx, by] = pol[a]!; const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy || 1;
+      const u = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2)); d = Math.min(d, Math.hypot(x - ax - u * dx, y - ay - u * dy)); }
+    D[j * w + i] = d;
+  }
+  const hiszt = new Map<number, number>(); const csucsok: number[] = []; let max = 0;
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+    const d = D[j * w + i]!; if (d < 0.5) continue; if (d > max) max = d; let csucs = true;
+    for (let dj = -1; dj <= 1 && csucs; dj++) for (let di = -1; di <= 1; di++) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= w || jj >= h) continue; if (D[jj * w + ii]! > d + 1e-6) { csucs = false; break; } }
+    if (csucs) { const k = Math.round(d / 0.1); hiszt.set(k, (hiszt.get(k) ?? 0) + 1); csucsok.push(d); }
+  }
+  let leg = -1, db = -1; for (const [k, n] of hiszt) if (n > db || (n === db && k > leg)) { leg = k; db = n; }
+  if (leg < 0) return max;
+  // (a leggyakoribb osztály ± 0,1 m-én belüli gerincpontok átlaga – a 0,1 m-es osztályozás kerekítése nélkül)
+  const kozel = csucsok.filter((d) => Math.abs(d - leg * 0.1) <= 0.1);
+  return kozel.reduce((t, d) => t + d, 0) / kozel.length;
+}
 function pontBenne(pl: P2[], x: number, y: number, tol = 0): boolean {
   let be = false;
   for (let i = 0, j = pl.length - 1; i < pl.length; j = i++) { const [xi, yi] = pl[i]!, [xj, yj] = pl[j]!; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) be = !be; }
@@ -1206,6 +1237,17 @@ export function tetoUnio(reszek: T3[][][]): T3[][][] {
 }
 
 function magastetoEpit(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], t: MagastetoBe, pillerek: Piller[] = []): Magasteto | null {
+  const m = magastetoEpitResz(szintek, fodemek, koszoruk, t, pillerek); if (!m) return m;
+  // Ellenőrzés a homlokzatok szintjeleivel (2026-11-25): a gerincet a tervező mindig kótázza – ha a modell gerince a
+  // homlokzatokon legalább kétszer szereplő legmagasabb szintjelnél is 0,3 m-rel magasabb, a tetőforma hibás (Malom:
+  // +11,26 a +9,51 helyett – két, eltérő irányú tetőtest egy tetőként).
+  const jel = (t.szintJelek ?? []).filter((j) => j.hom && j.db >= 2).map((j) => j.v);
+  if (!jel.length || !m.haromszogek.length) return m;
+  let zMax = -Infinity; for (const h of m.haromszogek) for (const p of h) if (p[2] > zMax) zMax = p[2];
+  const fj = Math.max(...jel);
+  return zMax > fj + 0.3 ? { ...m, gerincTul: { modell: sz(zMax, 2), jel: fj } } : m;
+}
+function magastetoEpitResz(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], t: MagastetoBe, pillerek: Piller[] = []): Magasteto | null {
   const fel = [...szintek].sort((a, b) => b.z0 - a.z0)[0]; if (!fel || !(t.hajlas > 5)) return null;
   const fd = fodemek.find((f) => f.alatt === fel.id && f.id.startsWith('FT')) ?? fodemek.find((f) => f.folott === fel.id);
   // A legfelső szint több különálló épületrésze (ikerház, sorház, külön tömbök) mind kap tetőt (Balázs: „tetőket nem
@@ -1229,13 +1271,15 @@ function magastetoEpit(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], 
 function magastetoEgy(szintek: Szint[], fodemek: Fodem[], koszoruk: Koszoru[], t: MagastetoBe, pillerek: Piller[], pol0: P2[]): Magasteto | null {
   const fel = [...szintek].sort((a, b) => b.z0 - a.z0)[0]; if (!fel) return null;
   const { pol: pol1, fedett } = fedettTerasz(pol0, pillerek.filter((p) => p.szint === fel.id && p.hely === 'szabad'));
-  // az eresz (és kiírt kiállás híján a kiállás) a szintjelekből: a tetőtest külső szélessége a födém körvonalának
-  // legkisebb szélessége (2°-onként forgatva)
-  let W = Infinity;
-  for (let d = 0; d < 180; d += 2) { const c = Math.cos(d * Math.PI / 180), s0 = Math.sin(d * Math.PI / 180); let lo = Infinity, hi = -Infinity; for (const [x, y] of pol1) { const v = x * c + y * s0; if (v < lo) lo = v; if (v > hi) hi = v; } W = Math.min(W, hi - lo); }
+  // az eresz (és kiírt kiállás híján a kiállás) a szintjelekből: a tetőtest szélessége a födém körvonalának szárny-
+  // szélessége (szarnyFelSzelesseg) – a gerinc az eresz fölött tg(hajlás) · (fél szélesség + kiállás). (2026-11-25: eddig a
+  // körvonal legkisebb vetületi szélessége volt – L / T alakú háznál ez a teljes kiterjedés: Tata-Fazekas 17,3 m a ~6,3
+  // helyett, így egyetlen eresz–gerinc jelpár sem fért össze, és az eresz 1,5 m-rel magasabbra került)
+  const W = 2 * szarnyFelSzelesseg(pol1);
   // (tetőtéri szinten az eresz a térdfal magasságában – a padló fölött akár 0,5–2 m-rel –, teljes szint fölött a szint
   // belmagasságán felül; Tata-Nyárfa: tetőtér +2,79, eresz +4,77)
   const eg = t.szintJelek?.length ? ereszGerincJelekbol(t.szintJelek, t.hajlas, W, fel.z0 + (fel.kod === 'T' ? 0.3 : Math.min(fel.belmag, 2.2)), t.kiallas) : null;
+  if ((globalThis as { OROMDBG?: unknown }).OROMDBG) console.log('OROMDBG szintjelek', fel.id, fel.z0, 'W', W.toFixed(2), 'hajlás', t.hajlas, JSON.stringify(t.szintJelek), '→', JSON.stringify(eg));
   let kiallas = t.kiallas ?? eg?.kiallas ?? 0.5;
   const sarok = sarokTerasz(kisLepcsoNelkul(pol1), pillerek.filter((p) => p.szint === fel.id && p.hely === 'szabad'));
   fedett.push(...sarok.fedett);
