@@ -53,8 +53,8 @@ export function lapokIllesztese(lapok: IllBeLap[], ref: number, refR: Raszter | 
     return { modszer: null, reszlet: '' };
   });
   // 4) SZINTJELEK – metszet, homlokzat: függőleges illesztés, az épülethez kötve (negatív kontroll, 12 minta, saját / idegen):
-  //    ≥ 2 közös szint az alaprajzok szintfeliratival → 13 / 53, 4 / 583 idegen; ≥ 8 közös szint a már illesztett
-  //    lapokéval → 32 / 53, 0 / 583 idegen. (A ±0,00 körüli, 10 cm alatti szintek nem számítanak.)
+  //    ≥ 2 közös szint az alaprajzok szintfeliratival → 13 / 53, 4 / 583 idegen; ≥ 8 közös szint a projekt többi
+  //    metszetével / homlokzatával → 32 / 53, 0 / 583 idegen. (A ±0,00 körüli, 10 cm alatti szintek nem számítanak.)
   const alapSzint = alapok.flatMap((a) => I.szintjelek(lapok[a]!.lap).map((q) => q.z));
   const nez = lapok.map((l, i) => (['metszet', 'homlokzat'].includes(l.szerep) ? I.szintNezetek(l.lap, adat[i]!.M) : []));
   nez.forEach((n, i) => { if (n.length && elso[i]!.modszer) elso[i]!.szint = n; });
@@ -64,9 +64,11 @@ export function lapokIllesztese(lapok: IllBeLap[], ref: number, refR: Raszter | 
       if (elso[i]!.modszer || !nez[i]!.length) return;
       const Z = nez[i]!.flatMap((n) => n.z);
       const kA = I.szintKozos(Z, alapSzint);
-      const illZ = lapok.flatMap((_, j) => (j !== i && elso[j]!.modszer ? nez[j]!.flatMap((n) => n.z) : []));
+      // (a projekt többi metszetének / homlokzatának szintjei – a negatív kontroll ezt mérte: ≥ 8 közös szint idegen
+      // projekt lapjával 0 / 583 –, nem csak a már illesztetteké: így a tengelyjel és lánc nélküli lapcsoport is illeszkedik)
+      const illZ = lapok.flatMap((_, j) => (j !== i ? nez[j]!.flatMap((n) => n.z) : []));
       const kL = I.szintKozos(Z, illZ);
-      if (kA >= 2 || kL >= 8) { elso[i] = { modszer: 'szint', reszlet: `magasság: ${nez[i]!.length} nézet szintjelekkel; ${kA >= 2 ? `${kA} közös szint az alaprajzzal` : `${kL} közös szint az illesztett lapokkal`}`, szint: nez[i] }; valt = true; }
+      if (kA >= 2 || kL >= 8) { elso[i] = { modszer: 'szint', reszlet: `magasság: ${nez[i]!.length} nézet szintjelekkel; ${kA >= 2 ? `${kA} közös szint az alaprajzzal` : `${kL} közös szint a projekt többi lapjával`}`, szint: nez[i] }; valt = true; }
     });
     if (!valt) break;
   }

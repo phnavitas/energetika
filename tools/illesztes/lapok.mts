@@ -66,8 +66,8 @@ const alapSzint = alapok.flatMap((a) => I.szintjelek(a.lap).map((q) => q.z));
 const nez = new Map<any, I.SzintNezet[]>(); for (const l of lapok) if (['metszet', 'homlokzat'].includes(l.sz)) nez.set(l, I.szintNezetek(l.lap, l.M));
 for (let kor = 0; kor < 3; kor++) { let valt = false;
   for (const l of nincsL) { if (ill.has(l) || !nez.get(l)?.length) continue; const Z = nez.get(l)!.flatMap((n) => n.z);
-    const kA = I.szintKozos(Z, alapSzint), kL = I.szintKozos(Z, [...ill].flatMap((q) => (nez.get(q) ?? []).flatMap((n) => n.z)));
-    if (kA >= 2 || kL >= 8) { ill.add(l); l.szint = `${nez.get(l)!.length} nézet; ${kA} közös az alaprajzzal, ${kL} az illesztett lapokkal`; valt = true; } }
+    const kA = I.szintKozos(Z, alapSzint), kL = I.szintKozos(Z, [...nez.entries()].filter(([q]) => q !== l).flatMap(([, n]) => n.flatMap((x) => x.z)));
+    if (kA >= 2 || kL >= 8) { ill.add(l); l.szint = `${nez.get(l)!.length} nézet; ${kA} közös az alaprajzzal, ${kL} a többi lappal`; valt = true; } }
   if (!valt) break; }
 for (const l of nincsL) { if (l.szint) { ossz.szint!++; sor.push(`  ${l.sz.padEnd(9)} ${l.f.slice(0, 30).padEnd(30)} SZINT (${l.szint})`); } else { ossz.nincs!++; sor.push(`  ${l.sz.padEnd(9)} ${l.f.slice(0, 30).padEnd(30)} –`); } }
 console.log(dir.split('/').pop(), JSON.stringify(ossz)); console.log(sor.join('\n'));

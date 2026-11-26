@@ -537,12 +537,16 @@ export function TervbolLepes({ p, modosit, ugrik }: { p: Projekt; modosit: Modos
     // 3. helyiségek: a rajzi terület (raszter) és a felirat eltérése
     const elt: string[] = [];
     helyisegek.forEach((h, i) => { if (h.kulter) return; const ri = raszterIdx(i); if (ri < 0) { if (szerep(i) === 'futott') elt.push(`${h.nev} (nincs a rajzon)`); return; }
-      const Ar = r.helyisegek[ri]!.A; if (Math.abs(Ar - h.A) > Math.max(1, 0.2 * h.A)) elt.push(`${h.nev} ${sz(h.A, 1)} → ${sz(Ar, 1)} m²`); });
+      // (tetőtéri lapon a felirat a hasznos – 1,90 m feletti – terület, a rajzi a térdfalig tart: a nagyobb rajzi terület ott
+      // nem hiba, legfeljebb a felirat 1,8-szereséig; CSH Budai N. A.: előtér 6,6 → 9,4, gardrób 5,6 → 9,2 m²)
+      const Ar = r.helyisegek[ri]!.A, tt = aIdx >= 0 && lapSzintek(aIdx).includes('T');
+      if (tt && Ar > h.A && Ar <= 1.8 * h.A + 1) return;
+      if (Math.abs(Ar - h.A) > Math.max(1, 0.2 * h.A)) elt.push(`${h.nev} ${sz(h.A, 1)} → ${sz(Ar, 1)} m²`); });
     if (elt.length) ki.push({ sulyos: elt.length >= 3, szoveg: `${elt.length} helyiség rajzi területe érdemben eltér a feliratától (a fal / nyílás felismerése ott hibás lehet): ${elt.slice(0, 6).join('; ')}${elt.length > 6 ? ' …' : ''}.` });
     // 4. lépték: a lapra írt és a méretláncok szerinti eltér
     if ((al.e.figyelmeztetesek ?? []).some((f) => /kicsinyítve|nagyítva|méretláncokból kalibrálva/.test(f))) ki.push({ sulyos: false, szoveg: 'A lépték a méretláncokból kalibrálva (a lapra írt eltér, vagy nincs) – egy ismert méreten érdemes ellenőrizni.' });
     return ki;
-  }, [al, burok, burokMert, helyisegek, kj]);
+  }, [al, aIdx, burok, burokMert, helyisegek, kj]);
   const [aiTokenAll, setAiTokenAll] = useState(() => !!aiToken());
   const [aiTokenBe, setAiTokenBe] = useState('');
   const [ai, setAi] = useState<{ fut: boolean; valasz?: AiValasz | null; nyers?: string; hiba?: string; kiv?: { nezet: [number, number, number, number]; W: number; H: number } } | null>(null);

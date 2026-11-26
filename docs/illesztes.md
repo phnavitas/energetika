@@ -127,3 +127,8 @@ MAGASSÁGOT illeszti (a vízszintes helyet nem) – a jelvény „szintjelek (ma
 Nem illeszkedik még: Komló metszetei (nincs szövegként szintfelirat), Tb-barlang (2 metszet, 2 homlokzat, helyszín),
 tata metszetek (3), Balatonlelle (2 metszet, 1 homlokzat), Szárliget metszet + K–Ny homlokzat, Hatvan homlokzat,
 3 helyszínrajz, Malom É-i homlokzat.
+
+(2026-11-26) A „≥ 8 közös szint” a projekt ÖSSZES többi metszetével / homlokzatával számít (a negatív kontroll is ezt
+mérte), nem csak a már illesztettekkel: így a tengelyjel és méretlánc nélküli lapcsoport is illeszkedik
+(Tata-Fazekas 3 metszete, Tb-barlang 1 lap). Eredmény a 12 mintán: tengely 17, lánc 11, geometria 11, szint 22 →
+**61 / 78**.
