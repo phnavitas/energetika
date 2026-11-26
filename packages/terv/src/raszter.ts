@@ -323,6 +323,11 @@ export function raszterEpit(lap: Lap, mPerPt: number, magok: { x: number; y: num
   const aproIdx = new Map<number, [number, number][]>(); const AR = 10;
   for (const q of apro) { const k = Math.floor(q[0] / AR) * 100000 + Math.floor(q[1] / AR); const l = aproIdx.get(k); if (l) l.push(q); else aproIdx.set(k, [q]); }
   const terepburkolat = (u: Utvonal) => {
+    // (a fal-fólián lévő vékony – ≤ 0,2 m –, hosszú – ≥ 8 m –, fehér sáv nem terepburkolat: a csarnok szendvicspanel-fala, a
+    // hőszigetelés-jele – sok apró hullámvonal a sávban – „kövek” sokaságának látszik; Transportbeton: 250 m panelfal kimaradt.
+    // A vastagabb, rövidebb falsávra nem: ott a falazat jele a régi felismeréssel jobban egyezett – Tb-Nagy László u.)
+    if (u.reteg && feher(u.toltoSzin) && falFoliaNev(u.reteg)) { let A = 0, K = 0; for (const p of u.pontok) { A += poliTerulet(p); K += poliKerulet(p); }
+      if (K > 0 && 2 * A / K * mPerPt <= 0.2 && Math.max(u.bbox[2] - u.bbox[0], u.bbox[3] - u.bbox[1]) * mPerPt >= 8) return false; }
     const [bx0, by0, bx1, by1] = u.bbox; const A = poliTerulet(u.pontok[0] ?? []) * mPerPt * mPerPt; if (A < 1) return false;
     let db = 0;
     for (let gx = Math.floor(bx0 / AR); gx <= Math.floor(bx1 / AR); gx++) for (let gy = Math.floor(by0 / AR); gy <= Math.floor(by1 / AR); gy++) for (const [cx, cy] of aproIdx.get(gx * 100000 + gy) ?? []) if (cx > bx0 && cx < bx1 && cy > by0 && cy < by1) db++;

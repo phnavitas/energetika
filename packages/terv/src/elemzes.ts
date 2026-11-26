@@ -283,7 +283,9 @@ export function pecsetEgyezes(r: Raszter, hs: { A: number }[]): number {
  * lát, a lapkép-„tinta” igen.
  */
 /** Zárt beltéri helyiség neve – ilyen nevű tér a hiányos falak ellenére sem nyitott (a fal felismerése hibázott). */
-const BELTER_NEV = /szoba|nappali|konyha|étkező|etkezo|fürdő|furdo|\bwc\b|háló|halo|előtér|eloter|előszoba|közlekedő|kozlekedo|folyosó|folyoso|iroda|gardrób|gardrob|kamra|tároló|tarolo|garázs|garazs|műhely|muhely|raktár|raktar|lépcső|lepcso|gépész|gepesz|kazán|kazan|mosó|moso|dolgozó|dolgozo|öltöző|oltozo|zuhany|szauna|terem|csarnok|üzem|uzem|labor|rendelő|rendelo|váró|varo|iroda|tanuló|tanulo|játszó|jatszo|spájz|spajz|pince|padlás|padlas/i;
+// (2026-11-25: lobby, hall, aula, szélfogó, recepció, előcsarnok is – Hegyalja: a pinceszinti „Lobby” a lépcső felé
+// nyitott, így kültérnek vette, és a hőburok a lépcsőház falai mentén ment)
+const BELTER_NEV = /lobby|\bhall\b|aula|szélfogó|szelfogo|recepció|recepcio|előcsarnok|elocsarnok|társalgó|tarsalgo|szoba|nappali|konyha|étkező|etkezo|fürdő|furdo|\bwc\b|háló|halo|előtér|eloter|előszoba|közlekedő|kozlekedo|folyosó|folyoso|iroda|gardrób|gardrob|kamra|tároló|tarolo|garázs|garazs|műhely|muhely|raktár|raktar|lépcső|lepcso|gépész|gepesz|kazán|kazan|mosó|moso|dolgozó|dolgozo|öltöző|oltozo|zuhany|szauna|terem|csarnok|üzem|uzem|labor|rendelő|rendelo|váró|varo|iroda|tanuló|tanulo|játszó|jatszo|spájz|spajz|pince|padlás|padlas/i;
 export function falFedettseg(r: Raszter): number {
   const t = fedettsegSzamlalo(r); let h = 0, f = 0; for (let i = 0; i < t.hatar.length; i++) { h += t.hatar[i]!; f += t.fedett[i]!; }
   return h ? f / h : 0;
